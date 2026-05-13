@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-11T09:44:08.494Z",
+  "generatedAt": "2026-05-13T12:28:28.871Z",
   "dependencies": [
     {
       "from": "tmux-web/static/app.js",
@@ -3025,6 +3025,20 @@
       "type": "call",
       "fromElement": "renderTodoCard",
       "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderTodoCard",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderTodoCard",
+      "toElement": "meta.appendChild"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -7027,6 +7041,13 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "openCreateModal",
+      "toElement": "card.querySelector"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openCreateModal",
       "toElement": "close"
     },
     {
@@ -7427,6 +7448,13 @@
       "type": "call",
       "fromElement": "openTodoEditModal",
       "toElement": "document.body.appendChild"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openTodoEditModal",
+      "toElement": "card.querySelector"
     },
     {
       "from": "tmux-web/static/app.js",

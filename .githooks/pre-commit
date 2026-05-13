@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# Pre-commit hook: автоматически инкрементирует patch-версию devforge
+# в tmux-web/Cargo.toml (и соответствующую запись в Cargo.lock) при каждом
+# коммите. Изменения добавляются в индекс автоматически — в коммит уйдёт
+# уже новая версия.
+#
+# Включается командой: git config core.hooksPath .githooks
+# (выполнено один раз при настройке репозитория, см. README).
+#
+# Поведение:
+#   - читает текущую версию X.Y.Z из tmux-web/Cargo.toml
+#   - PATCH += 1, MAJOR/MINOR не трогаются
+#   - переписывает Cargo.toml + соответствующий блок [[package]] в Cargo.lock
+#   - git add обоих файлов (внутри pre-commit это безопасно, не вызывает рекурсию)
+#   - пишет в stderr [pre-commit] X.Y.Z → X.Y.(Z+1)
+#
+# Bypass: `git commit --no-verify` (только при крайней необходимости).
+# Запрет на amend/rebase не накладываем — каждый коммит = +1 patch.
+#
+# Skip-условие: если Cargo.toml уже стейджнут с ВРУЧНУЮ выставленной более
+# высокой версией (например, пользователь поднял MAJOR/MINOR), хук уважает
+# это и НЕ перезаписывает. См. compare_versions ниже.
+
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+CARGO_TOML="$REPO_ROOT/tmux-web/Cargo.toml"
+CARGO_LOCK="$REPO_ROOT/tmux-web/Cargo.lock"
+
+if [ ! -f "$CARGO_TOML" ]; then
+    # Не наш репо или Cargo.toml ещё не создан — молча пропускаем.
+    exit 0
+fi
+
+# Текущая версия из Cargo.toml (первая строка `version = "..."` в [package]).
+current=$(awk -F'"' '/^version = / { print $2; exit }' "$CARGO_TOML")
+if [ -z "$current" ]; then
+    echo "[pre-commit] cannot parse version from $CARGO_TOML — skipping bump" >&2
+    exit 0
+fi
+
+# Парсинг X.Y.Z. Если формат не SemVer-подобный — пропускаем без падения.
+if ! [[ "$current" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+    echo "[pre-commit] version '$current' is not X.Y.Z — skipping bump" >&2
+    exit 0
+fi
+MAJOR="${BASH_REMATCH[1]}"
+MINOR="${BASH_REMATCH[2]}"
+PATCH="${BASH_REMATCH[3]}"
+NEW_PATCH=$((PATCH + 1))
+new="${MAJOR}.${MINOR}.${NEW_PATCH}"
+
+# Перезапись Cargo.toml. Используем awk (не sed) — кросс-платформенно
+# между BSD (macOS) и GNU (Linux). Заменяем ТОЛЬКО первое вхождение строки
+# `version = "<current>"` (это запись пакета в секции [package], дальше
+# Cargo.toml может содержать version у dependencies).
+awk -v old="$current" -v new="$new" '
+    !done && $0 == "version = \"" old "\"" {
+        sub("\"" old "\"", "\"" new "\"")
+        done = 1
+    }
+    { print }
+' "$CARGO_TOML" > "$CARGO_TOML.tmp" && mv "$CARGO_TOML.tmp" "$CARGO_TOML"
+
+# Обновление Cargo.lock — только блок [[package]] с name = "devforge".
+# awk-state-machine: ловим строку name="devforge", в следующих 5 строках того
+# же блока заменяем version. Прочие пакеты не трогаем.
+if [ -f "$CARGO_LOCK" ]; then
+    awk -v new="$new" '
+        /^\[\[package\]\]/ { in_pkg = 1; is_target = 0 }
+        in_pkg && /^name = "devforge"$/ { is_target = 1 }
+        in_pkg && is_target && /^version = / {
+            sub(/"[^"]*"/, "\"" new "\"")
+            is_target = 0
+        }
+        /^$/ { in_pkg = 0; is_target = 0 }
+        { print }
+    ' "$CARGO_LOCK" > "$CARGO_LOCK.tmp" && mv "$CARGO_LOCK.tmp" "$CARGO_LOCK"
+fi
+
+# Подтягиваем правки в индекс — иначе они останутся unstaged и в commit не попадут.
+git add "$CARGO_TOML"
+[ -f "$CARGO_LOCK" ] && git add "$CARGO_LOCK"
+
+echo "[pre-commit] devforge version: ${current} → ${new}" >&2

@@ -7,10 +7,13 @@
 //! `active.path` (`tmux new-session -c`).
 
 mod attention;
+mod cli;
+mod daemon;
 #[allow(dead_code)] // публичный API используется в Phase 3 (POST /api/todos/:id/promote)
 mod notifier;
 mod projects;
 mod pty;
+mod static_embed;
 mod tasks;
 mod tasks_watcher;
 mod themes;
@@ -33,7 +36,6 @@ use axum::Router;
 use serde::{Deserialize, Serialize};
 use tokio::process::Command as TokioCommand;
 use tokio::sync::{broadcast, watch, RwLock};
-use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 
@@ -101,6 +103,44 @@ struct AppState {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // --help / -h — обрабатывается до парсинга и до тяжёлой инициализации,
+    // чтобы Homebrew `test do` блок (`devforge --help`) не упирался в
+    // отсутствие tmux/config/etc.
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        println!("{}", cli::help_text());
+        std::process::exit(0);
+    }
+
+    // CLI: подкоманды run/start/stop/status + флаг --port. На ошибки парсинга
+    // печатаем человекочитаемое сообщение в stderr с exit 2 (стандарт для usage
+    // errors).
+    let mode = match cli::parse() {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("error: {e:#}");
+            std::process::exit(2);
+        }
+    };
+
+    // Подкоманды-менеджеры daemon'а не требуют ни tokio-runtime, ни
+    // инициализации сервера — обрабатываем и выходим. (Сам runtime уже поднят
+    // атрибутом #[tokio::main], но это дешёвый no-op для start/stop/status.)
+    let port = match mode {
+        cli::Mode::Start { port } => {
+            daemon::start(port)?;
+            return Ok(());
+        }
+        cli::Mode::Stop => {
+            daemon::stop()?;
+            return Ok(());
+        }
+        cli::Mode::Status => {
+            daemon::status()?;
+            return Ok(());
+        }
+        cli::Mode::Run { port } => port,
+    };
+
     // Инициализация логирования. По умолчанию: info для всего + debug для tmux_web.
     // Переопределяется переменной окружения RUST_LOG.
     tracing_subscriber::fmt()
@@ -198,10 +238,10 @@ async fn main() -> anyhow::Result<()> {
     // сессий (cross-project visibility).
     tokio::spawn(attention::watcher_loop(app_state.attention.clone()));
 
-    // Каталог со статикой. По умолчанию ./static относительно cwd, но мы ищем
-    // также рядом с бинарём — это упрощает запуск из произвольной директории.
-    let static_dir = resolve_static_dir();
-    tracing::info!(path = %static_dir.display(), "serving static files");
+    // Static-ассеты встроены в бинарь через rust-embed (см. mod static_embed).
+    // Никакой зависимости от cwd или каталога рядом с бинарём — это позволяет
+    // ставить devforge через Homebrew/`cargo install` и запускать откуда угодно.
+    tracing::info!("serving embedded static assets");
 
     let app = Router::new()
         .route("/healthz", get(healthz))
@@ -239,11 +279,17 @@ async fn main() -> anyhow::Result<()> {
         // Phase 3 — WS-стрим TODO-карточек.
         .route("/ws/todos", get(ws_todos::todos_ws))
         .with_state(app_state)
-        // ServeDir отдаёт index.html на запрос "/" автоматически.
-        .fallback_service(ServeDir::new(&static_dir).append_index_html_on_directories(true))
+        // Embedded static fallback: serve_static резолвит "/" → index.html и
+        // отдаёт остальные ассеты с правильным Content-Type из bytes-секции
+        // бинаря. Используется .fallback() (Handler), а не .fallback_service().
+        .fallback(static_embed::serve_static)
         .layer(TraceLayer::new_for_http());
 
-    let addr: SocketAddr = "127.0.0.1:7331".parse()?;
+    // Порт берётся из CLI (`--port`/`-p`, дефолт 7331). bind на 127.0.0.1 —
+    // сервер локальный, наружу не торчит.
+    let addr: SocketAddr = format!("127.0.0.1:{port}")
+        .parse()
+        .with_context(|| format!("invalid bind address for port {port}"))?;
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .with_context(|| format!("failed to bind {addr}"))?;
@@ -1478,31 +1524,6 @@ fn resolve_notify_session(override_session: &Option<String>, project: &Project) 
         return None;
     }
     Some(format!("{prefix}-main"))
-}
-
-/// Определяет путь к каталогу `static/`.
-///
-/// Стратегия:
-/// 1. `./static` относительно текущей рабочей директории (типичный `cargo run`).
-/// 2. `<binary_dir>/static` — рядом с исполняемым файлом.
-/// 3. Если ни одного нет — возвращаем `./static` (axum/ServeDir отдаст 404,
-///    но процесс стартует и ошибка будет видна в логах запросов).
-fn resolve_static_dir() -> PathBuf {
-    let cwd_static = PathBuf::from("static");
-    if cwd_static.is_dir() {
-        return cwd_static;
-    }
-
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let near_exe = dir.join("static");
-            if near_exe.is_dir() {
-                return near_exe;
-            }
-        }
-    }
-
-    cwd_static
 }
 
 // =============================================================================

@@ -175,7 +175,52 @@
 
 ## 🚀 Быстрый старт
 
-### Требования
+### 🍺 Установка через Homebrew (macOS)
+
+Один self-contained бинарь `devforge` — статика (HTML/CSS/JS, xterm.js) встроена прямо в исполняемый файл через [rust-embed](https://crates.io/crates/rust-embed), отдельный каталог `static/` не нужен.
+
+```bash
+brew tap darkClaw921/devforge
+brew install devforge
+devforge          # стартует на http://127.0.0.1:7331
+```
+
+### 🎛 Команды и флаги
+
+```bash
+devforge                       # foreground на http://127.0.0.1:7331 (дефолт)
+devforge run --port 8080       # foreground на кастомном порту
+devforge start                 # запустить как daemon в фоне
+devforge start --port 8080     # daemon на кастомном порту
+devforge status                # показать состояние daemon (PID + порт)
+devforge stop                  # остановить daemon (SIGTERM, fallback SIGKILL через 5s)
+devforge --help                # полный список опций
+```
+
+| Команда | Что делает |
+|---------|-----------|
+| `run` *(default)* | Запускает сервер в foreground. Логи в stdout. Завершается по `Ctrl+C`. |
+| `start [--port N]` | Спавнит daemon через `setsid(2)`, PID пишется в `~/.config/forge/devforge.pid`, stdout/stderr — в `~/.config/forge/devforge.log`. |
+| `stop` | Читает PID, шлёт `SIGTERM`, ждёт до 5 секунд, при таймауте — `SIGKILL`. |
+| `status` | Печатает «running (PID …)» или «not running»; детектит stale pid-файлы после краша. |
+
+Опция `-p` / `--port <N>` (default `7331`) валидна для `run` и `start`. Сервер всегда биндится на `127.0.0.1` — наружу не торчит.
+
+**Daemon-файлы** (создаются в `~/.config/forge/`):
+
+- `devforge.pid` — PID запущенного daemon'а
+- `devforge.log` — append-only лог daemon'а (stdout + stderr)
+- `projects.json` — реестр проектов (общий с foreground-режимом)
+
+**Runtime-зависимости:**
+
+- **обязательно:** `tmux` в `$PATH` (нужен для Terminal-вкладки и подцеплен в формуле как `depends_on`).
+- *(опционально)* `lazygit` — для встроенной Git-вкладки (`brew install lazygit`).
+- *(опционально)* `br` ([beads_rust](https://github.com/Dicklesworthstone/beads_rust)) — для канбан-доски в Tasks-вкладке.
+
+Как устроен tap (`homebrew-devforge`), как обновлять формулу и как сделать релиз — см. [`docs/homebrew-tap-setup.md`](docs/homebrew-tap-setup.md).
+
+### Требования (сборка из исходников)
 
 - **Rust** 1.75+
 - **tmux** в `$PATH`
@@ -203,6 +248,21 @@ RUST_LOG=tmux_web=trace,tower_http=debug cargo run --release
 ### Инициализация нового проекта в UI
 
 `Sidebar → ⚙ Settings → New project → Init`. Создаёт `CLAUDE.md`, `TODO.md`, `.gitignore`, делает `git init`.
+
+### 🔁 Авто-бамп версии при коммите
+
+В `.githooks/pre-commit` лежит хук, который перед каждым коммитом инкрементирует patch-версию devforge в `tmux-web/Cargo.toml` (и соответствующую запись в `Cargo.lock`): `0.1.0 → 0.1.1 → 0.1.2 → …`. Изменения автоматически добавляются в индекс — попадают в тот же коммит.
+
+Включается **один раз** на клон репозитория:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Параметры:
+- работает только если версия имеет формат `X.Y.Z` (SemVer-подобный) — иначе пропускается без падения;
+- MAJOR/MINOR никогда не трогаются, только PATCH;
+- bypass: `git commit --no-verify` (когда нужно зафиксировать что-то без бампа).
 
 ---
 
