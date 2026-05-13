@@ -1,0 +1,3 @@
+# post_git_commit
+
+REST handler POST /api/git/commit (axum). Body: CommitReq { message: String } через Json extractor. Trim проверка: req.message.trim().is_empty() → 400 BAD_REQUEST 'empty message' (whitespace-only тоже отклоняется). Делегирует в git::commit(&cwd, &req.message); сообщение передаётся в  как есть, multi-line поддерживается. На успех возвращает Json(json!({ 'hash': hash })) где hash — полный SHA-1 нового коммита. Ошибки git (nothing to commit, pre-commit hook fail, etc.) → 400 со stderr-текстом через format!('{e:#}'). Cwd берётся из active project. Используется кнопкой Commit в Git tab.

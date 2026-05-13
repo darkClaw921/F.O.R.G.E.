@@ -1,0 +1,3 @@
+# tmux-web/src/ws_tasks.rs
+
+Phase 6.D — WS handler GET /ws/tasks. Pub async fn tasks_ws(WebSocketUpgrade, State<AppState>) — upgrade в handle_socket(). На connect: получить active.path из state.projects, вызвать tasks::list_tasks() и отправить {kind:'snapshot',data:<envelope>}. Subscribe на state.tasks_tx (broadcast). Heartbeat tokio::time::interval(30s) шлёт Ping. Главный select-loop: rx.recv() → JSON Text фрейм; RecvError::Lagged(n) → шлёт {kind:'reload'} клиенту; RecvError::Closed → exit. Heartbeat tick → Message::Ping. Inbound: Close/EOF → exit, Pong/Ping → ignore, остальное → warn-log. Best-effort Close на teardown.

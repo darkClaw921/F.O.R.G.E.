@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>tmux-web</title>
+
+    <!-- xterm.js core CSS (5.3.0) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
+
+    <!-- Локальные стили layout -->
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div id="layout">
+        <aside id="sidebar">
+            <div id="project-bar">
+                <select id="project-select" title="Активный проект"></select>
+                <button id="project-new" type="button" title="New project">+</button>
+                <button id="project-settings" type="button" title="Settings">⚙</button>
+            </div>
+            <header class="sidebar-header">
+                <h1>tmux-web</h1>
+                <button id="btn-new" type="button" title="Создать новую сессию">+ new</button>
+            </header>
+            <ul id="session-list" class="session-list">
+                <!-- Заполняется JS -->
+            </ul>
+            <footer class="sidebar-footer">
+                <span id="status-dot" class="status-dot status-disconnected" title="WS статус"></span>
+                <span id="status-text">disconnected</span>
+            </footer>
+        </aside>
+        <main id="main">
+            <div id="tab-bar">
+                <button id="tab-terminal" class="tab-btn active" type="button">Terminal</button>
+                <button id="tab-tasks" class="tab-btn" type="button">Tasks</button>
+                <button id="tab-git" class="tab-btn" type="button">Git</button>
+                <span id="git-status-meta" class="tab-meta"></span>
+                <span id="tasks-status" class="tab-meta"></span>
+            </div>
+            <div id="terminal"></div>
+            <div id="placeholder" class="placeholder">
+                <p>Выберите сессию слева или создайте новую.</p>
+            </div>
+            <div id="tasks" hidden>
+                <div id="tasks-toolbar">
+                    <button id="tasks-reload" type="button" title="Перезагрузить">↻</button>
+                    <button id="tasks-new" class="primary" type="button" title="Создать новую задачу">+ New task</button>
+                    <span id="tasks-meta"></span>
+                </div>
+                <div id="tasks-board"></div>
+            </div>
+            <div id="git" hidden>
+                <!-- lazygit-tab: xterm-терминал подключён к /ws/lazygit
+                     (см. mountGitTerm/connectGitWs в app.js). Placeholder
+                     показывается до выбора проекта, error-banner — при
+                     WS-error / lazygit-not-found. -->
+                <div class="git-placeholder" id="git-placeholder">Select a project to open lazygit</div>
+                <div class="git-error" id="git-error" hidden>
+                    <span class="git-error-text" id="git-error-text"></span>
+                    <button type="button" class="git-error-retry" id="git-error-retry">Retry</button>
+                    <button type="button" class="git-error-close" id="git-error-close" title="Dismiss">×</button>
+                    <div class="git-install-help" id="git-install-help" hidden>
+                        <div class="git-install-title">Install lazygit:</div>
+                        <ul class="git-install-list" id="git-install-list"></ul>
+                        <a class="git-install-link" href="https://github.com/jesseduffield/lazygit#installation" target="_blank" rel="noopener noreferrer">Full installation guide →</a>
+                    </div>
+                </div>
+                <div id="git-term" class="git-term"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- xterm.js core (5.3.0) -->
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+    <!-- FitAddon -->
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+    <!-- WebLinksAddon -->
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.min.js"></script>
+
+    <!-- Приложение -->
+    <script src="/app.js"></script>
+    <!-- Горячие клавиши (vim-style + Cmd-hint mode) -->
+    <script src="/hotkeys.js"></script>
+</body>
+</html>

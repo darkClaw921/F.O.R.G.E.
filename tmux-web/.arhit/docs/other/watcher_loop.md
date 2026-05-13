@@ -1,0 +1,3 @@
+# watcher_loop
+
+Фоновый attention-watcher в src/attention.rs. Сигнатура: pub async fn watcher_loop(attention: Arc<AttentionState>). Каждые 1500ms: tmux::list_sessions() → для каждой сессии capture_pane → detect_claude_prompt → attention.set(name, flag). Phase 1 cross-project visibility: ранее принимал projects: Arc<RwLock<ProjectStore>> и фильтровал сессии по tmux_prefix активного проекта; теперь обходит ВСЕ сессии (фронтенду нужны флаги для всех проектов и orphan-сессий). Устойчив к падениям tmux: list_sessions/capture_pane → unwrap_or_default. Loop вечный, живёт до завершения процесса. Spawn: tokio::spawn(attention::watcher_loop(app_state.attention.clone())) в main.rs.

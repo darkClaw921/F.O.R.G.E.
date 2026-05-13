@@ -1,0 +1,3 @@
+# get_sessions
+
+Хендлер GET /api/sessions. Возвращает Vec<SessionDto> со ВСЕМИ tmux-сессиями (фильтр по активному проекту снят в Phase 1 cross-project visibility). Алгоритм: 1) snapshot проектов через state.projects.read().await.list() (один read-lock); 2) tmux::list_sessions(); 3) snapshot attention-state; 4) для каждой сессии итерируем по projects_snap, находим первый проект чей tmux_prefix матчит через projects::session_belongs(prefix, name) — заполняем project_id/project_name из p.id/p.name; иначе оба None (orphan). Если tmux-сервер не запущен — возвращает [] (не 500). Lock на ProjectStore короткий: list() копирует Vec<Project>, дальше работаем со снимком.

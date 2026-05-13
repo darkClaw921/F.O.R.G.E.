@@ -1,0 +1,22 @@
+{
+  "name": "F.O.R.G.E.",
+  "sourcePaths": [
+    "tmux-web/src",
+    "tmux-web/static"
+  ],
+  "ignore": [
+    "node_modules",
+    "dist",
+    ".arhit",
+    ".git",
+    ".omc",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".tox",
+    ".mypy_cache",
+    ".pytest_cache",
+    "target"
+  ],
+  "language": "rust"
+}

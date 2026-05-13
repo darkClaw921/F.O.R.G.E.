@@ -1,0 +1,3 @@
+# tasks.rs
+
+Backend-модуль tmux-web для read-only Tasks-таба. Экспортирует одну async функцию list_tasks(project_root: &Path) -> anyhow::Result<serde_json::Value>, которая через tokio::process::Command вызывает CLI 'br list --json --all --limit 0' с current_dir=project_root. Stdout (JSON envelope {issues, total, limit, offset, has_more} от beads_rust) парсится в serde_json::Value и возвращается as-is. Non-zero exit маппится в anyhow::Error с stderr в сообщении (хендлер /api/tasks превращает это в HTTP 500). Не имеет блокирующих операций — полностью async через tokio. Не имеет состояния. Зависимости: anyhow, tokio::process::Command, serde_json. Паттерн взят из tmux::list_sessions. Используется в main.rs хендлером get_tasks.

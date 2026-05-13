@@ -1,0 +1,3 @@
+# tmux-web/src/tasks.rs
+
+Backend для Tasks-таба и realtime watcher. Phase 6.A: passthrough к CLI br (list_tasks для GET /api/tasks, run_br универсальный helper для CRUD). Phase 6.D: добавлены snapshot(cwd) -> HashMap<id, issue-Value>, diff_issues(old, new) -> Vec<TaskEvent>, и enum TaskEvent { Upsert { issue }, Removed { id } } с serde tag=kind. snapshot вызывает list_tasks и распаковывает массив issues в HashMap по id. diff_issues — глубокое сравнение JSON-объектов (включая updated_at), добавления/изменения → Upsert, исчезновения → Removed. Используется фоновым watcher'ом в main.rs и WS-handler'ом /ws/tasks для realtime. Unit-тесты: diff_empty/added/changed/unchanged/removed + task_event_serialization (kind=upsert/removed).

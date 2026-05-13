@@ -1,0 +1,982 @@
+[
+  {
+    "element": "tmux-web/Cargo.toml",
+    "path": "",
+    "type": "unknown",
+    "content": "Cargo manifest для tmux-web. Зависимости: axum 0.7 (ws+macros), tokio 1 (full), tower-http 0.6 (fs+trace), portable-pty 0.8, serde/serde_json, tracing+tracing-subscriber, anyhow, futures-util, bytes, notify 6 (Phase 6.D — file-watcher для .beads/issues.jsonl с tokio mpsc интеграцией). Profile release: opt-level=3, lto=thin.",
+    "createdAt": "2026-05-09T18:10:29.634Z",
+    "updatedAt": "2026-05-09T20:10:32.829Z"
+  },
+  {
+    "element": "tmux-web/static/index.html",
+    "path": "tmux-web/static/index.html",
+    "type": "file",
+    "content": "HTML-шаблон tmux-web frontend. Phase 4: git-pane перестроен под xterm.js терминал, подключённый к /ws/lazygit. Содержит:\n- #git-placeholder — текст-заглушка 'Select a project to open lazygit', виден когда нет активного проекта\n- #git-error — banner-плашка с текстом ошибки, кнопками Retry и × (dismiss). Hidden по умолчанию\n- #git-term — контейнер для второй инстанции xterm.js Terminal (отдельный от основного #terminal), к которому подключается /ws/lazygit\n- #git-legacy — обёртка над старой git-разметкой (toolbar/files/commit/graph), оставлена hidden до Phase 5 cleanup. Нужна чтобы legacy DOM-refs ($gitBranch, $gitCommitMsg, $gitCanvas и т.д.) не были null при загрузке app.js.",
+    "createdAt": "2026-05-09T18:11:53.178Z",
+    "updatedAt": "2026-05-10T18:01:42.019Z"
+  },
+  {
+    "element": "tmux-web/static/app.js",
+    "path": "tmux-web/static/app.js",
+    "type": "file",
+    "content": "Frontend tmux-web (xterm + WS-attach + tasks/git/projects). Phase 4 добавил отдельную инстанцию xterm.js для git-таба, подключённую к /ws/lazygit:\n\nКлючевые элементы Phase 4:\n- state.gitTerm = { term, fit, ws, mounted, currentCwd, errorSticky } — изолированный xterm-контекст git-таба\n- DOM-refs: $gitTermEl (#git-term), $gitPlaceholder (#git-placeholder), $gitError (#git-error), $gitErrorText, $gitErrorRetry, $gitErrorClose\n- mountGitTerm() — ленивая инициализация Terminal+FitAddon в #git-term (опции совпадают с основным term, тема из state.activeTheme через mapTermTheme)\n- openLazygitForActiveProject() — точка входа: проверяет наличие активного проекта (getActiveProject), показывает/скрывает placeholder/term, дергает mountGitTerm и connectGitWs\n- connectGitWs(cwd) — открывает WS ws://host/ws/lazygit?cwd=<encoded>&cols=&rows=, binaryType=arraybuffer\n  - onmessage: ArrayBuffer → term.write(Uint8Array); string → JSON.parse, при type=error показывает banner (lazygit-not-found распознаётся и заменяется подсказкой про brew install)\n  - term.onData → ws.send(encoder.encode(data)) как Binary\n  - term.onResize → ws.send JSON {type:'resize',cols,rows}\n  - onclose с code!=1000/1001 и errorSticky=false → banner 'Connection lost'\n- closeGitWs(reason) — снимает обработчики, ws.close(1000,...) без banner\n- gitSwitchCwd(newCwd) — ws.send {type:'switch_cwd',cwd}, term.clear() перед, fallback на close+reconnect при failure\n- showGitBanner/hideGitBanner/retryGitConnection — UI ошибок\n- getActiveProject() — возвращает ProjectDto с .path из state.projects по state.activeProjectId, null для transient ids\n\nLifecycle:\n- switchTab('git') → openLazygitForActiveProject()\n- switchTab(прочее) → closeGitWs() (term остаётся mounted для быстрого re-attach)\n- switchActiveProject() при activeTab==='git' → gitSwitchCwd(newPath)\n- beforeunload → closeGitWs()\n\nФайл по-прежнему содержит legacy git-UI код (fetchGitAll, renderGitGraph, commitNow, polling) — будет удалён в Phase 5.",
+    "createdAt": "2026-05-09T18:11:58.215Z",
+    "updatedAt": "2026-05-10T18:04:23.972Z"
+  },
+  {
+    "element": "tmux-web/static/style.css",
+    "path": "tmux-web/static/style.css",
+    "type": "file",
+    "content": "CSS layout tmux-web. Phase 4: добавлены стили для xterm-git-tab:\n- .git-term — flex:1 контейнер xterm.js, position:relative, фон #000, padding 6px\n- .git-placeholder — центрированный текст когда нет активного проекта (использует var(--fg-dim))\n- .git-error — красный banner (order:-1 в flex column, перед term), с .git-error-text (gap-filling), .git-error-retry, .git-error-close. Hidden по умолчанию\n- xterm-дети (.xterm, .xterm-viewport, .xterm-screen) форсятся 100%×100% чтобы заполнили git-term\n\n#git задан как flex column (выше по файлу) — Phase 4 не трогает этот блок. Новые стили совместимы с темой через CSS-переменные (--fg-dim, --danger).",
+    "createdAt": "2026-05-09T18:12:01.556Z",
+    "updatedAt": "2026-05-10T18:02:14.336Z"
+  },
+  {
+    "element": "tmux-web/src/main.rs",
+    "path": "tmux-web/src/main.rs",
+    "type": "file",
+    "content": "Главный entry point tmux-web HTTP-сервера. Содержит axum Router с регистрацией всех HTTP/WS routes (themes, projects, tasks, todos, ws/attach, ws/lazygit, ws/tasks, ws/todos), AppState, обработчики GET/POST для проектов и тем. После Phase 3 forge-gda удалены: REST git API routes, handler-функции (get_git_status, get_git_log, post_git_stage, post_git_unstage, post_git_commit), DTO структуры (LogQuery, PathsReq, CommitReq) — git-функционал переехал на WS endpoint /ws/lazygit (lazygit TUI в браузере).",
+    "createdAt": "2026-05-09T18:13:24.284Z",
+    "updatedAt": "2026-05-10T17:59:39.248Z",
+    "aliases": [
+      "git api removed",
+      "rest git endpoints"
+    ]
+  },
+  {
+    "element": "PtyHandle",
+    "path": "",
+    "type": "unknown",
+    "content": "Дескриптор живого PTY (псевдотерминала) с запущенной командой tmux attach. Расположен в tmux-web/src/pty.rs.\n\n## Поля\n- master: Box<dyn MasterPty + Send> — master-сторона псевдотерминала; на ней вызывается resize().\n- child: Option<Box<dyn Child + Send + Sync>> — дочерний процесс tmux. Хранится в Option, чтобы Drop мог взять владение.\n- reader: Option<Box<dyn Read + Send>> — blocking-reader stdout PTY.\n- writer: Option<Box<dyn Write + Send>> — blocking-writer stdin PTY.\n\n## Методы\n- resize(cols, rows) -> Result<()> — отправляет SIGWINCH через master.resize(). pixel_width/height нулевые.\n- take_reader() -> Option<Box<dyn Read+Send>> — one-shot, забирает reader для перемещения в spawn_blocking.\n- take_writer() -> Option<Box<dyn Write+Send>> — аналогично writer.\n- child_pid() -> Option<u32> — PID tmux child, если он жив.\n\n## Drop\nГарантированно kill+wait для child — без зомби. Ошибки игнорируются (Drop не паникует).\n\n## Thread-safety\nMasterPty/Child — Send но не обязательно Sync. Reader/writer — sync (std::io::Read/Write), поэтому в ws.rs они оборачиваются в spawn_blocking. Master и child живут в async-таске владельца PtyHandle.",
+    "createdAt": "2026-05-09T18:28:10.507Z",
+    "updatedAt": "2026-05-09T18:28:10.507Z"
+  },
+  {
+    "element": "spawn_tmux_attach",
+    "path": "",
+    "type": "unknown",
+    "content": "Функция в tmux-web/src/pty.rs. Спавнит tmux attach -t <session> внутри нового PTY размера cols×rows.\n\n## Сигнатура\npub fn spawn_tmux_attach(session: &str, cols: u16, rows: u16) -> anyhow::Result<PtyHandle>\n\n## Алгоритм\n1. native_pty_system().openpty(PtySize{rows, cols, pixel_width:0, pixel_height:0}).\n2. CommandBuilder::new('tmux') + args(['attach','-t',session]) + env('TERM','xterm-256color').\n3. pair.slave.spawn_command(cmd) → Box<dyn Child+Send+Sync>.\n4. drop(pair.slave) — закрываем slave-fd в нашем процессе, иначе master не получит EOF после exit ребёнка.\n5. master.try_clone_reader() и master.take_writer().\n6. Возвращаем PtyHandle{master, child, reader, writer}.\n\n## Окружение\nTERM=xterm-256color (без него tmux ушёл бы в degraded). Остальные переменные не наследуются автоматически (CommandBuilder default), но в данной реализации мы их не передаём — для tmux attach критично TERM.\n\n## Ошибки\n- openpty failed — система отказала в выделении PTY.\n- spawn_command failed — tmux не установлен или PATH пуст.\n- try_clone_reader/take_writer — теоретически могут упасть, обёрнуты в context.\n\n## Поведение для несуществующей сессии\nPTY всё равно откроется, tmux напишет ошибку в stdout и быстро завершится. ws.rs детектирует это по EOF на reader.",
+    "createdAt": "2026-05-09T18:28:19.935Z",
+    "updatedAt": "2026-05-09T18:28:19.935Z"
+  },
+  {
+    "element": "ws::attach",
+    "path": "",
+    "type": "unknown",
+    "content": "HTTP+WS handler GET /ws/attach в tmux-web/src/ws.rs.\n\n## Сигнатура\npub async fn attach(ws: WebSocketUpgrade, Query(q): Query<AttachQuery>) -> Response\n\n## Query-параметры (AttachQuery)\n- session: String — обязателен. Имя tmux-сессии для tmux attach -t <session>.\n- cols: u16 — стартовые столбцы PTY, default 80.\n- rows: u16 — стартовые строки PTY, default 24.\n\nЕсли session отсутствует, axum Query-extractor возвращает 400 Bad Request.\n\n## Поведение\nЛогирует ws upgrade + session/cols/rows и вызывает ws.on_upgrade(|socket| handle_socket(socket, q)). Реальный bridge — в private async fn handle_socket.\n\n## Регистрация\nВ main.rs: .route('/ws/attach', get(ws::attach)).",
+    "createdAt": "2026-05-09T18:34:09.093Z",
+    "updatedAt": "2026-05-09T18:34:09.093Z"
+  },
+  {
+    "element": "ws::handle_socket",
+    "path": "",
+    "type": "unknown",
+    "content": "Основной обработчик одного WebSocket-соединения в tmux-web/src/ws.rs (private async fn). Финальная версия после bug-fix forge-qs0.\n\n## Сигнатура\n\nasync fn handle_socket(socket: WebSocket, q: AttachQuery)\n\n## Этапы\n\n1. spawn_tmux_attach(session, cols, rows) — если упал, шлём JSON error через socket.send и Close, return.\n2. Создаём shared state: pty (Arc<Mutex<Option<PtyHandle>>>), cancel (Arc<AtomicBool>), pty_to_ws_tx/rx (mpsc 64 chunks), pty_eof_notify (Arc<Notify>), reader_handle (Arc<Mutex<Option<JoinHandle>>>), ws_tx/rx (split + Arc<Mutex>).\n3. spawn_pty_reader(&pty, tx_clone, cancel, eof_notify) — запускаем reader-task.\n4. spawn writer-task: while pty_to_ws_rx.recv() → ws_tx.send(Message::Binary). Завершается, когда все senders дропнуты.\n5. Главный loop: tokio::select! biased { _ = pty_eof_notify.notified() => break (PTY died); opt = ws_rx.next() => match Message::Binary | Text | Close | Ping/Pong }.\n\n## Обработка Message::Binary\n\nUser input в PTY. Берём pty.lock, writer_mut().write_all(bytes) + flush через tokio::task::spawn_blocking (blocking I/O).\n\n## Обработка Message::Text (JSON Control)\n\n- Resize{cols,rows}: cur_cols/cur_rows update, pty.lock.resize(). Лог warn если resize упал.\n- Switch{session}: cancel=true → drop pty (Drop kills tmux child) → await old reader → spawn_tmux_attach(new) → cancel=false, новый Arc::new(Notify) → spawn_pty_reader заново.\n- Err: tracing::warn (raw text), WS остаётся живым.\n\n## Teardown\n\n- cancel.store(true).\n- *pty.lock = None → Drop → kill+wait tmux.\n- await reader_handle.\n- drop(pty_to_ws_tx) → writer-task получает None → завершение.\n- await writer_task.\n- ws_tx.send(Close) + close() best-effort.\n\n## EOF-detection (forge-qs0)\n\nПри внешнем 'tmux kill-session' reader-task получает EOF, проверяет !cancel и notify_one() в pty_eof_notify. select!.biased ловит первым и break'ит главный loop. Далее обычный teardown шлёт Message::Close клиенту. Verified: WS закрывается в течение ~1с.",
+    "createdAt": "2026-05-09T18:34:21.069Z",
+    "updatedAt": "2026-05-09T18:54:05.535Z"
+  },
+  {
+    "element": "ws::AttachQuery",
+    "path": "",
+    "type": "unknown",
+    "content": "Query-параметры WebSocket endpoint /ws/attach в tmux-web/src/ws.rs.\n\n#[derive(Debug, Deserialize)]\npub struct AttachQuery {\n    pub session: String,\n    #[serde(default = 'default_cols')] pub cols: u16,\n    #[serde(default = 'default_rows')] pub rows: u16,\n}\n\nДефолты: default_cols=80, default_rows=24. Поле session обязательно — если отсутствует, axum::extract::Query возвращает 400.",
+    "createdAt": "2026-05-09T18:34:23.480Z",
+    "updatedAt": "2026-05-09T18:34:23.480Z"
+  },
+  {
+    "element": "ws::Control",
+    "path": "",
+    "type": "unknown",
+    "content": "JSON control-сообщения от WS-клиента в tmux-web/src/ws.rs.\n\n#[derive(Debug, Deserialize)]\n#[serde(tag = 'type', rename_all = 'lowercase')]\nenum Control {\n    Resize { cols: u16, rows: u16 },\n    Switch { session: String },\n}\n\n## Семантика\n- Resize: PtyHandle::resize(cols, rows) -> SIGWINCH в tmux. cur_cols/cur_rows обновляются для будущих switch.\n- Switch: kill старого PtyHandle (Drop), spawn_tmux_attach(new_session, cur_cols, cur_rows), reader-task пересоздаётся.\n\n## Wire-формат\nJSON отправляется как WebSocket Text frame:\n- {\"type\":\"resize\",\"cols\":120,\"rows\":40}\n- {\"type\":\"switch\",\"session\":\"foo\"}\n\nНевалидный JSON / неизвестный type -> tracing::warn, WS остаётся живым.",
+    "createdAt": "2026-05-09T18:34:28.416Z",
+    "updatedAt": "2026-05-09T18:34:28.416Z"
+  },
+  {
+    "element": "ws::spawn_pty_reader",
+    "path": "",
+    "type": "unknown",
+    "content": "Запускает spawn_blocking-задачу для синхронного чтения PTY и отправки чанков в mpsc-канал. Расположена в tmux-web/src/ws.rs. Финальная версия после bug-fix forge-qs0.\n\n## Сигнатура\n\nasync fn spawn_pty_reader(\n  pty: &Arc<Mutex<Option<PtyHandle>>>,\n  tx: mpsc::Sender<Vec<u8>>,\n  cancel: Arc<AtomicBool>,\n  eof_notify: Arc<Notify>,\n) -> tokio::task::JoinHandle<()>\n\n## Алгоритм\n\n1. Берёт reader из PtyHandle::take_reader() (one-shot, под Mutex). Если pty уже None или reader уже забран — eof_notify.notify_one() и возвращает завершённый handle.\n2. tokio::task::spawn_blocking { ... } — внутри:\n   - buf = vec![0u8; 8 KiB]\n   - natural_death = false\n   - loop {\n       if cancel { break; }\n       match reader.read(&mut buf) {\n         Ok(0) => { tracing::debug!('pty reader EOF'); natural_death=true; break; }\n         Ok(n) => { tx.blocking_send(buf[..n].to_vec()).map_err(...) }\n         Err(Interrupted) => continue;\n         Err(_) => { tracing::debug!('pty reader error'); natural_death=true; break; }\n       }\n     }\n   - if natural_death && !cancel { eof_notify.notify_one(); }\n\n## Ключевая логика\n\n- cancel-флаг проверяется между read'ами и при error/EOF — отделяет legitimate cleanup (switch/teardown ставят cancel=true и НЕ хотят будить главный loop) от unexpected death (внешний kill-session: cancel=false, нужно разбудить main loop через notify).\n- blocking_send из spawn_blocking — потому что reader sync, а tx — async mpsc::Sender; blocking_send работает из sync контекста.\n- При закрытом канале (writer-task ушёл) — break без notify (это уже teardown).\n- Interrupted errors (signal) игнорируются — продолжаем читать.\n\n## Контракт с handle_socket\n\n- При внешней смерти tmux (kill-session) — notify_one() будит главный select! → handler закрывает WS.\n- При cancel=true (switch/teardown) — НЕ notify (handler сам управляет lifecycle).\n- При normal exit главный handler делает cancel.store(true) → reader выходит на следующей итерации (либо если уже в read() — Drop PtyHandle закрывает FD, read возвращает 0/Err).",
+    "createdAt": "2026-05-09T18:34:34.276Z",
+    "updatedAt": "2026-05-09T18:54:17.991Z"
+  },
+  {
+    "element": "PtyHandle::writer_mut",
+    "path": "",
+    "type": "unknown",
+    "content": "Метод PtyHandle в tmux-web/src/pty.rs. Возвращает Option<&mut Box<dyn Write+Send>> — &mut на обёртку writer'а внутри Option.\n\npub fn writer_mut(&mut self) -> Option<&mut Box<dyn Write + Send>> {\n    self.writer.as_mut()\n}\n\n## Зачем\nws.rs пишет WS-binary-input в PTY, не вынося writer наружу. Вся блокирующая запись делается под Mutex<Option<PtyHandle>> внутри tokio::task::spawn_blocking — это позволяет control-handler (resize/switch) и binary-handler разделять writer без race condition.\n\n## Возвращаемый тип\nOption<&mut Box<dyn Write+Send>>, а не Option<&mut (dyn Write+Send)> — потому что dyn-объекты в боксе по умолчанию имеют lifetime 'static, и as_deref_mut приводит к ошибке lifetime invariance. Доступ к Write idx через двойной deref: writer.write_all(&bytes) (Box auto-deref).",
+    "createdAt": "2026-05-09T18:34:41.022Z",
+    "updatedAt": "2026-05-09T18:34:41.022Z"
+  },
+  {
+    "element": "static/index.html",
+    "path": "static/index.html",
+    "type": "file",
+    "content": "HTML-шаблон tmux-web. Состоит из #layout (flex-row): #sidebar (240px, список tmux-сессий + кнопка new + status footer) и #main. #main содержит #tab-bar (Phase 6.A: кнопки tab-terminal/tab-tasks с классом .tab-btn, активная имеет .active; span #tasks-status — место под счётчик/индикатор), #terminal (xterm.js mount), #placeholder (показывается когда сессия не выбрана) и #tasks (hidden до переключения; внутри #tasks-toolbar с кнопками tasks-reload/tasks-new и meta-span, плюс #tasks-board под grid колонок). xterm.js + аддоны (fit, web-links) подгружаются с CDN jsdelivr 5.3.0 / 0.8.0 / 0.9.0. /style.css и /app.js — локальные. Структура tab-bar и #tasks связана с app.js switchTab/renderTasks (Phase 6.A.4).",
+    "createdAt": "2026-05-09T18:37:44.341Z",
+    "updatedAt": "2026-05-09T19:37:56.752Z"
+  },
+  {
+    "element": "static/style.css",
+    "path": "static/style.css",
+    "type": "file",
+    "content": "Стили tmux-web (dark theme). Layout: #layout (flex-row, 100vh) → #sidebar (240px) + #main (flex-col). #main теперь flex-column (Phase 6.A): #tab-bar (36px высота, кнопки .tab-btn с .active=#2a7fff) → #terminal (flex:1; min-height:0; position:relative — xterm требует relative parent) и #tasks (flex:1; hidden до switchTab). Tasks board: #tasks-board grid с repeat(auto-fit, minmax(240px, 1fr)). Колонки .kanban-col имеют sticky-header (.kanban-col-header) и скроллящееся .kanban-col-body. Карточки .kanban-card с цветным border-left-color по data-priority (0=#e84d4d, 1=#e89344, 2=#2a7fff, 3/4=#555); .p-pill с тем же цветом, .type-tag и .label-tag в нейтральных. Sidebar/session-list стили — без изменений. Убран старый position:absolute/inset:0 с #terminal — теперь flex layout. .placeholder остаётся position:absolute поверх #terminal.",
+    "createdAt": "2026-05-09T18:39:01.366Z",
+    "updatedAt": "2026-05-09T19:38:59.154Z"
+  },
+  {
+    "element": "static/app.js",
+    "path": "static/app.js",
+    "type": "file",
+    "content": "Frontend tmux-web (vanilla JS, IIFE). Состояние в state: term/fitAddon/webLinksAddon (xterm.js), ws/currentSession/sessions/pollTimer (sessions-polling 3s + WS /ws/attach), encoder, lastResizeKey. Phase 6.A добавил activeTab ('terminal'|'tasks'), tasksPollTimer, tasksData. Функции терминала: initTerminal/sendResize/connectWs/disconnectWs/switchSession/scheduleResizeFromTerm/openSession + sidebar (fetchSessions, renderSidebar, startPolling/stopPolling, createSessionPrompt, killSession). Phase 6.A добавил функции Tasks-таба: switchTab(name) — toggle hidden и .active классы, refit xterm + scheduleResizeFromTerm при возврате на terminal, при переходе на tasks — fetchTasks (если data null) и startTasksPolling (5s); fetchTasks — GET /api/tasks с graceful degradation; renderTasks — группировка по status (TASK_COLUMNS=open,in_progress,blocked,deferred,draft,closed), sort priority asc → updated_at desc, closed обрезается до 20; renderColumn/renderCard формируют DOM с data-priority для CSS-цветов и P-pill/type-tag/labels (max 3 + +N); setTasksStatus — текст в #tasks-status. Bootstrap: листенеры на // + visibilitychange/beforeunload теперь стопают tasksPollTimer. tasks-new — alert-заглушка (Phase 6.C). compareIssues: priority asc, updated_at desc, отсутствующие поля → 5 / ''.",
+    "createdAt": "2026-05-09T18:40:44.132Z",
+    "updatedAt": "2026-05-09T19:40:56.412Z"
+  },
+  {
+    "element": "tmux-web/src/tmux.rs",
+    "path": "tmux-web/src/tmux.rs",
+    "type": "file",
+    "content": "Интеграция с tmux CLI: листинг сессий, создание новой сессии, kill-session, capture-pane, send-keys. Все вызовы — через tokio::process::Command (не блокирует async-runtime). Парсинг строго по формату, заданному в '-F'.\n\nОСОБЕННОСТЬ tmux-сервера: при отсутствии запущенного сервера tmux выдаёт ошибку 'no server running on /tmp/tmux-1000/default'. Это НЕ ошибка для web-viewer — list_sessions трактует её как 'сессий нет' и возвращает пустой список.\n\nОСНОВНЫЕ ЭЛЕМЕНТЫ:\n\n- pub struct SessionInfo (Debug, Clone, Serialize, Deserialize, PartialEq, Eq) — метаданные одной tmux-сессии для отдачи во фронтенд:\n  * name: String — имя сессии (#{session_name}), уникально в рамках tmux-сервера.\n  * id: String — внутренний id (/bin/zsh, , ...).\n  * attached: u32 — сколько клиентов сейчас прикреплено к сессии.\n  * windows: u32 — количество окон.\n  * created: i64 — Unix-таймстамп создания (#{session_created}).\n  * path: String — стартовый cwd сессии (#{session_path}).\n  * session_group: Option<String> (с #[serde(default)]) — ДОБАВЛЕНО в Phase 1.1 forge-bjm. Имя tmux session-group (#{session_group}). tmux позволяет создавать 'linked' сессии, которые делят одни и те же окна (tmux new-session -t <existing>); все сессии одной группы получают одинаковое значение #{session_group}. Если сессия не входит ни в какую группу — tmux возвращает пустую строку, что мапится в None. Используется attention::watcher_loop для дедупликации — сессии одной группы рендерят одну и ту же логическую работу, поэтому needs_attention=true должен подсвечиваться только у одной из них.\n\n- LS_FORMAT (const &str) — формат для tmux list-sessions -F. Поля разделены '|' в порядке: name | id | attached | windows | created | path | session_group. session_group идёт ПОСЛЕДНИМ намеренно — старый формат без этого поля (6 колонок) остаётся парсибельным для backward compatibility с уже запущенными tmux-серверами.\n\n- pub async fn list_sessions() -> anyhow::Result<Vec<SessionInfo>> — выполняет 'tmux list-sessions -F LS_FORMAT'. Если сервер не запущен → Ok(vec![]). Если tmux отсутствует в /usr/local/opt/node@20/bin:/Users/igorgerasimov/.codeium/windsurf/bin:/Users/igorgerasimov/ydb/bin:/Users/igorgerasimov/yandex-cloud/bin:/Library/Frameworks/Python.framework/Versions/3.12/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin/python3:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/igorgerasimov/ngrokTest:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pkg/env/active/bin:/opt/pmk/env/global/bin:/opt/X11/bin:/Library/Apple/usr/bin:/Applications/Wireshark.app/Contents/MacOS:/Applications/VMware Fusion.app/Contents/Public:/usr/local/share/dotnet:~/.dotnet/tools:/usr/local/go/bin:/Library/Frameworks/Mono.framework/Versions/Current/Commands:/usr/local/opt/node@20/bin:/Users/igorgerasimov/.codeium/windsurf/bin:/Users/igorgerasimov/ydb/bin:/Users/igorgerasimov/yandex-cloud/bin:/Library/Frameworks/Python.framework/Versions/3.12/bin:/Users/igorgerasimov/Library/pnpm:/Users/igorgerasimov/.local/bin:/Users/igorgerasimov/.cargo/bin:/Users/igorgerasimov/.orbstack/bin:/Users/igorgerasimov/.cache/lm-studio/bin:/Users/igorgerasimov/.orbstack/bin:/Users/igorgerasimov/.cache/lm-studio/bin:/Users/igorgerasimov/.claude/plugins/cache/claude-plugins-official/context7/unknown/bin:/Users/igorgerasimov/.claude/plugins/cache/claude-plugins-official/swift-lsp/1.0.0/bin:/Users/igorgerasimov/.claude/plugins/cache/caveman/caveman/c2ed24b3e5d4/bin:/Users/igorgerasimov/.claude/plugins/marketplaces/claude-plugins-official/plugins/frontend-design/bin:/Users/igorgerasimov/.claude/plugins/marketplaces/claude-code-plugins/plugins/frontend-design/bin → Err. Битые строки (несовпадение колонок) пропускаются с warning'ом.\n\n- fn parse_session_line(line: &str) -> Option<SessionInfo> — парсит одну строку tmux ls. Использует splitn(7, '|'). Поля path и session_group опциональны для обратной совместимости со старым форматом (5 или 6 колонок). Пустой session_group мапится в None.\n\n- pub async fn capture_pane(session: &str) -> anyhow::Result<String> — захватывает содержимое pane активного окна сессии. ВАЖНО (Phase 1.4): захват только видимой части pane (без -S -30 history). Это устраняет persistent-true ложные срабатывания, когда старый Claude prompt остаётся в scrollback.\n\n- pub async fn new_session(name, cwd) — создаёт новую сессию tmux с указанной cwd (-c).\n- pub async fn kill_session(name) — убивает сессию.\n- pub async fn send_keys(session, text) — отправляет ввод в активный pane сессии (используется ботом-уведомителем notifier).\n\nТЕСТЫ: модуль содержит парсер-тесты для LS_FORMAT включая ok-кейс с session_group (Some), legacy-формат (6 колонок без session_group → None), пустой session_group → None, zero attached, missing path, too few columns, bad numbers, empty name + valid/invalid_session_names для ограничений на имена.\n\nЗАВИСИМОСТИ:\n- anyhow для error-handling.\n- serde::{Serialize, Deserialize} для сериализации SessionInfo в API.\n- tokio::process::Command — async-spawn tmux.",
+    "createdAt": "2026-05-09T18:52:50.167Z",
+    "updatedAt": "2026-05-10T16:04:25.970Z"
+  },
+  {
+    "element": "tmux-web/src/pty.rs",
+    "path": "tmux-web/src/pty.rs",
+    "type": "file",
+    "content": "Модуль PTY-обёрток над portable-pty (0.8) для запуска интерактивных TUI-программ внутри псевдотерминалов: tmux attach (spawn_tmux_attach) и lazygit (spawn_lazygit). Используется ws.rs для bridge'а между WebSocket и TUI-процессом.\n\n## Структура PtyHandle\n\npub struct PtyHandle {\n  master: Box<dyn MasterPty + Send>,           // master-сторона PTY (вызов resize)\n  child: Option<Box<dyn Child + Send + Sync>>, // дочерний процесс TUI (Option для Drop)\n  reader: Option<Box<dyn Read + Send>>,        // blocking-reader stdout PTY\n  writer: Option<Box<dyn Write + Send>>,       // blocking-writer stdin PTY\n}\n\nPtyHandle универсален: одна и та же структура используется для tmux и для lazygit. Различие — только в spawn-функции, которая создаёт handle.\n\nРеализована обёртка над portable-pty 0.8 (нативный posix_openpt/grantpt/unlockpt на macOS, ConPTY/winpty на Windows).\n\n## Инварианты PtyHandle\n\n- master жив всё время существования handle (resize и owner-мастер).\n- child хранится в Option, чтобы Drop мог взять владение и сделать kill+wait без unsafe.\n- reader/writer — Option, поскольку take_reader/take_writer — one-shot операции, перемещающие endpoint в spawn_blocking-таску.\n- Drop kill'ит и reap'ает ребёнка — гарантия отсутствия зомби.\n\n## Методы\n\n- pub fn resize(cols, rows) -> anyhow::Result<()> — отправляет SIGWINCH через master.resize() с PtySize { rows, cols, pixel_width:0, pixel_height:0 }.\n- pub fn take_reader() -> Option<Box<dyn Read+Send>> — one-shot: забирает reader для перемещения в spawn_blocking (ws::spawn_pty_reader).\n- pub fn take_writer() -> Option<Box<dyn Write+Send>> — аналогично writer.\n- pub fn writer_mut(&mut self) -> Option<&mut Box<dyn Write+Send>> — возвращает мутабельную ссылку на writer без забора владения. Используется ws.rs для записи user input в PTY под Mutex<PtyHandle>.\n- pub fn child_pid(&self) -> Option<u32> — PID дочернего процесса, если он жив.\n\n## Drop\n\nГарантированно kill+wait для дочернего процесса, чтобы не оставить зомби. Ошибки игнорируются (Drop не паникует). Это критично: WS-handler полагается на Drop при teardown / switch.\n\n## pub fn spawn_tmux_attach(session: &str, cols: u16, rows: u16) -> anyhow::Result<PtyHandle>\n\nСпавнит 'tmux attach -t <session>' внутри нового PTY размера cols×rows.\n\nАлгоритм:\n1. native_pty_system().openpty(PtySize{rows, cols, pixel_width:0, pixel_height:0}).\n2. CommandBuilder::new('tmux') с args(['attach','-t',session]) + env('TERM','xterm-256color').\n3. pair.slave.spawn_command(cmd) → Box<dyn Child+Send+Sync>.\n4. drop(pair.slave) — закрываем slave-fd в нашем процессе, иначе master не получит EOF после exit ребёнка.\n5. master.try_clone_reader() и master.take_writer().\n6. Возвращает PtyHandle{master, child, reader, writer}.\n\nОкружение: TERM=xterm-256color — обязательно, без него tmux ушёл бы в degraded mode.\n\nОшибки:\n- openpty failed — система отказала в выделении PTY.\n- failed to spawn 'tmux attach -t <session>' — tmux не установлен или PATH пуст.\n\nПоведение для несуществующей сессии: PTY всё равно откроется, tmux напишет 'no session ...' в stdout и завершится — ws.rs детектирует это по EOF на reader.\n\n## pub fn spawn_lazygit(cwd: &Path, cols: u16, rows: u16) -> anyhow::Result<PtyHandle>\n\nСпавнит 'lazygit' внутри нового PTY размера cols×rows с заданным рабочим каталогом cwd. Используется в WebSocket-handler'е /ws/lazygit (Phase 2) для интерактивного git-UI прямо в браузере (xterm.js фронтенд).\n\nСигнатура и стиль идентичны spawn_tmux_attach. Различие:\n- CommandBuilder::new('lazygit') без args (lazygit ищет ближайший .git вверх по дереву от cwd).\n- cmd.cwd(cwd) — явно задаёт рабочий каталог (обычно путь активного проекта из projects.rs).\n- with_context-сообщение содержит подсказку: 'lazygit not found in PATH, install via brew install lazygit (macOS) or your distro's package manager'.\n\nАлгоритм:\n1. native_pty_system().openpty(PtySize{rows, cols, pixel_width:0, pixel_height:0}).\n2. CommandBuilder::new('lazygit') + cmd.cwd(cwd) + cmd.env('TERM','xterm-256color').\n3. pair.slave.spawn_command(cmd) с обёрткой ошибки в подсказку об установке.\n4. drop(pair.slave).\n5. master.try_clone_reader() и master.take_writer().\n6. Возвращает PtyHandle{master, child, reader, writer}.\n\nОкружение: TERM=xterm-256color — обязательно для корректной отрисовки TUI lazygit (цвета, бордеры). Остальные env наследуются — это важно для $HOME/.config/lazygit/config.yml.\n\nОшибки:\n- openpty failed — система отказала в выделении PTY.\n- failed to spawn 'lazygit' in <cwd>: lazygit not found in PATH, install via brew install lazygit ... — обёртка с осмысленной подсказкой пользователю. Phase 2 ws-handler покажет это сообщение в error-banner фронтенда.\n\nEOF на reader сигнализирует, что lazygit завершился (например, пользователь нажал q).\n\n## Зависимости\n\n- portable-pty 0.8 — кросс-платформенный PTY (используется openpty, CommandBuilder, MasterPty, Child, PtySize, native_pty_system).\n- anyhow — Context/Result для информативных ошибок.\n- std::io::{Read, Write} — blocking endpoints.\n- std::path::Path — для параметра cwd в spawn_lazygit.\n\n## Thread-safety\n\nMasterPty/Child — Send, но не обязательно Sync. Reader/writer — sync (std::io::Read/Write), поэтому в ws.rs они обернуты в spawn_blocking. Master и child живут в async-таске владельца PtyHandle (в Mutex).",
+    "createdAt": "2026-05-09T18:53:17.306Z",
+    "updatedAt": "2026-05-10T17:49:45.398Z",
+    "aliases": [
+      "lazygit pty",
+      "spawn_lazygit"
+    ]
+  },
+  {
+    "element": "tmux-web/src/ws.rs",
+    "path": "tmux-web/src/ws.rs",
+    "type": "file",
+    "content": "WebSocket-handlers модуля. Содержит два публичных endpoint'а: /ws/attach (tmux session bridge) и /ws/lazygit (lazygit TUI bridge). Оба переиспользуют общую low-level функцию spawn_pty_reader из этого же модуля.\n\n## Endpoints\n\n### GET /ws/attach?session=<name>&cols=<u16>&rows=<u16>\nАпгрейд в WebSocket. Дефолты: cols=80, rows=24. session обязателен (axum Query-extractor вернёт 400 если отсутствует). Spawn'ит tmux attach -t <session> через spawn_tmux_attach.\n\n### GET /ws/lazygit?cwd=<abs-path>&cols=<u16>&rows=<u16>\nАпгрейд в WebSocket. cwd обязателен (абсолютный путь к git-репозиторию или к любой папке внутри него — lazygit найдёт ближайший .git). Дефолты: cols=80, rows=24. Spawn'ит lazygit через spawn_lazygit с CWD=cwd. Назначен для xterm.js во фронтенде в git-tab.\n\n## Зачем два отдельных handler'а (а не один параметризованный)\n\nLazygitControl::SwitchCwd { cwd } и Control::Switch { session } — семантически разные операции:\n- attach оперирует именами tmux-сессий (короткие, без слешей).\n- lazygit оперирует абсолютными путями к проектам.\nОбъединять в один enum означает либо терять типизацию (String с двойным смыслом), либо плодить варианты — оба плохо. Раздельные handler'ы позволяют независимо эволюционировать (например, добавить read-only flag для lazygit, не задевая attach).\n\n## Wire-протокол (одинаковый для обоих)\n\nBinary frames в обе стороны — сырые байты PTY (escape-последовательности xterm-256color). Browser xterm.js пишет введённые символы как Binary, сервер шлёт stdout PTY как Binary.\n\nText frames от клиента — JSON control-сообщения. Tag discriminator — поле type.\n\nClose frame — корректный teardown.\n\n## DTO структуры\n\n### AttachQuery (для /ws/attach)\n{ session: String, cols: u16 (default 80), rows: u16 (default 24) }\n\n### Control (для /ws/attach, #[serde(tag='type', rename_all='lowercase')])\n- {\\\"type\\\":\\\"resize\\\",\\\"cols\\\":120,\\\"rows\\\":40} — pty.resize().\n- {\\\"type\\\":\\\"switch\\\",\\\"session\\\":\\\"other\\\"} — kill старого PTY, spawn нового.\n\n### LazygitQuery (для /ws/lazygit)\n{ cwd: String, cols: u16 (default 80), rows: u16 (default 24) }\n\n### LazygitControl (для /ws/lazygit, #[serde(tag='type', rename_all='snake_case')])\n- {\\\"type\\\":\\\"resize\\\",\\\"cols\\\":80,\\\"rows\\\":24} — pty.resize().\n- {\\\"type\\\":\\\"switch_cwd\\\",\\\"cwd\\\":\\\"/abs/path/to/other/repo\\\"} — kill старого lazygit, spawn нового в новом cwd.\n\n### ErrorFrame<'a>\nСериализуется как {\\\"type\\\":\\\"error\\\",\\\"message\\\":\\\"...\\\"}. Используется при spawn-fail (как при первом upgrade'е, так и при switch_cwd). После отправки сразу шлётся Close frame и WS закрывается. Frontend ожидает этот формат для error-баннера.\n\n## Архитектура handle_socket / handle_lazygit_socket\n\nОбе функции структурно идентичны — отличаются только spawn-функцией и control-enum'ом. Каждая владеет:\n- pty: Arc<Mutex<Option<PtyHandle>>> — PTY под mutex (None во время switch swap).\n- cancel: Arc<AtomicBool> — сигнал останова reader-task'у (для switch / teardown).\n- pty_eof_notify: Arc<Notify> — сигнал от reader-task о EOF/ошибке PTY.\n- ws_tx: Arc<Mutex<SplitSink>> — общий для writer-task и error-replies.\n- reader_handle: Arc<Mutex<Option<JoinHandle>>> — для await при switch и teardown.\n\nЗапускает три tokio-таска:\n1. PTY→WS reader-task (spawn_pty_reader): tokio::task::spawn_blocking, синхронно read() из PTY reader (Box<dyn Read+Send>) в буфер 8 KiB (READ_BUF), отправляет Vec<u8> через mpsc::channel(64). При EOF/error и cancel=false — notify_one() в pty_eof_notify.\n2. WS-writer task: получает чанки из mpsc::Receiver, шлёт ws_tx.send(Message::Binary(chunk)). Не проверяет cancel-флаг — живёт пока есть senders.\n3. Главный future: tokio::select! на ws_rx.next() и pty_eof_notify.notified() (BIASED — eof проверяется первым).\n\n## Switch flow (Switch / SwitchCwd)\n\n1. cancel.store(true).\n2. *pty.lock = None → Drop PtyHandle → kill+wait child → reader получит EOF.\n3. await старого reader-task'а.\n4. spawn_<tmux_attach|lazygit>(new_target, cur_cols, cur_rows). Если упал — JSON ErrorFrame и break (закрытие WS).\n5. cancel.store(false), pty_eof_notify = Arc::new(Notify::new()) (новый Notify, чтобы EOF старого reader не разбудил handler), spawn_pty_reader снова с тем же mpsc::Sender clone.\n\n## Teardown (after main loop break)\n\n1. cancel.store(true).\n2. *pty.lock = None → Drop → kill+wait.\n3. await reader_handle.\n4. drop(pty_to_ws_tx) → writer-task получает None → завершение.\n5. await writer_task.\n6. ws_tx.send(Close) + close() (best-effort).\n\n## spawn_pty_reader (общая функция)\n\nПринимает &Arc<Mutex<Option<PtyHandle>>>, mpsc::Sender, cancel-AtomicBool, eof-Notify. Берёт reader из handle (take_reader, one-shot), spawn_blocking-loop читает READ_BUF=8 KiB, blocking_send в mpsc. Завершается на EOF/ошибке/cancel. notify_one() только если natural_death=true И cancel=false (не сигнализит при switch/teardown).\n\n## Bug-fix forge-qs0 (Phase 5, attach)\n\nДо фикса: при внешнем kill-session reader-task детектировал EOF и завершался, но главный handle_socket loop продолжал ждать ws_rx.next() — клиент не получал Close. Решение: добавлен tokio::sync::Notify, на EOF (когда cancel=false) reader сигналит через notify_one(). lazygit-handler наследует это поведение через ту же spawn_pty_reader.\n\n## Константы\n\n- READ_BUF = 8 KiB — размер чанка чтения из PTY.\n- CHAN_DEPTH = 64 — глубина mpsc-канала PTY→WS (~0.5 MiB буферизации).\n\n## Регистрация в main.rs\n\n- .route('/ws/attach', get(ws::attach))\n- .route('/ws/lazygit', get(ws::lazygit_attach))\n\n## Smoke-test (Phase 2, forge-nbl.4)\n\ncurl-проверки:\n- GET без Upgrade → 400 'Connection header did not include upgrade'.\n- GET ?cwd=...&Upgrade → 101 Switching Protocols + (если lazygit отсутствует) Text-frame {\\\"type\\\":\\\"error\\\",\\\"message\\\":\\\"spawn failed: failed to spawn lazygit in '/path': lazygit not found in PATH, install via brew install lazygit (macOS) or your distro's package manager\\\"} + Close.\n- Missing cwd query → 400.",
+    "createdAt": "2026-05-09T18:53:46.666Z",
+    "updatedAt": "2026-05-10T17:55:13.315Z",
+    "aliases": [
+      "lazygit websocket",
+      "ws lazygit",
+      "/ws/lazygit",
+      "lazygit_attach"
+    ]
+  },
+  {
+    "element": "tmux-web-howto",
+    "path": "",
+    "type": "page",
+    "content": "# tmux-web — Howto\n\n## Что это\n\ntmux-web — локальный веб-просмотрщик активных tmux-сессий. Бэкенд на Rust + axum + portable-pty, фронтенд — vanilla JS + xterm.js. Слушает только 127.0.0.1, без аутентификации (предполагается доверенная среда).\n\nВозможности:\n- Листинг tmux-сессий с автополлингом (3s).\n- Создание / kill сессий через UI.\n- Полнофункциональный xterm.js терминал, подключённый к выбранной сессии через WebSocket-bridge tmux attach.\n- Resize: ResizeObserver на контейнере → SIGWINCH в PTY.\n- Switch без переподключения WS: control-сообщение `{\"type\":\"switch\",\"session\":\"...\"}`.\n- Параллельные клиенты на одну сессию (родная фича tmux).\n- Корректное закрытие WS при внешнем kill-session (через Notify-сигнал EOF из reader-task).\n\n## Как собрать\n\n```bash\ncd /Users/igorgerasimov/claudeWorkspace/F.O.R.G.E./tmux-web\ncargo build --release      # release-сборка → ./target/release/tmux-web\n# или\ncargo build                # debug-сборка\n```\n\nЗависимости системы: tmux в `$PATH`, Rust toolchain (stable, edition 2021).\n\n## Как запустить\n\n```bash\ncd /Users/igorgerasimov/claudeWorkspace/F.O.R.G.E./tmux-web\ncargo run                  # debug\n# или\nRUST_LOG=info,tmux_web=debug ./target/release/tmux-web\n```\n\nПосле старта открыть в браузере: <http://127.0.0.1:7331>\n\nПеременные окружения:\n- `RUST_LOG` — стандартный фильтр tracing-subscriber. Default: `info,tmux_web=debug`.\n\n## API endpoints\n\n| Метод | Путь | Тело | Ответ | Назначение |\n|---|---|---|---|---|\n| GET | `/healthz` | — | `200 ok` text | health-check |\n| GET | `/api/sessions` | — | `200 [SessionInfo...]` | листинг tmux-сессий (пустой массив если сервер tmux не запущен) |\n| POST | `/api/sessions` | `{\"name\":\"<id>\"}` | `201 Created` или `400` | создание detached-сессии (`tmux new-session -d -s <id>`) |\n| DELETE | `/api/sessions/:name` | — | `204` или `400` | kill сессии (`tmux kill-session -t <name>`) |\n| GET | `/ws/attach?session=<n>&cols=<u16>&rows=<u16>` | (upgrade) | WebSocket | bridge клиента в `tmux attach -t <n>` через PTY |\n\n`SessionInfo` (JSON): `{name:string, id:string, attached:u32, windows:u32, created:i64}`.\n\n### WebSocket wire-протокол\n\n- **Binary frames** — сырые байты PTY (xterm-256color escape sequences) в обе стороны: клиент пишет ввод, сервер шлёт stdout.\n- **Text frames** от клиента — JSON control:\n  - `{\"type\":\"resize\",\"cols\":120,\"rows\":40}` — отправляет SIGWINCH в PTY.\n  - `{\"type\":\"switch\",\"session\":\"other\"}` — kill старого PTY, spawn нового на той же WS.\n- **Close frame** — корректный teardown (сервер дропает PtyHandle → kill+wait дочерний tmux).\n\n## Архитектура\n\n3 модуля Rust + 3 файла статики:\n\n```\ntmux-web/\n├── Cargo.toml                    # axum 0.7, tokio 1, portable-pty 0.8, tower-http 0.6, ...\n├── src/\n│   ├── main.rs                   # точка входа, axum Router, hooked routes\n│   ├── tmux.rs                   # CLI-обёртки tmux (list/new/kill), парсинг\n│   ├── pty.rs                    # PtyHandle, spawn_tmux_attach (portable-pty)\n│   └── ws.rs                     # /ws/attach — handle_socket + spawn_pty_reader\n└── static/\n    ├── index.html                # layout: sidebar + #terminal + xterm CDN\n    ├── app.js                    # xterm init, polling, WS bridge, control msgs\n    └── style.css                 # dark-theme layout\n```\n\n### Поток данных\n\n```\nBrowser xterm.js  ⇄  WebSocket (Binary)  ⇄  ws::handle_socket\n                                              ↓ ↑ (mpsc 64chunks)\n                                              spawn_blocking + std::io::Read/Write\n                                              ↓ ↑\n                                              PtyHandle (master FD)\n                                              ↓ ↑\n                                              tmux attach -t <session>\n                                              ↓ ↑\n                                              tmux server (sessions $0,$1,...)\n```\n\n### Ключевые компоненты\n\n- **PtyHandle** (`pty.rs`) — RAII-обёртка над portable-pty. На Drop делает kill+wait дочерней tmux-process.\n- **handle_socket** (`ws.rs`) — главная корутина WS-соединения. Запускает 2 параллельных таска (reader, writer) + основной select-loop на ws_rx + pty_eof_notify. Поддерживает switch (swap PtyHandle in-place).\n- **pty_eof_notify** (`tokio::sync::Notify`) — сигнал из reader-task о EOF/error, чтобы handler закрыл WS даже если клиент молчит (нужно для внешнего `tmux kill-session`).\n\n## Зависимости\n\nCrates (см. Cargo.toml):\n- **axum 0.7** (features: ws, macros) — HTTP+WS веб-фреймворк.\n- **tower-http 0.6** (fs, trace) — ServeDir для статики, TraceLayer для логов.\n- **tokio 1** (full) — async runtime.\n- **portable-pty 0.8** — кросс-платформенный PTY (на macOS posix_openpt/grantpt/unlockpt).\n- **serde 1** + **serde_json 1** — JSON I/O.\n- **tracing / tracing-subscriber 0.3** — логирование.\n- **anyhow 1** — Error type для приложения.\n- **futures-util 0.3** — Stream/Sink combinators (split, SinkExt, StreamExt).\n- **bytes 1** — Bytes/BytesMut.\n\nFrontend (CDN-only, без npm):\n- **xterm.js 5.3.0** + **xterm-addon-fit 0.8.0** + **xterm-addon-web-links 0.9.0** (через cdn.jsdelivr.net).\n\n## Безопасность\n\n- Bind только на 127.0.0.1 — внешний доступ невозможен без обратного proxy.\n- Имена сессий валидируются `[A-Za-z0-9_-]+` (см. `tmux::is_valid_session_name`) — защита от инъекций tmux args.\n- Все вызовы tmux идут через `tokio::process::Command` args, без shell.\n\n## Verification (Phase 5)\n\nСм. /tmp/scenario1..6_ws.py — все 6 сценариев PASS:\n1. Нет сессий → `[]` → POST default → 201 → list содержит default. PASS.\n2. Несколько сессий: WS к a/b — изолированные потоки. PASS.\n3. Resize: cols 80→120, rows 40 (39 видимых из-за status bar tmux). PASS.\n4. Switch без reconnect: один WS, switch a→b, разные shell PIDs. PASS.\n5. External kill-session: WS закрывается ~1с (после bug-fix forge-qs0). PASS.\n6. Параллельные клиенты на одну сессию: оба видят синхронный вывод. PASS.\n\n## История\n\n- **Phase 1**: bootstrap (axum + ServeDir + healthz).\n- **Phase 2**: модуль tmux + REST API (`/api/sessions`).\n- **Phase 3**: модули pty + ws + `/ws/attach` WebSocket-bridge.\n- **Phase 4**: фронтенд (xterm.js + sidebar + control-протокол).\n- **Phase 5**: верификация (6 сценариев) + bug-fix forge-qs0 (EOF-detect через Notify) + документация.",
+    "createdAt": "2026-05-09T19:00:16.079Z",
+    "updatedAt": "2026-05-09T19:00:16.079Z"
+  },
+  {
+    "element": "tasks.rs",
+    "path": "tasks.rs",
+    "type": "file",
+    "content": "Backend-модуль tmux-web для read-only Tasks-таба. Экспортирует одну async функцию list_tasks(project_root: &Path) -> anyhow::Result<serde_json::Value>, которая через tokio::process::Command вызывает CLI 'br list --json --all --limit 0' с current_dir=project_root. Stdout (JSON envelope {issues, total, limit, offset, has_more} от beads_rust) парсится в serde_json::Value и возвращается as-is. Non-zero exit маппится в anyhow::Error с stderr в сообщении (хендлер /api/tasks превращает это в HTTP 500). Не имеет блокирующих операций — полностью async через tokio. Не имеет состояния. Зависимости: anyhow, tokio::process::Command, serde_json. Паттерн взят из tmux::list_sessions. Используется в main.rs хендлером get_tasks.",
+    "createdAt": "2026-05-09T19:37:29.049Z",
+    "updatedAt": "2026-05-09T19:37:29.049Z"
+  },
+  {
+    "element": "main.rs::get_tasks",
+    "path": "",
+    "type": "unknown",
+    "content": "Axum-хендлер для GET /api/tasks. Resolves std::env::current_dir(), вызывает tasks::list_tasks(&cwd).await и оборачивает результат в Json<serde_json::Value>. Ошибка current_dir или list_tasks → (StatusCode::INTERNAL_SERVER_ERROR, String). Логирует ошибку через tracing::error!. В Phase 6.A current_dir используется как единственный 'активный проект' — в Phase 6.B заменится на путь активного проекта из ProjectStore. Регистрируется в Router как .route('/api/tasks', get(get_tasks)).",
+    "createdAt": "2026-05-09T19:37:32.529Z",
+    "updatedAt": "2026-05-09T19:37:32.529Z"
+  },
+  {
+    "element": "tmux-web/src/projects.rs",
+    "path": "tmux-web/src/projects.rs",
+    "type": "file",
+    "content": "Multi-project registry для tmux-web. Хранит список проектов и id активного, персистится в ~/.config/forge/projects.json (atomic write через tempfile + rename). При первом старте если файла нет — создаёт дефолт с одним проектом forge (path = std::env::current_dir, tmux_prefix = 'forge').\n\n## Типы\n- Project { id, name, path: PathBuf, tmux_prefix: String } — один проект. id — slug от name ([a-z0-9_-]+). tmux_prefix используется для фильтрации tmux-сессий (пустой = все, ровно prefix или prefix-* = принадлежит проекту).\n- ProjectsFile { projects, active_project_id } — JSON envelope для файла.\n- ProjectStore { file_path, projects, active_id } — in-memory реестр с инвариантом: active_id всегда указывает на существующий проект.\n\n## Методы ProjectStore\n- load(file_path) -> Self — читает файл; при отсутствии создаёт дефолт + сохраняет. Чинит stale active_id.\n- save() -> anyhow::Result<()> — атомарная запись через <file>.tmp + rename (POSIX-атомарно).\n- list() -> Vec<Project> — копия списка.\n- get(id) -> Option<&Project>.\n- active() -> &Project — гарантированно существует.\n- active_id() -> &str.\n- add(name, path, tmux_prefix?) -> Result<Project> — id=slug(name), prefix default = id; дубликаты → Err.\n- remove(id) -> Result<bool> — нельзя удалить активный.\n- set_active(id) -> Result<()> — несуществующий id → Err.\n\n## Свободные функции\n- default_registry_path() -> Result<PathBuf> — $HOME/.config/forge/projects.json (без крейта dirs).\n- slugify(name) -> String — lower-case, [a-z0-9_-], всё прочее → '-' с схлопыванием.\n- session_belongs(prefix, session_name) -> bool — пустой prefix матчит всё; иначе name == prefix или name начинается с prefix-.\n- ensure_prefixed(prefix, name) -> String — добавляет prefix- если ещё не префиксован.\n\n## Зависимости\n- anyhow, serde/serde_json, tracing, std::path. Без новых внешних крейтов.\n\n## Конкурентность\nНе Clone; в AppState — Arc<RwLock<ProjectStore>>.\n\n## Тесты (cargo test projects::)\n- slugify_basic, session_belongs_rules, ensure_prefixed_rules — pure functions.\n- load_save_roundtrip — bootstrap + add + save + reload.\n- set_active_and_remove — нельзя удалить активный, set_active валидирует id.\n- add_duplicate_rejected.",
+    "createdAt": "2026-05-09T19:46:40.685Z",
+    "updatedAt": "2026-05-09T19:46:40.685Z"
+  },
+  {
+    "element": "tasks::run_br",
+    "path": "",
+    "type": "unknown",
+    "content": "Универсальный async хелпер для запуска CLI `br` через tokio::process::Command. Принимает slice аргументов и cwd, парсит stdout как serde_json::Value. На non-zero exit возвращает anyhow::Error со stderr; на пустой stdout — Value::Null; на непарсимый JSON — Err с preview-сниппетом первых 200 символов. Используется write-хендлерами POST /api/tasks (create), PATCH /api/tasks/:id (update), DELETE /api/tasks/:id (close), POST /api/tasks/:id/reopen — каждый формирует свой массив args с уже добавленным --json. Файл: tmux-web/src/tasks.rs.",
+    "createdAt": "2026-05-09T19:59:12.095Z",
+    "updatedAt": "2026-05-09T19:59:12.095Z"
+  },
+  {
+    "element": "create_task",
+    "path": "",
+    "type": "unknown",
+    "content": "Axum-хендлер POST /api/tasks. Принимает CreateTaskReq {title, description?, type?, priority?, labels?, parent?}. Trim/validate title (400 если пусто), priority диапазон 0..=4 (400 при превышении). Берёт cwd из active project (RwLock read). Динамически собирает Vec<String> args для br create --json: --title (обязателен), -t/-p/-d/-l/--parent (если заданы). Конвертит в &[&str] и зовёт tasks::run_br. На успех — 201 Created + Json(serde_json::Value) с распарсенным issue из stdout br. На ошибку run_br — 400 BadRequest + текст ошибки. Файл: tmux-web/src/main.rs.",
+    "createdAt": "2026-05-09T20:00:56.195Z",
+    "updatedAt": "2026-05-09T20:00:56.195Z"
+  },
+  {
+    "element": "patch_task",
+    "path": "",
+    "type": "unknown",
+    "content": "Axum-хендлер PATCH /api/tasks/:id. Принимает PatchTaskReq {status?, title?, priority?, description?, labels?}. Все поля опциональны, но если ни одно не задано — 400. priority валидируется 0..=4. labels пробрасывается в --set-labels (replace-семантика, не add). description='' допустимо (стирает). Зовёт br update --json <id> ...args через tasks::run_br. br update --json возвращает массив обновлённых issues — отдаём как есть в Json. На ошибку — 400. Файл: tmux-web/src/main.rs.",
+    "createdAt": "2026-05-09T20:00:56.407Z",
+    "updatedAt": "2026-05-09T20:00:56.407Z"
+  },
+  {
+    "element": "close_task",
+    "path": "",
+    "type": "unknown",
+    "content": "Axum-хендлер DELETE /api/tasks/:id?reason=... Принимает CloseTaskQuery {reason?}. Зовёт br close --json <id> [-r reason] через tasks::run_br. На успех — 204 NoContent (тело не возвращаем — клиент уже знает id). На ошибку — 400 + stderr. Используется UI-кнопкой Close в modal-edit. Файл: tmux-web/src/main.rs.",
+    "createdAt": "2026-05-09T20:00:56.618Z",
+    "updatedAt": "2026-05-09T20:00:56.618Z"
+  },
+  {
+    "element": "reopen_task",
+    "path": "",
+    "type": "unknown",
+    "content": "Axum-хендлер POST /api/tasks/:id/reopen. Параметров тела нет. Зовёт br reopen --json <id> через tasks::run_br. br reopen возвращает {reopened: [...]} — отдаём 200 + Json(value). На ошибку — 400. Используется UI-кнопкой Reopen в modal-edit для закрытых задач. Файл: tmux-web/src/main.rs.",
+    "createdAt": "2026-05-09T20:00:56.829Z",
+    "updatedAt": "2026-05-09T20:00:56.829Z"
+  },
+  {
+    "element": "createTask",
+    "path": "",
+    "type": "unknown",
+    "content": "JS-функция в app.js (IIFE state). POST /api/tasks с payload {title, description?, type?, priority?, labels?, parent?}. Optimistic UI: prepend временного issue с id 'tmp-<rand6>' и __optimistic=true в state.tasksData.issues, renderTasks. После ответа — replace placeholder реальным issue (по найденному idx или unshift если не нашли). На non-ok response или fetch-исключении — alert + удаление tmp-issue. Возвращает созданный issue или null. Используется openCreateModal.",
+    "createdAt": "2026-05-09T20:05:00.727Z",
+    "updatedAt": "2026-05-09T20:05:00.727Z"
+  },
+  {
+    "element": "updateTask",
+    "path": "",
+    "type": "unknown",
+    "content": "JS PATCH /api/tasks/:id. Принимает (id, payload-patch). applyOptimisticPatch обновляет issue in-place в state.tasksData (status/title/priority/description/labels), renderTasks. После ответа сервера применяет полученные поля поверх существующего объекта (Object.assign). При ошибке — rollbackIssue к prev. payload.labels — csv-строка, конвертится в массив для optimistic-вью.",
+    "createdAt": "2026-05-09T20:05:00.936Z",
+    "updatedAt": "2026-05-09T20:05:00.936Z"
+  },
+  {
+    "element": "closeTask",
+    "path": "",
+    "type": "unknown",
+    "content": "JS DELETE /api/tasks/:id?reason=... . Optimistic: status → closed (карточка переезжает в колонку closed). На ошибку — rollback. Без тела ответа (204). Reason пробрасывается через querystring.",
+    "createdAt": "2026-05-09T20:05:01.145Z",
+    "updatedAt": "2026-05-09T20:05:01.145Z"
+  },
+  {
+    "element": "reopenTask",
+    "path": "",
+    "type": "unknown",
+    "content": "JS POST /api/tasks/:id/reopen. Optimistic: status → open. На ошибку — rollback. Используется кнопкой Reopen в edit-modal для уже закрытых задач.",
+    "createdAt": "2026-05-09T20:05:01.353Z",
+    "updatedAt": "2026-05-09T20:05:01.353Z"
+  },
+  {
+    "element": "openCreateModal",
+    "path": "",
+    "type": "unknown",
+    "content": "JS modal-builder для создания задачи. Принимает preset (опц. {status}). Поля: title (input), description (textarea), priority (select 0-4), type (select task/bug/feature/epic/chore/docs/question), labels (input csv). Кнопки Cancel и Create. Если preset.status задан и не 'open' — после создания отправляет follow-up updateTask(created.id, {status: preset.status}) чтобы карточка попала в нужную колонку (br create без -s даёт open). Также вызывается из col-add (+) кнопок в kanban-headers.",
+    "createdAt": "2026-05-09T20:05:01.559Z",
+    "updatedAt": "2026-05-09T20:05:01.559Z"
+  },
+  {
+    "element": "openEditModal",
+    "path": "",
+    "type": "unknown",
+    "content": "JS modal-builder для редактирования issue. Принимает текущий issue object. Заполняет поля text/textarea/selects (priority, status, type) текущими значениями + показывает id в .modal-id. Кнопки: Save (PATCH с diff-only payload — шлёт только изменённые поля), Cancel, Close (с window.prompt reason → DELETE) — для не-closed задач, Reopen — для closed. Type в API не маппится на текущий момент, поэтому изменение type из UI пока не пробрасывается на сервер.",
+    "createdAt": "2026-05-09T20:05:01.764Z",
+    "updatedAt": "2026-05-09T20:05:01.764Z"
+  },
+  {
+    "element": "phase-6c-smoke",
+    "path": "",
+    "type": "page",
+    "content": "Phase 6.C CRUD smoke tests (2026-05-09): forge-i2n issue. Test 1 POST /api/tasks → 201 + issue.id=forge-i2n status=open priority=2 type=task; br show подтвердил. Test 2 PATCH /api/tasks/forge-i2n {status:in_progress, priority:1} → 200 + array подтверждение; br show ◐ IN_PROGRESS P1. Test 3 DELETE /api/tasks/forge-i2n?reason=smoke → 204 NoContent; br show ✓ CLOSED reason=smoke. Test 4 POST /api/tasks/forge-i2n/reopen → 200 + {reopened:[{id,status:open}]}; br show ○ OPEN. Cleanup br close forge-i2n --reason='smoke complete'. Все коды HTTP и состояния br совпадают с ожиданием. Cargo build clean (1 unused warning в pty.rs — не относится к 6.C).",
+    "createdAt": "2026-05-09T20:06:26.445Z",
+    "updatedAt": "2026-05-09T20:06:26.445Z"
+  },
+  {
+    "element": "tmux-web/src/tasks.rs",
+    "path": "tmux-web/src/tasks.rs",
+    "type": "file",
+    "content": "Backend для Tasks-таба и realtime watcher. Phase 6.A: passthrough к CLI br (list_tasks для GET /api/tasks, run_br универсальный helper для CRUD). Phase 6.D: добавлены snapshot(cwd) -> HashMap<id, issue-Value>, diff_issues(old, new) -> Vec<TaskEvent>, и enum TaskEvent { Upsert { issue }, Removed { id } } с serde tag=kind. snapshot вызывает list_tasks и распаковывает массив issues в HashMap по id. diff_issues — глубокое сравнение JSON-объектов (включая updated_at), добавления/изменения → Upsert, исчезновения → Removed. Используется фоновым watcher'ом в main.rs и WS-handler'ом /ws/tasks для realtime. Unit-тесты: diff_empty/added/changed/unchanged/removed + task_event_serialization (kind=upsert/removed).",
+    "createdAt": "2026-05-09T20:12:08.456Z",
+    "updatedAt": "2026-05-09T20:12:08.456Z"
+  },
+  {
+    "element": "TaskEvent",
+    "path": "",
+    "type": "unknown",
+    "content": "Enum в tasks.rs для realtime событий из beads watcher'а. Сериализуется serde с tag=kind, lowercase: {kind:'upsert', issue: <full br list issue>} либо {kind:'removed', id: '<issue-id>'}. Используется broadcast-каналом в AppState и WS-handler /ws/tasks. Upsert покрывает create+update+close (close → Upsert со status=closed), Removed — только при физическом удалении из beads БД.",
+    "createdAt": "2026-05-09T20:12:08.666Z",
+    "updatedAt": "2026-05-09T20:12:08.666Z"
+  },
+  {
+    "element": "tmux-web/src/tasks_watcher.rs",
+    "path": "tmux-web/src/tasks_watcher.rs",
+    "type": "file",
+    "content": "Phase 6.D — фоновый file-watcher для .beads/issues.jsonl. Pub fn run_watcher(active_path_rx: watch::Receiver<PathBuf>, tasks_tx: broadcast::Sender<TaskEvent>) — outer loop пересоздающий watcher при смене active project. Inner watch_one(): initial snapshot (baseline, не бродкастится) → notify::recommended_watcher с tokio mpsc UnboundedSender → watch на .beads/ NonRecursive → tail-debounce 200ms через select! на (notify_rx, sleep_until, active_path_rx.changed()) → snapshot()+diff_issues() → broadcast TaskEvent. Фильтр relevant_event() пропускает issues.jsonl и его tmp-собратьев (atomic-rename). Если .beads/ отсутствует — ждём смены active path. Unit-тесты relevant_event для issues.jsonl, .tmp, beads.db (отрицательный), labels.jsonl.",
+    "createdAt": "2026-05-09T20:16:52.767Z",
+    "updatedAt": "2026-05-09T20:16:52.767Z"
+  },
+  {
+    "element": "run_watcher",
+    "path": "",
+    "type": "unknown",
+    "content": "Главный async loop фонового tasks watcher'а. Spawn'ится один раз из main(). Outer-loop: borrow текущий active path → watch_one(path) → если active_path_rx закрылся, exit. Гарантирует что watcher всегда привязан к актуальному .beads/ активного проекта.",
+    "createdAt": "2026-05-09T20:16:52.976Z",
+    "updatedAt": "2026-05-09T20:16:52.976Z"
+  },
+  {
+    "element": "tmux-web/src/ws_tasks.rs",
+    "path": "tmux-web/src/ws_tasks.rs",
+    "type": "file",
+    "content": "Phase 6.D — WS handler GET /ws/tasks. Pub async fn tasks_ws(WebSocketUpgrade, State<AppState>) — upgrade в handle_socket(). На connect: получить active.path из state.projects, вызвать tasks::list_tasks() и отправить {kind:'snapshot',data:<envelope>}. Subscribe на state.tasks_tx (broadcast). Heartbeat tokio::time::interval(30s) шлёт Ping. Главный select-loop: rx.recv() → JSON Text фрейм; RecvError::Lagged(n) → шлёт {kind:'reload'} клиенту; RecvError::Closed → exit. Heartbeat tick → Message::Ping. Inbound: Close/EOF → exit, Pong/Ping → ignore, остальное → warn-log. Best-effort Close на teardown.",
+    "createdAt": "2026-05-09T20:17:06.462Z",
+    "updatedAt": "2026-05-09T20:17:06.462Z"
+  },
+  {
+    "element": "tasks_ws",
+    "path": "",
+    "type": "unknown",
+    "content": "Axum-handler /ws/tasks: upgrade WS и delegate в handle_socket. Регистрируется в main.rs как .route('/ws/tasks', get(ws_tasks::tasks_ws)).",
+    "createdAt": "2026-05-09T20:17:06.675Z",
+    "updatedAt": "2026-05-09T20:17:06.675Z"
+  },
+  {
+    "element": "connectTasksWs",
+    "path": "",
+    "type": "unknown",
+    "content": "JS-функция в app.js. Открывает WebSocket к /ws/tasks. Если уже OPEN/CONNECTING → no-op. На onopen сбрасывает tasksWsBackoffStep, останавливает fallback polling, сообщает 'tasks: live'. handleTasksWsMessage обрабатывает kind='snapshot'/'upsert'/'removed'/'reload'. На onclose — schedule reconnect через TASKS_WS_BACKOFFS_MS=[1000,2000,5000,10000] и startTasksPolling fallback.",
+    "createdAt": "2026-05-09T20:19:40.989Z",
+    "updatedAt": "2026-05-09T20:19:40.989Z"
+  },
+  {
+    "element": "phase-6d-smoke",
+    "path": "",
+    "type": "page",
+    "content": "Phase 6.D smoke results (2026-05-09):\n\n1. GET /api/tasks → total=71 ✓\n2. WS /ws/tasks connect → first message kind=snapshot ✓\n3. br create rt-test (-p2 -t task) → клиент получил {kind:upsert, issue.id=forge-fzw, status=open} в течение <1s ✓\n4. br update forge-fzw -s in_progress → клиент получил upsert status=in_progress ✓\n5. br close forge-fzw -r 'smoke 6d' → клиент получил upsert status=closed ✓\n6. Reconnect WebSocket после kill→start cargo run → новый клиент получил snapshot с total=72 (новая закрытая задача учтена) ✓\n\nЗапуск: cargo run в фоне (pid 55499 потом 56961), python3 /tmp/smoke_6d.py использовал websockets 16.0. Watcher properly walked up из tmux-web/ до F.O.R.G.E./.beads (find_beads_dir). После теста: cargo killed, tmux server already off.",
+    "createdAt": "2026-05-09T20:22:10.876Z",
+    "updatedAt": "2026-05-09T20:22:10.876Z"
+  },
+  {
+    "element": "renderCard",
+    "path": "",
+    "type": "unknown",
+    "content": "renderCard(issue) — фабрика DOM-элемента карточки в kanban-board (tmux-web/static/app.js).\n\nВозвращает <div.kanban-card> с data-id, data-status, data-priority. Структура:\n- .id (id задачи, mono)\n- .title (текст)\n- .meta-row: .p-pill (P0..P4) + .type-tag (issue_type)\n- .labels: до 3 .label-tag + +N если больше\n\nPhase 6.C: addEventListener('click') открывает edit-modal через openEditModal(issue).\n\nPhase 6.E (Drag-n-drop):\n- card.draggable = true\n- dragstart: setData('text/plain', issue.id), effectAllowed='move', добавляет .dragging\n- dragend: убирает .dragging, чистит висящие .drop-target подсветки\n- dragMoved-флаг подавляет click сразу после drag-end (через setTimeout 0), чтобы отпускание мыши не открывало edit-modal\n\nЗависимости: openEditModal (Phase 6.C), updateTask (через drop в renderColumn body).",
+    "createdAt": "2026-05-09T20:25:09.218Z",
+    "updatedAt": "2026-05-09T20:25:09.218Z"
+  },
+  {
+    "element": "renderColumn",
+    "path": "",
+    "type": "unknown",
+    "content": "renderColumn(status, items) — рендер одной колонки kanban-board (tmux-web/static/app.js).\n\nВозвращает <div.kanban-col data-status=...> с заголовком и body:\n- .kanban-col-header: title (COLUMN_TITLES[status]) + .col-meta (.col-count + .col-add quick-create button; addBtn НЕ показывается для status='closed')\n- .kanban-col-body[data-status=...]: контейнер карточек, рендер через renderCard для каждого issue из items\n\nPhase 6.E (Drag-n-drop drop zone):\n- dragover: preventDefault + dataTransfer.dropEffect='move' + .drop-target подсветка\n- dragenter: preventDefault + .drop-target\n- dragleave: убирает .drop-target ТОЛЬКО если курсор реально вышел (relatedTarget не contains в body — иначе drag над дочерним элементом ложно гасит подсветку)\n- drop: preventDefault, читает dataTransfer.getData('text/plain') (issue.id), если targetStatus отличается от текущего issue.status — вызывает updateTask(id, {status: targetStatus}). updateTask делает optimistic apply и rollback при ошибке (Phase 6.C). Cross-tab sync — через WS upsert (Phase 6.D).\n\nQuick-create '+' кнопка (Phase 6.C): открывает openCreateModal({status}) для preset колонки.\n\nЗависимости: renderCard, openCreateModal, updateTask, COLUMN_TITLES, state.tasksData.",
+    "createdAt": "2026-05-09T20:25:17.783Z",
+    "updatedAt": "2026-05-09T20:25:17.783Z"
+  },
+  {
+    "element": "tmux-web-static-style-css",
+    "path": "",
+    "type": "unknown",
+    "content": "tmux-web/static/style.css — стили для frontend tmux-web.\n\nСтруктура (по секциям):\n- Базовые стили layout (body, #app, sidebar, header)\n- Sessions sidebar (.session-item, .btn-kill, attached-flag)\n- Terminal frame (#terminal, #placeholder, status indicators)\n- Kanban board (Phase 6.A): .kanban-col, .kanban-col-header, .kanban-col-body, .kanban-card с data-priority цветными border-left и .p-pill\n- Modals (Phase 6.B/6.C): .modal-overlay, .modal-card, .task-modal, .modal-projects\n- Project bar (Phase 6.B): #project-select, кнопки new/settings\n- Phase 6.E (Drag-n-drop):\n  - .kanban-card { cursor: grab } / .kanban-card:active { cursor: grabbing }\n  - .kanban-card.dragging { opacity:0.5; cursor: grabbing } — визуально подсвечивает источник drag\n  - .kanban-col-body.drop-target { outline:2px dashed #2a7fff; outline-offset:-4px; background: rgba(42,127,255,.05) } — целевая колонка во время dragover\n\nЦветовая палитра: тёмный фон (#0d111c, #1d2230, #243046), акцент синий #2a7fff, P0 красный #e84d4d, P1 оранжевый #e89344.",
+    "createdAt": "2026-05-09T20:25:51.058Z",
+    "updatedAt": "2026-05-09T20:25:51.058Z"
+  },
+  {
+    "element": "main::AppState",
+    "path": "",
+    "type": "unknown",
+    "content": "Глобальное состояние axum-приложения для tmux-web (src/main.rs).\n\nПоля:\n- projects: Arc<RwLock<ProjectStore>> — реестр проектов (multi-project, Phase 6.B). Read-locks для GET-эндпоинтов идут параллельно, write-locks (POST/DELETE) сериализуются. Persistence через ProjectStore::save() под write-lock'ом.\n- tasks_tx: broadcast::Sender<TaskEvent> — broadcast(64) для realtime-стрима событий beads-watcher (Phase 6.D). Подписчики /ws/tasks делают subscribe() на каждое соединение.\n- active_path_tx: Arc<watch::Sender<PathBuf>> — watch-channel с last-value семантикой; отправляет новый active.path в фоновый tasks_watcher при смене активного проекта.\n- attention: Arc<attention::AttentionState> (Phase 7) — разделяемое состояние «у каких сессий открыт Claude permission prompt». Background attention::watcher_loop пишет сюда каждые 1.5с; HTTP-handler get_sessions читает snapshot и возвращает needs_attention в SessionDto.\n\nКонструктор/инициализация:\nВ main() сразу после загрузки ProjectStore и создания tasks_tx/active_path_tx собирается AppState{...} с attention: Arc::new(attention::AttentionState::new()). Затем спавнятся два фоновых tokio-task'а: tasks_watcher::run_watcher(active_path_rx, tasks_tx) и attention::watcher_loop(app_state.projects.clone(), app_state.attention.clone()).\n\n#[derive(Clone)] — клон дешёвый (только Arc.clone()), используется axum через .with_state(app_state).",
+    "createdAt": "2026-05-10T09:17:36.870Z",
+    "updatedAt": "2026-05-10T09:17:36.870Z"
+  },
+  {
+    "element": "main::get_sessions",
+    "path": "",
+    "type": "unknown",
+    "content": "HTTP-handler GET /api/sessions (src/main.rs).\n\nСигнатура: async fn get_sessions(State(state): State<AppState>) -> Result<Json<Vec<SessionDto>>, (StatusCode, String)>.\n\nЧто делает:\n1. Читает state.projects под read-lock'ом и берёт active().tmux_prefix.\n2. Вызывает tmux::list_sessions().await — список всех tmux-сессий машины.\n3. Снимает snapshot из state.attention.snapshot().await — HashMap<session_name, bool> с флагами «нужно внимание».\n4. Фильтрует сессии через crate::projects::session_belongs(&prefix, &s.name) — оставляет только сессии активного проекта.\n5. Маппит каждую отфильтрованную SessionInfo в SessionDto { info: s, needs_attention: attention.get(&s.name).copied().unwrap_or(false) }.\n6. Возвращает Json(Vec<SessionDto>). Если tmux-сервер не запущен — список пустой (Ok([]), а не 500). Любая другая ошибка list_sessions — 500.\n\nSessionDto (выше get_sessions):\n#[derive(Debug, Serialize)] struct SessionDto { #[serde(flatten)] info: SessionInfo, needs_attention: bool }\n- #[serde(flatten)] раскладывает все поля SessionInfo на верхний уровень JSON — фронтенд видит прежнюю структуру + добавленное поле needs_attention. SessionInfo не модифицируется (общее с tmux.rs).\n- needs_attention: true означает «в панели сессии обнаружен Claude permission prompt» — фронтенд должен подсветить вкладку оранжевым (Phase 3); false (включая отсутствие записи) — нормальное состояние.\n\nЗависимости:\n- tmux::list_sessions, tmux::SessionInfo (read).\n- attention::AttentionState::snapshot (read).\n- projects::session_belongs (filter).",
+    "createdAt": "2026-05-10T09:17:47.975Z",
+    "updatedAt": "2026-05-10T09:17:47.975Z"
+  },
+  {
+    "element": "main::SessionDto",
+    "path": "",
+    "type": "unknown",
+    "content": "DTO ответа GET /api/sessions (src/main.rs, добавлен в Phase 7 — Phase 2 wiring).\n\n#[derive(Debug, Serialize)]\nstruct SessionDto {\n    #[serde(flatten)]\n    info: SessionInfo,\n    needs_attention: bool,\n}\n\nНазначение: расширить ответ /api/sessions полем needs_attention без модификации tmux::SessionInfo (которая используется в других местах) и без поломки существующего фронтенд-контракта. #[serde(flatten)] раскладывает все поля SessionInfo на верхний уровень JSON, поэтому фронтенд видит прежний JSON + добавленное поле.\n\nСемантика поля needs_attention:\n- true → в панели сессии обнаружен Claude permission prompt (см. attention::detect_claude_prompt). Фронтенд должен подсветить вкладку оранжевым (Phase 3).\n- false → нормальное состояние; либо запись отсутствует в snapshot'е (что также трактуется как false через .copied().unwrap_or(false)).\n\nЗаполняется в get_sessions: snapshot из state.attention.snapshot().await, лукап по s.name. AttentionState обновляется фоновым attention::watcher_loop каждые 1.5с.",
+    "createdAt": "2026-05-10T09:17:54.504Z",
+    "updatedAt": "2026-05-10T09:17:54.504Z"
+  },
+  {
+    "element": "tmux-web/src/todos.rs",
+    "path": "tmux-web/src/todos.rs",
+    "type": "file",
+    "content": "Phase 1 backend foundation. Хранилище TODO-карточек проекта (storage column kanban-доски, до promote'а в bd-task).\n\n## Модель\n- Todo: id (UUID v4 String), project_id, title, description (Option<String>), priority (u8, 0..=4, default 2), issue_type (String, default 'task'), labels (Vec<String>), created_at, updated_at (RFC3339-строки UTC). Все опциональные поля #[serde(default)] для совместимости.\n- TodoStore: Arc<RwLock<Inner>>, lazy-load из <project_root>/.forge/todos.json. Cheap-clonable.\n\n## API\n- new(project_root: PathBuf) -> Result<Self> — создаёт .forge/, грузит todos.json (если есть).\n- list(project_id: &str) -> Vec<Todo>.\n- get(id: &str) -> Option<Todo> (поиск по всем проектам, id глобально уникален).\n- create(project_id, title, description) -> Result<Todo> — генерит UUID v4, ставит created_at=updated_at=now.\n- update(id, Option<title>, Option<Option<description>>) -> Result<Option<Todo>> — двойной Option у description: None=не трогать, Some(None)=очистить, Some(Some(s))=записать.\n- delete(id) -> Result<bool>.\n- save() — экстренный flush.\n\n## Persistence\nAtomic save через tempfile + rename (как в projects::ProjectStore::save). На POSIX rename атомарен в пределах одного mount-point.\n\n## Время\nRFC3339 формируется вручную (без chrono) через алгоритм Howard Hinnant. Формат: YYYY-MM-DDTHH:MM:SS.sssZ.\n\n## Ограничения\n- Save держит lock на время IO — приемлемо для масштабов сотен TODO.\n- Поиск get() — O(N) по всем проектам. Для крупных каталогов имеет смысл добавить вторичный индекс id→Vec<Todo>.",
+    "createdAt": "2026-05-10T12:00:48.084Z",
+    "updatedAt": "2026-05-10T14:28:02.335Z",
+    "aliases": [
+      "todo column"
+    ]
+  },
+  {
+    "element": "tmux-web/src/tmux.rs::send_keys",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 1. Async-функция отправки текста в tmux-сессию через 'tmux send-keys'.\n\nСигнатура: pub async fn send_keys(session: &str, text: &str) -> anyhow::Result<()>\n\n## Поведение\n1. Валидирует имя сессии через is_valid_session_name (только [A-Za-z0-9_-]+, непустое).\n2. Если text пуст — Ok(()) без действий.\n3. Многострочный text разбивается по '\\n'. Для каждой строки:\n   - tmux send-keys -t <session> -l <line> (флаг -l = literal, без интерпретации escape).\n   - Затем отдельный tmux send-keys -t <session> Enter.\n4. Не запускает shell — все аргументы передаются через Command::args. Безопасно для произвольных пользовательских строк (нет SQL/shell-injection).\n5. На любой не-нулевой exit от tmux возвращает Err с stderr.\n\n## Использование\nВызывается из notifier'а (Phase 2) при доставке текста промоутнутого TODO в указанную tmux-сессию.",
+    "createdAt": "2026-05-10T12:00:55.542Z",
+    "updatedAt": "2026-05-10T14:28:01.516Z",
+    "aliases": [
+      "tmux send keys"
+    ]
+  },
+  {
+    "element": "tmux-web/src/projects.rs::Project",
+    "path": "",
+    "type": "unknown",
+    "content": "Описание одного проекта в registry tmux-web.\n\n## Поля\n- id (String) — slug от name: [a-z0-9_-]+, уникален в registry.\n- name (String) — человекочитаемое имя (произвольные символы).\n- path (PathBuf) — абсолютный путь к корню. Передаётся в tmux new-session -c и br list.\n- tmux_prefix (String) — префикс для фильтрации tmux-сессий и автопрефиксования.\n\n## Поля нотификации (Phase 1)\nДобавлены для конфигурации TODO→tmux уведомлений. Все #[serde(default)] для совместимости со старыми projects.json.\n- notify_template (String) — шаблон текста, отправляемого через send_keys при promote TODO. Поддержка плейсхолдеров {title}/{description} (см. notifier). Пустая строка = не отправлять.\n- notify_delay_minutes (u32) — задержка перед отправкой. 0 = немедленно.\n- notify_wait_previous (bool) — ждать закрытия предыдущей tmux-задачи (через tasks_watcher) перед следующей отправкой. Default false.\n- notify_session (Option<String>) — override имени tmux-сессии. None = использовать сессию активного проекта (по tmux_prefix).\n\n## Derive\nDebug, Clone, Default (необходим для ..Default::default() при инициализации старых литералов в add/default_project/set_transient_active), Serialize, Deserialize, PartialEq, Eq.",
+    "createdAt": "2026-05-10T12:01:04.176Z",
+    "updatedAt": "2026-05-10T12:01:04.176Z"
+  },
+  {
+    "element": "tmux-web/src/notifier.rs",
+    "path": "tmux-web/src/notifier.rs",
+    "type": "file",
+    "content": "Phase 2 — фоновая подсистема нотификаций при promote TODO → bd-task. Файл tmux-web/src/notifier.rs (~570 строк).\n\n## Назначение\nКогда пользователь promote'ит TODO-карточку в реальную bd-задачу, нужно отправить текстовое уведомление в активную tmux-сессию проекта с заданной задержкой и в одном из трёх режимов:\n- Immediate — сразу tmux::send_keys.\n- Delayed{fire_at_unix_ms} — tokio::time::sleep_until(fire_at) затем send.\n- WaitPrevious{previous_task_id} — ждём пока bd-задача с указанным id перейдёт в status=closed (через broadcast от tasks_watcher). Это очередь FIFO per project: пока предыдущий промоут не закрыт — следующий висит.\n\n## Ключевые элементы\n- enum NotifyMode { Immediate, Delayed{fire_at_unix_ms: u64}, WaitPrevious{previous_task_id: Option<String>} } — сериализуется в JSON с tag='kind'.\n- struct NotifyJob { id: String (UUID v4), project_id, task_id, target_session, text, mode, created_at_unix_ms } — единица очереди.\n- enum NotifyCommand { Enqueue(NotifyJob) } — команды в mpsc.\n- struct NotifyHandle { tx: mpsc::Sender<NotifyCommand> } — cheap-clonable handle, хранится в AppState. Метод enqueue(job).await.\n- pub fn start(project_root: PathBuf, task_events_rx: broadcast::Receiver<TaskEvent>) -> NotifyHandle — спавнит notifier_loop, возвращает handle.\n- pub fn new_job(project_id, task_id, target_session, text, mode) -> NotifyJob — конструктор с UUID и timestamp.\n\n## notifier_loop (фоновый task)\nselect! по трём веткам:\n1. cmd_rx.recv() — новые команды Enqueue.\n2. sleep_until(next_delayed_deadline) — таймер ближайшего Delayed-job'а.\n3. task_events_rx.recv() — TaskEvent::Upsert от tasks_watcher; фильтр по status=='closed' триггерит handle_task_closed для wait_previous.\n\n## Persist\nФайл <project_root>/.forge/notify_state.json:\n- pending: Vec<NotifyJob> — все ждущие jobs (Delayed с будущим fire_at, WaitPrevious в очереди).\n- wait_queues: HashMap<project_id, VecDeque<job_id>> — FIFO очередь per project.\n- last_promoted_open_id: HashMap<project_id, task_id> — последний промоутнутый и ещё не закрытый task.\n\nAtomic save через tempfile + rename (паттерн из todos.rs/projects.rs). State сохраняется ДО fire (защита от kill -9).\n\n## Запуск и восстановление\nПри start: load_state из диска, fire_due_immediate_and_overdue (просроченные Delayed + Immediate из pending fire'ятся сразу).\n\n## Доставка\nfire_job вызывает tmux::send_keys с retry x3 (backoff 500/1000/2000ms). Полный фейл — лог error!, job дропается, loop не падает.\n\n## WaitPrevious-логика\n- handle_enqueue: если previous_task_id уже не tracked в last_promoted_open_id и очередь пуста — fire сразу. Иначе кладём в wait_queues и pending.\n- handle_task_closed: при Upsert с status=closed для task_id, который равен last_promoted_open_id[pid] — снять tracking, взять head из wait_queues, fire его, обновить last_promoted_open_id.\n\n## Тесты\n6 unit tests: save_load_empty_roundtrip, save_load_with_jobs, next_delayed_deadline_picks_earliest, instant_for_past_returns_now, notify_mode_serialization_roundtrip, new_job_generates_uuid. Все проходят.\n\n## Зависимости\n- tokio::sync::{broadcast, mpsc}, tokio::time::{sleep_until, Instant}.\n- crate::tasks::TaskEvent (для подписки).\n- crate::tmux::send_keys (для доставки).\n- uuid v4 (Cargo.toml).\n- serde/serde_json (persist).\n\n## Используется\n- main.rs: notifier::start() в bootstrap, NotifyHandle в AppState.notify.\n- Phase 3 (TBD): POST /api/todos/:id/promote вызывает state.notify.enqueue(notifier::new_job(...)) после br create.",
+    "createdAt": "2026-05-10T12:08:52.606Z",
+    "updatedAt": "2026-05-10T14:28:01.923Z",
+    "aliases": [
+      "notifier loop",
+      "promote queue"
+    ]
+  },
+  {
+    "element": "tmux-web/src/notifier.rs::NotifyMode",
+    "path": "",
+    "type": "unknown",
+    "content": "Enum режима доставки нотификации в notifier.rs. Сериализуется в JSON с tag='kind' и snake_case rename. Три варианта:\n- Immediate — выполнить сразу при enqueue.\n- Delayed { fire_at_unix_ms: u64 } — выполнить не раньше абсолютного Unix-таймстампа в миллисекундах. При рестарте: если время уже прошло — fire сразу.\n- WaitPrevious { previous_task_id: Option<String> } — ждать, пока bd-задача с указанным id перейдёт в status=closed. None означает 'нет предыдущего' (fire если очередь проекта пуста).\n\nPartialEq+Eq для тестирования сериализации. Все варианты самодостаточны (содержат всю нужную инфу), что упрощает persist/restore.",
+    "createdAt": "2026-05-10T12:08:57.230Z",
+    "updatedAt": "2026-05-10T12:08:57.230Z"
+  },
+  {
+    "element": "tmux-web/src/notifier.rs::NotifyJob",
+    "path": "",
+    "type": "unknown",
+    "content": "Struct описывающий одну нотификацию в очереди notifier'а. Поля:\n- id: String — UUID v4, уникален в notify_state.json.\n- project_id: String — id проекта (для группировки wait_previous-очереди).\n- task_id: String — id bd-задачи, созданной при promote.\n- target_session: String — имя tmux-сессии куда отправить текст.\n- text: String — что отправить (уже отрендеренный шаблон).\n- mode: NotifyMode — режим доставки.\n- created_at_unix_ms: u64 — timestamp создания (для логов).\n\nСериализуется в notify_state.json через serde. Конструируется через notifier::new_job().",
+    "createdAt": "2026-05-10T12:09:01.008Z",
+    "updatedAt": "2026-05-10T12:09:01.008Z"
+  },
+  {
+    "element": "tmux-web/src/notifier.rs::NotifyHandle",
+    "path": "",
+    "type": "unknown",
+    "content": "Cheap-clonable handle для отправки команд в фоновый notifier_loop. Внутри Arc через mpsc::Sender<NotifyCommand>. Хранится в AppState.notify, проброшен во все API-handler'ы.\n\nПубличный API:\n- async fn enqueue(&self, job: NotifyJob) -> Result<()> — поставить новый job в очередь. Не блокирует caller'а сверх mpsc-slot (256 ёмкость): практически instant.\n\nВозврат Err только если канал закрыт (loop умер) — критическая ошибка, требует ресторта сервера.\n\nИспользуется Phase 3 endpoint POST /api/todos/:id/promote: после br create вызывает state.notify.enqueue(notifier::new_job(...)).await.",
+    "createdAt": "2026-05-10T12:09:06.070Z",
+    "updatedAt": "2026-05-10T12:09:06.070Z"
+  },
+  {
+    "element": "tmux-web/src/notifier.rs::start",
+    "path": "",
+    "type": "unknown",
+    "content": "pub fn start(project_root: PathBuf, task_events_rx: broadcast::Receiver<TaskEvent>) -> NotifyHandle — entry point Phase 2 notifier подсистемы.\n\nЧто делает:\n1. Создаёт mpsc::channel<NotifyCommand>(256).\n2. Спавнит фоновый notifier_loop через tokio::spawn.\n3. Возвращает NotifyHandle (обёртка над Sender'ом).\n\nВызывается один раз в main() при старте сервера. project_root используется для размещения <root>/.forge/notify_state.json. task_events_rx получается через AppState.tasks_tx.subscribe() и должен быть subscribed ДО передачи tasks_tx в tasks_watcher (иначе ранние closed-events могут быть пропущены, broadcast хранит только 64).\n\nLifetime: Loop живёт пока жив tx в NotifyHandle (т.е. пока AppState не дропнут). При drop — последний save уже сделан после каждой мутации.",
+    "createdAt": "2026-05-10T12:09:11.851Z",
+    "updatedAt": "2026-05-10T12:09:11.851Z"
+  },
+  {
+    "element": "tmux-web/src/main.rs::AppState",
+    "path": "",
+    "type": "unknown",
+    "content": "Глобальное состояние axum-приложения. Cheap-clonable (все поля Arc/Sender внутри).\n\nПоля:\n- projects: Arc<RwLock<ProjectStore>> — реестр проектов с активным проектом. Чтения параллельны, write сериализованы.\n- tasks_tx: broadcast::Sender<TaskEvent> — Phase 6.D: tasks_watcher пушит сюда события при изменениях .beads/issues.jsonl. WS /ws/tasks подписывается на subscribe() в каждом соединении.\n- active_path_tx: Arc<watch::Sender<PathBuf>> — watch-sender для пересоздания tasks_watcher при смене активного проекта. Любой эндпоинт, меняющий active project, должен отправить новый path.\n- attention: Arc<attention::AttentionState> — shared state needs-attention флагов. Background attention::watcher_loop пишет каждые 1.5с; HTTP-handler get_sessions читает snapshot.\n- notify: notifier::NotifyHandle — Phase 2: handle к фоновому notifier_loop. Используется Phase 3 эндпоинтом POST /api/todos/:id/promote, который ставит NotifyJob в очередь через notify.enqueue(job).await.\n\nПередаётся в handlers через axum::extract::State<AppState>.",
+    "createdAt": "2026-05-10T12:09:19.790Z",
+    "updatedAt": "2026-05-10T12:09:19.790Z"
+  },
+  {
+    "element": "ws_todos.rs",
+    "path": "ws_todos.rs",
+    "type": "file",
+    "content": "Phase 3 — WebSocket-handler /ws/todos для realtime TODO-стрима. TodoEvent enum (Upsert/Removed/Reload) с serde tag='kind'. todos_ws upgrade-handler принимает Query<TodoWsQuery>{project_id?} — если не задан, берётся active project. Snapshot отправляется при connect (todos.list по project_id), затем select-loop с фильтрацией broadcast по project_id, heartbeat 30s, lag-recovery через {kind:reload}. Helpers: upsert(todo), removed(project_id, id), reload(project_id) — для использования из REST-handler'ов. Зависит от: AppState.todos (TodoStore), AppState.todos_tx (broadcast::Sender<TodoEvent>), todos::Todo.",
+    "createdAt": "2026-05-10T13:57:33.997Z",
+    "updatedAt": "2026-05-10T14:28:02.544Z",
+    "aliases": [
+      "todo websocket"
+    ]
+  },
+  {
+    "element": "main.rs::promote_todo",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 3 — POST /api/todos/:id/promote: конвертирует TODO в bd-задачу + ставит уведомление в очередь. Алгоритм: 1) todos.get → 404; 2) projects.get → 500; 3) resolve_notify_session (body.session || project.notify_session || <prefix>-main) → 400 если sessions нет; 4) br create --json --title --description -t -p; 5) todos.delete + broadcast Removed; 6) формирует NotifyJob с text=format_notify_template (подстановка {id}{title}{description}{priority}{type}), mode=WaitPrevious|Delayed|Immediate по project.notify_*; 7) notify.enqueue. Возвращает 200 {promoted:true, task_id}. Если notifier.enqueue упал — задача создана, TODO удалена, в ответе notify_warning.",
+    "createdAt": "2026-05-10T13:57:40.270Z",
+    "updatedAt": "2026-05-10T14:28:02.132Z",
+    "aliases": [
+      "promote todo"
+    ]
+  },
+  {
+    "element": "main.rs::patch_project_settings",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 3 — PATCH /api/projects/:id/settings: обновляет notify-настройки проекта. Body: notify_template?, notify_delay_minutes?, notify_wait_previous?, notify_session? (все опциональны, отсутствие=не трогать, null для notify_session=стереть). Логика: ProjectStore::update_settings → 404 если нет проекта → atomic save → 200 ProjectDto.",
+    "createdAt": "2026-05-10T13:57:43.066Z",
+    "updatedAt": "2026-05-10T13:57:43.066Z"
+  },
+  {
+    "element": "main.rs::format_notify_template",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 3 — Подставляет значения TODO/issue в template-строку. Поддерживает плейсхолдеры {id}, {title}, {description}, {priority}, {type}. Дефолтный шаблон в DEFAULT_NOTIFY_TEMPLATE='Новая задача [{id}]: {title} — нужно сделать'. Используется в promote_todo для генерации текста уведомления.",
+    "createdAt": "2026-05-10T13:57:45.917Z",
+    "updatedAt": "2026-05-10T13:57:45.917Z"
+  },
+  {
+    "element": "projects.rs::ProjectStore::update_settings",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 3 — Обновляет notify-настройки проекта. Параметры: notify_template (Option<String>), notify_delay_minutes (Option<u32>), notify_wait_previous (Option<bool>), notify_session (Option<Option<String>> для различения Some(None)=стереть и None=не трогать). Возвращает обновлённый клон Project или None если id не найден. НЕ сохраняет на диск автоматически — caller вызывает save() явно.",
+    "createdAt": "2026-05-10T13:57:48.761Z",
+    "updatedAt": "2026-05-10T13:57:48.761Z"
+  },
+  {
+    "element": "main.rs::AppState",
+    "path": "",
+    "type": "unknown",
+    "content": "Глобальное состояние axum-приложения. Поля: projects (Arc<RwLock<ProjectStore>>), tasks_tx (broadcast::Sender<TaskEvent>), active_path_tx (Arc<watch::Sender<PathBuf>>), attention (Arc<AttentionState>), notify (NotifyHandle, Phase 2), todos (TodoStore, Phase 3), todos_tx (broadcast::Sender<TodoEvent>, Phase 3 — sender'ы REST handlers, subscribers WS /ws/todos).",
+    "createdAt": "2026-05-10T13:57:52.008Z",
+    "updatedAt": "2026-05-10T13:57:52.008Z"
+  },
+  {
+    "element": "main.rs::get_todos",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 3 — GET /api/todos?project_id=...: JSON-массив TODO-карточек проекта. Если project_id не задан — берётся active project. Возвращает пустой массив (не 404) если в проекте нет TODO.",
+    "createdAt": "2026-05-10T13:58:09.140Z",
+    "updatedAt": "2026-05-10T13:58:09.140Z"
+  },
+  {
+    "element": "main.rs::create_todo",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 3 — POST /api/todos: создаёт TODO. Body: project_id?, title (required), description?. project_id опционален (default=active). title после trim не должен быть пустым → 400. После создания → broadcast TodoEvent::Upsert. Ответ 201 + Todo JSON.",
+    "createdAt": "2026-05-10T13:58:09.341Z",
+    "updatedAt": "2026-05-10T13:58:09.341Z"
+  },
+  {
+    "element": "main.rs::patch_todo",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 3 — PATCH /api/todos/:id: обновляет title/description. 404 если id не найден. После апдейта → broadcast Upsert. description: отсутствует=не трогать, null=стирает (через custom deserialize_optional_optional_string).",
+    "createdAt": "2026-05-10T13:58:09.542Z",
+    "updatedAt": "2026-05-10T13:58:09.542Z"
+  },
+  {
+    "element": "main.rs::delete_todo",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 3 — DELETE /api/todos/:id: 204 при успехе, 404 если не найден. Перед удалением читает todo.project_id (через todos.get), после успеха → broadcast Removed{project_id, id}.",
+    "createdAt": "2026-05-10T13:58:09.752Z",
+    "updatedAt": "2026-05-10T13:58:09.752Z"
+  },
+  {
+    "element": "main.rs::resolve_notify_session",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 3 — Резолвит целевую tmux-сессию для уведомления. Приоритет: 1) override из body (trim non-empty); 2) project.notify_session (trim non-empty); 3) fallback <prefix>-main если tmux_prefix непустой; 4) None (caller возвращает 400).",
+    "createdAt": "2026-05-10T13:58:09.952Z",
+    "updatedAt": "2026-05-10T13:58:09.952Z"
+  },
+  {
+    "element": "ws_todos.rs::TodoEvent",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 3 — Событие TODO для broadcast-канала. Сериализуется через serde tag='kind' rename_all='snake_case'. Варианты: Upsert{todo: Todo} (создана/обновлена), Removed{project_id, id} (удалена), Reload{project_id} (сигнал клиенту переподтянуть через fetchTodos). Метод project_id() для фильтрации стрима.",
+    "createdAt": "2026-05-10T13:58:13.482Z",
+    "updatedAt": "2026-05-10T13:58:13.482Z"
+  },
+  {
+    "element": "ws_todos.rs::todos_ws",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 3 — GET /ws/todos?project_id=... handler. Принимает Query<TodoWsQuery>; если project_id не задан — берёт активный проект. Upgrade в WebSocket → handle_socket с резолвленным project_id.",
+    "createdAt": "2026-05-10T13:58:13.689Z",
+    "updatedAt": "2026-05-10T13:58:13.689Z"
+  },
+  {
+    "element": "fetchTodos",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 4 — асинхронная функция в tmux-web/static/app.js. GET /api/todos?project_id=<pid> (или без параметра — бэкенд возьмёт активный проект). При успехе кладёт массив в state.todosData и вызывает renderTasks(). При сетевой/HTTP-ошибке логирует warn и кладёт пустой массив, чтобы board остался отрисованным. projectId = currentTodosProjectId() = state.activeProjectId. Вызывается из bootstrap (после fetchProjects), из visibilitychange (если WS не OPEN), из switchActiveProject, и как fallback poll каждые 30s через startTodosPolling.",
+    "createdAt": "2026-05-10T14:12:28.862Z",
+    "updatedAt": "2026-05-10T14:12:28.862Z"
+  },
+  {
+    "element": "connectTodosWs",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 4 — открывает WebSocket /ws/todos?project_id=<pid> (tmux-web/static/app.js). No-op если уже OPEN/CONNECTING. Парные функции: disconnectTodosWs, scheduleTodosWsReconnect, handleTodosWsMessage. Backoff серия [1000, 2000, 5000, 10000]ms. На onclose (если не closedByUs) запускает fallback polling и schedule reconnect. handleTodosWsMessage диспатчит kind: snapshot (state.todosData = msg.todos; renderTasks), upsert (replace или unshift по id), removed (splice по id), reload (fetchTodos()). Аналог connectTasksWs из Phase 6.D.",
+    "createdAt": "2026-05-10T14:12:29.073Z",
+    "updatedAt": "2026-05-10T14:12:29.073Z"
+  },
+  {
+    "element": "renderTodoCard",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 4 — рендерит TODO-карточку (tmux-web/static/app.js). Создаёт div.kanban-card с data-status='todo' и data-priority. dragstart payload — 'todo:'+id (префикс маркирует TODO для drop-handler в renderColumn, чтобы отличать от bd-issue). click → openTodoEditModal(todo) — но не если кликнули по .promote-btn. Отрисовывает: title, description (truncate 140 char + …), meta-row (P-pill, type-tag, ▲ promote button), labels (max 3 + +N). Кнопка promote вызывает promoteTodo(todo.id) с stopPropagation, чтобы не открывать edit-modal.",
+    "createdAt": "2026-05-10T14:12:29.275Z",
+    "updatedAt": "2026-05-10T14:12:29.275Z"
+  },
+  {
+    "element": "openTodoEditModal",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 4 — модалка редактирования TODO-карточки (tmux-web/static/app.js). Поля: title, description, session-input (Promote → tmux session). default session = state.currentSession || первая сессия проекта. Кнопки: Cancel (закрыть), Delete (DELETE /api/todos/:id с confirm), Promote (вызывает promoteTodo с введённым session), Save (PATCH /api/todos/:id с только изменёнными полями). Без поля status — у TODO-карточек его нет. WS upsert/removed синхронизирует state.todosData автоматически после успеха.",
+    "createdAt": "2026-05-10T14:12:29.482Z",
+    "updatedAt": "2026-05-10T14:12:29.482Z"
+  },
+  {
+    "element": "promoteTodo",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 4 — POST /api/todos/:id/promote (tmux-web/static/app.js). Сигнатура: promoteTodo(id, sessionOverride?). Резолв сессии: sessionOverride > state.currentSession > первая сессия активного проекта (по name asc, фильтр по project_id) > alert и выход. Optimistic remove: убирает TODO из state.todosData до ответа сервера, на ошибке делает splice rollback. Body запроса: {session}. На успехе ничего не делает — WS пришлёт {kind:removed, id} (idempotent) и /ws/tasks доставит upsert новой bd-задачи в Open. Используется в drop-handler (TODO→open), кнопке promote на карточке, и в openTodoEditModal.",
+    "createdAt": "2026-05-10T14:12:29.691Z",
+    "updatedAt": "2026-05-10T14:12:29.691Z"
+  },
+  {
+    "element": "buildNotificationsForm",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5 — рендер fieldset с notify-настройками одного проекта в Settings modal (tmux-web/static/app.js).\n\nПараметры: project (DTO с полями notify_template, notify_delay_minutes, notify_wait_previous, notify_session) и onSaved (callback после успешного PATCH).\n\nПоля формы:\n- notify_template — textarea (multiline, rows=3), placeholder 'task: {title}\\n{description}'. Поддерживает плейсхолдеры {id} {title} {description} {priority} {type}.\n- notify_delay_minutes — input[type=number, min=0, step=1]. 0 = отправлять сразу.\n- notify_wait_previous — checkbox. Если включён, переопределяет delay (сообщение уходит после закрытия предыдущей задачи в той же сессии).\n- notify_session — input[text], опциональный override tmux-сессии (пусто = текущая сессия проекта).\n\nHint выводит подсказку про плейсхолдеры и семантику delay/wait_previous.\n\nSave-кнопка собирает payload: notify_template (string, может быть пустой), notify_delay_minutes (parseInt fallback 0), notify_wait_previous (bool), notify_session ('' → null). Зовёт saveProjectSettings(project.id, payload). На успех — onSaved(); на ошибку — inline-сообщение в форме (не закрывая модалку).\n\nВозвращает <fieldset class='notify-fieldset'>.",
+    "createdAt": "2026-05-10T14:20:04.782Z",
+    "updatedAt": "2026-05-10T14:20:04.782Z"
+  },
+  {
+    "element": "saveProjectSettings",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5 — PATCH /api/projects/:id/settings с optimistic UI (tmux-web/static/app.js).\n\nСигнатура: async saveProjectSettings(projectId: string, payload: {notify_template, notify_delay_minutes, notify_wait_previous, notify_session}) → {ok: true, project: ProjectDto} | {ok: false, error: string}.\n\nСемантика:\n- notify_template, notify_delay_minutes, notify_wait_previous — отправляются как есть.\n- notify_session: '' → null (стереть override на бэке через deserialize_optional_optional_string в main.rs); строка → set; отсутствует → не трогать. Текущая реализация всегда передаёт явное значение (string|null).\n\nАлгоритм:\n1. Optimistic-обновление state.projects[idx] мерджем payload в существующий DTO (мгновенный UI-фидбэк).\n2. fetch PATCH /api/projects/:id/settings с JSON body.\n3. На !r.ok — rollback к prev-снимку и возврат {ok:false, error: text|status}.\n4. На r.ok — реконсайл state.projects[idx] = updated DTO, возврат {ok:true, project: updated}.\n5. На исключение — rollback и {ok:false, error: e.message}.\n\nНе закрывает модалку — это решает caller (buildNotificationsForm: при ошибке показывает inline-error, при успехе зовёт onSaved для re-render списка проектов с обновлёнными значениями).\n\nЗависит от: backend route patch_project_settings (tmux-web/src/main.rs:790).",
+    "createdAt": "2026-05-10T14:20:13.230Z",
+    "updatedAt": "2026-05-10T14:20:13.230Z"
+  },
+  {
+    "element": "openSettingsModal",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase wk7.4 (themes UI): settings-modal теперь содержит tab-bar с двумя вкладками — Notifications (исторический контент: список проектов + per-project notify-форма) и Themes (новая, Phase wk7).\n\nСтруктура DOM:\n- .modal-card.settings-modal\n  - .modal-tabs (role=tablist)\n    - .modal-tab-btn[data-tab=notifications].active (по умолчанию)\n    - .modal-tab-btn[data-tab=themes]\n  - .modal-tab-panel[data-panel=notifications] — h2 + ul#ps-list (renderList: проекты + buildNotificationsForm)\n  - .modal-tab-panel[data-panel=themes][hidden] — h2 + .themes-content (Phase 4 рендер)\n  - .modal-actions — кнопка Close\n\nshowTab(name) переключает active-класс tab-btn и hidden у panels. При первом открытии Themes-вкладки вызывает loadThemesIntoPanel + кэш themesState.\n\nСохранён ВЕСЬ функционал Notifications-вкладки: expanded Set, renderList, buildNotificationsForm, optimistic-обновление через saveProjectSettings — без изменений.",
+    "createdAt": "2026-05-10T14:20:26.443Z",
+    "updatedAt": "2026-05-10T15:11:19.084Z"
+  },
+  {
+    "element": "todo-stage",
+    "path": "",
+    "type": "page",
+    "content": "Фича TODO-stage (kanban storage column + промоут в bd-задачу с tmux-нотификацией). Реализована в Phases 1-5 (epics forge-phase1-backend-foundation-g06 .. forge-phase5-frontend-settings-1w9, проверена в forge-phase6-verification-hp9).\n\n## Цель\nДать пользователю отдельную storage-колонку TODO слева от bd-канбана: туда пишутся идеи, не превращаясь в bd-задачи. Когда пользователь готов взять идею в работу, он перетаскивает её в open — и tmux-web 1) создаёт bd-задачу, 2) отправляет в активную tmux-сессию текст-промпт по шаблону (через send_keys), 3) при необходимости откладывает отправку (delay) или ставит её в очередь до закрытия предыдущей задачи (wait_previous).\n\n## Backend компоненты\n- tmux-web/src/todos.rs — TodoStore (Arc<RwLock<Inner>>) + Todo (id UUID v4, project_id, title, description, priority, issue_type, labels, created_at/updated_at). Persist в <project>/.forge/todos.json, atomic save через tempfile+rename.\n- tmux-web/src/notifier.rs — фоновая корутина notifier_loop. NotifyJob (project_id, todo_title/desc, bd_task_id, deliver_at, wait_previous, target_session). NotifyMode {Immediate, Delayed, WaitPrevious}. Очередь per-(project, session). Persist в <project>/.forge/notify_state.json. NotifyHandle инкапсулирует mpsc::Sender<NotifierCmd>.\n- tmux-web/src/tasks_watcher.rs — diff issues.jsonl, broadcast TaskEvent::Closed, который notifier_loop потребляет для wait_previous flow.\n- tmux-web/src/tmux.rs::send_keys(session, text) — обёртка над tmux send-keys -t <session> <text> Enter.\n- tmux-web/src/projects.rs::Project — расширен полями notify_template / notify_delay_minutes / notify_wait_previous / notify_session (#[serde(default)]).\n- tmux-web/src/ws_todos.rs — TodoEvent (Upsert/Removed/Reload) + WS-handler /ws/todos с snapshot+heartbeat+lag-recovery.\n- tmux-web/src/main.rs роуты: GET/POST /api/todos, PATCH/DELETE /api/todos/:id, POST /api/todos/:id/promote, PATCH /api/projects/:id/settings, GET /ws/todos. format_notify_template + resolve_notify_session — helpers для подстановки и резолва target session.\n\n## Frontend компоненты (tmux-web/static/app.js)\n- TASK_COLUMNS дополнено 'todo' слева.\n- state.todosData + fetchTodos() (GET /api/todos?project_id) + connectTodosWs() (WS /ws/todos с reconnect backoff и fallback polling).\n- renderTasks: колонка todo рендерится из state.todosData, остальные — из state.tasksData. renderTodoCard для карточек.\n- Drag-drop: TODO→open вызывает promoteTodo(id, session). Прочие переходы (TODO↔другие) запрещены.\n- openCreateModal({status:'todo'}) — POST /api/todos (без поля status).\n- openTodoEditModal — модалка без status, с кнопкой Promote.\n- Settings modal расширен раскрывающейся секцией Notifications (buildNotificationsForm + saveProjectSettings → PATCH /api/projects/:id/settings).\n\n## Frontend компоненты (tmux-web/static/style.css)\n- Колонка TODO: фиолетовый border-left.\n- .notify-fieldset / .notify-field / .notify-actions / .btn-settings — стили формы Notifications в Settings.\n\n## Поток promote\n1. UI drop TODO→open → POST /api/todos/:id/promote {session}.\n2. Backend handler промоут_todo: создаёт bd-задачу через br create (внутри active project path), удаляет TODO из TodoStore, broadcast TodoEvent::Removed + TaskEvent::Created.\n3. Если notify_template задан — handler ставит NotifyJob в notifier очередь (mode = Immediate/Delayed/WaitPrevious в зависимости от настроек проекта).\n4. notifier_loop в tick:\n   - Immediate → tmux::send_keys сразу.\n   - Delayed → ждёт deliver_at, потом send_keys.\n   - WaitPrevious → блокирует очередь session до прихода TaskEvent::Closed для предыдущего bd_task_id.\n5. notify_state.json флашится после каждой mutation. На рестарте сервера notifier_loop восстанавливает очередь и ждёт оставшийся delay или TaskEvent::Closed.\n\n## Тесты / верификация (Phase 6)\n- cargo check / cargo build --release: clean (1 pre-existing warning в pty.rs).\n- Backend sanity через curl: POST /api/todos, PATCH /api/projects/:id/settings, DELETE /api/todos/:id — round-trip OK.\n- Manual smoke-test в Chrome: см. tmux-web/SMOKE_TEST.md (8 сценариев).\n- Аliases: 'todo column', 'notifier loop', 'tmux send keys', 'promote todo', 'promote queue', 'todo websocket'.",
+    "createdAt": "2026-05-10T14:28:50.333Z",
+    "updatedAt": "2026-05-10T14:28:54.631Z",
+    "aliases": [
+      "todo feature",
+      "todo notification",
+      "todo kanban"
+    ]
+  },
+  {
+    "element": "tmux-web/src/themes.rs",
+    "path": "tmux-web/src/themes.rs",
+    "type": "file",
+    "content": "Модуль модели тем и хранилища для tmux-web (Phase wk7).\n\n## Назначение\n\nОписывает цветовую тему UI + терминала + предоставляет атомарное файловое хранилище состояния тем (themes.json в data_dir, обычно ~/.config/forge/). Используется бэкендом для отдачи REST /api/themes* и фронтендом для применения CSS-переменных + xterm ITheme. Темы делятся на встроенные пресеты (компилируются в бинарь) и пользовательские (хранятся в themes.json).\n\n## Структуры\n\n### Theme\nПолная цветовая тема. Поля:\n- id: String — kebab-case slug, уникален во всём пространстве (presets + custom). Для пресетов фиксированный (default, dracula, ...); для custom — генерируется через uuid v4 в main.rs::create_custom_theme.\n- name: String — отображаемое имя (например, 'Solarized Dark').\n- ui: UiColors — палитра CSS-переменных.\n- term: TermColors — палитра терминала.\nСериализация: serde camelCase. Все цвета — String '#RRGGBB'.\n\n### UiColors (11 hex-значений)\n- bg — основной фон body/панелей.\n- bg_elev (camelCase: bgElev) — приподнятый фон (карточки, modal, header).\n- fg — основной текст.\n- fg_dim (fgDim) — приглушённый/вторичный текст.\n- border — линии разделителей и рамки.\n- accent — акцент (primary buttons, активная вкладка, focus ring).\n- warn — внимание (жёлто-оранжевый, attention-флаг сессии).\n- danger — ошибки и удаление.\n- p0/p1/p2 — цвета priority-плашек задач (P0=критично, P1=high, P2=normal).\n\n### TermColors (20 hex-значений → xterm.js ITheme)\n- foreground/background — основные цвета терминала.\n- cursor — цвет курсора.\n- selection (camelCase) — фон выделения; на фронте маппится в selectionBackground.\n- ANSI 8 базовых: black, red, green, yellow, blue, magenta, cyan, white.\n- ANSI 8 ярких: bright_black .. bright_white (camelCase: brightBlack..brightWhite).\n\n### ThemesState (envelope для themes.json)\n- active: String — id активной темы. Может ссылаться на preset или custom; если ссылка битая, GET /api/themes/active делает fallback на 'default' с tracing::warn!.\n- custom: Vec<Theme> — пользовательские темы. Пресеты в файл НЕ записываются. По #[serde(default)] поле опционально для миграционной совместимости.\n- Default::default() = { active: 'default', custom: vec![] }.\n\n## Функции\n\n### built_in_presets() -> Vec<Theme>\nВозвращает 9 пресетов в фиксированном порядке (id):\n1. 'default' — Default (baseline tmux-web; 1:1 с :root в style.css, #0e1116/#d8dee9).\n2. 'dracula' — Dracula (#282a36/#f8f8f2, accent #bd93f9).\n3. 'solarized-dark' — Solarized Dark (#002b36/#839496, accent #268bd2).\n4. 'solarized-light' — Solarized Light (#fdf6e3/#657b83, инверсия Solarized).\n5. 'monokai' — Monokai (#272822/#f8f8f2, accent #a6e22e).\n6. 'nord' — Nord (#2e3440/#d8dee9, accent #88c0d0).\n7. 'gruvbox-dark' — Gruvbox Dark (#282828/#ebdbb2, accent #fabd2f).\n8. 'one-dark' — One Dark (#282c34/#abb2bf, accent #61afef).\n9. 'tokyo-night' — Tokyo Night (#1a1b26/#a9b1d6, accent #7aa2f7).\n\nКаждый пресет полностью заполняет UiColors (11) и TermColors (20). Default используется как fallback при повреждённом state.active.\n\n### find_preset(id: &str) -> Option<Theme>\nВозвращает копию пресета по id (linear scan по built_in_presets).\n\n### themes_file_path(data_dir: &Path) -> PathBuf\nХелпер: data_dir.join('themes.json').\n\n### load(data_dir: &Path) -> ThemesState\nЧитает themes.json. Поведение fallback:\n- файла нет → ThemesState::default() (без записи на диск).\n- IO error → tracing::warn! + default.\n- JSON parse error → tracing::warn! + default.\nГарантирует, что сервер всегда стартует, даже при битом файле.\n\n### save(data_dir: &Path, state: &ThemesState) -> std::io::Result<()>\nАтомарная запись. Алгоритм:\n1. fs::create_dir_all(data_dir).\n2. serde_json::to_vec_pretty(state).\n3. Запись во временный <file>.tmp.\n4. fs::rename(<file>.tmp, themes.json) — атомарно на POSIX в пределах одного mount-point.\n1:1 со стратегией ProjectStore::save (projects.rs).\n\n## Связи и использование\n\n- main.rs: модуль импортируется как mod themes; AppState содержит themes (Arc<RwLock<ThemesState>>) + themes_dir (PathBuf, обычно registry_path.parent() = ~/.config/forge/). На старте: themes::load(&themes_dir) → AppState. Все REST-handler'ы темизации (5 endpoints) пишут через themes::save(&state.themes_dir, &s) под write-lock.\n- REST endpoints: GET /api/themes (presets+custom+active.id), GET /api/themes/active, PATCH /api/themes/active, POST /api/themes/custom, PUT /api/themes/custom/:id, DELETE /api/themes/custom/:id.\n- Фронтенд (app.js): mapTermTheme() ожидает camelCase (brightBlack, fgDim) — соответствует #[serde(rename_all = camelCase)].\n- style.css :root preset Default 1:1 с built_in_presets()[0] — это инвариант (тест presets_count_and_unique_ids косвенно его подтверждает).\n\n## Бизнес-логика и ограничения\n\n- active.id может ссылаться как на preset, так и на custom. Поиск: сначала find_preset(id), потом state.custom.iter().find. Если не нашли нигде — fallback на 'default' пресет (с warn-логом).\n- Пресеты иммутабельны: PUT /api/themes/custom/:id с id пресета → 409. POST с id, совпадающим с пресетом → 409.\n- Активную тему нельзя удалить: DELETE /api/themes/custom/:id где state.active == id → 409.\n- При создании custom без id (или с пустым/whitespace id) — генерируется uuid v4. Конфликт по id (presets ИЛИ custom) → 409.\n- Persist гарантия: каждая мутация (PATCH active, POST/PUT/DELETE custom) сначала меняет state в памяти, затем сразу themes::save. При IO-ошибке возвращается 500, но изменение в памяти НЕ откатывается (best-effort durability — приемлемо для конфигурации).\n- Тесты модуля: presets_count_and_unique_ids (9 уникальных id, default = baseline), camel_case_serde (round-trip с проверкой имён bgElev/fgDim/brightBlack), load_missing_returns_default, save_then_load_roundtrip, corrupt_file_falls_back_to_default, find_preset_works.\n\n## Файл\n\n- Путь: tmux-web/src/themes.rs.\n- Размер: ~712 строк (включая 9 пресетов + тесты).",
+    "createdAt": "2026-05-10T14:47:22.729Z",
+    "updatedAt": "2026-05-10T15:23:10.973Z"
+  },
+  {
+    "element": "applyTheme",
+    "path": "",
+    "type": "unknown",
+    "content": "Frontend runtime для применения темы (tmux-web/static/app.js, Phase 3 wk7).\n\n## Что делает\napplyTheme(theme) применяет полученную с бэкенда тему в две точки:\n1. **CSS-переменные на :root** — для каждого ключа theme.ui (camelCase) ставит соответствующую --kebab-case переменную через document.documentElement.style.setProperty. 11 themable ключей: bg→--bg, bgElev→--bg-elev, fg→--fg, fgDim→--fg-dim, border→--border, accent→--accent, warn→--warn, danger→--danger, p0→--p0, p1→--p1, p2→--p2.\n2. **xterm.js options.theme** — если state.term существует, обновляет term.options.theme через mapTermTheme(theme.term). xterm 5.x поддерживает горячую смену темы через присвоение options.theme; цвета пересчитываются в следующем кадре рендера.\n3. **state.activeTheme** — сохраняет тему для повторного применения и для Phase 5 (live preview редактора).\n\n## Параметры\ntheme: {id?, name?, kind?, ui?, term?} — структура из GET /api/themes/active. Любое поле необязательно: пустые строки в ui игнорируются, отсутствующий term не трогает терминал.\n\n## Защита от ошибок\n- Защита от theme=null/undefined.\n- Игнор пустых строк в ui (typeof v === 'string' && v.length > 0).\n- try/catch на присвоение options.theme — на случай если xterm-инстанс в не-готовом состоянии.\n\n## Связанные\n- mapTermTheme — маппит наши имена в xterm ITheme.\n- switchTheme — переключает active на сервере и применяет.\n- loadActiveThemeOrNull — bootstrap-загрузка.\n- state.activeTheme — текущая применённая тема.\n- style.css :root — 11 переменных задаются с дефолтами (Phase 2 wk7).\n- themes.rs (backend) — отдаёт Theme в camelCase через serde.\n\n## Бизнес-логика\napplyTheme вызывается:\n- на bootstrap из loadActiveThemeOrNull (CSS применяется до new Terminal).\n- из switchTheme после PATCH+GET active.\n- (будущее, Phase 5) из редактора кастомной темы для live preview.",
+    "createdAt": "2026-05-10T15:03:40.810Z",
+    "updatedAt": "2026-05-10T15:03:40.810Z"
+  },
+  {
+    "element": "mapTermTheme",
+    "path": "",
+    "type": "unknown",
+    "content": "Маппер TermColors → xterm.js ITheme (tmux-web/static/app.js, Phase 3 wk7).\n\n## Что делает\nmapTermTheme(t) приводит структуру TermColors из бэкенда (camelCase) к формату xterm.js ITheme. Возвращает новый объект, безопасный для присвоения в term.options.theme или для передачи в new Terminal({theme: ...}).\n\n## Маппинг ключей\n- foreground/background/cursor → как есть.\n- selection → **selectionBackground** (единственная переименовка: xterm 5.x использует selectionBackground; до 5.x было selection).\n- ANSI 8-bit: black, red, green, yellow, blue, magenta, cyan, white → как есть.\n- ANSI bright: brightBlack, brightRed, brightGreen, brightYellow, brightBlue, brightMagenta, brightCyan, brightWhite → как есть. Бэкенд сериализует через serde rename_all=camelCase, поэтому фронт получает уже brightBlack, snake-case→camel конверсия не нужна.\n\n## Параметры\nt: TermColors из theme.term (после JSON.parse от GET /api/themes/active). Если t=null — возвращает {} (xterm проигнорирует и оставит дефолты).\n\n## Связанные\n- applyTheme — единственный вызывающий внутри runtime.\n- initTerminal — принимает результат mapTermTheme как initial theme.\n- themes.rs::TermColors — серверный аналог.\n\n## Бизнес-логика\nПоскольку xterm.js рендерит background сразу при open(), на bootstrap-стадии mapTermTheme должен передаваться в конструктор Terminal — присвоение options.theme после open пересчитает только глифы, оставив background-canvas от старой темы.",
+    "createdAt": "2026-05-10T15:03:51.045Z",
+    "updatedAt": "2026-05-10T15:03:51.045Z"
+  },
+  {
+    "element": "switchTheme",
+    "path": "",
+    "type": "unknown",
+    "content": "Переключение активной темы на сервере без релоада страницы (tmux-web/static/app.js, Phase 3 wk7).\n\n## Что делает\nasync switchTheme(id) — атомарная операция смены активной темы:\n1. PATCH /api/themes/active с body {id} (Content-Type: application/json) — сервер сохраняет новый active в themes.json.\n2. GET /api/themes/active — получает полный Theme (нужна term-секция для xterm).\n3. applyTheme(theme) — применяет CSS + xterm runtime + сохраняет в state.activeTheme.\n\n## Параметры\nid: string — id темы. Может быть пресет ('default', 'dracula', 'nord', ...) или uuid кастомной темы.\n\n## Обработка ошибок\n- Если PATCH вернул не-2xx — window.alert('Failed to switch theme: ' + body|status). Тема не применяется.\n- Если GET вернул не-2xx — window.alert. Тема не применяется (на сервере active уже сменился, при следующей загрузке подхватится).\n- При network-сбое (catch) — window.alert(e.message).\n\nwindow.alert используется как стандартный механизм нотификаций в этом app.js (см. createSessionPrompt, promoteTodo и др.).\n\n## Связанные\n- applyTheme — финальный шаг применения.\n- /api/themes/active (PATCH) — themes.rs::patch_active_theme.\n- /api/themes/active (GET) — themes.rs::get_active_theme.\n- (будущее, Phase 4) — будет вызываться из вкладки Themes в settings modal при клике на карточку пресета или custom темы.\n\n## Бизнес-логика\nБез релоада: изменения видны сразу же. PATCH+GET — отдельные запросы, поскольку PATCH возвращает только {active: id}, а нам нужен полный Theme для applyTheme; решение допустимо т.к. /api/themes/active — read-lock, дешёвый.",
+    "createdAt": "2026-05-10T15:04:01.504Z",
+    "updatedAt": "2026-05-10T15:04:01.504Z"
+  },
+  {
+    "element": "loadActiveThemeOrNull",
+    "path": "",
+    "type": "unknown",
+    "content": "Bootstrap-загрузка активной темы до инициализации xterm (tmux-web/static/app.js, Phase 3 wk7).\n\n## Что делает\nasync loadActiveThemeOrNull() — вызывается из bootstrap() ДО initTerminal:\n1. fetch GET /api/themes/active.\n2. Если ответ не ok — console.warn и возвращает null (initTerminal применит fallback-палитру).\n3. Парсит JSON, вызывает applyTheme(theme) — это применяет CSS-переменные на :root СРАЗУ. xterm-ветка внутри applyTheme пропускается т.к. state.term ещё null.\n4. Возвращает mapTermTheme(theme.term) — для передачи в initTerminal({theme: ...}).\n\n## Зачем нужно ДО initTerminal\nxterm.js рендерит background-canvas при первом open(). Если создать Terminal с дефолтной темой, а потом присвоить options.theme — глифы перерисуются с новыми цветами, но background-canvas останется от старой темы до следующего полного перерисова. Поэтому термальная палитра должна попасть в конструктор new Terminal({theme: ...}).\n\n## Возвращает\nxterm ITheme | null. null означает: API недоступен или вернул не-2xx; вызывающий передаст null в initTerminal, который применит fallback-палитру (background:#000, foreground:#d8dee9 — соответствует историческому поведению до Phase 3).\n\n## Обработка ошибок\n- Не-2xx ответ → console.warn + return null (НЕ alert, чтобы не блокировать загрузку при offline-разработке).\n- Сетевой сбой (catch) → console.warn + return null.\n\n## Связанные\n- bootstrap() — единственный вызывающий.\n- initTerminal(termTheme) — принимает результат.\n- applyTheme — применяет CSS-секцию.\n- /api/themes/active — themes.rs::get_active_theme.",
+    "createdAt": "2026-05-10T15:04:10.984Z",
+    "updatedAt": "2026-05-10T15:04:10.984Z"
+  },
+  {
+    "element": "bootstrap",
+    "path": "",
+    "type": "unknown",
+    "content": "Async entry-point tmux-web frontend (tmux-web/static/app.js, обновлён в Phase 3 wk7).\n\n## Что делает\nasync bootstrap() — точка входа, регистрируется через document.addEventListener('DOMContentLoaded', bootstrap).\n\nПоследовательность:\n1. **await loadActiveThemeOrNull()** (Phase 3 wk7) — загружает /api/themes/active, применяет CSS-переменные на :root, возвращает xterm ITheme или null.\n2. **initTerminal(termTheme)** — создаёт xterm Terminal с темой (или fallback при null).\n3. showPlaceholder(true), setStatus('disconnected') — initial UI.\n4. Регистрирует DOM-листенеры:  → createSessionPrompt, tab-bar (Phase 6.A), / (Phase 6.A/C), // (Phase 6.B).\n5. fetchProjects().finally(() => { fetchSessions(); startPolling(); connectTasksWs(); fetchTodos(); connectTodosWs(); }).\n6. window.addEventListener('beforeunload', ...) — stopPolling + disconnect всех WS.\n7. document.addEventListener('visibilitychange', ...) — пауза/возобновление polling при скрытии страницы.\n\n## Почему async (Phase 3 wk7)\nДо Phase 3 bootstrap был sync. Загрузка темы обязана произойти ДО new Terminal (xterm рендерит фон при open() и присвоение options.theme после этого не пересчитывает background-canvas). await loadActiveThemeOrNull() — единственный новый async-шаг; остальные init-ы (fetchProjects.finally(...)) сохраняют прежнее не-блокирующее поведение.\n\nDOMContentLoaded листенер не ждёт возврата bootstrap — но это безопасно, т.к. внутри bootstrap await цепочка обеспечивает правильный порядок.\n\n## Связанные\n- loadActiveThemeOrNull, applyTheme, mapTermTheme — Phase 3 wk7.\n- initTerminal — теперь принимает termTheme.\n- fetchProjects, fetchSessions, startPolling — sessions/projects.\n- connectTasksWs, fetchTodos, connectTodosWs — realtime.\n- DOMContentLoaded регистрация в конце IIFE (~строка 2880).",
+    "createdAt": "2026-05-10T15:04:52.357Z",
+    "updatedAt": "2026-05-10T15:04:52.357Z"
+  },
+  {
+    "element": "initTerminal",
+    "path": "",
+    "type": "unknown",
+    "content": "Инициализация xterm.js Terminal (tmux-web/static/app.js, обновлён в Phase 3 wk7).\n\n## Сигнатура (Phase 3 wk7)\ninitTerminal(termTheme) — теперь принимает xterm ITheme (результат mapTermTheme). До Phase 3 был initTerminal() без аргументов с hard-coded theme.\n\n## Что делает\n1. Берёт глобалы из CDN: window.Terminal, window.FitAddon.FitAddon, window.WebLinksAddon.WebLinksAddon. Если не загружены — console.error и return.\n2. Создаёт new Terminal({ cursorBlink: true, fontFamily: ui-monospace..., fontSize: 13, scrollback: 5000, allowProposedApi: true, theme: termTheme || fallbackTheme }).\n3. fallbackTheme = { background:#000000, foreground:#d8dee9, cursor:#d8dee9, selectionBackground:#3a4356 } — используется только при offline (loadActiveThemeOrNull вернул null).\n4. Создаёт fitAddon, webLinksAddon, loadAddon-ит их в term, term.open().\n5. fitAddon.fit() в try/catch (контейнер может быть 0×0).\n6. term.onData → state.ws.send(state.encoder.encode(data)) — пользовательский ввод в PTY.\n7. term.onResize → sendResize(cols, rows) — JSON control message в WS.\n8. Сохраняет в state.term, state.fitAddon, state.webLinksAddon.\n9. ResizeObserver на  → fitAddon.fit() (на изменение sidebar/window/font).\n10. window resize listener — страховка для старых браузеров.\n\n## Параметры\ntermTheme: xterm ITheme | null. null → fallback. Не-null — структура с background/foreground/cursor/selectionBackground/black/.../white/brightBlack/.../brightWhite.\n\n## Связанные\n- bootstrap → вызывает с результатом loadActiveThemeOrNull.\n- state.term, state.fitAddon — заполняются здесь.\n- sendResize, applyTheme — используют state.term.\n- xterm.js 5.3.0 + addon-fit 0.8.0 + addon-web-links 0.9.0 — через CDN.",
+    "createdAt": "2026-05-10T15:05:02.552Z",
+    "updatedAt": "2026-05-10T15:05:02.552Z"
+  },
+  {
+    "element": "loadThemesIntoPanel",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase wk7.4: загрузчик Themes-панели в settings-modal.\n\nСигнатура: loadThemesIntoPanel(panel: HTMLElement, themesState: { loaded, data })\n\nШаги:\n1. Показывает .themes-loading placeholder в panel.\n2. GET /api/themes → ожидает { presets: Theme[], custom: Theme[], active: string }.\n3. Нормализует shape (массивы по умолчанию пустые, active — строка|null) и сохраняет в themesState.data, выставляет themesState.loaded=true.\n4. Зовёт renderThemesPanel(panel, themesState).\n5. На любую ошибку (сеть, не-2xx, парсинг) — рисует .themes-error + кнопку .themes-retry, которая повторно вызывает loadThemesIntoPanel.\n\nИспользуется в openSettingsModal: первый показ Themes-вкладки → загрузка; повторные переключения вкладок не дёргают GET (флаг themesState.loaded). После DELETE custom-темы кэш сбрасывается (themesState.loaded=false) и идёт reload.",
+    "createdAt": "2026-05-10T15:11:25.818Z",
+    "updatedAt": "2026-05-10T15:11:25.818Z"
+  },
+  {
+    "element": "renderThemesPanel",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase wk7.4: рендерер Themes-панели. Идемпотентен — безопасно вызывать многократно (например, после switchTheme).\n\nСигнатура: renderThemesPanel(panel: HTMLElement, themesState: { data: { presets, custom, active } })\n\nЛогика:\n- Очищает panel.innerHTML и рисует две секции:\n\n1. Секция 'Presets' — h3 .themes-section-title + .theme-card-grid с buildThemeCard на каждый theme из data.presets.\n   Активная карточка (theme.id === data.active) → класс .active (border accent + box-shadow inset + badge).\n   Click по карточке → switchTheme(theme.id) (Phase 3) → themesState.data.active = state.activeTheme.id → renderThemesPanel (без повторного GET).\n\n2. Секция 'Custom themes' — header с h3 + кнопкой '+ New custom' (.theme-new-btn → openThemeEditor(null)).\n   Сетка .theme-card-grid с custom-темами; пусто → .themes-empty 'No custom themes yet.'\n   Каждая custom-карточка дополнительно содержит .theme-card-tools:\n     - .theme-card-tool 'edit' → ev.stopPropagation + openThemeEditor(theme).\n     - .theme-card-tool.theme-card-tool-danger 'del' → confirm + DELETE /api/themes/:id + reload.\n\nНикогда не вызывает GET — реагирует только на локальный state. Для re-fetch нужно сбросить themesState.loaded и вызвать loadThemesIntoPanel.",
+    "createdAt": "2026-05-10T15:11:37.178Z",
+    "updatedAt": "2026-05-10T15:11:37.178Z"
+  },
+  {
+    "element": "buildThemeCard",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase wk7.4: фабрика DOM-карточки для одной темы.\n\nСигнатура: buildThemeCard(theme: Theme, isActive: boolean, onClick: () => void) → HTMLElement\n\nВозвращает .theme-card (cursor pointer, border, padding, dataset.themeId=theme.id) с дочерними:\n- .theme-card-name — theme.name (fallback на theme.id или '—')\n- .theme-card-preview — flex row 22px высотой из 10 цветных полосок (.theme-card-swatch):\n    background, foreground, black, red, green, yellow, blue, magenta, cyan, white.\n    background и foreground имеют flex 1.4 (визуально доминируют — это лицо темы).\n    Если term[key] не строка — swatch остаётся прозрачным (background не выставляется).\n    title=key+color для тултипа.\n- isActive=true: добавляется класс .active (border-color accent + box-shadow inset accent) и .theme-card-badge 'active' в правом верхнем углу.\n\nClick по карточке (если onClick передан) — onClick(). Никаких внутренних запросов.",
+    "createdAt": "2026-05-10T15:11:44.729Z",
+    "updatedAt": "2026-05-10T15:11:44.729Z"
+  },
+  {
+    "element": "openThemeEditor",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5 (forge-wk7.5): полнофункциональный редактор кастомных тем.\n\nСигнатура: openThemeEditor(themeOrNull: Theme | null) → void\n\nРежимы:\n- create: themeOrNull === null. Заголовок 'New custom theme', baseline draft — клон активной темы (state.activeTheme) либо первого пресета, либо нули. Имя пустое.\n- edit: themeOrNull — объект Theme с id, существующий в custom. Заголовок 'Edit theme: {name}', поля заполнены из объекта.\n\nСтруктура DOM:\n- .modal-overlay (через buildModalOverlay) + .modal-card.theme-editor-modal (720px)\n- .theme-editor-header: h2 с заголовком + .theme-editor-close (×)\n- .theme-editor-body:\n  - .theme-editor-meta (grid 1:1): name input + duplicate-from-preset select\n  - section UI colors → .theme-editor-ui-grid (2col, 11 пикеров через buildColorPickerRow)\n  - section Terminal colors → .theme-editor-term-base-grid (2col, 4 base) + .theme-editor-ansi-grid (4×4 для 16 ANSI)\n  - section Live preview → buildLivePreviewContainer().el\n- .modal-actions.theme-editor-actions: Cancel + Save (primary)\n\nЛокальный state:\n- draft: { id, name, ui: {11 полей}, term: {20 полей} } — все hex.\n- presets[]: загружается асинхронно через GET /api/themes для dropdown.\n- uiRefs/termRefs: { [key]: { el, setValue(hex) } } — DOM-ссылки пикеров для applyPresetToDraft без re-render.\n\nПоведение:\n- Изменение любого пикера → мутация draft + updatePreview().\n- Duplicate-from-preset change → applyPresetToDraft(preset): копирует 31 значение, если name пуст — подставляет 'Copy of {presetName}'. Select сбрасывается на 'From scratch'.\n- Save: validateDraft → buildThemePayload → POST/PUT /api/themes/custom[/id]. При 2xx — close + loadThemesIntoPanel(#ps-panel-themes). При 4xx — alert.\n- Cancel/X/click-outside → overlay.remove() без сохранения.\n\nЗависимости: buildColorPickerRow, buildLivePreviewContainer, validateDraft, buildThemePayload, normalizeHex, cloneThemeColors, THEME_UI_KEYS, THEME_TERM_BASE_KEYS, THEME_TERM_ANSI_KEYS, THEME_TERM_KEYS, HEX_COLOR_RE, buildModalOverlay, loadThemesIntoPanel, state.activeTheme.\n\nИспользуется из renderThemesPanel: '+ New custom' → openThemeEditor(null); edit-кнопка custom-карточки → openThemeEditor(theme).",
+    "createdAt": "2026-05-10T15:11:55.475Z",
+    "updatedAt": "2026-05-10T15:18:48.171Z"
+  },
+  {
+    "element": "style.css",
+    "path": "style.css",
+    "type": "file",
+    "content": "Frontend CSS tmux-web/static/style.css. Phase 5 cleanup (P5.4): удалены все legacy git-UI стили (#git-toolbar, #git-branch, #git-ahead-behind, #git-body, #git-files-pane, #git-commit-pane, #git-graph-pane, #git-staged-list/-unstaged-list label, .git-badge.* варианты для modified/added/deleted/untracked/renamed/conflict/empty, #git-commit-msg/-btn/-error, #git-graph-canvas). Остался: #git контейнер (display:flex column, видимость через [hidden]) + lazygit-tab стили (.git-term position:relative с #000 background, .git-placeholder для no-active-project, .git-error banner с .git-error-text/-retry/-close кнопками, xterm-внутри-.git-term растягивание .xterm/.xterm-viewport/.xterm-screen).",
+    "createdAt": "2026-05-10T15:12:11.180Z",
+    "updatedAt": "2026-05-10T18:13:04.598Z"
+  },
+  {
+    "element": "buildColorPickerRow",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5: фабрика DOM-строки цветового пикера для редактора тем.\n\nСигнатура: buildColorPickerRow(def: {key, label}, initialHex: string, onChange: (hex)=>void, compact?: boolean) → { el: HTMLElement, setValue(hex: string): void }\n\nВозвращает .theme-editor-row.theme-editor-color-row[.theme-editor-color-row-compact] с:\n- .theme-editor-row-label — label.text = def.label\n- .theme-editor-color-pair:\n  - <input type=color> класс .theme-editor-color-input — нативный picker\n  - <input type=text> класс .theme-editor-hex-input — hex (#rrggbb), maxLength=7\n\nДвусторонняя синхронизация:\n- color → text: input event на color-picker, всегда валидный → text.value = color.value, .invalid снимается, onChange(v).\n- text → color: input event на text-input, проверяется через HEX_COLOR_RE. Валид → color.value = v, .invalid снимается, onChange(v). Невалид → text.classList.add('invalid') (border var(--danger)), onChange НЕ вызывается, color picker не меняется.\n- На blur невалидного hex — text.value откатывается к color.value (последнее валидное), .invalid снимается.\n\nsetValue(hex):\n- Programmatically обновляет оба инпута на normalizeHex(hex). Используется при duplicate-from-preset (applyPresetToDraft) — без вызова onChange.\n\nПараметр compact (true): уменьшает шрифт label и размеры пикера; используется для ANSI-сетки 4×4. Иначе — обычный layout для UI и base term.\n\nЗависимости: HEX_COLOR_RE, normalizeHex.",
+    "createdAt": "2026-05-10T15:18:58.129Z",
+    "updatedAt": "2026-05-10T15:18:58.129Z"
+  },
+  {
+    "element": "buildLivePreviewContainer",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5: фабрика live-preview блока для редактора тем.\n\nСигнатура: buildLivePreviewContainer() → { el: HTMLElement, update(draft: {ui, term}): void }\n\nВозвращает .theme-editor-preview контейнер с двумя секциями:\n\n1. .theme-preview-ui — мини-приложение:\n   - .theme-preview-sidebar (бэкграунд var(--bg-elev)): заголовок 'Sessions' + список (main/logs/editor) с активным элементом (var(--accent) бэкграунд).\n   - .theme-preview-main (фон var(--bg)): .theme-preview-text (var(--fg)), .theme-preview-text-dim (var(--fg-dim)), .theme-preview-tags (3 пилюли P0/P1/P2 на var(--p0/p1/p2)), .theme-preview-buttons (accent/warn/danger).\n\n2. .theme-preview-term — мини-терминал:\n   - 4 строки: 'ls --color' prompt, 8 base ANSI цветных span'ов, 8 bright ANSI, cursor + selection sample.\n\nupdate(draft):\n- 11 ui-цветов выставляются как scoped CSS-переменные (--bg, --bg-elev, --fg, --fg-dim, --border, --accent, --warn, --danger, --p0, --p1, --p2) на КОРНЕВОМ .theme-editor-preview через el.style.setProperty. Внутри потомки используют var(...) — это даёт scoped-применение БЕЗ влияния на :root приложения.\n- 20 term-цветов — inline стили: term.style.background/color/border + по-span'но color = ANSI цвет + cursor.style.background/color (инверсия) + selection.style.background/color.\n\nЗависимости: вызывается openThemeEditor; CSS-классы .theme-preview-* в style.css.",
+    "createdAt": "2026-05-10T15:19:07.984Z",
+    "updatedAt": "2026-05-10T15:19:07.984Z"
+  },
+  {
+    "element": "validateDraft",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5: валидация черновика темы перед save в openThemeEditor.\n\nСигнатура: validateDraft(draft: {name, ui, term}) → { ok: true } | { ok: false, error: string }\n\nПроверяет:\n1. draft.name.trim() не пустой → 'Name is required.'\n2. Для каждого ключа из THEME_UI_KEYS — draft.ui[key] валидный hex по HEX_COLOR_RE → 'UI / {label}: invalid hex color.'\n3. Для каждого ключа из THEME_TERM_KEYS (base 4 + ANSI 16) — draft.term[key] валидный hex → 'Terminal / {label}: invalid hex color.'\n\nИспользуется кнопкой Save: при ошибке alert + отмена запроса. В норме (пользователь не вмешивался напрямую) draft всегда валиден, т.к. buildColorPickerRow гарантирует rollback на blur.",
+    "createdAt": "2026-05-10T15:19:15.596Z",
+    "updatedAt": "2026-05-10T15:19:15.596Z"
+  },
+  {
+    "element": "buildThemePayload",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5: формирование payload для POST/PUT custom theme.\n\nСигнатура: buildThemePayload(draft: {id,name,ui,term}, isEdit: boolean) → ThemeDTO\n\nВозвращает: { id, name, kind: 'custom', ui: {...}, term: {...} } — camelCase shape, который ожидает бэкенд (Theme/UiColors/TermColors имеют #[serde(rename_all = camelCase)]).\n\n- В create-режиме (isEdit=false): id оставлен пустым ('') — сервер сгенерирует UUID v4 (см. create_custom_theme в main.rs).\n- В edit-режиме (isEdit=true): id из draft.id, но сервер всё равно его игнорирует и берёт из path-параметра PUT /api/themes/custom/:id.\n- name проходит trim().\n- ui/term — копируются через spread (защита от мутации после save).\n\nИспользуется в Save handler внутри openThemeEditor.",
+    "createdAt": "2026-05-10T15:19:21.377Z",
+    "updatedAt": "2026-05-10T15:19:21.377Z"
+  },
+  {
+    "element": "normalizeHex",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5: нормализация hex-цвета для редактора тем.\n\nСигнатура: normalizeHex(value: any, fallback?: string) → string\n\n- Если value — строка и проходит HEX_COLOR_RE (#[0-9a-fA-F]{6}) → возвращает value.toLowerCase().\n- Иначе → возвращает fallback (или '#000000' если не задан).\n\nИспользуется в cloneThemeColors (защита от undefined/невалид-полей при load темы) и в buildColorPickerRow.setValue (programmatic обновление пикера).",
+    "createdAt": "2026-05-10T15:19:24.419Z",
+    "updatedAt": "2026-05-10T15:19:24.419Z"
+  },
+  {
+    "element": "cloneThemeColors",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5: глубокое копирование ui/term из объекта Theme с гарантией наличия ВСЕХ ключей.\n\nСигнатура: cloneThemeColors(theme?: Theme | null) → { ui: object, term: object }\n\n- Для каждого ключа из THEME_UI_KEYS (11) → ui[key] = normalizeHex(theme?.ui?.[key], '#000000').\n- Для каждого ключа из THEME_TERM_KEYS (20) → term[key] = normalizeHex(theme?.term?.[key], '#000000').\n\nИспользуется в openThemeEditor для baseline draft (как из themeOrNull в edit-режиме, так и из state.activeTheme в create-режиме) и в applyPresetToDraft (когда юзер выбирает 'Duplicate from preset').",
+    "createdAt": "2026-05-10T15:19:28.263Z",
+    "updatedAt": "2026-05-10T15:19:28.263Z"
+  },
+  {
+    "element": "themes-feature",
+    "path": "",
+    "type": "page",
+    "content": "# Themes feature (forge-wk7)\n\n## Обзор\n\nПоддержка переключаемых тем (UI + терминал) для tmux-web — аналог тем в Termius. Одна Theme описывает одновременно палитру UI (фон, текст, акценты, рамки, priority-цвета) и палитру терминала (16 ANSI + foreground/background/cursor/selection). Темы делятся на встроенные пресеты (9 шт) и пользовательские кастомные. Хранение глобальное (один набор активная-тема + custom-темы на пользователя, не per-project). UI — отдельная вкладка 'Themes' в settings modal с превью-карточками, редактором палитры и live preview.\n\nКлючевая идея: переключение темы происходит мгновенно без перезагрузки страницы и без пересоздания xterm Terminal. CSS-переменные :root обновляются за один вызов, xterm.options.theme меняется через горячий API xterm.js 5.x.\n\n## Архитектура\n\nBackend (Rust / Axum):\n- tmux-web/src/themes.rs — модель Theme/UiColors/TermColors, ThemesState, load/save/built_in_presets/find_preset.\n- tmux-web/src/main.rs — AppState содержит themes: Arc<RwLock<ThemesState>> + themes_dir: PathBuf; 5 REST endpoints.\n\nStorage:\n- ~/.config/forge/themes.json — { active: String, custom: Vec<Theme> }. Пресеты в файл НЕ записываются — компилируются в бинарь. Атомарная запись через write-tmp + rename. Fallback на default при отсутствии/повреждении.\n\nREST API:\n- GET /api/themes — { presets, custom, active }.\n- GET /api/themes/active — полный объект активной темы.\n- PATCH /api/themes/active — { id }, переключить активную (валидация против presets+custom).\n- POST /api/themes/custom — создать (uuid v4 если id пустой; 409 при конфликте).\n- PUT /api/themes/custom/:id — заменить (404 если нет; 409 если id пресета).\n- DELETE /api/themes/custom/:id — удалить (409 если активна; 204 при успехе).\n\nFrontend (vanilla JS + CSS):\n- tmux-web/static/style.css — :root с 11 themable + ~58 secondary CSS-переменными; стили theme-card, theme-card-grid, modal-tabs, theme-editor-modal.\n- tmux-web/static/app.js — applyTheme/mapTermTheme/switchTheme/loadActiveThemeOrNull (runtime); loadThemesIntoPanel/renderThemesPanel/buildThemeCard (UI-вкладка); openThemeEditor (редактор с пикерами и live preview).\n\n## Поток данных\n\n### Bootstrap (загрузка страницы)\n1. bootstrap() (async) → loadActiveThemeOrNull() → GET /api/themes/active.\n2. applyTheme(theme): 11 CSS-переменных через document.documentElement.style.setProperty + state.activeTheme = theme.\n3. Возврат mapTermTheme(theme.term) → передаётся в initTerminal(termTheme) → new Terminal({ theme: ... }) — xterm создаётся уже с правильным background.\n4. Если GET упал (offline) → null → initTerminal использует hard-coded fallback.\n\n### Switch theme (клик по карточке)\n1. switchTheme(id) → PATCH /api/themes/active с { id }.\n2. GET /api/themes/active → applyTheme(theme).\n3. CSS обновляется через :root setProperty (11 переменных).\n4. xterm: state.term.options.theme = mapTermTheme(theme.term) — горячая смена без пересоздания.\n5. renderThemesPanel перерисовывается, чтобы обновить .active class на карточках.\n\n### Custom CRUD\n1. New: openThemeEditor(null) → редактор с baseline draft → Save → POST → loadThemesIntoPanel.\n2. Edit: openThemeEditor(theme) → пикеры заполнены текущими значениями → live preview → Save → PUT → loadThemesIntoPanel.\n3. Delete: confirm → DELETE → loadThemesIntoPanel (показ ошибки 409 если активна).\n\n## 9 встроенных пресетов\n\nВозвращаются built_in_presets() в фиксированном порядке:\n1. default — Default (baseline tmux-web, #0e1116 / #d8dee9, accent #2a7fff). 1:1 соответствие :root в style.css.\n2. dracula — Dracula (#282a36 / #f8f8f2, accent #bd93f9).\n3. solarized-dark — Solarized Dark (#002b36 / #839496, accent #268bd2).\n4. solarized-light — Solarized Light (#fdf6e3 / #657b83, инверсия).\n5. monokai — Monokai (#272822 / #f8f8f2, accent #a6e22e).\n6. nord — Nord (#2e3440 / #d8dee9, accent #88c0d0).\n7. gruvbox-dark — Gruvbox Dark (#282828 / #ebdbb2, accent #fabd2f).\n8. one-dark — One Dark (#282c34 / #abb2bf, accent #61afef).\n9. tokyo-night — Tokyo Night (#1a1b26 / #a9b1d6, accent #7aa2f7).\n\nКаждый пресет полностью заполняет UiColors (11) и TermColors (20). Используются официальные палитры соответствующих проектов. Default — fallback при повреждённом state.active.\n\n## Custom themes — CRUD и ограничения\n\n- id-namespace общий с пресетами: создание custom с id 'dracula' → 409.\n- id генерируется uuid v4 если не передан (поле trim'ится перед проверкой).\n- PUT перезаписывает id из URL (тело id игнорируется) — фронт не должен дублировать.\n- Активную тему нельзя удалить: DELETE с id == state.active → 409.\n- Пресеты иммутабельны: PUT/POST с id пресета → 409.\n- Все мутации сохраняют themes.json атомарно (write-tmp + rename). При IO-ошибке save → 500, изменение в памяти не откатывается.\n- При битом state.active (id не найден ни в пресетах, ни в custom) — GET /api/themes/active отдаёт 'default' пресет с tracing::warn!.\n\n## UI: Themes-вкладка в settings modal\n\nSettings modal расширен tab-bar с двумя вкладками (Phase wk7.4):\n- Notifications — исторический контент (без изменений).\n- Themes — lazy-load при первом клике через loadThemesIntoPanel.\n\nThemes-панель содержит две секции с .theme-card-grid:\n1. Presets — 9 карточек встроенных тем. Click → switchTheme.\n2. Custom themes — карточки пользовательских тем + кнопка '+ New' в header. Каждая карточка имеет .theme-card-tools (Edit / Delete).\n\nКарточка темы (.theme-card):\n- .theme-card-name — имя.\n- .theme-card-preview — горизонтальная полоса из 10 swatch'ей: background, foreground (шире, как 'лицо'), 6 ANSI (red/green/yellow/blue/magenta/cyan), accent, cursor.\n- .theme-card-badge 'ACTIVE' — индикатор для активной темы.\n- :hover / .active — border-color = accent.\n\n## Редактор кастомной темы (Phase wk7.5)\n\nopenThemeEditor(themeOrNull) — модал с пикерами и live preview.\n\nСтруктура:\n1. Header: 'Edit theme' / 'New theme' + close-btn.\n2. Body (scrollable, max-height 88vh):\n   - Meta: name input + 'Duplicate from preset' select (копирует ui+term из выбранного пресета в draft — удобно стартовать с похожей палитры).\n   - UI section: 11 color pickers (input type=color) для bg, bgElev, fg, fgDim, border, accent, warn, danger, p0, p1, p2.\n   - Term base section: 4 пикера для foreground, background, cursor, selection.\n   - ANSI section: 8 base + 8 bright цветов в компактных строках (.theme-editor-color-row-compact).\n   - Live preview: xterm-подобный preview-block, перерисовывается на каждый change через локальную renderPreview(draft) — показывает draft без сохранения на сервер.\n3. Footer: Cancel / Save.\n\nSave: POST для новой темы / PUT для существующей. После успеха — закрыть модал + loadThemesIntoPanel (полная перерисовка). Валидация на бекенде (409 при конфликте id с пресетом).\n\n## Файлы фичи\n\nНовые файлы:\n- [tmux-web/src/themes.rs](tmux-web/src/themes.rs) — модель + хранилище + 9 пресетов + тесты.\n\nИзменённые файлы:\n- [tmux-web/src/main.rs](tmux-web/src/main.rs) — AppState (themes, themes_dir), 5 REST handlers, mod themes, импорт.\n- [tmux-web/static/app.js](tmux-web/static/app.js) — applyTheme/mapTermTheme/switchTheme/loadActiveThemeOrNull в bootstrap; settings modal с tab-bar; loadThemesIntoPanel/renderThemesPanel/buildThemeCard; openThemeEditor с пикерами и live preview.\n- [tmux-web/static/style.css](tmux-web/static/style.css) — рефакторинг на :root CSS-переменные; стили modal-tabs, theme-card, theme-card-grid, theme-editor-modal.\n\nНовый storage-файл (runtime): ~/.config/forge/themes.json.\n\n## Декомпозиция (для исторической справки)\n\nЭпик forge-wk7 разбит на 6 фаз:\n- forge-wk7.1 Phase 1: Backend — модель тем и REST API.\n- forge-wk7.2 Phase 2: CSS refactor на CSS-переменные.\n- forge-wk7.3 Phase 3: Frontend — applyTheme + bootstrap.\n- forge-wk7.4 Phase 4: UI — вкладка Themes в settings modal.\n- forge-wk7.5 Phase 5: Редактор кастомной темы.\n- forge-wk7.6 Phase 6: Документация (arhit) — текущая.",
+    "createdAt": "2026-05-10T15:26:55.662Z",
+    "updatedAt": "2026-05-10T15:27:20.393Z",
+    "aliases": [
+      "темы",
+      "themes",
+      "tmux theme",
+      "theme",
+      "color theme",
+      "цветовая схема"
+    ]
+  },
+  {
+    "element": "tmux-web/src/tmux.rs::SessionInfo",
+    "path": "",
+    "type": "unknown",
+    "content": "Метаданные одной tmux-сессии для отдачи во фронтенд. Поля: name (#{session_name}), id (#{session_id}, вида $0), attached (число клиентов), windows, created (unix-таймстамп), path (#{session_path}, стартовый cwd), session_group (Option<String>: #{session_group}, имя tmux session-group для linked-сессий; пустая строка из tmux мапится в None). Derive: Debug+Clone+Serialize+Deserialize+PartialEq+Eq. Поле session_group используется в attention::watcher_loop для дедупликации needs_attention между linked-сессиями.",
+    "createdAt": "2026-05-10T15:57:44.702Z",
+    "updatedAt": "2026-05-10T15:57:44.702Z"
+  },
+  {
+    "element": "tmux-web/src/tmux.rs::parse_session_line",
+    "path": "",
+    "type": "unknown",
+    "content": "Парсит строку из tmux list-sessions формата name|id|attached|windows|created|path|session_group. Использует splitn(7, '|'). Поля path и session_group опциональны (backward-compat со старым форматом 5/6 колонок). Пустой session_group мапится в None. Возвращает None если первые 5 колонок отсутствуют, числа не парсятся, или name/id пустые.",
+    "createdAt": "2026-05-10T15:57:47.161Z",
+    "updatedAt": "2026-05-10T15:57:47.161Z"
+  },
+  {
+    "element": "tmux-web/src/attention.rs::watcher_loop",
+    "path": "",
+    "type": "unknown",
+    "content": "Фоновый watcher: каждые 1500ms обходит все tmux-сессии. Для каждой: capture_pane → detect_claude_prompt → attention.set(name, flag). Диагностическое логирование (tracing::debug!): session, group (Option<String>), pane_hash (u64 от DefaultHasher по содержимому pane), detected, pane_len. Видно при RUST_LOG=tmux_web=debug. pane_hash используется для дедупликации (Phase 1.3). Loop никогда не завершается; ошибки tmux::list_sessions/capture_pane не валят loop (unwrap_or_default).",
+    "createdAt": "2026-05-10T15:58:18.303Z",
+    "updatedAt": "2026-05-10T15:58:18.303Z"
+  },
+  {
+    "element": "tmux-web/src/attention.rs::deduplicate_attention",
+    "path": "",
+    "type": "unknown",
+    "content": "Дедуплицирует needs_attention среди сессий одной итерации watcher_loop. Алгоритм: union-find по двум осям — pane_hash (точное совпадение видимой панели) и session_group (Some(g): linked tmux-сессии). Внутри объединённой группы: если хотя бы у одного detected=true — выбирается primary через pick_primary, остальные false. Если ни у кого detected=false — все false (без изменений). Подавляет 'оранжевое отображение всей группы' при общем pane_hash или session_group.",
+    "createdAt": "2026-05-10T15:59:30.936Z",
+    "updatedAt": "2026-05-10T15:59:30.936Z"
+  },
+  {
+    "element": "tmux-web/src/attention.rs::pick_primary",
+    "path": "",
+    "type": "unknown",
+    "content": "Выбирает primary-индекс среди группы дедупа. Принимает только сессии с detected=true. Приоритет: (a) среди attached>0 — наибольший session_id лексикографически; (b) среди всех detected=true (если все attached=0) — наибольший session_id; (c) fallback — лексикографически наибольшее имя. Возвращает None если в группе нет detected=true.",
+    "createdAt": "2026-05-10T15:59:33.212Z",
+    "updatedAt": "2026-05-10T15:59:33.212Z"
+  },
+  {
+    "element": "tmux-web/src/attention.rs::SessionAttention",
+    "path": "",
+    "type": "unknown",
+    "content": "Внутренняя структура снимка одной сессии для дедупа в watcher_loop. Поля: name, id, attached (u32), session_group (Option<String>), pane_hash (u64), detected (bool). Используется только в attention.rs, в API не уходит.",
+    "createdAt": "2026-05-10T15:59:35.494Z",
+    "updatedAt": "2026-05-10T15:59:35.494Z"
+  },
+  {
+    "element": "tmux-web/src/attention.rs::hash_pane",
+    "path": "",
+    "type": "unknown",
+    "content": "Хэширует содержимое панели (str) в u64 через std::collections::hash_map::DefaultHasher. Используется как pane_hash для дедупа и debug-логов в watcher_loop. Криптостойкость не требуется.",
+    "createdAt": "2026-05-10T15:59:37.394Z",
+    "updatedAt": "2026-05-10T15:59:37.394Z"
+  },
+  {
+    "element": "tmux-web/src/tmux.rs::capture_pane",
+    "path": "",
+    "type": "unknown",
+    "content": "Захватывает только видимую часть активной панели tmux-сессии (без scrollback). Команда: tmux capture-pane -p -t <session>. Используется attention::watcher_loop для детекции Claude permission prompt. Раньше использовался флаг -S -30 (последние 30 строк history), что давало false-positive: старый prompt из scrollback продолжал срабатывать после ответа юзера. Гонка list_sessions ↔ capture_pane обработана: 'no server running' и 'can't find session' в stderr → Ok(String::new()), watcher продолжает loop. Прочие сбои tmux → Err.",
+    "createdAt": "2026-05-10T16:00:34.664Z",
+    "updatedAt": "2026-05-10T16:00:34.664Z"
+  },
+  {
+    "element": "tmux-web/src/attention.rs",
+    "path": "tmux-web/src/attention.rs",
+    "type": "file",
+    "content": "Attention-watcher для tmux-сессий: фоновый цикл, который раз в 1.5с обходит все tmux-сессии активного проекта, захватывает содержимое pane через crate::tmux::capture_pane, применяет детектор Claude permission prompt и записывает финальные флаги needs_attention в shared AttentionState. С Phase 2 forge-bjm включает обязательную дедупликацию между сессиями одной session-group и сессиями с идентичным pane_hash.\n\nОСНОВНЫЕ ЭЛЕМЕНТЫ:\n\n- pub struct AttentionState — Arc<RwLock<HashMap<session_name, bool>>>. Дёшево клонируется, дешёвый snapshot() возвращает owned copy. set(name, flag) пишет финальный флаг (после дедупа). Используется axum-хендлерами /api/attention и broadcast'ом в WS.\n\n- pub fn detect_claude_prompt(pane: &str) -> bool — строгий AND-детектор: одновременно требует '❯ 1. Yes', '2. Yes,', '3. No'. Покрывает варианты edit/file-create/bash prompt'ов Claude Code. Короткие маркеры выбраны сознательно для покрытия разных UI-режимов.\n\n- pub async fn watcher_loop(attention: Arc<AttentionState>) — основной цикл (sleep 1500ms → list_sessions → capture_pane по каждой → детектор → дедуп → set). Никогда не завершается штатно. Сбой list_sessions/capture_pane не валит loop (unwrap_or_default).\n\n  Иттерация состоит из трёх шагов:\n  1) Сбор Vec<SessionAttention> — для каждой сессии: name, id, attached, session_group, pane_hash, detected. На этом шаге эмитится диагностический tracing::debug!('attention check') с полями session/group/pane_hash/detected/pane_len.\n  2) Дедупликация через deduplicate_attention(&collected).\n  3) Запись финальных флагов attention.set(name, flag) для каждой сессии.\n\n- struct SessionAttention (private) — снимок состояния одной сессии для дедупа в одной итерации. Поля: name, id, attached, session_group, pane_hash, detected.\n\n- fn hash_pane(pane: &str) -> u64 — DefaultHasher по содержимому pane. Стабилен в рамках одного процесса. Не криптостоек, не нужно: используется только для эквивалентности 'один и тот же текст → один хэш'.\n\n- fn deduplicate_attention(items: &[SessionAttention]) -> Vec<(String, bool)> — чистая функция, нормализует флаги. Алгоритм:\n  * Union-find по двум осям: pane_hash (точное совпадение содержимого) и session_group (linked-сессии tmux могут расходиться по cursor-blink, но логически делят работу).\n  * В каждой объединённой группе: если ни одной detected=true → все остаются false; если хотя бы одна detected=true → выбирается primary через pick_primary, у него флаг true, у остальных false (даже если их детектор сработал).\n  Это устраняет 'оранжевое отображение всей группы' — root cause баг-репорта forge-bjm.\n\n- fn pick_primary(items, members) -> Option<usize> — выбирает primary среди detected=true членов группы:\n  1) attached>0 имеет приоритет (пользователь реально смотрит на эту сессию);\n  2) среди attached>0 (или среди всех если все detached) — наибольший session_id лексикографически: свежее созданная сессия предпочтительнее;\n  3) fallback: лексикографически наибольшее имя.\n  Полностью детерминирована — одни и те же входы → один и тот же primary.\n\nТЕСТЫ (Phase 2): #[cfg(test)] mod tests содержит 8 новых юнит-тестов дедуп-логики (dedup_same_pane_hash_keeps_only_primary, dedup_different_pane_hash_no_grouping, dedup_attached_wins_over_detached, dedup_same_group_unifies_even_with_different_pane_hash, dedup_no_detection_keeps_all_false, dedup_three_detached_picks_largest_id, dedup_empty_input_returns_empty, dedup_single_detected_session_unchanged) + hash_pane_is_deterministic_and_collision_free_for_distinct_inputs. Helper mk_session(name, attached, group, pane_hash, detected) для краткости фикстур. Тесты не используют моки tmux — оперируют SessionAttention напрямую.\n\nЗАВИСИМОСТИ:\n- crate::tmux::list_sessions, crate::tmux::capture_pane — источник данных.\n- crate::tmux::SessionInfo — содержит поле session_group, добавленное в Phase 1.1.\n- tokio::sync::RwLock — async-замок для AttentionState.\n- tracing — debug-логирование диагностики.\n\nДИАГНОСТИКА: при RUST_LOG=tmux_web::attention=debug каждые 1.5с в логах появляется строка 'attention check' для каждой сессии с полями session/group/pane_hash/detected/pane_len — это ключевой инструмент для воспроизведения и подтверждения причины ложно-позитивных срабатываний (Phase 1.2).",
+    "createdAt": "2026-05-10T16:03:58.713Z",
+    "updatedAt": "2026-05-10T16:05:18.062Z",
+    "aliases": [
+      "оранжевая подсветка",
+      "needs_attention",
+      "claude prompt detection",
+      "linked sessions"
+    ]
+  },
+  {
+    "element": "phase3-git-api-cleanup",
+    "path": "",
+    "type": "page",
+    "content": "# Phase 3 forge-gda: Cleanup устаревшего REST git API\n\n## Контекст\nДо этой фазы tmux-web имел REST API для git-операций (status, log, stage, unstage, commit), реализованный в tmux-web/src/git.rs и зарегистрированный handler-функциями в tmux-web/src/main.rs. После реализации /ws/lazygit (Phase 2 forge-nbl) — lazygit TUI в браузере через xterm.js — REST API стал избыточным: lazygit покрывает все его use-case'ы и даёт UX лучше.\n\n## Что удалено\n\n### tmux-web/src/main.rs\n- Routes:\n  - .route('/api/git/status', get(get_git_status))\n  - .route('/api/git/log', get(get_git_log))\n  - .route('/api/git/stage', post(post_git_stage))\n  - .route('/api/git/unstage', post(post_git_unstage))\n  - .route('/api/git/commit', post(post_git_commit))\n- Handler-функции:\n  - async fn get_git_status(State<AppState>) -> Result<Json<git::GitStatus>, ...>\n  - async fn get_git_log(State<AppState>, Query<LogQuery>) -> Result<Json<Vec<git::GitCommit>>, ...>\n  - async fn post_git_stage(State<AppState>, Json<PathsReq>) -> Result<StatusCode, ...>\n  - async fn post_git_unstage(State<AppState>, Json<PathsReq>) -> Result<StatusCode, ...>\n  - async fn post_git_commit(State<AppState>, Json<CommitReq>) -> Result<Json<Value>, ...>\n- DTO структуры:\n  - struct LogQuery { limit: Option<u32> }\n  - struct PathsReq { paths: Vec<String> }\n  - struct CommitReq { message: String }\n- mod git;\n\n### tmux-web/src/git.rs\nФайл удалён физически (~580 строк): GitStatus/GitFile/GitCommit структуры, status()/log()/stage()/unstage()/commit() async-функции, parse_entry/parse_entry_unmerged/classify хелперы для git status --porcelain v2.\n\n## Что осталось / куда переехал git-функционал\n\n- /ws/lazygit (tmux-web/src/ws.rs::lazygit_attach) — единственная git-точка backend'а. Принимает Query{cwd,cols,rows}, спавнит lazygit в PTY (pty.rs::spawn_lazygit), проксирует stdin/stdout через WebSocket.\n- LazygitControl::SwitchCwd — позволяет на лету переключать lazygit на другой проект без переоткрытия WS.\n\n## Acceptance\n- cargo check tmux-web — clean (0 errors).\n- grep crate::git tmux-web/src/ — пусто.\n- ls tmux-web/src/ — git.rs отсутствует.\n- ls tmux-web/src/main.rs — нет упоминаний /api/git/.\n\n## Связанные задачи\n- forge-gda.1: Удалить REST git routes (closed)\n- forge-gda.2: Удалить git handler-функции и DTO (closed)\n- forge-gda.3: Удалить mod git и файл git.rs (closed)\n- forge-gda.4: Cargo check после cleanup (closed)\n- forge-gda.5: Обновить arhit doc (closed)\n",
+    "createdAt": "2026-05-10T17:59:38.248Z",
+    "updatedAt": "2026-05-10T17:59:38.248Z"
+  },
+  {
+    "element": "app.js",
+    "path": "tmux-web/static/app.js",
+    "type": "file",
+    "content": "Frontend: tmux-web/static/app.js. Phase 5 cleanup (P5.1): удалены poll-таймер (startGitPolling/stopGitPolling/GIT_POLL_INTERVAL_MS) и все fetch-вызовы legacy git API (fetchGitAll/fetchGitLog/fetchGitStatus/toggleStage/commitNow), плюс их call-sites в switchTab/bootstrap/beforeunload/visibilitychange. grep -c '/api/git/' = 0. Остался новый lazygit-tab (mountGitTerm/connectGitWs/openLazygitForActiveProject/gitSwitchCwd/showGitBanner/hideGitBanner/retryGitConnection) и rendering-остатки старого UI (renderGitToolbar/renderGitFiles/renderGitGraph/buildGitFileRow/computeGitLanes/showGitError/hideGitError/updateCommitBtnState + GIT_LANE_PALETTE/GIT_KIND_CLASSES) — удалить в P5.2.",
+    "createdAt": "2026-05-10T18:10:16.375Z",
+    "updatedAt": "2026-05-10T18:10:16.375Z"
+  },
+  {
+    "element": "index.html",
+    "path": "index.html",
+    "type": "file",
+    "content": "Frontend layout tmux-web/static/index.html. Phase 5 cleanup (P5.2): удалён весь блок #git-legacy. В пейне #git только новый lazygit UI: #git-placeholder, #git-error banner, #git-term. Структура: layout (#sidebar с project-bar+session-list+status-footer; #main с tab-bar Terminal/Tasks/Git и tabs #terminal/#tasks/#git). Подключает xterm.js@5.3.0 + FitAddon + WebLinksAddon с CDN; app.js — основной модуль; hotkeys.js — модуль горячих клавиш (vim-style nav + Cmd-hold hint mode), подключается после app.js.",
+    "createdAt": "2026-05-10T18:11:44.580Z",
+    "updatedAt": "2026-05-11T09:44:07.908Z"
+  },
+  {
+    "element": "lazygit-tab",
+    "path": "",
+    "type": "page",
+    "content": "# lazygit-tab — Git-вкладка через lazygit в PTY+WebSocket\n\n## Цель\n\nЗаменить custom git UI (раннее — собственный JSON-API с git status / diff / commit / log) на интеграцию **lazygit** (TUI) внутри браузерной вкладки. Lazygit запускается на сервере в выделенном PTY, его I/O проксируется по WebSocket в инстанс xterm.js на фронтенде. Пользователь работает с git в полноценном TUI, идентичном локальному запуску `lazygit` в терминале, не покидая F.O.R.G.E.\n\n**Почему lazygit, а не свой UI:**\n- Бесплатно получаем staging hunks, interactive rebase, stash, log, diff viewer, cherry-pick, branch ops — годы разработки чужого TUI.\n- Меньше кода в нашем репо, меньше багов с edge-кейсами git (rebase, conflicts, submodules).\n- Symmetric flow с tmux-аттачем — один и тот же примитив (PTY ↔ WS ↔ xterm).\n\n## Архитектура\n\n### Backend компоненты (`tmux-web/src/`)\n\n#### `pty.rs::spawn_lazygit(cwd, cols, rows) -> Result<PtyHandle>`\nСпавнит `lazygit` в новом PTY размера `cols × rows` с рабочим каталогом `cwd`.\n\n- **`CommandBuilder::new(\"lazygit\")`** — без аргументов; lazygit сам найдёт ближайший `.git` от `cwd`.\n- **ENV:**\n  - `TERM=xterm-256color` — обязательно, иначе TUI отрисуется без цветов / с поломанными box-drawing символами.\n  - Унаследованный `HOME` — чтобы lazygit подхватил `/Users/igorgerasimov/.config/lazygit/config.yml`.\n- **Error handling:** если `lazygit` не найден в PATH, `spawn_command` возвращает `Err`, обёрнутую человеко-читаемым сообщением \"lazygit not found in PATH, install via `brew install lazygit` (macOS) or your distro's package manager\". Это сообщение ловится в WS-handler'е и форвардится клиенту как control-frame `{\"type\":\"error\",\"message\":\"...\"}`.\n\nСимметричен `spawn_tmux_attach`, но отдельный entry point: разные жизненные циклы (lazygit умирает при `q`, tmux-аттач переживает реконнекты).\n\n#### `ws.rs::lazygit_attach(ws, q: LazygitQuery)`\nHTTP→WS upgrade handler.\n\n- **Query-параметры (`LazygitQuery`):** `cwd: String` (абсолютный путь к проекту), `cols: u16`, `rows: u16`.\n- **Маршрут:** `GET /ws/lazygit` зарегистрирован в `main.rs`.\n- После upgrade передаёт сокет в `handle_lazygit_socket`.\n\n#### `ws.rs::handle_lazygit_socket(socket, q)`\nОсновной обработчик соединения.\n\n- Создаёт первый PTY через `spawn_lazygit(&cwd, cols, rows)`.\n- При ошибке spawn — шлёт клиенту `Text` frame `{\"type\":\"error\",\"message\":\"spawn failed: ...\"}` и закрывает WS.\n- При успехе разворачивает две задачи:\n  - **PTY→WS reader:** читает stdout PTY, форвардит chunks как `Message::Binary`.\n  - **WS→PTY writer:** обрабатывает входящие фреймы:\n    - `Binary` → байты в PTY stdin (keystrokes пользователя).\n    - `Text` → парсится как `LazygitControl` JSON (см. ниже).\n- При закрытии WS / EOF PTY оба таска корректно останавливаются, дочерний процесс `lazygit` убивается.\n\n#### `ws.rs::LazygitControl` (control protocol)\nJSON-сообщения от клиента в `Text` frame:\n\n```json\n{\"type\":\"resize\",\"cols\":120,\"rows\":40}\n{\"type\":\"switch_cwd\",\"cwd\":\"/new/project/path\",\"cols\":120,\"rows\":40}\n```\n\n- **`resize`** — меняет размер текущего PTY (`set_pty_size`), что вызывает SIGWINCH в lazygit, и TUI перерисуется.\n- **`switch_cwd`** — убивает текущий процесс lazygit, спавнит новый в указанном `cwd`. Используется при переключении активного проекта в F.O.R.G.E. — клиенту не нужно переподключать WS, handler делает rotate PTY на месте. Симметрия с tmux отсутствует (там используется attach к именованной сессии), потому что lazygit оперирует *путём к репозиторию*, а не *именем*.\n\n### Frontend компоненты (`tmux-web/static/app.js`)\n\n#### `state.gitTerm` объект\nГлобальное состояние git-вкладки:\n\n```js\n{\n  term:    null,   // xterm.Terminal\n  fit:     null,   // FitAddon\n  ws:      null,   // WebSocket к /ws/lazygit\n  mounted: false,  // term.open() вызван\n  cwd:     null,   // текущий cwd, для которого открыт ws\n}\n```\n\n#### `initGitTerm()`\nСоздаёт `xterm.Terminal` с настроенной темой, FitAddon, монтирует в DOM-элемент `#git-term`. Подписывается на:\n- **`onData(data)`** — шлёт keystrokes как `Uint8Array` в `ws` (Binary frame).\n- **`onResize({cols, rows})`** — шлёт control-frame `{type:'resize', cols, rows}` в `ws` (Text frame).\n- **`window.resize`** — вызывает `fit.fit()`, что триггерит `onResize`.\n\n#### `openGitTab(cwd)`\nОткрывает (или переподключает) WS `/ws/lazygit` для активного проекта. Если `gitTerm` ещё не смонтирован — монтирует. Если `cwd` уже совпадает с открытым — no-op. Иначе:\n- Если есть активный WS — шлёт `{type:'switch_cwd', cwd, cols, rows}` (rotate без реконнекта).\n- Если WS закрыт / нет — открывает новый `/ws/lazygit?cwd=...&cols=...&rows=...`.\n\n#### `closeGitTab()`\nВызывается при переключении с git-вкладки на другую (Tmux/Tasks/etc.). Закрывает WS, скрывает `#git-term`. Сам `xterm.Terminal` не уничтожается — переиспользуется при следующем открытии (быстрый ре-аттач).\n\n#### Обработка ошибок на клиенте\n- Text frame `{type:'error', message:'...'}` от сервера → парсится, показывается баннер в `#git-term` через `term.write`.\n- Спец-кейс: если `message` содержит \"lazygit\" + (\"not found\" | \"no such file\") — баннер заменяется на установочную подсказку с ссылкой на https://github.com/jesseduffield/lazygit.\n- WS `onclose` / `onerror` — показывается \"connection lost\" banner с кнопкой retry.\n- Non-JSON Text frame — логируется в `console.warn`, игнорируется.\n\n## Поток данных\n\n```\n[пользователь нажимает клавишу]\n        ↓\nxterm.onData(data: string)\n        ↓\nws.send(new TextEncoder().encode(data))   ← Binary frame\n        ↓\nWS /ws/lazygit на сервере\n        ↓\nhandle_lazygit_socket: msg = Binary(bytes)\n        ↓\nPtyHandle::writer.write_all(&bytes)\n        ↓\n[ядро доставляет байты в stdin lazygit]\n        ↓\nlazygit обрабатывает keystroke, перерисовывает TUI\n        ↓\nбайты из stdout lazygit\n        ↓\nPtyHandle::reader.read(buf)\n        ↓\nws.send(Message::Binary(buf))\n        ↓\nws.onmessage(event: Blob)\n        ↓\nevent.arrayBuffer() → Uint8Array → term.write(uint8)\n        ↓\n[пользователь видит обновлённый TUI]\n```\n\nДля resize / switch_cwd используется отдельный Text-канал поверх того же WS — control plane не смешивается с data plane.\n\n## switch_cwd flow\n\nКогда пользователь переключает активный проект в UI (нажал на другой проект в списке):\n\n1. Frontend: `onProjectChange(newCwd)` → `openGitTab(newCwd)`.\n2. `openGitTab` видит, что WS открыт и `state.gitTerm.cwd !== newCwd`.\n3. Шлёт `ws.send(JSON.stringify({type:'switch_cwd', cwd:newCwd, cols, rows}))`.\n4. Backend `handle_lazygit_socket`: парсит `LazygitControl::SwitchCwd`.\n5. Убивает текущий child процесс lazygit, ждёт reaper.\n6. Вызывает `spawn_lazygit(&new_cwd, cols, rows)` → новый PtyHandle.\n7. Перезапускает PTY→WS reader на новом stdout.\n8. Lazygit стартует в новом репо, его initial draw улетает в клиента → xterm перерисовывает TUI.\n9. Frontend сохраняет `state.gitTerm.cwd = newCwd`.\n\nНе требуется переоткрывать WebSocket — экономия одного round-trip и сохранение клиентских listeners.\n\n## Error handling — полный list\n\n| Условие | Где ловится | Реакция |\n|---------|-------------|---------|\n| `lazygit` нет в PATH | `spawn_lazygit` | Err → Text frame `error` → клиент рисует installation hint |\n| `cwd` не существует | `spawn_lazygit` (portable-pty) | Err → Text frame `error` → клиент рисует error banner |\n| WS закрыт клиентом | `handle_lazygit_socket` writer loop | kill PTY → корректное завершение |\n| lazygit завершился (`q`) | PTY reader получает EOF | закрывается WS со стороны сервера |\n| Bad JSON в Text frame | `serde_json::from_str` в handler | log warn, ignore (не убивает соединение) |\n| WS connection lost | `ws.onclose` на клиенте | \"connection lost\" banner + retry button |\n| `set_pty_size` failed | log warn, не fatal | TUI продолжит работать в старом размере |\n\n## Зависимости\n\n### Внешние утилиты\n- **`lazygit`** (https://github.com/jesseduffield/lazygit) — обязательно в `PATH`. Установка:\n  - macOS: `brew install lazygit`\n  - Arch: `pacman -S lazygit`\n  - Debian/Ubuntu: см. README репозитория lazygit (нет в стандартных репах apt)\n\n### Rust crates (backend)\n- `portable-pty` — кросс-платформенный PTY (используется и для tmux, и для lazygit).\n- `axum` (с `ws` feature) — WebSocket upgrade и framing.\n- `tokio` — async runtime, JoinHandle для reader/writer tasks.\n- `serde` + `serde_json` — десериализация `LazygitControl`.\n\n### JS зависимости (frontend, через CDN/локально)\n- `xterm.js` (Terminal, addons).\n- `xterm-addon-fit` (FitAddon — авто-расчёт cols/rows по контейнеру).\n\n## Архитектурные решения\n\n### Почему отдельный handler от `tmux_attach`\n- **Разные жизненные циклы:** tmux-сессия переживает разрывы WS (можно реконнектиться к той же сессии). Lazygit умирает при `q` — нет смысла переподключаться.\n- **Разные параметры:** tmux идентифицируется по имени сессии, lazygit — по пути к репо.\n- **Разная семантика `switch`:** tmux переключает сессию (`attach -t new_name`), lazygit убивается и стартует заново.\n- Поделить общий код в `handle_lazygit_socket` / `handle_socket` можно, но overlap небольшой (~30 строк) и абстракция сделала бы код менее читаемым.\n\n### Почему JSON в Text, а не отдельный binary control protocol\n- Простота: `JSON.stringify` / `serde_json` уже есть в обоих местах.\n- Read-friendly logs: контрол-фреймы видны в DevTools / tracing без декодеров.\n- Перформанс не критичен — control-фреймы это единицы в секунду (ресайз окна), data-фреймы — десятки/сотни кБ/с в Binary.\n\n### Почему frontend не уничтожает `xterm.Terminal` при `closeGitTab`\n- Cold start xterm + FitAddon на низкоконечных машинах = ~100–200 мс.\n- Открытие git-таба должно быть мгновенным (`hidden=false` + reattach WS).\n- Очистка экрана делается через `term.reset()` при switch_cwd, а не пересоздание инстанции.",
+    "createdAt": "2026-05-10T18:16:10.031Z",
+    "updatedAt": "2026-05-10T18:16:13.114Z",
+    "aliases": [
+      "git tab",
+      "lazygit integration"
+    ]
+  },
+  {
+    "element": "PtyHandle::take_writer",
+    "path": "",
+    "type": "unknown",
+    "content": "Забирает blocking-writer PTY (transfers ownership of stdin writer). Возвращает Some(writer) при первом вызове, None — при повторных. Помечен #[allow(dead_code)]: сейчас не используется напрямую (writer берётся через writer_mut под Mutex<PtyHandle> в ws.rs), но сохранён как часть симметричного API с take_reader для будущих bridge'ей.",
+    "createdAt": "2026-05-10T18:17:14.186Z",
+    "updatedAt": "2026-05-10T18:17:14.186Z"
+  },
+  {
+    "element": "PtyHandle::child_pid",
+    "path": "",
+    "type": "unknown",
+    "content": "Возвращает PID дочернего процесса tmux/lazygit, если он ещё запущен. Помечен #[allow(dead_code)]: используется только в unit-тесте spawn_for_missing_session_does_not_panic (тест-only code), поэтому в non-test сборке rustc флагует его как dead — explicit allow устраняет ложный warning.",
+    "createdAt": "2026-05-10T18:17:15.715Z",
+    "updatedAt": "2026-05-10T18:17:15.715Z"
+  },
+  {
+    "element": "hotkeys.js",
+    "path": "hotkeys.js",
+    "type": "file",
+    "content": "Frontend hotkeys module: tmux-web/static/hotkeys.js (подключается из index.html после app.js). Реализует две системы:\n\n1) Vim-style навигация (срабатывает когда фокус НЕ в input/textarea/select/contentEditable/.xterm-helper-textarea и нет модификаторов):\n   - 1/2/3 → переключение вкладок Terminal/Tasks/Git (click на #tab-terminal/#tab-tasks/#tab-git)\n   - gt / gT → следующая/предыдущая вкладка (порядок: terminal→tasks→git)\n   - j / k → следующая/предыдущая .session-item в #session-list (фокус + scrollIntoView)\n   - h → фокус на сайдбар (первая активная или первая .session-item, fallback #project-select)\n   - l → фокус на основную панель: терминал → .xterm-helper-textarea внутри #terminal; tasks → #tasks-new; git → .xterm-helper-textarea внутри #git-term\n   - Enter на сфокусированной .session-item → el.click() (активация сессии)\n   - ? → toggle оверлей #hotkey-help со справкой\n   - Esc → закрыть help\n\n2) Cmd-hold hint mode (vimium-style):\n   - Удержание Meta/⌘ дольше CMD_HOLD_DELAY_MS (200мс) без других нажатий → showHints()\n   - Все видимые интерактивные элементы (button/a/select/input/textarea/[tabindex>=0]/.session-item/.task-card/.todo-card) получают абсолютно-позиционированные .hotkey-hint метки 1-2 символами (alphabet 'asdfjklewcmprtyuiopghbvnxz') в #hotkey-hints-layer (z-index 99999)\n   - Пользователь вводит буквы → applyTyped() сужает совпадения (.hotkey-hint-dim для несовпадающих, .hotkey-hint-partial для совпадающих префиксов); при полном совпадении кода → activate(el): focus + click (для input/textarea/select — только focus)\n   - Backspace откатывает typed; Esc отменяет; keyup Meta скрывает hints\n   - Если до активации hints пользователь нажал другую клавишу при удержании Cmd (cmdSawOther=true) — timer отменяется, чтобы не ломать системные Cmd+C/Cmd+R/Cmd+V\n\nListeners на document с capture=true (keydown/keyup) — перехватывают раньше xterm-helper-textarea, поэтому hint-mode работает даже при фокусе в xterm. window.blur/scroll/resize → hideHints (метки могли уехать).\n\nisVisible() проверяет getBoundingClientRect (видим в viewport), а также рекурсивно вверх по дереву: hidden attr, display:none, visibility:hidden, opacity:0. generateCodes(n) выдаёт 1-буквенные коды при n≤26, иначе 2-буквенные комбинации.\n\nCSS определён в style.css: блок 'Горячие клавиши: Cmd-hold подсказки + ?-help оверлей' — стили .hotkey-hint (жёлтый бейдж #ffd54f с тёмным текстом, border, box-shadow), .hotkey-hint-partial/.hotkey-hint-dim, #hotkey-help модал с .hotkey-help-card и .kbd-стилем, а также .session-item:focus подсветка (outline #ffd54f).\n\nНе модифицирует app.js — полностью изолированный модуль. Никаких зависимостей кроме DOM. Совместим с xterm (capture-фаза + проверка xterm-helper-textarea для vim-режима).",
+    "createdAt": "2026-05-11T09:43:56.597Z",
+    "updatedAt": "2026-05-11T09:44:01.363Z",
+    "aliases": [
+      "горячие клавиши",
+      "hotkeys",
+      "keyboard",
+      "vim",
+      "cmd hint"
+    ]
+  }
+]

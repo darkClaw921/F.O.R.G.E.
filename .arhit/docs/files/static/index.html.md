@@ -1,0 +1,3 @@
+# static/index.html
+
+HTML-шаблон tmux-web. Состоит из #layout (flex-row): #sidebar (240px, список tmux-сессий + кнопка new + status footer) и #main. #main содержит #tab-bar (Phase 6.A: кнопки tab-terminal/tab-tasks с классом .tab-btn, активная имеет .active; span #tasks-status — место под счётчик/индикатор), #terminal (xterm.js mount), #placeholder (показывается когда сессия не выбрана) и #tasks (hidden до переключения; внутри #tasks-toolbar с кнопками tasks-reload/tasks-new и meta-span, плюс #tasks-board под grid колонок). xterm.js + аддоны (fit, web-links) подгружаются с CDN jsdelivr 5.3.0 / 0.8.0 / 0.9.0. /style.css и /app.js — локальные. Структура tab-bar и #tasks связана с app.js switchTab/renderTasks (Phase 6.A.4).

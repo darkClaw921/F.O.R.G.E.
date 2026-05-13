@@ -1,0 +1,22 @@
+{
+  "root": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E.",
+  "generatedAt": "2026-05-11T09:44:08.177Z",
+  "nodes": [
+    {
+      "id": "tmux-web/static/app.js",
+      "name": "app.js",
+      "type": "file",
+      "path": "tmux-web/static/app.js",
+      "exports": [],
+      "children": []
+    },
+    {
+      "id": "tmux-web/static/hotkeys.js",
+      "name": "hotkeys.js",
+      "type": "file",
+      "path": "tmux-web/static/hotkeys.js",
+      "exports": [],
+      "children": []
+    }
+  ]
+}

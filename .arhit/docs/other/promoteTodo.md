@@ -1,0 +1,3 @@
+# promoteTodo
+
+Phase 4 — POST /api/todos/:id/promote (tmux-web/static/app.js). Сигнатура: promoteTodo(id, sessionOverride?). Резолв сессии: sessionOverride > state.currentSession > первая сессия активного проекта (по name asc, фильтр по project_id) > alert и выход. Optimistic remove: убирает TODO из state.todosData до ответа сервера, на ошибке делает splice rollback. Body запроса: {session}. На успехе ничего не делает — WS пришлёт {kind:removed, id} (idempotent) и /ws/tasks доставит upsert новой bd-задачи в Open. Используется в drop-handler (TODO→open), кнопке promote на карточке, и в openTodoEditModal.

@@ -1,0 +1,29 @@
+[package]
+name = "tmux-web"
+version = "0.1.0"
+edition = "2021"
+description = "Web-viewer для tmux сессий через WebSocket + xterm.js"
+license = "MIT"
+
+[dependencies]
+axum = { version = "0.7", features = ["ws", "macros"] }
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6", features = ["fs", "trace"] }
+portable-pty = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1"
+futures-util = "0.3"
+bytes = "1"
+# Phase 6.D — file-watcher для .beads/issues.jsonl. Версия 6.1.x — последняя
+# в линии 6.x на момент написания (актуальные релизы 9.x ещё в RC). Tokio
+# integration: notify::recommended_watcher принимает любой EventHandler,
+# включая tokio::sync::mpsc::UnboundedSender<notify::Result<Event>>.
+notify = "6"
+uuid = { version = "1.23.1", features = ["v4"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"

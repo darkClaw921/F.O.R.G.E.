@@ -1,0 +1,3 @@
+# tmux-web/src/tasks_watcher.rs
+
+Phase 6.D — фоновый file-watcher для .beads/issues.jsonl. Pub fn run_watcher(active_path_rx: watch::Receiver<PathBuf>, tasks_tx: broadcast::Sender<TaskEvent>) — outer loop пересоздающий watcher при смене active project. Inner watch_one(): initial snapshot (baseline, не бродкастится) → notify::recommended_watcher с tokio mpsc UnboundedSender → watch на .beads/ NonRecursive → tail-debounce 200ms через select! на (notify_rx, sleep_until, active_path_rx.changed()) → snapshot()+diff_issues() → broadcast TaskEvent. Фильтр relevant_event() пропускает issues.jsonl и его tmp-собратьев (atomic-rename). Если .beads/ отсутствует — ждём смены active path. Unit-тесты relevant_event для issues.jsonl, .tmp, beads.db (отрицательный), labels.jsonl.

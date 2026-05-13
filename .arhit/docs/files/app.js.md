@@ -1,0 +1,3 @@
+# app.js
+
+Frontend: tmux-web/static/app.js. Phase 5 cleanup (P5.1): удалены poll-таймер (startGitPolling/stopGitPolling/GIT_POLL_INTERVAL_MS) и все fetch-вызовы legacy git API (fetchGitAll/fetchGitLog/fetchGitStatus/toggleStage/commitNow), плюс их call-sites в switchTab/bootstrap/beforeunload/visibilitychange. grep -c '/api/git/' = 0. Остался новый lazygit-tab (mountGitTerm/connectGitWs/openLazygitForActiveProject/gitSwitchCwd/showGitBanner/hideGitBanner/retryGitConnection) и rendering-остатки старого UI (renderGitToolbar/renderGitFiles/renderGitGraph/buildGitFileRow/computeGitLanes/showGitError/hideGitError/updateCommitBtnState + GIT_LANE_PALETTE/GIT_KIND_CLASSES) — удалить в P5.2.

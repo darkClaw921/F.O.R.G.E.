@@ -1,0 +1,3 @@
+# attention::detect_claude_prompt
+
+Детектор Claude Code UI-prompt в pane. Возвращает true → tmux-вкладка подсвечивается оранжевым. Поддерживает 3 типа: (1) permission prompt — все 3 маркера 'Yes/Yes,/No' одновременно (AND); (2) plan prompt (ExitPlanMode) — footer 'Enter to select' + 'Tab/Arrow keys to navigate'; (3) question prompt (AskUserQuestion) — footer 'Enter to select' + '↑/↓ to navigate'. Под капотом разделён на 3 приватные функции detect_permission_prompt/detect_plan_prompt/detect_question_prompt, основная функция — их OR. Plan и question различаются только маркером направления навигации, что важно: их футеры почти идентичны.

@@ -1,0 +1,511 @@
+[
+  {
+    "element": "tmux::capture_pane",
+    "path": "",
+    "type": "unknown",
+    "content": "Захватывает stdout команды tmux capture-pane -p -t <session> -S -30 (последние 30 строк панели). Используется attention::watcher_loop для детекции Claude permission prompt.\n\nСигнатура: pub async fn capture_pane(session: &str) -> anyhow::Result<String>\n\nОсобое поведение: трактует stderr-маркеры 'no server running' и 'can't find session' как Ok(String::new()), а не Err — это нормальная гонка между tmux::list_sessions и capture-pane (сессия может исчезнуть между двумя вызовами). Прочие сбои (отсутствие tmux в PATH, нечитаемая stderr) — Err.\n\nРеализация через tokio::process::Command (async, не блокирует runtime). Файл: src/tmux.rs.",
+    "createdAt": "2026-05-10T09:09:39.804Z",
+    "updatedAt": "2026-05-10T09:09:39.804Z"
+  },
+  {
+    "element": "attention",
+    "path": "",
+    "type": "unknown",
+    "content": "Модуль src/attention.rs — attention-watcher для подсветки tmux-вкладок при Claude permission prompt.\n\nСодержит:\n- AttentionState (Clone, Default) — разделяемое состояние HashMap<session_name, bool> под Arc<tokio::sync::RwLock>. Методы: new(), snapshot() -> HashMap (клон), set(name, flag) (insert).\n- detect_claude_prompt(pane: &str) -> bool — строгий AND-детектор: pane должен содержать одновременно три маркера: '❯ 1. Yes', '2. Yes, and don', 'No, tell Claude'.\n- watcher_loop (Phase 1.3) — фоновый tokio-loop, опрашивает сессии активного проекта раз в 1500мс через tmux::list_sessions + tmux::capture_pane.\n\nЛогика детектора: AND-семантика выбрана сознательно, чтобы минимизировать ложные срабатывания. Каждый из трёх маркеров может встретиться в обычном выводе, но все три вместе — практически однозначно Claude prompt.\n\nСостояние: AttentionState не удаляет ключи при set(name, false) — это позволяет фронтенду различать 'никогда не видели' vs 'видели, prompt закрыт'.\n\nИспользование (Phase 2): подключается в AppState как поле attention: Arc<AttentionState>, watcher_loop стартует через tokio::spawn в main().\n\nЮнит-тесты (5 шт.): detects_full_prompt, ignores_plain_shell_output, requires_all_three_markers (4 граничных кейса), attention_state_snapshot_and_set, attention_state_is_cheaply_cloneable.",
+    "createdAt": "2026-05-10T09:11:09.524Z",
+    "updatedAt": "2026-05-10T09:22:03.768Z",
+    "aliases": [
+      "оранжевый",
+      "claude prompt",
+      "permission"
+    ]
+  },
+  {
+    "element": "attention::detect_claude_prompt",
+    "path": "",
+    "type": "unknown",
+    "content": "Детектор Claude Code UI-prompt в pane. Возвращает true → tmux-вкладка подсвечивается оранжевым. Поддерживает 3 типа: (1) permission prompt — все 3 маркера 'Yes/Yes,/No' одновременно (AND); (2) plan prompt (ExitPlanMode) — footer 'Enter to select' + 'Tab/Arrow keys to navigate'; (3) question prompt (AskUserQuestion) — footer 'Enter to select' + '↑/↓ to navigate'. Под капотом разделён на 3 приватные функции detect_permission_prompt/detect_plan_prompt/detect_question_prompt, основная функция — их OR. Plan и question различаются только маркером направления навигации, что важно: их футеры почти идентичны.",
+    "createdAt": "2026-05-10T09:11:12.567Z",
+    "updatedAt": "2026-05-11T08:35:29.733Z"
+  },
+  {
+    "element": "attention::AttentionState",
+    "path": "",
+    "type": "unknown",
+    "content": "Разделяемое состояние watcher'а: какие tmux-сессии сейчас имеют открытый Claude permission prompt.\n\nСтруктура:\n- map: Arc<tokio::sync::RwLock<HashMap<String, bool>>>\n\nМетоды:\n- new() -> Self — пустое состояние\n- async snapshot() -> HashMap<String, bool> — клон текущего состояния (для axum-хендлера и WebSocket broadcast)\n- async set(name: &str, flag: bool) — insert/перезапись флага для сессии\n\nCheaply cloneable: Clone делит общий map через Arc, поэтому передача в tokio::spawn и в axum-хендлеры не копирует данные.\n\nНе удаляет ключи при set(name, false) — фронтенд различает 'никогда не видели' (None) vs 'видели, prompt закрыт' (Some(false)). Файл: src/attention.rs.",
+    "createdAt": "2026-05-10T09:11:17.273Z",
+    "updatedAt": "2026-05-10T09:11:17.273Z"
+  },
+  {
+    "element": "attention::watcher_loop",
+    "path": "",
+    "type": "unknown",
+    "content": "Фоновый async-loop в src/attention.rs, опрашивает tmux-сессии раз в 1500мс и обновляет AttentionState флагами Claude prompt detection.\n\nСигнатура (Phase 1 cross-project sessions visibility): pub async fn watcher_loop(attention: Arc<AttentionState>). РАНЕЕ принимал projects: Arc<RwLock<ProjectStore>> и фильтровал сессии по tmux_prefix активного проекта — теперь обходит ВСЕ сессии, потому что фронтенду нужны флаги needs_attention для всех проектов одновременно (включая orphan-сессии в режиме 'All projects').\n\nПоведение на одной итерации:\n1. tokio::time::sleep(Duration::from_millis(1500)).\n2. tmux::list_sessions() — все сессии (или пустой Vec при ошибке, unwrap_or_default).\n3. Для КАЖДОЙ сессии без фильтрации: tmux::capture_pane(name) → detect_claude_prompt(pane) → attention.set(name, flag).\n\nОшибки tmux не валят loop: list_sessions/capture_pane → unwrap_or_default. tmux-сервер может отсутствовать (вернёт пустой Vec) и сессия может исчезнуть между list и capture (capture_pane сама вернёт Ok('')).\n\nLoop вечный, живёт до завершения процесса. Spawn в main(): tokio::spawn(attention::watcher_loop(app_state.attention.clone())) — теперь принимает только attention, без projects (упрощает зависимости).\n\nФайл: src/attention.rs.",
+    "createdAt": "2026-05-10T09:12:50.848Z",
+    "updatedAt": "2026-05-10T09:47:21.935Z"
+  },
+  {
+    "element": "renderSidebar",
+    "path": "",
+    "type": "unknown",
+    "content": "Перерисовывает сайдбар сессий в static/app.js. Cross-project sessions visibility (Phase 2): группировка по project_id в зависимости от state.projectFilter.\n\nРежимы:\n- state.projectFilter === '__all__' (default): все сессии группируются по проектам. Порядок групп — как в state.projects (то есть как backend вернул в /api/projects); orphan-группа (project_id === null) идёт последней с заголовком 'Orphan'. Каждая непустая группа предваряется заголовком <li class='session-group-header'>{project.name}</li>. Если ни одной сессии нет — empty-state 'Нет активных сессий'.\n- state.projectFilter === <project.id>: только сессии этого проекта, плоский список без header. Если у выбранного проекта нет сессий — empty-state 'Нет сессий в этом проекте'.\n\nСортировка внутри группы — по name.localeCompare. Для рендера каждой строки делегирует в buildSessionItem (вынесена ради переиспользования между обоими режимами).\n\nТриггеры renderSidebar:\n- fetchSessions (раз в 3с polling).\n- change на #project-select (handler обновляет state.projectFilter и localStorage, дёргает только renderSidebar — БЕЗ switchActiveProject/disconnectWs/fetchSessions, ничего серверного не происходит).\n\nЗависит от:\n- state.sessions (массив SessionDto с project_id/project_name).\n- state.projects (порядок и имена групп).\n- state.projectFilter (режим).\n- state.currentSession (для .active в buildSessionItem).\n- buildSessionItem (рендер строки).\n\nФайл: static/app.js.",
+    "createdAt": "2026-05-10T09:19:45.821Z",
+    "updatedAt": "2026-05-10T09:47:30.297Z"
+  },
+  {
+    "element": "session-item-needs-attention",
+    "path": "",
+    "type": "unknown",
+    "content": "CSS-класс в static/style.css (~line 197), визуализирующий флаг needs_attention для tmux-сессии в сайдбаре. Применяется когда Claude в сессии ждёт ввода (permission prompt и т.п.). Три селектора: 1) .session-item.needs-attention — базовый стиль: тёмно-оранжевый фон #3a2010, оранжевая левая граница #ff8a3d. 2) .session-item.needs-attention .session-name — имя сессии становится оранжевым (#ff8a3d) и жирным (font-weight 600) для усиления визуального сигнала. 3) .session-item.needs-attention.active — комбинация с активной вкладкой: более насыщенный тёмно-оранжевый фон #4a2814, граница остаётся синей (наследуется от .active, так как .active объявлен раньше). Расположен после блока .session-item.active в каскаде, что важно для корректного приоритета при комбинации классов. Класс навешивается из renderSidebar() в app.js.",
+    "createdAt": "2026-05-10T09:19:46.023Z",
+    "updatedAt": "2026-05-10T09:19:46.023Z"
+  },
+  {
+    "element": "main::SessionDto",
+    "path": "",
+    "type": "unknown",
+    "content": "DTO в src/main.rs (~line 190), сериализуемый в JSON для GET /api/sessions. Структура: name, attached, windows (всё из tmux::SessionInfo через #[serde(flatten)]) + needs_attention: bool (флаг Claude permission prompt из AttentionState) + project_id: Option<String> (id проекта-владельца сессии или None для orphan) + project_name: Option<String> (отображаемое имя проекта или None).\n\nCross-project sessions visibility (Phase 1): backend больше не фильтрует сессии по активному проекту — возвращает ВСЕ tmux-сессии, frontend сам группирует по project_id и применяет UI-фильтр. project_id/project_name заполняются в get_sessions через projects::session_belongs(prefix, name): ищется первый проект чей tmux_prefix матчит имя сессии; если ни один не подошёл — оба поля None (orphan).\n\nПоле needs_attention заполняется из snapshot'а AppState.attention в хендлере: attention.get(&s.name).copied().unwrap_or(false). Snapshot снимается ОДИН РАЗ за вызов хендлера, чтобы все сессии в ответе видели согласованное состояние watcher'а.\n\nИспользуется фронтендом app.js при polling /api/sessions каждые 3с. Файл: src/main.rs.",
+    "createdAt": "2026-05-10T09:21:56.370Z",
+    "updatedAt": "2026-05-10T09:47:06.278Z"
+  },
+  {
+    "element": "main::AppState",
+    "path": "",
+    "type": "unknown",
+    "content": "Главное shared state приложения в src/main.rs (~line 54). Поля: projects: Arc<RwLock<projects::ProjectStore>> — список tmux-проектов и активный проект; tasks: Arc<...> — task tracker; pty: Arc<...> — PTY-сессии для веб-терминалов; attention: Arc<attention::AttentionState> (Phase 2.1) — разделяемое состояние флагов 'нужно внимание' для tmux-сессий. AttentionState заполняется фоновым watcher'ом attention::watcher_loop, спавнится в main() сразу после создания app_state через tokio::spawn(attention::watcher_loop(app_state.projects.clone(), app_state.attention.clone())) — передаются именно компоненты (Arc-клоны), а не AppState целиком, чтобы избежать циклической зависимости attention->main->attention. Хендлер /api/sessions читает attention.snapshot() и склеивает с tmux::list_sessions в Vec<SessionDto>. AppState клонируется (Clone) для axum::extract::State — все Arc-поля делятся cheaply. Файл: src/main.rs.",
+    "createdAt": "2026-05-10T09:22:02.798Z",
+    "updatedAt": "2026-05-10T09:22:02.798Z"
+  },
+  {
+    "element": "attention-feature",
+    "path": "",
+    "type": "page",
+    "content": "# Фича: Оранжевая подсветка вкладки при Claude permission prompt\n\n## Цель\nКогда в одной из tmux-сессий Claude Code открыл permission prompt (ждёт ответа Yes/No), вкладка этой сессии в сайдбаре tmux-web должна подсвечиваться оранжевым, чтобы пользователь сразу видел где требуется его внимание. Подсветка должна сама исчезать после ответа.\n\n## Реализация\n\n### Phase 1 — Backend infra (epic tw-val)\n- **src/tmux.rs::capture_pane** — async-обёртка над 'tmux capture-pane -p -t <session> -S -30'. Захватывает последние 30 строк панели. Stderr-маркеры 'no server running' и 'can.t find session' трактуются как Ok(\"\") (нормальная гонка между list_sessions и capture).\n- **src/attention.rs** — новый модуль:\n  - AttentionState — Arc<RwLock<HashMap<String, bool>>> с методами new/snapshot/set. Cheaply cloneable.\n  - detect_claude_prompt(pane: &str) -> bool — строгий AND-детектор по трём маркерам: '❯ 1. Yes', '2. Yes, and don', 'No, tell Claude'.\n  - watcher_loop(projects, attention) — async-loop с шагом 1500мс: list_sessions фильтруется по active project prefix, затем capture_pane + detect → attention.set.\n\n### Phase 2 — Wiring (epic tw-25z)\n- **AppState.attention: Arc<AttentionState>** добавлено в src/main.rs.\n- **mod attention;** зарегистрирован.\n- **tokio::spawn(attention::watcher_loop(...))** запускается в main() — передаются Arc-клоны полей AppState, не AppState целиком (избегаем цикла).\n- **SessionDto** = SessionInfo + needs_attention: bool. Хендлер list_sessions делает attention.snapshot() один раз и заполняет dto.\n\n### Phase 3 — Frontend (epic tw-cbt)\n- **static/app.js::renderSidebar** — вешает класс .needs-attention на <li> когда s.needs_attention === true. Порядок классов: active затем needs-attention для предсказуемого CSS-каскада.\n- **static/style.css** — три селектора: .session-item.needs-attention (фон #3a2010, левая граница #ff8a3d), .session-item.needs-attention .session-name (имя оранжевое #ff8a3d, bold), .session-item.needs-attention.active (более тёмный фон #4a2814 для комбинации). Расположено после .session-item.active в каскаде.\n\n### Phase 4 — Verification & docs (epic tw-s5m)\n- cargo check + cargo build --release: clean (только pre-existing warning в src/pty.rs).\n- cargo test --test-threads=1: 29 passed, 0 failed (5 attention-тестов: detects_full_prompt, ignores_plain_shell_output, requires_all_three_markers, attention_state_snapshot_and_set, attention_state_is_cheaply_cloneable).\n\n## Тайминг\n- Watcher период: 1500мс.\n- Frontend polling /api/sessions: 3000мс.\n- Итог: оранжевая подсветка появляется/исчезает за ~1.5с (детект) + до ~3с (polling) = до ~4.5с. План указывает ~5с.\n\n## Manual e2e (для пользователя)\n1. Запустить tmux-web (cargo run --release).\n2. В активном проекте (с настроенным tmux-prefix) создать 2 tmux-сессии.\n3. В одной запустить claude и довести до permission prompt (например, попросить выполнить команду).\n4. Открыть веб-UI — вкладка с Claude должна стать оранжевой за ~5с.\n5. Ответить на prompt в Claude — оранжевый исчезнет за ~5с.\n6. Negative: открыть обычный shell — оранжевый НЕ должен появиться.\n\n## Файлы\n- src/tmux.rs (capture_pane)\n- src/attention.rs (новый модуль)\n- src/main.rs (AppState, SessionDto, mod attention, spawn watcher)\n- static/app.js (renderSidebar)\n- static/style.css (.needs-attention селекторы)\n\n## План\n/Users/igorgerasimov/.claude/plans/wild-munching-thimble.md",
+    "createdAt": "2026-05-10T09:22:36.727Z",
+    "updatedAt": "2026-05-10T09:22:36.727Z"
+  },
+  {
+    "element": "SessionDto",
+    "path": "",
+    "type": "unknown",
+    "content": "DTO для GET /api/sessions. Расширяет tmux::SessionInfo через #[serde(flatten)]: добавляет needs_attention (bool, флаг Claude permission prompt из AttentionState), project_id (Option<String>, id проекта-владельца сессии или None для orphan), project_name (Option<String>, отображаемое имя проекта или None). Phase 1 cross-project visibility: ранее DTO содержал только needs_attention, теперь backend возвращает все сессии без фильтрации, frontend сам группирует по project_id.",
+    "createdAt": "2026-05-10T09:40:08.588Z",
+    "updatedAt": "2026-05-10T09:40:08.588Z"
+  },
+  {
+    "element": "get_sessions",
+    "path": "",
+    "type": "unknown",
+    "content": "Хендлер GET /api/sessions. Возвращает Vec<SessionDto> со ВСЕМИ tmux-сессиями (фильтр по активному проекту снят в Phase 1 cross-project visibility). Алгоритм: 1) snapshot проектов через state.projects.read().await.list() (один read-lock); 2) tmux::list_sessions(); 3) snapshot attention-state; 4) для каждой сессии итерируем по projects_snap, находим первый проект чей tmux_prefix матчит через projects::session_belongs(prefix, name) — заполняем project_id/project_name из p.id/p.name; иначе оба None (orphan). Если tmux-сервер не запущен — возвращает [] (не 500). Lock на ProjectStore короткий: list() копирует Vec<Project>, дальше работаем со снимком.",
+    "createdAt": "2026-05-10T09:40:14.736Z",
+    "updatedAt": "2026-05-10T09:40:14.736Z"
+  },
+  {
+    "element": "watcher_loop",
+    "path": "",
+    "type": "unknown",
+    "content": "Фоновый attention-watcher в src/attention.rs. Сигнатура: pub async fn watcher_loop(attention: Arc<AttentionState>). Каждые 1500ms: tmux::list_sessions() → для каждой сессии capture_pane → detect_claude_prompt → attention.set(name, flag). Phase 1 cross-project visibility: ранее принимал projects: Arc<RwLock<ProjectStore>> и фильтровал сессии по tmux_prefix активного проекта; теперь обходит ВСЕ сессии (фронтенду нужны флаги для всех проектов и orphan-сессий). Устойчив к падениям tmux: list_sessions/capture_pane → unwrap_or_default. Loop вечный, живёт до завершения процесса. Spawn: tokio::spawn(attention::watcher_loop(app_state.attention.clone())) в main.rs.",
+    "createdAt": "2026-05-10T09:40:20.097Z",
+    "updatedAt": "2026-05-10T09:40:20.097Z"
+  },
+  {
+    "element": "buildSessionItem",
+    "path": "",
+    "type": "unknown",
+    "content": "Создаёт DOM <li class='session-item'> для одной сессии: добавляет .active при s.name === state.currentSession, .needs-attention при s.needs_attention, dataset.session=s.name, мета-блок с именем и подстрокой 'N windows · attached(K)', кнопку kill (stopPropagation + killSession) и click-обработчик openSession. Вынесена из renderSidebar чтобы переиспользовать рендер строки в обоих режимах фильтра.",
+    "createdAt": "2026-05-10T09:43:52.436Z",
+    "updatedAt": "2026-05-10T09:43:52.436Z"
+  },
+  {
+    "element": "renderProjectSelect",
+    "path": "",
+    "type": "unknown",
+    "content": "Рендерит <select id='project-select'>. Cross-project sessions visibility: первой опцией всегда вставляет <option value='__all__'>All projects</option>; остальные — по state.projects (label = name + tmux_prefix). Selected — по state.projectFilter (UI-фильтр сайдбара), не по activeProjectId.",
+    "createdAt": "2026-05-10T09:43:52.633Z",
+    "updatedAt": "2026-05-10T09:44:13.767Z",
+    "aliases": [
+      "all projects option"
+    ]
+  },
+  {
+    "element": "fetchProjects",
+    "path": "",
+    "type": "unknown",
+    "content": "Загружает /api/projects, заполняет state.projects, определяет state.activeProjectId (по флагу active в DTO либо первый). Cross-project sessions visibility: дополнительно восстанавливает state.projectFilter из localStorage('forge.projectFilter'): принимает '__all__' либо id существующего проекта; иначе fallback на '__all__'. localStorage оборачивается в try/catch (privacy mode).",
+    "createdAt": "2026-05-10T09:43:52.832Z",
+    "updatedAt": "2026-05-10T09:43:52.832Z"
+  },
+  {
+    "element": "cross-project-sessions-frontend",
+    "path": "",
+    "type": "page",
+    "content": "## Cross-project sessions visibility — Frontend (Phase 2)\n\n### State\n- state.projectFilter: '__all__' | <project.id> — UI-фильтр сайдбара. Persist в localStorage('forge.projectFilter').\n- state.activeProjectId — backend-side активный проект, остаётся НЕ затронутым фильтром.\n\n### Поведение\n- При загрузке fetchProjects читает localStorage; если значение валидно (=== '__all__' либо matches state.projects[].id) — восстанавливает, иначе fallback '__all__'.\n- renderProjectSelect: первая опция всегда 'All projects' (value='__all__'), selected = state.projectFilter.\n- change на #project-select: НЕ дёргает switchActiveProject/fetchSessions/disconnectWs. Только обновляет state.projectFilter, localStorage и вызывает renderSidebar().\n- renderSidebar:\n  * '__all__' режим: группы по project_id в порядке state.projects, заголовок <li class='session-group-header'>name</li> для каждой непустой группы; orphan (project_id===null) — последний с заголовком 'Orphan'.\n  * single-project режим: плоский список без header; empty-state 'Нет сессий в этом проекте' если у выбранного проекта нет сессий.\n\n### Стили\n.session-group-header: padding 6px 12px 4px, font-size 11px, uppercase, letter-spacing 0.5px, color #6c7587, background #181c25, border-top 1px #232936, cursor default, list-style none. :first-child без верхней границы.\n\n### Зависимости\n- Phase 1: SessionDto.project_id/project_name (Option) + GET /api/sessions без фильтра.\n- attention-watcher поллит все сессии — нужно для корректного .needs-attention в orphan-группе.",
+    "createdAt": "2026-05-10T09:44:13.175Z",
+    "updatedAt": "2026-05-10T09:44:13.175Z"
+  },
+  {
+    "element": "main::get_sessions",
+    "path": "",
+    "type": "unknown",
+    "content": "Хендлер axum GET /api/sessions в src/main.rs. Возвращает Vec<SessionDto> со ВСЕМИ tmux-сессиями (фильтр по активному проекту снят в Phase 1 cross-project sessions visibility — раньше фильтровал через session_belongs по active project prefix).\n\nАлгоритм:\n1. Snapshot проектов через state.projects.read().await.list() (короткий read-lock, копирует Vec<Project>).\n2. tmux::list_sessions() — все сессии tmux-сервера. Если сервер не запущен — возвращает [] (не 500).\n3. Snapshot attention-state: state.attention.snapshot().await — один раз для согласованности.\n4. Для каждой сессии:\n   - Итерируем по projects_snap, находим первый проект чей tmux_prefix матчит имя через projects::session_belongs(prefix, name) → заполняем project_id/project_name из p.id/p.name.\n   - Если ни один не подошёл — оба None (orphan-сессия, не принадлежит ни одному настроенному проекту).\n   - needs_attention = attention.get(&s.name).copied().unwrap_or(false).\n5. Возвращаем Json(Vec<SessionDto>).\n\nFrontend сам решает что показывать: фильтр '__all__' группирует по project_id, фильтр <project.id> рендерит только сессии этого проекта.",
+    "createdAt": "2026-05-10T09:47:13.640Z",
+    "updatedAt": "2026-05-10T09:47:13.640Z"
+  },
+  {
+    "element": "cross-project-sessions",
+    "path": "",
+    "type": "page",
+    "content": "# Cross-project sessions visibility\n\nФича позволяет одновременно видеть tmux-сессии всех настроенных проектов в сайдбаре tmux-web, с возможностью фильтрации по конкретному проекту. До этой фичи сайдбар показывал только сессии активного проекта (фильтр был на backend).\n\nПлан: /Users/igorgerasimov/.claude/plans/wild-munching-thimble.md\n\n## Семантика\n\nРазличаем ДВА независимых понятия:\n- **active project** (state.activeProjectId) — backend-side понятие: какой проект сейчас 'выбран' для команд create-session, для рабочей директории и т.п. Управляется через POST /api/projects/{id}/activate. НЕ затрагивается фильтром.\n- **project filter** (state.projectFilter) — frontend-only UI-фильтр сайдбара: что отображать в списке сессий. Значения: '__all__' (default) либо id одного из state.projects.\n\nПереключение фильтра НЕ переключает активный проект и НЕ дёргает сервер — это чисто визуальная операция (renderSidebar + localStorage).\n\n## Backend изменения (Phase 1)\n\n### src/main.rs::SessionDto\n- Расширен Option-полями: project_id: Option<String>, project_name: Option<String> (плюс уже существующие name, attached, windows через flatten от tmux::SessionInfo, и needs_attention).\n- None означает orphan-сессия (имя не матчит ни один tmux_prefix настроенных проектов).\n\n### src/main.rs::get_sessions (хендлер GET /api/sessions)\n- Снят фильтр по активному проекту — возвращает ВСЕ tmux-сессии.\n- Snapshot проектов (короткий read-lock на ProjectStore), затем для каждой сессии ищется первый матчащий проект через projects::session_belongs(prefix, name).\n- needs_attention заполняется из attention.snapshot() (один snapshot на вызов для согласованности).\n- Поведение при отсутствии tmux-сервера: возвращает [] (не 500).\n\n### src/attention.rs::watcher_loop\n- Сигнатура изменена: убран параметр projects: Arc<RwLock<ProjectStore>>. Теперь только attention: Arc<AttentionState>.\n- Поллит ВСЕ сессии без фильтрации каждые 1500мс (раньше фильтровал по active project prefix). Это нужно чтобы оранжевая подсветка работала и для сессий неактивных проектов и orphan-сессий в режиме 'All projects'.\n- Spawn в main(): tokio::spawn(attention::watcher_loop(app_state.attention.clone())).\n\n## Frontend изменения (Phase 2)\n\n### state.projectFilter (static/app.js)\n- Новое поле: '__all__' | <project.id>. Default '__all__'.\n- Persist в localStorage('forge.projectFilter'). Чтение в fetchProjects: валидируется (=== '__all__' либо matches одного из state.projects[].id), иначе fallback на '__all__'. Запись — в change-handler #project-select. localStorage обёрнут в try/catch (privacy mode).\n\n### renderProjectSelect (static/app.js)\n- Первой опцией всегда вставляет <option value='__all__'>All projects</option>.\n- Selected — по state.projectFilter (НЕ по activeProjectId — это разные вещи).\n\n### change-handler #project-select\n- НЕ дёргает switchActiveProject / fetchSessions / disconnectWs.\n- Только: state.projectFilter = новое значение, localStorage.setItem, renderSidebar().\n- Опция 'All projects' (value='__all__') обрабатывается так же, как любой projectId.\n\n### renderSidebar (static/app.js)\n- Режим '__all__': группировка по project_id в порядке state.projects, orphan-группа (project_id===null) последней. Каждая непустая группа предваряется <li class='session-group-header'>{project.name}</li>.\n- Режим <project.id>: плоский список без заголовка, только сессии этого проекта.\n- Empty-states: 'Нет активных сессий' (если state.sessions пуст), 'Нет сессий в этом проекте' (если у выбранного проекта нет сессий).\n- Сортировка внутри группы: по name.localeCompare.\n- buildSessionItem вынесен из renderSidebar для переиспользования между режимами.\n\n### static/style.css::.session-group-header\n- padding 6px 12px 4px, font-size 11px, uppercase, letter-spacing 0.5px, color #6c7587, background #181c25, border-top 1px #232936, cursor default, list-style none.\n- :first-child без верхней границы.\n\n## Verification (Phase 3)\n\n- cargo check + cargo build --release — clean (только pre-existing warnings в src/pty.rs::take_writer/child_pid).\n- cargo test -- --test-threads=1 — 29 passed, 0 failed (parallel mode flaky на projects::tests из-за общего CWD).\n\n## Manual e2e (для пользователя)\n\nПредусловия:\n1. В config настроены 2 проекта (например, project A с tmux_prefix='a-', project B с prefix='b-').\n2. В tmux запущены: одна сессия 'a-foo' (принадлежит A), одна 'b-bar' (принадлежит B), одна 'random' (orphan).\n\nШаги:\n1. Запустить tmux-web (cargo run --release).\n2. Открыть веб-UI.\n3. Проверить #project-select: первая опция 'All projects', далее A и B. Selected по умолчанию 'All projects' (либо последний выбор из localStorage).\n4. **All projects**: в сайдбаре три группы с заголовками 'A' (a-foo), 'B' (b-bar), 'Orphan' (random).\n5. **Single project filter**: переключить на A → виден только a-foo, без заголовка. Переключить на B → только b-bar.\n6. **localStorage persistence**: refresh страницы → последний выбор фильтра восстановлен.\n7. **Claude prompt orange highlight**: запустить claude в b-bar, довести до permission prompt; вкладка b-bar в сайдбаре должна стать оранжевой (за ~5с) даже если фильтр стоит на 'All projects' или на A (в А она не отобразится, но переключение на 'All projects' покажет оранжевую b-bar). Подсветка исчезает после ответа.\n\n## Файлы\n\n- src/main.rs (SessionDto, get_sessions)\n- src/attention.rs (watcher_loop signature)\n- static/app.js (state.projectFilter, fetchProjects, renderProjectSelect, change-handler, renderSidebar, buildSessionItem)\n- static/style.css (.session-group-header)\n\n## Связанные доки arhit\n\n- main::SessionDto, main::get_sessions, main::AppState\n- attention, attention::watcher_loop, attention::AttentionState, attention::detect_claude_prompt\n- renderSidebar, renderProjectSelect, fetchProjects, buildSessionItem\n- attention-feature (предыдущая фича, оранжевая подсветка)\n- cross-project-sessions-frontend (детали Phase 2)\n",
+    "createdAt": "2026-05-10T09:48:11.331Z",
+    "updatedAt": "2026-05-10T09:48:17.036Z",
+    "aliases": [
+      "все проекты",
+      "all projects",
+      "filter",
+      "группировка"
+    ]
+  },
+  {
+    "element": "ProjectStore::find_any",
+    "path": "",
+    "type": "unknown",
+    "content": "Метод ProjectStore в tmux-web/src/projects.rs. Ищет проект по id с учётом transient_active.\n\n## Сигнатура\npub fn find_any(&self, id: &str) -> Option<&Project>\n\n## Зачем\nProjectStore::get смотрит только в self.projects (registered). Но активный проект может быть transient — синтетический Project с id вида __path__:<abs-path>, который не сохраняется в реестре. Сущности типа Todo (создаваемые в активном проекте) хранят project_id из active(); если активным был transient — project_id будет __path__:..., и при последующем поиске через get() мы получим None даже если transient ещё активен.\n\n## Алгоритм\n1. Если установлен transient_active и его id совпадает с искомым → вернуть его.\n2. Иначе вызвать get(id) (поиск по registered).\n\n## Использование\n- promote_todo (main.rs ~line 1249): загружаем snapshot Project для todo по todo.project_id. До исправления использовал get() — падал с 500 'project ... is gone' для todo созданных под transient проектом.\n\n## Бажный сценарий до фикса\nЮзер открывает приложение с активным transient проектом (forge-cwd без регистрации) → создаёт TODO → переносит в Open → промоут падает с 'project __path__:/Users/.../F.O.R.G.E. for todo ... is gone'.",
+    "createdAt": "2026-05-10T14:33:37.261Z",
+    "updatedAt": "2026-05-10T14:33:37.261Z"
+  },
+  {
+    "element": "static/index.html#git-tab-button",
+    "path": "",
+    "type": "unknown",
+    "content": "Кнопка таба Git в #tab-bar (static/index.html строка 38). Атрибуты: id='tab-git' class='tab-btn' type='button'. Расположена после #tab-tasks. Соседний span #git-status-meta (строка 39) с class='tab-meta' зарезервирован под индикатор статуса (ahead/behind, dirty count). JS-логика обработки клика и переключения на #git pane — Phase 4 (task tw-41w switchTab). Использует существующие .tab-btn стили (Phase 6.A) — фон transparent, hover --bg-input, active --accent. Phase 3 — tw-2tg.",
+    "createdAt": "2026-05-10T16:34:00.409Z",
+    "updatedAt": "2026-05-10T16:34:00.409Z"
+  },
+  {
+    "element": "static/index.html#git-pane",
+    "path": "",
+    "type": "unknown",
+    "content": "Контейнер вкладки Git: <div id='git' hidden> в static/index.html (строки 54-79). Скрыт по умолчанию (атрибут hidden), активируется JS через switchTab() (Phase 4).\n\nСтруктура:\n- #git-toolbar (строки 55-60): кнопка #git-reload (↻ перезагрузить), #git-branch (имя текущей ветки), #git-ahead-behind (счётчик коммитов впереди/позади upstream), #git-meta (резервный span для дополнительной информации).\n- #git-body (строки 61-78): grid 3-pane layout (1fr 1fr 1.4fr) с тремя секциями.\n\nСекции:\n1. #git-files-pane (строки 62-67): два списка файлов — #git-staged-list (заголовок 'Изменения', staged-файлы) и #git-unstaged-list ('Не отслежено / изменено', unstaged + untracked). Заполняется renderGitFiles (Phase 4 tw-lkn) с чекбоксами и .git-badge.\n2. #git-commit-pane (строки 68-73): форма коммита — textarea #git-commit-msg (rows=6, plain plaintext, плейсхолдер 'Сообщение коммита (первая строка — subject)'), button #git-commit-btn (class='primary' disabled по умолчанию), p#git-commit-error (class='error' hidden, отображает ошибки commit/stage).\n3. #git-graph-pane (строки 74-77): canvas #git-graph-canvas для рендеринга графа коммитов (Phase 5 tw-eez renderGitGraph).\n\nPhase 3 — tw-ezf. JS-логика — Phase 4-5.",
+    "createdAt": "2026-05-10T16:34:09.914Z",
+    "updatedAt": "2026-05-10T16:34:09.914Z"
+  },
+  {
+    "element": "static/style.css#git-styles",
+    "path": "",
+    "type": "unknown",
+    "content": "Стили вкладки Git добавлены в конец static/style.css (Phase 3, секция '===== Git tab (Phase 3) ====='). Размер ~2.9KB.\n\nИспользуют существующие CSS-переменные темы — все 11 themable-переменных + производные (--bg, --bg-elev, --bg-toolbar, --bg-input, --bg-pill-hover, --bg-deep, --border, --border-soft, --border-input, --accent, --fg, --fg-dim, --warn, --danger, --success). При смене темы через applyTheme() Git tab перекрашивается автоматически.\n\nКлючевые селекторы:\n- #git: flex column, скрытие через [hidden] / показ через :not([hidden]).\n- #git-toolbar: горизонтальный flex, padding 8px 12px, border-bottom, background --bg-toolbar.\n- #git-branch: bold + --accent (имя ветки выделено).\n- #git-ahead-behind: --fg-dim, font-size 12px (приглушённый счётчик).\n- #git-body: CSS grid 1fr/1fr/1.4fr (graph-pane шире — для канваса), gap 1px на --border-soft даёт тонкие разделители между секциями.\n- #git-files-pane / #git-commit-pane / #git-graph-pane: общий background --bg, overflow auto, padding 12px.\n- h3 внутри секций: uppercase 12px --fg-dim (subdued заголовки).\n- file-row labels (#git-staged-list label, #git-unstaged-list label): flex gap 8px, monospace 13px, hover --bg-pill-hover.\n- .git-badge (модификаторы): width 14px, центрированный 11px bold. Цветовые классы:\n  - modified=--warn/--bg\n  - added=--success/--bg\n  - deleted=--danger/#fff\n  - untracked=--fg-dim/--bg\n  - renamed=--accent/#fff\n  - conflict=--danger/#fff\n  - empty=transparent/--fg-dim\n- #git-commit-msg: full-width textarea с --bg-input, --border-input, monospace.\n- #git-commit-btn: margin-top 8px (наследует .primary стили из tasks-toolbar).\n- #git-commit-error: --danger, white-space pre-wrap (многострочные git-stderr), monospace.\n- #git-graph-canvas: display block, background --bg-deep (затемнённый фон под граф).\n\nPhase 3 — tw-nmy. CSS validated (269/269 braces balanced).",
+    "createdAt": "2026-05-10T16:34:23.465Z",
+    "updatedAt": "2026-05-10T16:34:23.465Z"
+  },
+  {
+    "element": "src/git.rs",
+    "path": "src/git.rs",
+    "type": "file",
+    "content": "Backend git-модуль для интеграции с git CLI через subprocess. Все вызовы — tokio::process::Command для async-runtime. \n\nСтруктуры (все pub, derive Serialize):\n- GitStatus { repo: bool, branch: Option<String>, head: Option<String>, upstream: Option<String>, ahead: u32, behind: u32, clean: bool, files: Vec<GitFile> } — сводка статуса git-репо. repo=false для не-git папок.\n- GitFile { path: String, orig_path: Option<String>, x: char, y: char, staged: bool, kind: &'static str } — один entry из porcelain v2. orig_path заполнен для renamed/copied. kind: modified/added/deleted/renamed/copied/untracked/conflict/ignored/unknown.\n- GitCommit { hash: String, abbrev: String, parents: Vec<String>, author: String, email: String, date: String, subject: String, refs: Vec<String> } — один коммит из git log.\n\nПубличные функции:\n- pub async fn status(cwd: &Path) -> Result<GitStatus> — git status --porcelain=v2 --branch -z, парсинг через split на NUL-байты. Сначала проверяет git rev-parse --is-inside-work-tree; не репо → GitStatus{repo:false,..}.\n- pub async fn log(cwd: &Path, limit: u32) -> Result<Vec<GitCommit>> — git log с --pretty=format и разделителями \\x1f (US, поля) / \\x1e (RS, записи). Пустой репо (does not have any commits yet / bad default revision / ambiguous argument HEAD) → Ok(vec![]).\n- pub async fn stage(cwd: &Path, paths: &[String]) -> Result<()> — git add -- <paths>.\n- pub async fn unstage(cwd: &Path, paths: &[String]) -> Result<()> — git restore --staged -- <paths>; на пустом репо без HEAD fallback на git rm --cached.\n- pub async fn commit(cwd: &Path, message: &str) -> Result<String> — git -c commit.gpgsign=false commit -m <msg>. Возвращает abbrev hash из stdout '[branch abc1234] subject'. nothing-to-commit → bail!('nothing to commit').\n\nПриватные helpers:\n- async fn is_inside_work_tree(cwd) — проверяет git rev-parse.\n- fn parse_status_v2(stdout: &[u8]) -> Result<GitStatus> — парсер porcelain v2 -z.\n- fn parse_entry_1/2/unmerged — парсеры конкретных типов entry.\n- fn classify(x, y) -> &'static str — XY-коды → kind с приоритетами untracked > conflict > rename/copy > add > delete > modify.\n\nЗависимости: anyhow (Context, Result, bail), serde::Serialize, tokio::process::Command, std::path::Path, tracing (warn). Подключён в src/main.rs как 'mod git;' с #[allow(dead_code)] до Phase 2.",
+    "createdAt": "2026-05-10T16:40:08.454Z",
+    "updatedAt": "2026-05-10T16:40:08.454Z"
+  },
+  {
+    "element": "src/git.rs::status",
+    "path": "",
+    "type": "unknown",
+    "content": "pub async fn status(cwd: &Path) -> Result<GitStatus>. Запускает git status --porcelain=v2 --branch -z в cwd через tokio::process::Command. \n\nШаги:\n1. is_inside_work_tree(cwd) — git rev-parse --is-inside-work-tree. Если exit != 0 → return Ok(GitStatus{repo:false, branch:None, head:None, upstream:None, ahead:0, behind:0, clean:true, files:vec![]}).\n2. Иначе git status --porcelain=v2 --branch -z. На non-zero exit → bail!('git status failed (exit {:?}): {}', code, stderr).\n3. parse_status_v2(stdout) — парсер NUL-разделённого вывода.\n\nПарсинг (parse_status_v2):\n- Header-строки начинаются с '# ': branch.head/oid/upstream/ab. Значения '(detached)'/'(initial)' → None.\n- '1 XY ...' — обычный entry; XY=staging/worktree-коды; path = 9-е поле.\n- '2 XY ...' — renamed/copied; XY+10-е поле path; затем отдельный NUL-токен с orig_path.\n- 'u XY ...' — unmerged/conflict (kind='conflict').\n- '? path' — untracked (x='?', y='?').\n- '! path' — ignored.\n\nПоле staged = (x != ' ' && x != '?'). Поле clean = files.is_empty().\n\nXY → kind через classify(): untracked > conflict (UU/AA/DD) > renamed > copied > added > deleted > modified > unknown.\n\nEdge cases: пустой репо (head=(initial) → None), detached HEAD (branch=(detached) → None), пути с пробелами/UTF-8 не ломают парсинг благодаря NUL-разделителю.",
+    "createdAt": "2026-05-10T16:40:32.599Z",
+    "updatedAt": "2026-05-10T16:40:32.599Z"
+  },
+  {
+    "element": "src/git.rs::log",
+    "path": "",
+    "type": "unknown",
+    "content": "pub async fn log(cwd: &Path, limit: u32) -> Result<Vec<GitCommit>>. Запускает git log с кастомным форматом и парсит коммиты.\n\nКоманда: git log --pretty=format:%H\\x1f%h\\x1f%P\\x1f%an\\x1f%ae\\x1f%aI\\x1f%s\\x1f%D\\x1e -n <limit>\n- \\x1f = US (Unit Separator), разделитель полей внутри коммита\n- \\x1e = RS (Record Separator), разделитель коммитов\n- 8 полей: hash %H, abbrev %h, parents %P, author %an, email %ae, date %aI (ISO 8601), subject %s, refs %D\n\nПарсинг:\n- stdout split('\\x1e') на записи\n- trim_start_matches('\\n') (git добавляет \\n между записями)\n- record split('\\x1f') → 8 полей\n- parents = fields[2].split_whitespace() (пустая строка → vec![] для root commit)\n- refs = fields[7].split(', ') (пустая строка → vec![])\n\nEdge cases:\n- Пустой репо: stderr содержит 'does not have any commits yet' / 'bad default revision HEAD' / 'ambiguous argument HEAD' → return Ok(vec![]).\n- Любая другая ошибка → bail! со stderr.\n- Малформированная запись (<8 полей) → tracing::warn и пропускаем.\n\nlimit передаётся через -n (не --max-count). Клемп лимита — задача handler'а Phase 2.",
+    "createdAt": "2026-05-10T16:40:50.183Z",
+    "updatedAt": "2026-05-10T16:40:50.183Z"
+  },
+  {
+    "element": "src/git.rs::stage",
+    "path": "",
+    "type": "unknown",
+    "content": "pub async fn stage(cwd: &Path, paths: &[String]) -> Result<()>. Добавляет файлы в git index.\n\nКоманда: git add -- <paths>\n- '--' separator защищает от путей вида '-foo' (которые git иначе интерпретирует как флаги).\n- paths.iter() передаются прямо в .args() — без shell-склейки.\n\nEdge cases:\n- paths.is_empty() → ранний return Ok(()) (git без аргументов после -- ругается).\n- non-zero exit → bail!('git add failed (exit {:?}): {}', code, stderr.trim()).",
+    "createdAt": "2026-05-10T16:41:03.067Z",
+    "updatedAt": "2026-05-10T16:41:03.067Z"
+  },
+  {
+    "element": "src/git.rs::unstage",
+    "path": "",
+    "type": "unknown",
+    "content": "pub async fn unstage(cwd: &Path, paths: &[String]) -> Result<()>. Убирает файлы из git index.\n\nОсновная команда: git restore --staged -- <paths>\nЕсли она fail с stderr содержащим 'could not resolve HEAD' или 'no such ref' → fallback на git rm --cached -- <paths>. Это нужно для empty repo без HEAD, где restore --staged не может работать.\n\nEdge cases:\n- paths.is_empty() → ранний return Ok(()).\n- restore fail НЕ из-за отсутствия HEAD → bail! со stderr.\n- fallback fail → bail! со stderr fallback'а.",
+    "createdAt": "2026-05-10T16:41:06.708Z",
+    "updatedAt": "2026-05-10T16:41:06.708Z"
+  },
+  {
+    "element": "src/git.rs::commit",
+    "path": "",
+    "type": "unknown",
+    "content": "pub async fn commit(cwd: &Path, message: &str) -> Result<String>. Создаёт git-коммит с сообщением.\n\nКоманда: git -c commit.gpgsign=false commit -m <message>\n- '-c commit.gpgsign=false' критично для headless-окружений: иначе git может запустить gpg --sign и зависнуть на интерактивном passphrase prompt.\n- '-m' гарантирует non-interactive (никакого editor).\n\nВозврат: abbrev hash из stdout.\n- Формат stdout: '[branch abc1234] subject' или '[branch (root-commit) abc1234] subject'.\n- Парсинг: ищем '[' и ']', берём substring inside, split_whitespace().last() — это abbrev hash.\n- Если parsing fail → bail!('git commit succeeded but stdout has unexpected format: {}', stdout.trim()).\n\nEdge cases:\n- 'nothing to commit' (в stdout или stderr) → bail!('nothing to commit') (читаемая ошибка для frontend).\n- Pre-commit hook fail или другая ошибка → bail!('git commit failed (exit {:?}): {}', code, stderr).\n- Если stderr пуст, в сообщение об ошибке идёт stdout (некоторые ошибки git пишут только в stdout).\n\nВАЖНО: НЕ тестировать вызовом локально — правило проекта запрещает git add/commit от агента (CLAUDE.md). Ручная проверка пользователем.",
+    "createdAt": "2026-05-10T16:41:24.177Z",
+    "updatedAt": "2026-05-10T16:41:24.177Z"
+  },
+  {
+    "element": "get_git_status",
+    "path": "",
+    "type": "unknown",
+    "content": "REST handler GET /api/git/status (axum). Берёт path активного проекта из state.projects.read().await.active().path.clone() и делегирует в git::status(&cwd). На успех возвращает Json<GitStatus>. На ошибку git → 500 INTERNAL_SERVER_ERROR с текстом через format!('{e:#}') (Display + chain контекст из anyhow). Не-репо обрабатывается на уровне git::status (возвращает Ok с GitStatus { repo: false }, не ошибка) — фронтенд показывает плейсхолдер 'Not a git repository'. Используется Git tab во фронтенде для отрисовки списка modified/staged файлов и branch info.",
+    "createdAt": "2026-05-10T16:50:41.631Z",
+    "updatedAt": "2026-05-10T16:50:41.631Z"
+  },
+  {
+    "element": "get_git_log",
+    "path": "",
+    "type": "unknown",
+    "content": "REST handler GET /api/git/log?limit=N (axum). Принимает axum::extract::Query<LogQuery> где LogQuery { limit: Option<u32> }. Default = 100, clamp до 500. Делегирует в git::log(&cwd, limit) и возвращает Json<Vec<GitCommit>>. Cwd берётся из active project. На сбой git → 500 с текстом ошибки. Для не-репо/пустого репо git::log возвращает [] (не ошибка). Используется фронтендом для отрисовки commit graph (canvas).",
+    "createdAt": "2026-05-10T16:50:44.679Z",
+    "updatedAt": "2026-05-10T16:50:44.679Z"
+  },
+  {
+    "element": "post_git_stage",
+    "path": "",
+    "type": "unknown",
+    "content": "REST handler POST /api/git/stage (axum). Body: PathsReq { paths: Vec<String> } через Json extractor. Пустой массив → 400 BAD_REQUEST 'paths is empty' (явно запрещаем git add без аргументов). Делегирует в git::stage(&cwd, &req.paths). На успех — 204 NO_CONTENT (без тела). Ошибки git (например, путь вне репо, ENOENT) → 400 со stderr-текстом через format!('{e:#}'). Cwd берётся из active project. Используется фронтендом при чек/унчек файлов в Git tab.",
+    "createdAt": "2026-05-10T16:50:48.224Z",
+    "updatedAt": "2026-05-10T16:50:48.224Z"
+  },
+  {
+    "element": "post_git_unstage",
+    "path": "",
+    "type": "unknown",
+    "content": "REST handler POST /api/git/unstage (axum). Семантически зеркало post_git_stage: тот же body PathsReq { paths: Vec<String> }, такая же проверка на пустой массив (→ 400), такой же успех (204) и mapping ошибок (400 со stderr). Делегирует в git::unstage(&cwd, &req.paths). PathsReq переиспользуется между stage и unstage. Используется фронтендом для снятия файла со стейджа.",
+    "createdAt": "2026-05-10T16:50:50.874Z",
+    "updatedAt": "2026-05-10T16:50:50.874Z"
+  },
+  {
+    "element": "post_git_commit",
+    "path": "",
+    "type": "unknown",
+    "content": "REST handler POST /api/git/commit (axum). Body: CommitReq { message: String } через Json extractor. Trim проверка: req.message.trim().is_empty() → 400 BAD_REQUEST 'empty message' (whitespace-only тоже отклоняется). Делегирует в git::commit(&cwd, &req.message); сообщение передаётся в  как есть, multi-line поддерживается. На успех возвращает Json(json!({ 'hash': hash })) где hash — полный SHA-1 нового коммита. Ошибки git (nothing to commit, pre-commit hook fail, etc.) → 400 со stderr-текстом через format!('{e:#}'). Cwd берётся из active project. Используется кнопкой Commit в Git tab.",
+    "createdAt": "2026-05-10T16:50:54.393Z",
+    "updatedAt": "2026-05-10T16:50:54.393Z"
+  },
+  {
+    "element": "LogQuery",
+    "path": "",
+    "type": "unknown",
+    "content": "Query-параметры для GET /api/git/log. Структура: LogQuery { limit: Option<u32> }. derive(Debug, Deserialize). Используется axum::extract::Query<LogQuery>. Default = 100 (через unwrap_or), затем .min(500) для защиты от больших запросов.",
+    "createdAt": "2026-05-10T16:50:56.269Z",
+    "updatedAt": "2026-05-10T16:50:56.269Z"
+  },
+  {
+    "element": "PathsReq",
+    "path": "",
+    "type": "unknown",
+    "content": "Body-структура для POST /api/git/stage и POST /api/git/unstage. PathsReq { paths: Vec<String> }. derive(Debug, Deserialize). paths — список относительных путей внутри активного проекта. Переиспользуется обоими хендлерами (stage и unstage). Пустой paths отклоняется на уровне handler'а (400).",
+    "createdAt": "2026-05-10T16:50:58.527Z",
+    "updatedAt": "2026-05-10T16:50:58.527Z"
+  },
+  {
+    "element": "CommitReq",
+    "path": "",
+    "type": "unknown",
+    "content": "Body-структура для POST /api/git/commit. CommitReq { message: String }. derive(Debug, Deserialize). message передаётся в git commit -m как есть; multi-line OK. Пустые / whitespace-only сообщения отклоняются на уровне handler'а (400 'empty message').",
+    "createdAt": "2026-05-10T16:50:59.546Z",
+    "updatedAt": "2026-05-10T16:50:59.546Z"
+  },
+  {
+    "element": "commitNow",
+    "path": "",
+    "type": "unknown",
+    "content": "JS-функция в static/app.js (Phase 4, P4-T6). Делает коммит staged-файлов через POST /api/git/commit.\n\nПоведение:\n1. trim() сообщения из textarea $gitCommitMsg. Пустое → showGitError('Сообщение коммита пустое') и return.\n2. hideGitError() и временно disable кнопку (анти-double-click).\n3. fetch POST /api/git/commit с Content-Type: application/json и body {message}.\n4. HTTP не-2xx → читает text() ответа, выводит в $gitCommitError через showGitError.\n5. Успех → $gitCommitMsg.value = '' и await fetchGitAll() — обновляет status + log (Phase 5).\n6. Network error (fetch reject) → catch, showGitError с err.message.\n7. finally → updateCommitBtnState() пересчитывает disabled.\n\nЗависит от: fetchGitAll, showGitError, hideGitError, updateCommitBtnState. Бекенд: handlers::git::commit (POST /api/git/commit).\nВызывается из: bootstrap-listener $gitCommitBtn 'click' (P4-T7).",
+    "createdAt": "2026-05-10T17:08:01.988Z",
+    "updatedAt": "2026-05-10T17:08:01.988Z"
+  },
+  {
+    "element": "updateCommitBtnState",
+    "path": "",
+    "type": "unknown",
+    "content": "JS-функция в static/app.js (Phase 4, P4-T6). Обновляет disabled-состояние кнопки Commit.\n\nЛогика: кнопка enabled тогда и только тогда, когда (a) сообщение в $gitCommitMsg после trim непусто И (b) в state.gitStatus.files есть хотя бы один файл с f.staged === true.\n\nВызывается:\n- после fetchGitStatus (изменился список staged-файлов через polling или toggleStage);\n- на input в $gitCommitMsg (пользователь печатает);\n- в finally commitNow (после очистки textarea кнопка снова disabled).\n\nБезопасно вызывать когда $gitCommitBtn / $gitCommitMsg отсутствуют (early-return).",
+    "createdAt": "2026-05-10T17:08:05.450Z",
+    "updatedAt": "2026-05-10T17:08:05.450Z"
+  },
+  {
+    "element": "git-tab-bootstrap",
+    "path": "",
+    "type": "unknown",
+    "content": "Bootstrap-listeners для Git-таба в static/app.js (Phase 4, P4-T7).\n\nListeners (~строка 4196):\n- $tabGit click → switchTab('git') — переключает на Git-таб; switchTab сам поднимает fetchGitAll() и startGitPolling().\n- $gitReload click → fetchGitAll() — ручной reload status+log (полезно если visibilitychange paused polling).\n- $gitCommitBtn click → commitNow() — делает POST /api/git/commit.\n- $gitCommitMsg input → updateCommitBtnState() — пересчитывает disabled-состояние кнопки на каждый ввод символа.\n\nLifecycle-обработчики:\n- beforeunload: stopGitPolling() — гасит setInterval перед закрытием/reload.\n- visibilitychange (document.hidden=true): stopGitPolling() — не шуршим git CLI subprocess пока вкладка скрыта.\n- visibilitychange (document.hidden=false): если state.activeTab === 'git' → fetchGitAll() + startGitPolling() возобновляют опрос с свежего снапшота без ожидания interval-tick.\n\nИдемпотентность: все if ($el) — guard от отсутствующих DOM-узлов (на случай если HTML не содержит #git-* элементы).",
+    "createdAt": "2026-05-10T17:09:35.363Z",
+    "updatedAt": "2026-05-10T17:09:35.363Z"
+  },
+  {
+    "element": "fetchGitLog",
+    "path": "",
+    "type": "unknown",
+    "content": "Async-функция в static/app.js. Делает GET /api/git/log?limit=100, парсит JSON-массив GitCommit { hash, abbrev, parents[], author, email, date, subject, refs[] } и сохраняет в state.gitLog. После успешного fetch вызывает renderGitGraph() для перерисовки канваса. На HTTP-ошибки или сетевые сбои пишет console.warn и НЕ модифицирует state (старый граф остаётся). Не пробрасывает исключения, чтобы Promise.all в fetchGitAll не валился из-за одного сбоя. Вызывается: 1) fetchGitAll() при switch на git-tab; 2) при polling каждые GIT_POLL_INTERVAL_MS; 3) явно из кнопки 'Reload'.",
+    "createdAt": "2026-05-10T17:13:11.809Z",
+    "updatedAt": "2026-05-10T17:13:11.809Z"
+  },
+  {
+    "element": "computeGitLanes",
+    "path": "",
+    "type": "unknown",
+    "content": "Чистая функция в static/app.js, вычисляющая lane-layout для коммит-графа. Сигнатура: computeGitLanes(commits) -> { commits, edges, maxLanes }. Алгоритм: проход сверху вниз (newest first); lanes[] — массив открытых hashes по столбцам (null = свободный слот). Для каждого commit: 1) ищет свою колонку через lanes.indexOf(commit.hash) или берёт null-слот / push новой; 2) аннотирует commit.lane и commit.row; 3) накапливает edges для каждого parent; 4) первый parent наследует колонку коммита, остальные занимают свободные слоты или push (octopus merge); 5) если parent уже в lanes — это merge-down, новая колонка не выделяется. Второй проход резолвит edges: toRow и toLane по hashIndex; parent вне видимости даёт обрыв до низа canvas. Edges формат: { fromLane, fromRow, toLane, toRow }. maxLanes >= 1 даже на пустом списке. Переиспользование null-слотов уменьшает разрастание maxLanes.",
+    "createdAt": "2026-05-10T17:13:19.358Z",
+    "updatedAt": "2026-05-10T17:13:19.358Z"
+  },
+  {
+    "element": "renderGitGraph",
+    "path": "",
+    "type": "unknown",
+    "content": "Функция в static/app.js, рисующая коммит-граф на canvas #git-graph-canvas. Вызывается из fetchGitLog после обновления state.gitLog. Алгоритм: 1) пустой лог — placeholder 'No commits' (240x40 px); 2) computeGitLanes(state.gitLog) даёт layout; 3) расчёт logical размера canvas: width = maxLanes*LANE_W + META_W (600), height = N*ROW_H + 16; 4) HiDPI scaling: атрибуты width/height = logical*dpr, style.width/height = logical px, ctx.setTransform(dpr,0,0,dpr,0,0); 5) рисует edges первыми (под узлами): прямая вертикаль если fromLane===toLane, иначе bezier через две контрольные точки на mid-Y; цвет = palette[toLane%len]; 6) узлы — filled circle радиус 5px, цвет = palette[lane%len]; HEAD-узел (refs содержит 'HEAD' / 'HEAD -> *') получает белую обводку толщиной 2px; 7) метаданные справа: abbrev + (refs) + subject, ctx.font='12px monospace', цвет #d8dee9; subject обрезается с многоточием через бинарный поиск по measureText. Константы: GIT_LANE_W=18, GIT_ROW_H=24, GIT_NODE_R=5, GIT_META_W=600, GIT_LANE_PALETTE — массив 7 цветов.",
+    "createdAt": "2026-05-10T17:13:28.503Z",
+    "updatedAt": "2026-05-10T17:13:28.503Z"
+  },
+  {
+    "element": "fetchGitStatus",
+    "path": "",
+    "type": "unknown",
+    "content": "Async-функция в static/app.js (Phase 4, ~строка 1233). Получает снапшот GitStatus из GET /api/git/status, обновляет state.gitStatus и инициирует перерисовку UI.\n\nШаги:\n1. fetch('/api/git/status').\n2. Если r.ok — парсит JSON в state.gitStatus и вызывает renderGitToolbar(), renderGitFiles(), updateCommitBtnState().\n3. Если HTTP не-2xx — console.warn, state.gitStatus НЕ трогается (старый снапшот остаётся виден). Это намеренно: при polling временные сбои не должны мигать UI.\n4. catch (network failure) — то же самое: console.warn без исключения наружу.\n\nВызывается из:\n- fetchGitAll() (параллельно с fetchGitLog) при switchTab('git') и каждые 5s polling.\n- toggleStage() / commitNow() после успешного действия — для немедленного refresh.\n\nНЕ пробрасывает исключение: Promise.all в fetchGitAll не должен падать целиком из-за одного сбоя.\n\nСм. также: fetchGitLog, fetchGitAll, renderGitToolbar, renderGitFiles, updateCommitBtnState.",
+    "createdAt": "2026-05-10T17:16:54.024Z",
+    "updatedAt": "2026-05-10T17:16:54.024Z"
+  },
+  {
+    "element": "fetchGitAll",
+    "path": "",
+    "type": "unknown",
+    "content": "Async-функция в static/app.js (Phase 4, ~строка 912). Параллельный fetch всех git-данных через Promise.all([fetchGitStatus(), fetchGitLog()]).\n\nЦель: один тик polling = один параллельный round-trip. fetchGitStatus и fetchGitLog внутри сами обрабатывают HTTP-ошибки (без throw), поэтому Promise.all не падает целиком если одна из частей сбойнула.\n\nТочки вызова:\n- switchTab('git') — однократный initial fetch при показе таба.\n- startGitPolling() — setInterval каждые GIT_POLL_INTERVAL_MS (5000ms) пока юзер на табе.\n\nSide-effects: обновляет state.gitStatus и state.gitLog, перерисовывает toolbar, files, graph, commit-button enabled-state.",
+    "createdAt": "2026-05-10T17:16:58.673Z",
+    "updatedAt": "2026-05-10T17:16:58.673Z"
+  },
+  {
+    "element": "renderGitToolbar",
+    "path": "",
+    "type": "unknown",
+    "content": "Функция в static/app.js (Phase 4, ~строка 1258). Рендерит верхний toolbar внутри #git-pane: имя ветки, ahead/behind chip, upstream-метку.\n\nЛогика:\n- if (!state.gitStatus) return — первый paint до fetch, toolbar остаётся пустым.\n- if (!s.repo) — показывает плейсхолдер 'Не git-репозиторий' в $gitBranch, очищает $gitAheadBehind и $gitMeta. (renderGitFiles отдельно очистит файлы.)\n- Branch name: если s.branch есть — текст = s.branch; иначе detached HEAD → '(detached) ' + abbrev (первые 7 символов s.head, или '?' для пустого репо).\n- Ahead/behind chip: показывается только если s.upstream И (s.ahead || s.behind) > 0. Формат: '↑5 ↓2'. Без upstream chip всегда пуст.\n- $gitMeta: текст s.upstream или ''.\n\nDOM-элементы кешируются как module-level $gitBranch/$gitAheadBehind/$gitMeta при init. Вызывается из fetchGitStatus после успешного fetch.\n\nСм. также: fetchGitStatus, renderGitFiles.",
+    "createdAt": "2026-05-10T17:17:08.803Z",
+    "updatedAt": "2026-05-10T17:17:08.803Z"
+  },
+  {
+    "element": "renderGitFiles",
+    "path": "",
+    "type": "unknown",
+    "content": "Функция в static/app.js (Phase 4, ~строка 1376). Перерисовывает оба списка файлов (#git-staged-list и #git-unstaged-list) на основе state.gitStatus.files.\n\nАлгоритм:\n1. innerHTML = '' для обоих списков.\n2. Если !state.gitStatus || !state.gitStatus.repo — оставляем пустыми (toolbar уже показал плейсхолдер).\n3. Для каждого f в state.gitStatus.files (с защитой Array.isArray):\n   - Skip если !f || typeof f.path !== 'string'.\n   - if (f.staged) — append buildGitFileRow(f, true) в $gitStaged.\n   - else — append buildGitFileRow(f, false) в $gitUnstaged.\n\nbuildGitFileRow создаёт <label class='git-file-row'> с:\n- <input type='checkbox'> с dataset.path=f.path, .checked=stagedSection. Conflict-файлы (kind='conflict') — disabled с title-подсказкой 'Сначала разрешите конфликт'. onChange → toggleStage([f.path], stagedSection ? 'unstage' : 'stage').\n- Два <span class='git-badge {kind-class}'> для X и Y порций кода (с GIT_KIND_CLASSES маппингом). Пробелы заменяются на '·' чтобы badge не схлопывался.\n- <span class='path'> с textContent (защита от XSS для путей с <script>-подобными именами). Renamed-файлы: 'orig_path → new_path'.\n\nЗависит от: state.gitStatus, GIT_KIND_CLASSES, toggleStage, DOM-элементы $gitStaged/$gitUnstaged.\n\nСм. также: renderGitToolbar, toggleStage, buildGitFileRow.",
+    "createdAt": "2026-05-10T17:17:18.154Z",
+    "updatedAt": "2026-05-10T17:17:18.154Z"
+  },
+  {
+    "element": "git-tab",
+    "path": "",
+    "type": "page",
+    "content": "# Git tab — общая сводка фичи\n\nПолнофункциональная вкладка Git для tmux-web: live-снапшот рабочего дерева активного проекта + commit graph. Всё работает поверх git CLI (subprocess через tokio::process::Command), без libgit2.\n\n## Backend (Rust, axum)\n\n### src/git.rs — core git-модуль\n\nМодуль с публичными async-функциями + структурами для сериализации через serde.\n\nСтруктуры (все pub, derive Serialize):\n- GitStatus { repo, branch, head, upstream, ahead, behind, clean, files: Vec<GitFile> }\n- GitFile { path, orig_path, x: char, y: char, staged: bool, kind: &'static str }\n- GitCommit { hash, abbrev, parents: Vec<String>, author, email, date, subject, refs: Vec<String> }\n\nФункции:\n- status(cwd) — git status --porcelain=v2 --branch -z; не репо → GitStatus{repo:false}.\n- log(cwd, limit) — git log с custom форматом %H\\\\x1f%h\\\\x1f%P… разделителями \\\\x1f/\\\\x1e. Пустой репо → Ok(vec![]).\n- stage(cwd, paths) — git add -- paths.\n- unstage(cwd, paths) — git restore --staged --; fallback git rm --cached для empty-репо без HEAD.\n- commit(cwd, msg) — git -c commit.gpgsign=false commit -m. Возвращает abbrev hash из stdout.\n\n### src/main.rs — handlers (5 endpoints)\n\n- GET  /api/git/status → Json<GitStatus>. cwd = state.projects.read().active().path.\n- GET  /api/git/log?limit=N → Json<Vec<GitCommit>>. limit clamped до 500, default 100.\n- POST /api/git/stage    body {paths:[...]}; пустой → 400 'paths is empty'.\n- POST /api/git/unstage  тот же контракт.\n- POST /api/git/commit   body {message:'...'}; пустой/whitespace → 400 'empty message'. На успех → {hash:'<full sha>'}.\n\nОшибки git → 400 со stderr (или 500 для status: реальные git-сбои).\n\n## Frontend (static/index.html + style.css + app.js)\n\n### index.html — Phase 3\n\n- #tab-bar > <button id='tab-git'> + <span id='git-status-meta'>.\n- <div id='git' hidden> — pane с тремя секциями (CSS grid 1fr 1fr 1.4fr):\n  - #git-files-pane: #git-staged-list и #git-unstaged-list (чекбоксы + два .git-badge X/Y + path).\n  - #git-commit-pane: textarea #git-commit-msg + button #git-commit-btn (.primary, disabled до stage) + p#git-commit-error.\n  - #git-graph-pane: <canvas id='git-graph-canvas'>.\n\n### style.css — Phase 3\n\nСтили в конце файла (~2.9KB). Используют все темы через CSS-переменные (--bg, --bg-toolbar, --accent, --warn, --danger, --success). .git-badge цвета:\n- modified=warn, added=success, deleted=danger, untracked=fg-dim, renamed=accent, conflict=danger.\n\n### app.js — Phase 4 (status + commit logic)\n\n- state.gitStatus, state.gitLog, state.gitPollTimer.\n- GIT_POLL_INTERVAL_MS = 5000.\n- switchTab() расширен: на 'git' — fetchGitAll() + startGitPolling(); при уходе — stopGitPolling().\n- fetchGitAll → Promise.all([fetchGitStatus, fetchGitLog]).\n- fetchGitStatus / fetchGitLog: не throw, console.warn на сбой, state не меняется (нет UI flicker).\n- renderGitToolbar: branch/ahead-behind/upstream; detached HEAD → '(detached) <abbrev>'.\n- renderGitFiles: разделение на staged/unstaged; conflict-файлы — disabled checkbox.\n- buildGitFileRow: <label> с checkbox, двумя X/Y badge, path (textContent — XSS-safe).\n- toggleStage(paths, action): POST /api/git/{stage|unstage}; всегда вызывает fetchGitStatus после, даже на ошибке.\n- commitNow / updateCommitBtnState: enable Commit только при наличии staged-файлов И непустого message; пустой → 400 от backend → отображается в #git-commit-error.\n\n### app.js — Phase 5 (commit graph)\n\n- computeGitLanes(commits): два прохода. Первый — назначает каждому коммиту .lane (индекс колонки) и .row (==i); второй — рассчитывает edges {fromLane, fromRow, toLane, toRow}. Для родителя вне видимости → toRow=commits.length, toLane=fromLane (рисуется 'обрыв вниз').\n- renderGitGraph: canvas resize по DPR (devicePixelRatio); рисует edges (curved bezier) → потом nodes (filled circles цветом lane) → потом метаданные справа (abbrev, refs, subject).\n- Палитра 7 цветов (GIT_LANE_PALETTE), GIT_LANE_W=18, GIT_ROW_H=24, GIT_NODE_R=5, GIT_META_W=600.\n\n## Edge cases\n\n- Не git-репо: backend → {repo:false}, frontend → toolbar 'Не git-репозиторий', file-lists и graph пусты.\n- Пустой репо без коммитов: status работает (head=None), log → []. Unstage fallback на git rm --cached.\n- Detached HEAD: branch=None, head=full SHA → toolbar показывает '(detached) abbrev'.\n- Renamed файлы: GitFile.orig_path заполнен → 'orig → new' в UI.\n- Conflict (UU/AA/DD/AU/UA/DU/UD): kind='conflict', checkbox disabled с tooltip.\n- gpg-signing: -c commit.gpgsign=false при commit чтобы не зависнуть на passphrase prompt в headless.\n- Polling: 5s setInterval только пока активен Git tab. switchTab прочь → clearInterval. Идемпотентно — повторный switch не создаёт двойных таймеров.\n- Network failure / HTTP 5xx во время polling: state не трогается, старый снапшот остаётся виден; console.warn для DevTools.\n\n## Phase 6 verification (2026-05-10)\n\ncargo build clean (только pre-existing pty.rs dead_code). API smoke-tests прошли:\n- /healthz → ok\n- GET /api/git/status → repo:true c branch/head/files (форма JSON соответствует контракту)\n- GET /api/git/log?limit=10 → массив с hash/abbrev/parents/subject/refs\n- POST commit с empty/whitespace message → 400 'empty message'\n- POST stage/unstage с paths:[] → 400 'paths is empty'\n- limit clamping работает (1000 не ломает)\n\nРеальные mutating-операции (commit, stage/unstage с непустыми paths) НЕ выполнялись от агента (правило проекта: не запускать git add/commit). Ручная проверка пользователем через UI.",
+    "createdAt": "2026-05-10T17:18:04.080Z",
+    "updatedAt": "2026-05-10T17:18:11.841Z",
+    "aliases": [
+      "git tab",
+      "вкладка git",
+      "git вкладка",
+      "git feature",
+      "commit composer",
+      "lane-layout",
+      "git status frontend",
+      "git graph",
+      "git polling"
+    ]
+  },
+  {
+    "element": "tmux-web/static/app.js",
+    "path": "tmux-web/static/app.js",
+    "type": "file",
+    "content": "Frontend SPA tmux-web. Phase 4-5: lazygit-tab через xterm + WS /ws/lazygit. Phase 6+: error-banner с детектом OS и copy-to-clipboard командами установки lazygit.\n\n## state.gitTerm\n{ term, fit, ws, mounted, currentCwd, errorSticky } — изолированный xterm.Terminal+FitAddon для git-таба, отдельный от основного terminal-таба. Открывается WS на switchTab('git'), закрывается на уход с таба или beforeunload.\n\n## Ключевые функции\n- mountGitTerm() — лениво создаёт Terminal+FitAddon в #git-term, biz Binary I/O.\n- openLazygitForActiveProject() — open WS /ws/lazygit?cwd=<path>&cols=&rows=. Если активного проекта нет — placeholder #git-placeholder.\n- connectGitWs(cwd) — handshake WebSocket. onmessage(ArrayBuffer)→term.write; onmessage(text JSON {type:'error',message})→showGitBanner. term.onData→ws.send Binary. resize→ws Text {type:'resize',cols,rows}.\n- gitSwitchCwd(newCwd) — отправляет {type:'switch_cwd',cwd} (control), fallback на reconnect.\n- closeGitWs(reason) — graceful close.\n- showGitBanner(message, {showInstall}) — красный banner поверх xterm. showInstall=true → renderInstallHelp(): рендер списка установочных команд для разных OS.\n- renderInstallHelp() — заполняет #git-install-list карточками: macOS(Homebrew/MacPorts), Debian/Ubuntu (через curl tarball + install), Arch (pacman), Fedora (dnf copr), Windows (winget/Scoop), Go (go install). detectClientOS() через navigator.platform/userAgent помечает текущую OS классом .detected и сортирует её первой.\n- copyToClipboardSafe(text) — Clipboard API с fallback на скрытый textarea+execCommand. Кнопка Copy получает класс .copied на 1400ms.\n- detectClientOS() — возвращает 'mac' | 'linux' | 'windows' | null. Дистрибутив Linux точно не детектится (выводим все варианты apt/pacman/dnf).\n- hideGitBanner() — скрывает и banner и install-help.\n- retryGitConnection() — hideGitBanner + closeGitWs + openLazygitForActiveProject.\n\n## Wire-протокол /ws/lazygit\n- Binary in/out — сырые байты PTY.\n- Text frames: {type:'resize',cols,rows} | {type:'switch_cwd',cwd} от клиента; {type:'error',message} от сервера.\n- При получении error frame с lazygit-not-found / no-such-file → showGitBanner с showInstall=true.\n\n## DOM\n- #git-term — xterm container.\n- #git-placeholder — 'Select a project to open lazygit'.\n- #git-error — sticky red banner (order:-1 в flex).\n- #git-error-text / -retry / -close — текст и контролы banner.\n- #git-install-help — раскрывающийся блок только при lazygit-not-found, со списком команд.\n- #git-install-list — ul, li с .os-label/.os-cmd/.os-copy.\n\n## Удалено в Phase 5\nPolling /api/git/*, fetchGitStatus/Log/Stage/Unstage/Commit, renderGitToolbar/Files/Graph, computeGitLanes, state.gitStatus/gitLog/gitPollTimer, legacy DOM-refs (///...). Custom git UI полностью заменён на lazygit TUI.",
+    "createdAt": "2026-05-10T18:21:29.362Z",
+    "updatedAt": "2026-05-10T18:21:29.362Z"
+  },
+  {
+    "element": "tmux-web/static/index.html",
+    "path": "tmux-web/static/index.html",
+    "type": "file",
+    "content": "HTML SPA. Git-pane (#git): #git-placeholder + #git-error (banner с #git-error-text, #git-error-retry, #git-error-close, #git-install-help → #git-install-list) + #git-term (xterm container).",
+    "createdAt": "2026-05-10T18:21:35.746Z",
+    "updatedAt": "2026-05-10T18:21:35.746Z"
+  },
+  {
+    "element": "tmux-web/static/style.css",
+    "path": "tmux-web/static/style.css",
+    "type": "file",
+    "content": "Стили. Git-tab: .git-term/.git-placeholder/.git-error (flex-wrap для install-help) + .git-install-help/.git-install-title/.git-install-list/.os-label.detected/.os-cmd/.os-copy.copied/.git-install-link.",
+    "createdAt": "2026-05-10T18:21:35.974Z",
+    "updatedAt": "2026-05-10T18:21:35.974Z"
+  },
+  {
+    "element": "src/ws_tasks.rs",
+    "path": "src/ws_tasks.rs",
+    "type": "file",
+    "content": "WebSocket-handler GET /ws/tasks?project_id=... — realtime стрим beads-задач конкретного проекта.\n\n## Назначение\nРаньше handler читал глобальный state.projects.read().active().path и подписывался на process-wide tasks_tx broadcast. Это ломалось в multi-tab/multi-project сценарии: одна вкладка переключала active project — остальные начинали получать чужие/пустые task-события.\n\nТеперь каждое WS-соединение принимает project_id query-параметр (как ws/todos), резолвит его в путь и поднимает СВОЙ per-connection notify::RecommendedWatcher на <path>/.beads/. Snapshot и diff-broadcast — per-connection.\n\n## Резолв project_id → path (resolve_project_path)\n- Пусто/None → state.projects.read().active().path (включая transient).\n- Префикс '__path__:' → strip и взять как абсолютный путь (auto-group transient проекты).\n- Иначе ProjectStore::find_any(id) → path (registered + transient match).\n- Если id не найден → fallback на active + warn-лог.\n\n## Wire-протокол (server→client, Message::Text JSON)\n- {kind:'snapshot', data: <br list --json --all --limit 0>} — при connect.\n- {kind:'upsert', issue:{...}} — задача создана/изменена/закрыта.\n- {kind:'removed', id:'...'} — задача физически удалена из beads БД.\n- {kind:'reload'} — оставлено для совместимости, в per-conn режиме не используется.\n\n## Lifecycle handle_socket\n1. send snapshot (list_tasks). Если br фейл → пустой envelope {issues:[],total:0}.\n2. baseline snapshot() для diff'ов.\n3. find_beads_dir(project_path) — если есть, поднимаем notify::recommended_watcher на этот dir с RecursiveMode::NonRecursive. Если нет → heartbeat-only режим (клиент не реконнектится впустую, snapshot уже отдан).\n4. Главный select-loop: debounce timer (DEBOUNCE_MS=200ms из tasks_watcher), notify_rx.recv, heartbeat tick (30s Ping), ws_rx.next.\n5. На notify event с relevant_event() → стартуем/продлеваем debounce_deadline.\n6. По истечению debounce → snapshot + diff_issues(prev,new) → serialize TaskEvent → send_text.\n7. На Close/EOF → drop watcher + Best-effort close.\n\n## Зависимости\n- crate::tasks::{list_tasks, snapshot, diff_issues, TaskEvent}\n- crate::tasks_watcher::{find_beads_dir, relevant_event, DEBOUNCE_MS} — публичные re-use.\n- notify::RecommendedWatcher для file-watching.\n- AppState.projects (read-lock на резолв path).\n\n## Регистрация\nsrc/main.rs роутер: .route('/ws/tasks', get(ws_tasks::tasks_ws)). Frontend подключается через static/app.js connectTasksWs() с qs ?project_id=<state.activeProjectId>.\n\n## Что было раньше vs сейчас\n| | До | После |\n|--|----|------|\n|project filter|нет, только active|query project_id|\n|watcher|shared global tasks_tx|per-connection|\n|multi-tab|broken|работает|\n|нет .beads/|пустой snapshot + молчание|пустой snapshot + heartbeat|",
+    "createdAt": "2026-05-11T06:27:14.296Z",
+    "updatedAt": "2026-05-11T06:27:29.757Z",
+    "aliases": [
+      "ws/tasks",
+      "ws_tasks",
+      "tasks websocket",
+      "tasks_watcher per-connection"
+    ]
+  },
+  {
+    "element": "src/tasks_watcher.rs#public-helpers",
+    "path": "",
+    "type": "unknown",
+    "content": "В Phase 6.D добавлены pub re-export'ы из tasks_watcher.rs для использования в ws_tasks.rs (per-connection watcher):\n\n- pub fn find_beads_dir(start: &Path) -> Option<PathBuf> — walk up до .beads/ (как делает br CLI). Возвращает первый найденный или None если дошли до корня FS.\n- pub fn relevant_event(ev: &notify::Event) -> bool — фильтр FS-событий: интересны только paths оканчивающиеся на issues.jsonl, issues.jsonl.* (tmp atomic-rename) или *.jsonl. Игнорирует beads.db и beads.db-wal.\n- pub const DEBOUNCE_MS: u64 = 200 — tail-debounce окно для группировки burst'ов notify-событий (br sync обычно ~50ms, 200ms даёт запас).\n\nГлобальный run_watcher() остаётся (используется notifier.rs для process-wide задачи трекинга). Per-connection watcher в ws_tasks.rs — independent, дублирует логику инстанцирования но с тем же debounce/filter/find.",
+    "createdAt": "2026-05-11T06:27:24.329Z",
+    "updatedAt": "2026-05-11T06:27:24.329Z"
+  },
+  {
+    "element": "tasks::detect_cli",
+    "path": "",
+    "type": "unknown",
+    "content": "Автодетект CLI для beads: 'bd' (go-beads) если есть .beads/bd.sock, иначе 'br' (beads_rust). Маркер сокета означает что в проекте запущен bd daemon, и обращение через 'br' заблокируется на 30с write-lock timeout. Используется в list_tasks и run_br. Возвращает &'static str.",
+    "createdAt": "2026-05-11T06:39:30.324Z",
+    "updatedAt": "2026-05-11T06:39:30.324Z"
+  },
+  {
+    "element": "tmux-web/src/todos.rs",
+    "path": "tmux-web/src/todos.rs",
+    "type": "file",
+    "content": "Phase 1 backend foundation. Хранилище TODO-карточек проекта (storage column kanban-доски, до promote'а в bd-task).\n\n## Модель\n- Todo: id (UUID v4 String), project_id, title, description (Option<String>), priority (u8, 0..=4, default 2), issue_type (String, default 'task'), labels (Vec<String>), plan_mode (bool, default false — forge-5bkg), created_at, updated_at (RFC3339-строки UTC). Все опциональные поля #[serde(default)] для совместимости.\n- TodoStore: Arc<RwLock<Inner>>, lazy-load из <project_root>/.forge/todos.json. Cheap-clonable.\n\n## API\n- new(project_root: PathBuf) -> Result<Self> — создаёт .forge/, грузит todos.json (если есть).\n- list(project_id: &str) -> Vec<Todo>.\n- get(id: &str) -> Option<Todo> (поиск по всем проектам, id глобально уникален).\n- create(project_id, title, description, plan_mode) -> Result<Todo> — генерит UUID v4, ставит created_at=updated_at=now. plan_mode добавлен в forge-5bkg.\n- update(id, Option<title>, Option<Option<description>>, Option<bool> plan_mode) -> Result<Option<Todo>> — двойной Option у description: None=не трогать, Some(None)=очистить, Some(Some(s))=записать. plan_mode: None=не трогать, Some(bool)=перезаписать (forge-5bkg).\n- delete(id) -> Result<bool>.\n- save() — экстренный flush.\n\n## Persistence\nAtomic save через tempfile + rename. На POSIX rename атомарен в пределах одного mount-point.\n\n## Время\nRFC3339 формируется вручную (без chrono) через алгоритм Howard Hinnant. Формат: YYYY-MM-DDTHH:MM:SS.sssZ.\n\n## Ограничения\n- Save держит lock на время IO — приемлемо для масштабов сотен TODO.\n- Поиск get() — O(N) по всем проектам.",
+    "createdAt": "2026-05-11T09:57:22.956Z",
+    "updatedAt": "2026-05-11T09:57:24.050Z",
+    "aliases": [
+      "plan_mode"
+    ]
+  },
+  {
+    "element": "promote_todo",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 3 — handler POST /api/todos/:id/promote в tmux-web/src/main.rs. Конвертирует TODO-карточку в bd-задачу через 'br create --json' + ставит NotifyJob в notifier-очередь.\n\nАлгоритм:\n1. todos.get(id) → 404 если нет.\n2. projects.find_any(todo.project_id) → 500 если пропал.\n3. resolve_notify_session(req.session, project) → 400 если None.\n4. br_args: ['create', '--json', '--title', todo.title, (-d desc)?, (-t issue_type)?, '-p', priority]; tasks::run_br(args, project.path) → JSON → task_id (поля 'id' или 'created[0].id').\n5. todos.delete(id) + broadcast TodoEvent::Removed.\n6. text = format_notify_template(template || DEFAULT_NOTIFY_TEMPLATE, task_id, todo.title, desc, priority, issue_type).\n   - forge-5bkg: если todo.plan_mode == true → text += '\\n' + PLAN_MODE_SUFFIX ('Создай план для этой задачи'). Префикс '\\n' добавляется только если text непуст и не оканчивается на \\n.\n7. mode = WaitPrevious (если notify_wait_previous) | Delayed (если notify_delay_minutes>0) | Immediate.\n8. notifier.enqueue(notifier::new_job(project_id, task_id, target_session, text, mode)). Ошибка enqueue → 200 + notify_warning (задача уже создана, не катастрофа).\n9. Возврат 200 {promoted: true, task_id}.\n\nИспользуется фронтенд promoteTodo() (drag-drop TODO→open, кнопка ▲, openTodoEditModal Promote).",
+    "createdAt": "2026-05-11T09:57:23.174Z",
+    "updatedAt": "2026-05-11T09:57:23.839Z",
+    "aliases": [
+      "plan mode"
+    ]
+  },
+  {
+    "element": "openTodoEditModal",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 4 — модалка редактирования TODO-карточки (tmux-web/static/app.js). Поля: title, description, plan_mode (checkbox #td-plan-mode, forge-5bkg — добавляет суффикс при promote), session-input (Promote → tmux session). default session = state.currentSession || первая сессия проекта. Кнопки: Cancel (закрыть), Delete (DELETE /api/todos/:id с confirm), Promote (вызывает promoteTodo с введённым session), Save (PATCH /api/todos/:id с только изменёнными полями: title, description, plan_mode). Без поля status — у TODO-карточек его нет. WS upsert/removed синхронизирует state.todosData автоматически после успеха.",
+    "createdAt": "2026-05-11T09:57:23.410Z",
+    "updatedAt": "2026-05-11T09:57:23.410Z"
+  },
+  {
+    "element": "renderTodoCard",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 4 — рендерит TODO-карточку (tmux-web/static/app.js). Создаёт div.kanban-card с data-status='todo' и data-priority. dragstart payload — 'todo:'+id (префикс маркирует TODO для drop-handler в renderColumn). click → openTodoEditModal(todo) — но не если кликнули по .promote-btn. Отрисовывает: title, description (truncate 140 char + …), meta-row (P-pill, type-tag, plan-mode-badge '◆ plan' если todo.plan_mode=true — forge-5bkg, ▲ promote button), labels (max 3 + +N). Кнопка promote вызывает promoteTodo(todo.id) с stopPropagation, чтобы не открывать edit-modal.",
+    "createdAt": "2026-05-11T09:57:23.619Z",
+    "updatedAt": "2026-05-11T09:57:23.619Z"
+  },
+  {
+    "element": "todo-plan-mode",
+    "path": "",
+    "type": "page",
+    "content": "Фича plan_mode для TODO-карточек (forge-5bkg, 2026-05-11).\n\n## Суть\nКаждая TODO-карточка получила булевый флаг plan_mode (по умолчанию false). При promote TODO → bd-task, если plan_mode=true, к тексту notify-сообщения, отправляемому через tmux::send_keys в активную сессию, добавляется новая строка с константой PLAN_MODE_SUFFIX = 'Создай план для этой задачи'.\n\n## Backend (tmux-web/src/...)\n- todos.rs::Todo — поле plan_mode: bool #[serde(default)]. Совместимость со старыми todos.json через default=false.\n- todos.rs::TodoStore::create(project_id, title, description, plan_mode) — новый параметр.\n- todos.rs::TodoStore::update(id, title, description, plan_mode: Option<bool>) — добавлен 4-й параметр. None=не трогать, Some(bool)=перезаписать.\n- main.rs::CreateTodoReq — поле plan_mode: bool #[serde(default)] (POST /api/todos).\n- main.rs::PatchTodoReq — поле plan_mode: Option<bool> #[serde(default)] (PATCH /api/todos/:id).\n- main.rs::PLAN_MODE_SUFFIX — константа 'Создай план для этой задачи'.\n- main.rs::promote_todo — после format_notify_template() если todo.plan_mode → text += '\\n' + PLAN_MODE_SUFFIX (новая строка добавляется только если text непуст и не оканчивается на \\n).\n\n## Frontend (tmux-web/static/app.js + style.css)\n- openCreateModal({status:'todo'}) — рендерит checkbox #tm-plan-mode 'Включить план мод' под формой; payload содержит plan_mode: bool в POST /api/todos.\n- openTodoEditModal — рендерит checkbox #td-plan-mode (initial = todo.plan_mode); patch включает plan_mode только если значение изменилось vs текущего.\n- renderTodoCard — рисует .plan-mode-badge '◆ plan' в meta-row если todo.plan_mode=true.\n- style.css — стили .modal-card .checkbox-row (flex с input checkbox + .hint), .plan-mode-badge (фиолетовый pill #6a4bb0).\n\n## Тесты\ntodos::tests::create_get_update_delete_roundtrip — проверяет: t.plan_mode=false после create(.., false), updated.plan_mode=true после update(.., Some(true)). Фикстуры в ws_todos::tests дополнены plan_mode: false. cargo test: 69 passed.\n\n## Обратная совместимость\nСтарые todos.json без plan_mode-поля грузятся OK (serde default=false). Старые UI-клиенты без чекбокса посылают POST/PATCH без plan_mode → серверу всё равно (Option<bool>::None = не трогать).",
+    "createdAt": "2026-05-11T09:57:24.260Z",
+    "updatedAt": "2026-05-11T09:57:24.260Z"
+  }
+]

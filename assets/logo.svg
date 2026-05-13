@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 260" width="980" height="260" role="img" aria-label="F.O.R.G.E. logo">
+  <defs>
+    <linearGradient id="emberGrad" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#3a0a00"/>
+      <stop offset="35%" stop-color="#c2410c"/>
+      <stop offset="70%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#fde68a"/>
+    </linearGradient>
+    <linearGradient id="steelGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#cbd5e1"/>
+      <stop offset="50%" stop-color="#64748b"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <linearGradient id="anvilGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#475569"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="titleGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#f59e0b"/>
+      <stop offset="50%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#f97316"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#fde68a" stop-opacity="0.9"/>
+      <stop offset="60%" stop-color="#f97316" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#7c2d12" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="sparkBlur" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="0.6"/>
+    </filter>
+  </defs>
+
+  <!-- ember glow behind anvil -->
+  <ellipse cx="170" cy="175" rx="140" ry="55" fill="url(#glow)"/>
+
+  <!-- ANVIL -->
+  <g transform="translate(70,130)">
+    <!-- horn -->
+    <path d="M0,40 Q40,30 70,38 L70,55 L0,55 Z" fill="url(#anvilGrad)"/>
+    <!-- top face -->
+    <rect x="60" y="30" width="140" height="22" rx="3" fill="url(#anvilGrad)"/>
+    <!-- step -->
+    <rect x="200" y="34" width="18" height="16" fill="#0f172a"/>
+    <!-- waist -->
+    <path d="M85,52 L195,52 L180,82 L100,82 Z" fill="#1e293b"/>
+    <!-- base -->
+    <rect x="55" y="82" width="170" height="20" rx="3" fill="#0f172a"/>
+    <!-- highlight -->
+    <rect x="62" y="32" width="138" height="3" fill="#94a3b8" opacity="0.55"/>
+    <!-- hot ember on anvil -->
+    <ellipse cx="135" cy="32" rx="34" ry="6" fill="url(#emberGrad)" opacity="0.95"/>
+    <ellipse cx="135" cy="30" rx="20" ry="3" fill="#fde68a"/>
+  </g>
+
+  <!-- HAMMER striking -->
+  <g transform="translate(165,55) rotate(-22)">
+    <!-- handle -->
+    <rect x="-4" y="0" width="8" height="95" rx="2" fill="#78350f"/>
+    <rect x="-4" y="0" width="8" height="95" rx="2" fill="url(#steelGrad)" opacity="0.15"/>
+    <!-- head -->
+    <rect x="-28" y="-22" width="56" height="28" rx="3" fill="url(#steelGrad)" stroke="#0f172a" stroke-width="1.5"/>
+    <rect x="-28" y="-22" width="56" height="6" fill="#e2e8f0" opacity="0.6"/>
+    <rect x="-10" y="-22" width="20" height="28" fill="#1e293b" opacity="0.25"/>
+  </g>
+
+  <!-- SPARKS / code particles flying off anvil -->
+  <g fill="#fbbf24" filter="url(#sparkBlur)">
+    <circle cx="320" cy="120" r="3"/>
+    <circle cx="345" cy="100" r="2"/>
+    <circle cx="300" cy="140" r="2.5"/>
+    <circle cx="360" cy="135" r="1.8"/>
+    <circle cx="50" cy="120" r="2"/>
+    <circle cx="30" cy="140" r="1.5"/>
+  </g>
+  <!-- code-glyph sparks: { } < > / ; -->
+  <g font-family="ui-monospace,Menlo,monospace" font-weight="700" fill="#fbbf24" opacity="0.95">
+    <text x="305" y="95" font-size="14">{ }</text>
+    <text x="335" y="155" font-size="12">&lt;/&gt;</text>
+    <text x="40" y="105" font-size="12">;;</text>
+    <text x="20" y="160" font-size="11">$</text>
+    <text x="365" y="175" font-size="11">&gt;_</text>
+  </g>
+
+  <!-- TITLE F.O.R.G.E. -->
+  <g font-family="ui-monospace,'JetBrains Mono',Menlo,monospace" font-weight="800">
+    <text x="410" y="135" font-size="62" fill="url(#titleGrad)" letter-spacing="4">F.O.R.G.E.</text>
+    <text x="412" y="170" font-size="13" fill="#94a3b8" letter-spacing="2.5">FLOW · ORCHESTRATION · REAL-TIME · GOVERNANCE · ENGINE</text>
+    <!-- terminal cursor -->
+    <rect x="410" y="190" width="10" height="16" fill="#22c55e">
+      <animate attributeName="opacity" values="1;0;1" dur="1s" repeatCount="indefinite"/>
+    </rect>
+    <text x="428" y="204" font-size="14" fill="#cbd5e1" font-weight="500">tmux · kanban · git · lazygit · AI-agents</text>
+  </g>
+
+  <!-- bottom rule -->
+  <line x1="410" y1="225" x2="960" y2="225" stroke="#334155" stroke-width="1"/>
+</svg>

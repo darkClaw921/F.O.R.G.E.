@@ -1,0 +1,3 @@
+# style.css
+
+Frontend CSS tmux-web/static/style.css. Phase 5 cleanup (P5.4): удалены все legacy git-UI стили (#git-toolbar, #git-branch, #git-ahead-behind, #git-body, #git-files-pane, #git-commit-pane, #git-graph-pane, #git-staged-list/-unstaged-list label, .git-badge.* варианты для modified/added/deleted/untracked/renamed/conflict/empty, #git-commit-msg/-btn/-error, #git-graph-canvas). Остался: #git контейнер (display:flex column, видимость через [hidden]) + lazygit-tab стили (.git-term position:relative с #000 background, .git-placeholder для no-active-project, .git-error banner с .git-error-text/-retry/-close кнопками, xterm-внутри-.git-term растягивание .xterm/.xterm-viewport/.xterm-screen).

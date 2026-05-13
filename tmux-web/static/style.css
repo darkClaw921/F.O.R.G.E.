@@ -1,0 +1,2188 @@
+/* tmux-web — dark theme + layout (Phase 4) */
+
+/*
+ * ===== Theme variables =====
+ *
+ * Семантические CSS-переменные темы. Значения 11 themable-переменных
+ * (--bg, --bg-elev, --fg, --fg-dim, --border, --accent, --warn, --danger,
+ * --p0, --p1, --p2) соответствуют пресету "Default" из tmux-web/src/themes.rs
+ * (built_in_presets) — это backend-источник истины.
+ *
+ * Дополнительные переменные (--bg-*, --hover-*, --success, --info, --agent-*)
+ * описывают вторичные оттенки UI (hover-state, success/info-цвета, акцент
+ * agent-режима) и подбираются под значения themable-палитры.
+ *
+ * В Phase 3 applyTheme() будет менять themable-переменные через
+ * document.documentElement.style.setProperty одной операцией.
+ */
+:root {
+    /* themable palette (1:1 с themes.rs preset id="default") */
+    --bg: #0e1116;
+    --bg-elev: #161b22;
+    --fg: #d8dee9;
+    --fg-dim: #8b949e;
+    --border: #30363d;
+    --accent: #2a7fff;
+    --warn: #d29922;
+    --danger: #f85149;
+    --p0: #f85149;
+    --p1: #d29922;
+    --p2: #2a7fff;
+
+    /* Производные переменные: выражены через color-mix() от 11 themable
+       выше, чтобы applyTheme() (только 11 setProperty) перекрашивал ВЕСЬ UI,
+       а не только основные плоскости. */
+
+    /* secondary surfaces (вторичные оттенки фона) */
+    --bg-deep: color-mix(in srgb, var(--bg) 80%, #000 20%);
+    --bg-input: color-mix(in srgb, var(--bg-elev) 85%, var(--fg) 5%);
+    --bg-input-hover: color-mix(in srgb, var(--bg-elev) 70%, var(--fg) 12%);
+    --bg-header: color-mix(in srgb, var(--bg) 90%, #000 10%);
+    --bg-header-alt: color-mix(in srgb, var(--bg-elev) 90%, var(--fg) 4%);
+    --bg-toolbar: color-mix(in srgb, var(--bg-elev) 92%, var(--fg) 4%);
+    --bg-modal-shade: color-mix(in srgb, var(--bg-elev) 75%, var(--fg) 8%);
+    --bg-pill: color-mix(in srgb, var(--bg-elev) 70%, var(--fg) 10%);
+    --bg-pill-hover: color-mix(in srgb, var(--bg-elev) 55%, var(--fg) 18%);
+    --status-neutral: var(--fg-dim);
+
+    /* accent shades (производные от --accent для hover/active) */
+    --accent-hover: color-mix(in srgb, var(--accent) 85%, #000 15%);
+    --accent-active: color-mix(in srgb, var(--accent) 70%, #000 30%);
+
+    /* borders & dividers */
+    --border-input: color-mix(in srgb, var(--border) 80%, var(--fg) 6%);
+    --border-input-hover: color-mix(in srgb, var(--border) 55%, var(--fg) 25%);
+    --border-soft: color-mix(in srgb, var(--border) 60%, var(--bg) 40%);
+    --border-soft-2: color-mix(in srgb, var(--border) 55%, var(--bg) 45%);
+    --border-input-soft: color-mix(in srgb, var(--border) 40%, var(--bg) 60%);
+    --border-row: color-mix(in srgb, var(--border) 75%, var(--fg) 8%);
+
+    /* foreground variants */
+    --fg-soft: color-mix(in srgb, var(--fg) 90%, #fff 10%);
+    --fg-mute: color-mix(in srgb, var(--fg) 55%, var(--fg-dim) 45%);
+    --fg-muted-2: var(--fg-dim);
+    --fg-mute-3: color-mix(in srgb, var(--fg) 40%, var(--fg-dim) 60%);
+    --fg-mute-4: color-mix(in srgb, var(--fg-dim) 70%, var(--bg) 30%);
+    --fg-tab-inactive: color-mix(in srgb, var(--fg) 60%, var(--fg-dim) 40%);
+    --fg-placeholder: color-mix(in srgb, var(--fg-dim) 70%, var(--bg) 30%);
+    --fg-checkbox: color-mix(in srgb, var(--fg-dim) 75%, var(--accent) 25%);
+    --fg-on-accent: #fff;
+
+    /* status / semantic */
+    --success: #5acf90;
+    --info: var(--accent);
+    --warn-soft: color-mix(in srgb, var(--warn) 80%, #fff 20%);
+    --warn-bg: color-mix(in srgb, var(--warn) 18%, var(--bg) 82%);
+    --warn-bg-hover: color-mix(in srgb, var(--warn) 28%, var(--bg) 72%);
+    --warn-icon-bg: color-mix(in srgb, var(--warn) 90%, #fff 10%);
+    --danger-soft: color-mix(in srgb, var(--danger) 80%, #fff 20%);
+    --danger-bg: color-mix(in srgb, var(--danger) 8%, transparent 92%);
+    --p0-card: var(--p0);
+    --p1-card: var(--p1);
+    --p3-card: var(--fg-dim);
+
+    /* danger button gradient (delete confirm) — derived from --danger */
+    --danger-btn-bg-1: color-mix(in srgb, var(--danger) 22%, var(--bg-elev) 78%);
+    --danger-btn-border-1: color-mix(in srgb, var(--danger) 35%, var(--bg-elev) 65%);
+    --danger-btn-fg-1: color-mix(in srgb, var(--danger) 60%, #fff 40%);
+    --danger-btn-bg-2: color-mix(in srgb, var(--danger) 32%, var(--bg-elev) 68%);
+    --danger-btn-border-2: color-mix(in srgb, var(--danger) 50%, var(--bg-elev) 50%);
+    --danger-btn-fg-2: color-mix(in srgb, var(--danger) 40%, #fff 60%);
+    --danger-btn-bg-3: color-mix(in srgb, var(--danger) 50%, var(--bg-elev) 50%);
+    --danger-btn-border-3: color-mix(in srgb, var(--danger) 70%, var(--bg-elev) 30%);
+    --danger-btn-bg-4: color-mix(in srgb, var(--danger) 65%, var(--bg-elev) 35%);
+    --danger-btn-border-4: color-mix(in srgb, var(--danger) 85%, var(--bg-elev) 15%);
+
+    /* agent mode (фиолетовая палитра — semantic, не theme-driven; bg-* подмешан под текущий --bg) */
+    --agent-accent: #7c3aed;
+    --agent-accent-soft: #c4b5fd;
+    --agent-border: #4c1d95;
+    --agent-bg-1: color-mix(in srgb, #7c3aed 12%, var(--bg) 88%);
+    --agent-bg-2: color-mix(in srgb, #7c3aed 22%, var(--bg) 78%);
+    --agent-glow: rgba(124, 58, 237, 0.6);
+
+    /* overlays / focus rings */
+    --overlay-modal: rgba(0, 0, 0, 0.55);
+    --overlay-shadow: rgba(0, 0, 0, 0.45);
+    --shadow-pill: rgba(0, 0, 0, 0.25);
+    --accent-tint-strong: color-mix(in srgb, var(--accent) 8%, transparent 92%);
+    --accent-tint-soft: color-mix(in srgb, var(--accent) 5%, transparent 95%);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    background: var(--bg);
+    color: var(--fg);
+    overflow: hidden;
+}
+
+/* ===== Layout ===== */
+
+#layout {
+    display: flex;
+    height: 100vh;
+    height: 100dvh;
+    width: 100vw;
+    width: 100dvw;
+}
+
+#sidebar {
+    width: 240px;
+    flex: 0 0 240px;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-elev);
+    border-right: 1px solid var(--border);
+    overflow: hidden;
+}
+
+#main {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-deep);
+    overflow: hidden;
+}
+
+#terminal {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+}
+
+.placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--fg-dim);
+    font-size: 0.9rem;
+    pointer-events: none;
+}
+
+.placeholder.hidden {
+    display: none;
+}
+
+/* ===== Project bar (Phase 6.B) ===== */
+
+#project-bar {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-header);
+    flex: 0 0 auto;
+}
+
+#project-select {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-family: inherit;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: border-color 100ms ease, background 100ms ease;
+}
+
+#project-select:hover {
+    border-color: var(--border-input-hover);
+    background: var(--bg-input-hover);
+}
+
+#project-select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+#project-bar button {
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-family: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+    flex: 0 0 auto;
+    line-height: 1;
+    transition: background 100ms ease, border-color 100ms ease;
+}
+
+#project-bar button:hover {
+    background: var(--bg-input-hover);
+    border-color: var(--border-input-hover);
+}
+
+#project-bar button:active {
+    background: var(--accent-active);
+    border-color: var(--accent);
+}
+
+/* ===== Sidebar header ===== */
+
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-header-alt);
+}
+
+.sidebar-header h1 {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--fg-soft);
+}
+
+#btn-new {
+    background: var(--accent);
+    color: var(--fg-on-accent);
+    border: 0;
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 0.78rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 120ms ease;
+}
+
+#btn-new:hover {
+    background: var(--accent-hover);
+}
+
+#btn-new:active {
+    background: var(--accent-active);
+}
+
+/* ===== Session list ===== */
+
+.session-list {
+    list-style: none;
+    margin: 0;
+    padding: 6px 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
+}
+
+.session-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 14px;
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    transition: background 100ms ease, border-color 100ms ease;
+}
+
+.session-item:hover {
+    background: var(--bg-modal-shade);
+}
+
+.session-item.active {
+    background: var(--bg-input-hover);
+    border-left-color: var(--accent);
+}
+
+.session-item.needs-attention {
+    background-color: var(--warn-bg);
+    border-left-color: var(--warn-soft);
+}
+
+.session-item.needs-attention .session-name {
+    color: var(--warn-soft);
+    font-weight: 600;
+}
+
+.session-item.needs-attention.active {
+    background-color: var(--warn-bg-hover);
+}
+
+.session-item .session-meta {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.session-item .session-name {
+    font-size: 0.85rem;
+    color: var(--fg-soft);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.session-item .session-sub {
+    font-size: 0.7rem;
+    color: var(--fg-mute);
+    margin-top: 2px;
+}
+
+.session-item .session-sub .attached-flag {
+    color: var(--success);
+}
+
+.session-item .btn-kill {
+    background: transparent;
+    color: var(--fg-muted-2);
+    border: 1px solid var(--border-row);
+    border-radius: 3px;
+    padding: 2px 6px;
+    font-size: 0.7rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: color 100ms ease, border-color 100ms ease, background 100ms ease;
+    flex: 0 0 auto;
+}
+
+.session-item .btn-kill:hover {
+    color: var(--danger-soft);
+    border-color: var(--danger-soft);
+    background: var(--danger-bg);
+}
+
+.session-list .empty {
+    color: var(--fg-dim);
+    font-size: 0.78rem;
+    padding: 14px;
+    text-align: center;
+}
+
+/* ===== Sidebar footer (status) ===== */
+
+.sidebar-footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-top: 1px solid var(--border);
+    font-size: 0.72rem;
+    color: var(--fg-mute);
+    background: var(--bg-header-alt);
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+    background: var(--status-neutral);
+    box-shadow: 0 0 0 2px var(--shadow-pill);
+}
+
+.status-dot.status-connected {
+    background: var(--success);
+}
+
+.status-dot.status-connecting {
+    background: var(--warn-icon-bg);
+}
+
+.status-dot.status-disconnected {
+    background: var(--status-neutral);
+}
+
+.status-dot.status-error {
+    background: var(--danger-soft);
+}
+
+/* ===== Scrollbar ===== */
+
+.session-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.session-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.session-list::-webkit-scrollbar-thumb {
+    background: var(--bg-pill);
+    border-radius: 4px;
+}
+
+.session-list::-webkit-scrollbar-thumb:hover {
+    background: var(--bg-pill-hover);
+}
+
+/* ===== Tab bar (Phase 6.A) ===== */
+
+#tab-bar {
+    flex: 0 0 36px;
+    display: flex;
+    gap: 4px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border-soft);
+    align-items: center;
+    background: var(--bg);
+}
+
+.tab-btn {
+    background: transparent;
+    border: 0;
+    color: var(--fg-tab-inactive);
+    padding: 6px 12px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 0.82rem;
+    transition: background 100ms ease, color 100ms ease;
+}
+
+.tab-btn:hover {
+    background: var(--bg-input);
+}
+
+.tab-btn.active {
+    background: var(--accent);
+    color: var(--fg-on-accent);
+}
+
+.tab-meta {
+    margin-left: auto;
+    color: var(--fg-placeholder);
+    font-size: 12px;
+}
+
+/* ===== Tasks container ===== */
+
+#tasks {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: var(--bg);
+}
+
+#tasks[hidden] {
+    display: none;
+}
+
+#tasks-toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex: 0 0 auto;
+}
+
+#tasks-toolbar button {
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 5px 10px;
+    font-family: inherit;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: background 100ms ease, border-color 100ms ease;
+}
+
+#tasks-toolbar button:hover {
+    background: var(--bg-input-hover);
+    border-color: var(--border-input-hover);
+}
+
+#tasks-toolbar button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--fg-on-accent);
+}
+
+#tasks-toolbar button.primary:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+#tasks-meta {
+    color: var(--fg-placeholder);
+    font-size: 0.75rem;
+    margin-left: auto;
+}
+
+#tasks-board {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* ===== Kanban columns ===== */
+
+.kanban-col {
+    background: var(--bg-elev);
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border: 1px solid var(--border-input-soft);
+}
+
+.kanban-col-header {
+    padding: 8px 10px;
+    position: sticky;
+    top: 0;
+    background: var(--bg-elev);
+    font-weight: 600;
+    font-size: 0.78rem;
+    color: var(--fg);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border-input-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    z-index: 1;
+}
+
+.kanban-col-header .col-count {
+    color: var(--fg-placeholder);
+    font-weight: 500;
+    font-size: 0.72rem;
+}
+
+.kanban-col-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px;
+}
+
+.kanban-col-body::-webkit-scrollbar {
+    width: 6px;
+}
+
+.kanban-col-body::-webkit-scrollbar-thumb {
+    background: var(--bg-pill);
+    border-radius: 3px;
+}
+
+/* ===== Cards ===== */
+
+.kanban-card {
+    padding: 8px;
+    margin-bottom: 6px;
+    border-radius: 4px;
+    background: var(--bg-input);
+    cursor: grab;
+    border-left: 3px solid var(--p3-card);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.kanban-card:active {
+    cursor: grabbing;
+}
+
+.kanban-card[data-priority="0"] { border-left-color: var(--p0-card); }
+.kanban-card[data-priority="1"] { border-left-color: var(--p1-card); }
+.kanban-card[data-priority="2"] { border-left-color: var(--p2); }
+.kanban-card[data-priority="3"] { border-left-color: var(--p3-card); }
+.kanban-card[data-priority="4"] { border-left-color: var(--p3-card); }
+
+.kanban-card .id {
+    color: var(--fg-placeholder);
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    font-size: 11px;
+}
+
+.kanban-card .title {
+    word-break: break-word;
+    color: var(--fg-soft);
+    font-size: 0.82rem;
+    line-height: 1.3;
+}
+
+.kanban-card .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+    margin-top: 2px;
+}
+
+.kanban-card .p-pill {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--fg-on-accent);
+    background: var(--p3-card);
+}
+
+.kanban-card[data-priority="0"] .p-pill { background: var(--p0-card); }
+.kanban-card[data-priority="1"] .p-pill { background: var(--p1-card); }
+.kanban-card[data-priority="2"] .p-pill { background: var(--p2); }
+
+.kanban-card .type-tag {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    color: var(--fg-tab-inactive);
+    background: var(--bg-pill);
+}
+
+.kanban-card .labels {
+    font-size: 11px;
+    color: var(--fg-checkbox);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.kanban-card .label-tag {
+    background: var(--bg-input-hover);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--fg-tab-inactive);
+}
+
+/* ===== Modals (Phase 6.B) ===== */
+
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--overlay-modal);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-card {
+    background: var(--bg-elev);
+    border: 1px solid var(--border-input);
+    border-radius: 8px;
+    padding: 18px 18px 14px;
+    min-width: 360px;
+    max-width: 92vw;
+    max-height: 80vh;
+    overflow: auto;
+    box-shadow: 0 10px 30px var(--overlay-shadow);
+    color: var(--fg);
+}
+
+.modal-card h2 {
+    margin: 0 0 12px;
+    font-size: 0.95rem;
+    color: var(--fg-soft);
+    font-weight: 600;
+}
+
+.modal-card label {
+    display: block;
+    margin-bottom: 10px;
+    font-size: 0.78rem;
+    color: var(--fg-tab-inactive);
+}
+
+.modal-card input[type="text"] {
+    width: 100%;
+    margin-top: 4px;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-family: inherit;
+    font-size: 0.82rem;
+}
+
+.modal-card input[type="text"]:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.modal-card .modal-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 0.78rem;
+}
+
+.modal-card .modal-check input {
+    margin: 0;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.modal-actions button {
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 5px 12px;
+    font-family: inherit;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: background 100ms ease, border-color 100ms ease;
+}
+
+.modal-actions button:hover {
+    background: var(--bg-input-hover);
+    border-color: var(--border-input-hover);
+}
+
+.modal-actions button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--fg-on-accent);
+}
+
+.modal-actions button.primary:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+.modal-projects {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 50vh;
+    overflow-y: auto;
+}
+
+.modal-project-item {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 8px 6px;
+    border-bottom: 1px solid var(--border-input-soft);
+}
+
+.modal-project-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.modal-project-item:last-child {
+    border-bottom: 0;
+}
+
+.modal-project-item.active {
+    background: var(--accent-tint-strong);
+}
+
+.modal-project-meta {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.modal-project-name {
+    font-size: 0.85rem;
+    color: var(--fg-soft);
+}
+
+.modal-project-sub {
+    font-size: 0.7rem;
+    color: var(--fg-mute);
+    margin-top: 2px;
+    word-break: break-all;
+}
+
+.btn-remove {
+    background: transparent;
+    color: var(--fg-muted-2);
+    border: 1px solid var(--border-row);
+    border-radius: 3px;
+    padding: 3px 8px;
+    font-size: 0.72rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: color 100ms ease, border-color 100ms ease, background 100ms ease;
+}
+
+.btn-remove:hover:not(:disabled) {
+    color: var(--danger-soft);
+    border-color: var(--danger-soft);
+    background: var(--danger-bg);
+}
+
+.btn-remove:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* ===== Task modal (Phase 6.C) ===== */
+
+@keyframes modalFadeIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.modal-overlay {
+    animation: modalFadeIn 120ms ease-out;
+}
+
+.modal-card.task-modal {
+    min-width: 560px;
+    max-width: 900px;
+    width: 70vw;
+}
+
+.modal-card textarea {
+    width: 100%;
+    margin-top: 4px;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    line-height: 1.45;
+    min-height: 220px;
+    resize: vertical;
+}
+
+.modal-card textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.modal-card select {
+    width: 100%;
+    margin-top: 4px;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-family: inherit;
+    font-size: 0.82rem;
+    cursor: pointer;
+}
+
+.modal-card select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.modal-card .field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.modal-card .field-row label {
+    margin-bottom: 0;
+}
+
+.modal-card .modal-id {
+    color: var(--fg-placeholder);
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    font-size: 0.72rem;
+    margin-bottom: 8px;
+}
+
+.modal-actions button.warn {
+    background: var(--danger-btn-bg-1);
+    border-color: var(--danger-btn-border-1);
+    color: var(--danger-btn-fg-1);
+}
+
+.modal-actions button.warn:hover {
+    background: var(--danger-btn-bg-2);
+    border-color: var(--danger-btn-border-2);
+    color: var(--danger-btn-fg-2);
+}
+
+.modal-actions button.danger {
+    background: var(--danger-btn-bg-3);
+    border-color: var(--danger-btn-border-3);
+    color: var(--fg-on-accent);
+}
+
+.modal-actions button.danger:hover {
+    background: var(--danger-btn-bg-4);
+    border-color: var(--danger-btn-border-4);
+}
+
+.modal-actions .spacer {
+    flex: 1 1 auto;
+}
+
+/* Quick-create plus-button в каждой колонке kanban */
+.kanban-col-header .col-add {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--fg-mute);
+    font-family: inherit;
+    font-size: 0.95rem;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0 6px;
+    border-radius: 3px;
+    margin-left: 6px;
+    transition: color 100ms ease, border-color 100ms ease, background 100ms ease;
+}
+
+.kanban-col-header .col-add:hover {
+    color: var(--fg-soft);
+    border-color: var(--border-input-hover);
+    background: var(--bg-input-hover);
+}
+
+.kanban-col-header .col-meta {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Карточка теперь кликабельна — указатель руки */
+.kanban-card {
+    cursor: pointer;
+}
+
+.kanban-card:hover {
+    background: var(--bg-input-hover);
+}
+
+/* ===== Phase 6.E — Drag-and-drop visual states ===== */
+
+/* Курсор: grab по умолчанию, grabbing при активном drag.
+   Перекрывает .kanban-card { cursor: pointer } выше. */
+.kanban-card {
+    cursor: grab;
+}
+
+.kanban-card:active {
+    cursor: grabbing;
+}
+
+/* Источник drag — карточка, которую сейчас тащат. */
+.kanban-card.dragging {
+    opacity: 0.5;
+    cursor: grabbing;
+}
+
+/* Цель drag — колонка, над которой сейчас курсор с грузом.
+   Outline-offset:-4px рисует рамку внутри body, не сдвигая layout. */
+.kanban-col-body.drop-target {
+    outline: 2px dashed var(--accent);
+    outline-offset: -4px;
+    background: var(--accent-tint-soft);
+}
+
+/* ===== Session group headers (cross-project sidebar) ===== */
+/* Заголовки групп сессий в сайдбаре, когда projectFilter === '__all__'.
+   Видимое разграничение групп без интерактивности. */
+.session-group-header {
+    padding: 6px 12px 4px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--fg-mute-4);
+    background: var(--bg-toolbar);
+    border-top: 1px solid var(--border-soft-2);
+    cursor: default;
+    list-style: none;
+}
+.session-group-header:first-child {
+    border-top: none;
+}
+
+/* ===== Phase 4 — TODO kanban-колонка ===== */
+/* Колонка TODO визуально отделена фиолетовым акцентом — это user-side
+   карточки (из state.todosData), а не bd-issues. */
+
+/* Фиолетовый индикатор в заголовке TODO-колонки. */
+.kanban-col-header[data-status="todo"] {
+    color: var(--agent-accent-soft);
+    border-bottom-color: var(--agent-border);
+}
+
+.kanban-col-header[data-status="todo"]::before {
+    content: "";
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--agent-accent);
+    margin-right: 6px;
+    box-shadow: 0 0 6px var(--agent-glow);
+}
+
+/* Левый бордер карточки — главный визуальный маркер. Перекрывает
+   .kanban-card[data-priority="..."] правила выше (специфичность одинаковая,
+   но это правило идёт ниже в файле — побеждает). */
+.kanban-card[data-status="todo"] {
+    border-left: 4px solid var(--agent-accent);
+    background: var(--agent-bg-1);
+}
+
+.kanban-card[data-status="todo"]:hover {
+    background: var(--agent-bg-2);
+}
+
+/* P-pill на TODO-карточке — фиолетовый. */
+.kanban-card[data-status="todo"] .p-pill {
+    background: var(--agent-accent);
+}
+
+/* Description preview на TODO-карточке. */
+.kanban-card[data-status="todo"] .desc {
+    font-size: 0.74rem;
+    color: var(--fg-mute-3);
+    line-height: 1.3;
+    word-break: break-word;
+}
+
+/* Кнопка ▲ promote — компактная, в правом краю meta-row. */
+.kanban-card .promote-btn {
+    margin-left: auto;
+    background: transparent;
+    border: 1px solid var(--agent-border);
+    color: var(--agent-accent-soft);
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 3px;
+    cursor: pointer;
+    line-height: 1.3;
+    transition: background 100ms ease, color 100ms ease, border-color 100ms ease;
+}
+
+.kanban-card .promote-btn:hover {
+    background: var(--agent-accent);
+    color: var(--fg-on-accent);
+    border-color: var(--agent-accent);
+}
+
+.kanban-card .promote-btn:active {
+    transform: translateY(1px);
+}
+
+/* ===== Phase 5 — Notifications form в Settings modal ===== */
+
+.btn-settings {
+    background: transparent;
+    color: var(--fg-muted-2);
+    border: 1px solid var(--border-row);
+    border-radius: 3px;
+    padding: 3px 8px;
+    font-size: 0.72rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: color 100ms ease, border-color 100ms ease, background 100ms ease;
+}
+
+.btn-settings:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--accent-tint-strong);
+}
+
+.notify-fieldset {
+    border: 1px solid var(--border-input);
+    border-radius: 5px;
+    padding: 10px 12px 12px;
+    margin: 4px 0 0;
+    background: var(--bg-header);
+}
+
+.notify-fieldset legend {
+    font-size: 0.78rem;
+    color: var(--fg-tab-inactive);
+    padding: 0 6px;
+    font-weight: 600;
+}
+
+.notify-hint {
+    font-size: 0.7rem;
+    color: var(--fg-mute);
+    line-height: 1.4;
+    margin-bottom: 10px;
+}
+
+.notify-field {
+    display: block;
+    font-size: 0.72rem;
+    color: var(--fg-tab-inactive);
+    margin-bottom: 8px;
+}
+
+.notify-field textarea,
+.notify-field input[type="text"],
+.notify-field input[type="number"] {
+    width: 100%;
+    margin-top: 3px;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 5px 8px;
+    font-family: inherit;
+    font-size: 0.8rem;
+    box-sizing: border-box;
+}
+
+.notify-field textarea {
+    resize: vertical;
+    min-height: 48px;
+    line-height: 1.35;
+}
+
+.notify-field textarea:focus,
+.notify-field input[type="text"]:focus,
+.notify-field input[type="number"]:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.notify-check {
+    margin: 4px 0 8px;
+    font-size: 0.74rem;
+    color: var(--fg);
+}
+
+.notify-error {
+    color: var(--danger-soft);
+    font-size: 0.72rem;
+    margin: 6px 0;
+    word-break: break-word;
+}
+
+.notify-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.notify-actions button {
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 4px 12px;
+    font-family: inherit;
+    font-size: 0.76rem;
+    cursor: pointer;
+    transition: background 100ms ease, border-color 100ms ease;
+}
+
+.notify-actions button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--fg-on-accent);
+}
+
+.notify-actions button.primary:hover:not(:disabled) {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+.notify-actions button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ===== Settings modal: tab-bar (Phase wk7.4) =====
+ *
+ * Tab-bar внутри settings-модала переключает между «Notifications»
+ * (исторический контент: список проектов + per-project notify-форма)
+ * и «Themes» (Phase wk7 — пресеты + custom темы).
+ *
+ * Стилистика тоньше, чем у глобального #tab-bar / .tab-btn (project-bar) —
+ * это вкладки внутри модала, поэтому padding и font-size меньше, и они
+ * рисуются на фоне modal-card (var(--bg-elev)), а не страницы.
+ * Используем те же CSS-переменные, что и Phase 2 (--accent, --border,
+ * --fg, --fg-dim, --bg-elev) — переключение тем мгновенно перерисовывает
+ * tab-bar тоже.
+ */
+
+.modal-card.settings-modal {
+    min-width: 520px;
+    max-width: 800px;
+    width: 60vw;
+}
+
+.modal-tabs {
+    display: flex;
+    flex-direction: row;
+    gap: 2px;
+    margin: -4px -4px 12px;
+    padding: 4px;
+    border-bottom: 1px solid var(--border);
+    background: transparent;
+}
+
+.modal-tab-btn {
+    background: transparent;
+    border: 0;
+    color: var(--fg-dim, var(--fg-tab-inactive));
+    padding: 6px 14px;
+    cursor: pointer;
+    border-radius: 4px 4px 0 0;
+    font-family: inherit;
+    font-size: 0.82rem;
+    transition: background 100ms ease, color 100ms ease;
+    margin-bottom: -1px;
+    border-bottom: 2px solid transparent;
+}
+
+.modal-tab-btn:hover {
+    background: var(--bg-input, var(--bg));
+    color: var(--fg);
+}
+
+.modal-tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    background: transparent;
+}
+
+.modal-tab-panel {
+    /* Контейнер активной вкладки. Скрытие — через `hidden` атрибут. */
+    display: block;
+}
+
+.modal-tab-panel[hidden] {
+    display: none;
+}
+
+/* ===== Themes-вкладка: пресеты + custom (Phase wk7.4) ===== */
+
+.themes-content {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    min-height: 100px;
+}
+
+.themes-loading,
+.themes-empty {
+    color: var(--fg-dim, var(--fg-mute));
+    font-size: 0.78rem;
+    padding: 8px 0;
+}
+
+.themes-error {
+    color: var(--danger, #ff6b6b);
+    font-size: 0.78rem;
+    padding: 6px 8px;
+    border: 1px solid var(--danger, #ff6b6b);
+    border-radius: 4px;
+    margin-bottom: 8px;
+}
+
+.themes-retry {
+    background: var(--bg-input, var(--bg));
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.78rem;
+}
+
+.themes-retry:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.themes-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.themes-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.themes-section-title {
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--fg-dim, var(--fg-mute));
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.theme-new-btn {
+    background: transparent;
+    color: var(--accent);
+    border: 1px dashed var(--accent);
+    border-radius: 4px;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.74rem;
+    transition: background 100ms ease, color 100ms ease;
+}
+
+.theme-new-btn:hover {
+    background: var(--accent);
+    color: var(--fg-on-accent, #fff);
+}
+
+.theme-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 10px;
+}
+
+.theme-card {
+    position: relative;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px;
+    background: var(--bg, transparent);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: border-color 100ms ease, transform 80ms ease;
+    user-select: none;
+}
+
+.theme-card:hover {
+    border-color: var(--accent);
+}
+
+.theme-card.active {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+.theme-card-name {
+    color: var(--fg);
+    font-size: 0.82rem;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.theme-card-preview {
+    display: flex;
+    flex-direction: row;
+    height: 22px;
+    border-radius: 3px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+}
+
+.theme-card-swatch {
+    flex: 1 1 0;
+    min-width: 0;
+    background: transparent;
+    display: block;
+}
+
+/* background и foreground делаем шире, чтобы они визуально доминировали
+ * (это «лицо» темы) — ANSI-цвета остаются равными. */
+.theme-card-swatch.theme-card-swatch-background,
+.theme-card-swatch.theme-card-swatch-foreground {
+    flex: 1.4 1 0;
+}
+
+.theme-card-badge {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    font-size: 0.62rem;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    pointer-events: none;
+}
+
+.theme-card-tools {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    display: flex;
+    gap: 4px;
+}
+
+.theme-card.active .theme-card-tools {
+    /* Активная карточка показывает badge — двигаем tools левее, чтобы не
+     * пересекались. */
+    right: 50px;
+}
+
+.theme-card-tool {
+    background: transparent;
+    color: var(--fg-dim, var(--fg-mute));
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-size: 0.62rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: color 100ms ease, border-color 100ms ease, background 100ms ease;
+}
+
+.theme-card-tool:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+.theme-card-tool.theme-card-tool-danger:hover {
+    color: var(--danger, #ff6b6b);
+    border-color: var(--danger, #ff6b6b);
+}
+
+/* ===== Theme editor (custom-theme modal) ===== */
+
+.modal-card.theme-editor-modal {
+    width: 720px;
+    max-width: 92vw;
+    min-width: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    max-height: 88vh;
+}
+
+.theme-editor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px 10px;
+    border-bottom: 1px solid var(--border-input-soft, var(--border));
+}
+
+.theme-editor-header h2 {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--fg);
+    font-weight: 600;
+}
+
+.theme-editor-close {
+    background: transparent;
+    border: 0;
+    color: var(--fg-dim, var(--fg-mute));
+    font-size: 1.4rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 4px;
+    transition: color 100ms ease;
+}
+
+.theme-editor-close:hover {
+    color: var(--accent);
+}
+
+.theme-editor-body {
+    padding: 12px 18px 16px;
+    overflow-y: auto;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.theme-editor-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.theme-editor-section-title {
+    margin: 0;
+    font-size: 0.74rem;
+    color: var(--fg-dim, var(--fg-mute));
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.theme-editor-meta {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.theme-editor-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.78rem;
+    color: var(--fg-tab-inactive, var(--fg-dim, var(--fg-mute)));
+}
+
+.theme-editor-row-label {
+    font-size: 0.7rem;
+    color: var(--fg-dim, var(--fg-mute));
+    text-transform: none;
+    letter-spacing: 0.02em;
+}
+
+.theme-editor-name,
+.theme-editor-duplicate {
+    width: 100%;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border-input, var(--border));
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-family: inherit;
+    font-size: 0.82rem;
+}
+
+.theme-editor-name:focus,
+.theme-editor-duplicate:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.theme-editor-ui-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 12px;
+}
+
+.theme-editor-term-base-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 12px;
+}
+
+.theme-editor-ansi-title {
+    font-size: 0.7rem;
+    color: var(--fg-dim, var(--fg-mute));
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-top: 4px;
+}
+
+.theme-editor-ansi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px 10px;
+}
+
+.theme-editor-color-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.theme-editor-color-row-compact .theme-editor-row-label {
+    font-size: 0.66rem;
+}
+
+.theme-editor-color-pair {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+}
+
+.theme-editor-color-input {
+    width: 32px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid var(--border-input, var(--border));
+    border-radius: 4px;
+    background: var(--bg);
+    cursor: pointer;
+    flex: 0 0 auto;
+}
+
+.theme-editor-color-input::-webkit-color-swatch-wrapper {
+    padding: 2px;
+}
+
+.theme-editor-color-input::-webkit-color-swatch {
+    border: 0;
+    border-radius: 2px;
+}
+
+.theme-editor-hex-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border-input, var(--border));
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 0.74rem;
+    text-transform: lowercase;
+}
+
+.theme-editor-hex-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.theme-editor-hex-input.invalid {
+    border-color: var(--danger, #ff6b6b);
+    color: var(--danger, #ff6b6b);
+}
+
+.theme-editor-color-row-compact .theme-editor-color-input {
+    width: 24px;
+    height: 22px;
+}
+
+.theme-editor-color-row-compact .theme-editor-hex-input {
+    font-size: 0.68rem;
+    padding: 3px 4px;
+}
+
+/* Live preview ----------------------------------------------------------- */
+
+.theme-editor-preview-section {
+    border-top: 1px dashed var(--border-input-soft, var(--border));
+    padding-top: 12px;
+}
+
+.theme-editor-preview {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px;
+    background: var(--bg);
+}
+
+.theme-preview-ui {
+    display: flex;
+    flex-direction: row;
+    gap: 0;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--fg);
+    min-height: 130px;
+}
+
+.theme-preview-sidebar {
+    flex: 0 0 130px;
+    background: var(--bg-elev);
+    color: var(--fg);
+    padding: 8px 10px;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.74rem;
+}
+
+.theme-preview-sidebar-title {
+    color: var(--fg-dim);
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.theme-preview-sidebar-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.theme-preview-sidebar-item {
+    padding: 3px 6px;
+    border-radius: 3px;
+    color: var(--fg-dim);
+    font-size: 0.74rem;
+}
+
+.theme-preview-sidebar-item.active {
+    background: var(--accent);
+    color: var(--bg);
+}
+
+.theme-preview-main {
+    flex: 1 1 auto;
+    background: var(--bg);
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+.theme-preview-text {
+    color: var(--fg);
+    font-size: 0.82rem;
+}
+
+.theme-preview-text-dim {
+    color: var(--fg-dim);
+    font-size: 0.74rem;
+}
+
+.theme-preview-tags {
+    display: flex;
+    flex-direction: row;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.theme-preview-tag {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 0.66rem;
+    font-weight: 600;
+    color: var(--bg);
+    letter-spacing: 0.04em;
+}
+
+.theme-preview-tag-p0 { background: var(--p0); }
+.theme-preview-tag-p1 { background: var(--p1); }
+.theme-preview-tag-p2 { background: var(--p2); }
+
+.theme-preview-buttons {
+    display: flex;
+    flex-direction: row;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.theme-preview-btn {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-family: inherit;
+    font-size: 0.74rem;
+    cursor: default;
+}
+
+.theme-preview-btn-accent {
+    background: var(--accent);
+    color: var(--bg);
+    border-color: var(--accent);
+}
+
+.theme-preview-btn-warn {
+    background: transparent;
+    color: var(--warn);
+    border-color: var(--warn);
+}
+
+.theme-preview-btn-danger {
+    background: transparent;
+    color: var(--danger);
+    border-color: var(--danger);
+}
+
+.theme-preview-term {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    padding: 8px 10px;
+    border-radius: 4px;
+    /* background/color/border выставляются inline через update(draft) */
+}
+
+.theme-preview-ansi {
+    display: inline-block;
+    padding: 0 2px;
+}
+
+.theme-preview-cursor {
+    display: inline-block;
+    padding: 0 2px;
+    margin: 0 1px;
+    border-radius: 2px;
+}
+
+.theme-preview-selection {
+    display: inline-block;
+    padding: 0 4px;
+    border-radius: 2px;
+}
+
+.theme-editor-actions {
+    padding: 10px 18px 14px;
+    border-top: 1px solid var(--border-input-soft, var(--border));
+}
+
+/* ===== Git tab =====
+ *
+ * Контейнер #git — flex column, заполняется lazygit-xterm.
+ * Видимость управляется атрибутом [hidden] (consistent с #tasks).
+ */
+
+#git {
+    display: none;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+}
+
+#git[hidden] { display: none; }
+#git:not([hidden]) { display: flex; }
+
+/*
+ * xterm.js lazygit-tab.
+ *
+ * #git становится flex column. Внутри:
+ *  - .git-placeholder: центрированный текст когда нет активного проекта.
+ *  - .git-error: красный banner поверх термина (sticky сверху pane).
+ *  - .git-term: контейнер xterm — занимает оставшееся пространство,
+ *    background чёрный (совпадает с term-theme fallback из app.js).
+ */
+.git-term {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    background: #000000;
+    overflow: hidden;
+}
+
+.git-term[hidden] { display: none !important; }
+
+/* Placeholder заполняет pane когда нет активного проекта. */
+.git-placeholder {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--fg-dim);
+    font-size: 0.95rem;
+    padding: 24px;
+    text-align: center;
+}
+
+.git-placeholder[hidden] { display: none !important; }
+
+/*
+ * Banner-плашка с ошибкой WebSocket / backend. Располагается над
+ * терминалом (order:-1 в flex), но не перекрывает его — занимает
+ * собственное место в layout. С кнопками Retry и × (dismiss).
+ */
+.git-error {
+    order: -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    background: var(--danger);
+    color: #fff;
+    font-family: monospace;
+    font-size: 13px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.3);
+}
+
+.git-install-help {
+    flex: 1 1 100%;
+    margin-top: 6px;
+    padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.28);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.git-install-help[hidden] { display: none !important; }
+
+.git-install-title {
+    font-weight: 600;
+    margin-bottom: 6px;
+    opacity: 0.9;
+}
+
+.git-install-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.git-install-list li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.git-install-list .os-label {
+    flex: 0 0 auto;
+    min-width: 90px;
+    opacity: 0.85;
+    font-weight: 600;
+}
+
+.git-install-list .os-label.detected::after {
+    content: " (detected)";
+    font-weight: 400;
+    opacity: 0.75;
+    font-size: 11px;
+}
+
+.git-install-list .os-cmd {
+    flex: 1 1 auto;
+    background: rgba(0, 0, 0, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #fff;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    user-select: text;
+}
+
+.git-install-list .os-copy {
+    flex: 0 0 auto;
+    background: rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+}
+
+.git-install-list .os-copy:hover {
+    background: rgba(255, 255, 255, 0.32);
+}
+
+.git-install-list .os-copy.copied {
+    background: rgba(80, 200, 120, 0.4);
+    border-color: rgba(80, 200, 120, 0.7);
+}
+
+.git-install-link {
+    display: inline-block;
+    margin-top: 8px;
+    color: #fff;
+    text-decoration: underline;
+    opacity: 0.85;
+    font-size: 11px;
+}
+
+.git-install-link:hover { opacity: 1; }
+
+.git-error[hidden] { display: none !important; }
+
+.git-error-text {
+    flex: 1 1 auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.git-error-retry,
+.git-error-close {
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    color: #fff;
+    padding: 4px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+}
+
+.git-error-close {
+    padding: 2px 8px;
+    font-size: 16px;
+    line-height: 1;
+}
+
+.git-error-retry:hover,
+.git-error-close:hover {
+    background: rgba(255, 255, 255, 0.28);
+}
+
+/*
+ * xterm inside .git-term должен растягиваться. xterm рисует .xterm-screen
+ * абсолютно — поэтому .git-term: position:relative выше.
+ */
+.git-term .xterm,
+.git-term .xterm-viewport,
+.git-term .xterm-screen {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+/* ============================================================ */
+/* Горячие клавиши: Cmd-hold подсказки + ?-help оверлей          */
+/* ============================================================ */
+#hotkey-hints-layer {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 99999;
+    display: none;
+}
+.hotkey-hint {
+    position: absolute;
+    transform: translate(-4px, -4px);
+    background: #ffd54f;
+    color: #1a1a1a;
+    font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    padding: 2px 5px;
+    border-radius: 3px;
+    border: 1px solid #c9a227;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    pointer-events: none;
+    white-space: nowrap;
+    user-select: none;
+}
+.hotkey-hint-partial {
+    background: #fff176;
+    border-color: #fbc02d;
+}
+.hotkey-hint-dim {
+    opacity: 0.25;
+}
+
+#hotkey-help {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 100000;
+}
+#hotkey-help.show {
+    display: flex;
+}
+.hotkey-help-card {
+    background: #1f1f1f;
+    color: #e6e6e6;
+    padding: 22px 26px;
+    border-radius: 8px;
+    border: 1px solid #3a3a3a;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+    min-width: 360px;
+    max-width: 520px;
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.hotkey-help-card h3 {
+    margin: 0 0 12px;
+    font-size: 15px;
+    color: #ffd54f;
+}
+.hotkey-help-card ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.hotkey-help-card li {
+    padding: 4px 0;
+    border-bottom: 1px solid #2a2a2a;
+}
+.hotkey-help-card li:last-child {
+    border-bottom: none;
+}
+.hotkey-help-card kbd {
+    display: inline-block;
+    background: #2a2a2a;
+    border: 1px solid #444;
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin: 0 2px;
+    font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #fff;
+}
+.hotkey-help-hint {
+    margin-top: 12px;
+    font-size: 11px;
+    color: #888;
+    text-align: right;
+}
+
+/* keyboard-focus подсветка для session-item при vim-навигации */
+.session-item:focus {
+    outline: 2px solid #ffd54f;
+    outline-offset: -2px;
+}
+
+/* ============================================================ */
+/* TODO plan-mode: чекбокс в модалках + badge на карточке        */
+/* ============================================================ */
+.modal-card .checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 0;
+    font-size: 13px;
+    color: #d0d0d0;
+    cursor: pointer;
+    user-select: none;
+}
+.modal-card .checkbox-row input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    cursor: pointer;
+}
+.modal-card .checkbox-row .hint {
+    color: #888;
+    font-size: 11px;
+    margin-left: 2px;
+}
+.plan-mode-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: #6a4bb0;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    margin-left: 4px;
+}

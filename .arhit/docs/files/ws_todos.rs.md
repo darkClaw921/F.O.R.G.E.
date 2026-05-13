@@ -1,0 +1,3 @@
+# ws_todos.rs
+
+Phase 3 — WebSocket-handler /ws/todos для realtime TODO-стрима. TodoEvent enum (Upsert/Removed/Reload) с serde tag='kind'. todos_ws upgrade-handler принимает Query<TodoWsQuery>{project_id?} — если не задан, берётся active project. Snapshot отправляется при connect (todos.list по project_id), затем select-loop с фильтрацией broadcast по project_id, heartbeat 30s, lag-recovery через {kind:reload}. Helpers: upsert(todo), removed(project_id, id), reload(project_id) — для использования из REST-handler'ов. Зависит от: AppState.todos (TodoStore), AppState.todos_tx (broadcast::Sender<TodoEvent>), todos::Todo.

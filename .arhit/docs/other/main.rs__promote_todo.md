@@ -1,0 +1,3 @@
+# main.rs::promote_todo
+
+Phase 3 — POST /api/todos/:id/promote: конвертирует TODO в bd-задачу + ставит уведомление в очередь. Алгоритм: 1) todos.get → 404; 2) projects.get → 500; 3) resolve_notify_session (body.session || project.notify_session || <prefix>-main) → 400 если sessions нет; 4) br create --json --title --description -t -p; 5) todos.delete + broadcast Removed; 6) формирует NotifyJob с text=format_notify_template (подстановка {id}{title}{description}{priority}{type}), mode=WaitPrevious|Delayed|Immediate по project.notify_*; 7) notify.enqueue. Возвращает 200 {promoted:true, task_id}. Если notifier.enqueue упал — задача создана, TODO удалена, в ответе notify_warning.
