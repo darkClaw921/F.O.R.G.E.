@@ -31,19 +31,22 @@
 //! mpsc-receiver дропается → writer-task завершается, PtyHandle дропается →
 //! tmux child kill+wait, reader-task получает EOF и завершается естественно.
 
+use std::collections::HashMap;
 use std::io::Read;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::Query;
+use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
+use axum::extract::{Query, State};
 use axum::response::Response;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, Mutex, Notify};
 
 use crate::pty::{spawn_lazygit, spawn_tmux_attach, PtyHandle};
+use crate::remote_proxy;
+use crate::AppState;
 
 /// Query-параметры для `/ws/attach`.
 ///
@@ -134,9 +137,142 @@ impl<'a> ErrorFrame<'a> {
 /// `GET /ws/attach` — upgrade и переход в [`handle_socket`].
 ///
 /// Регистрируется в `main.rs` как `.route("/ws/attach", get(ws::attach))`.
-pub async fn attach(ws: WebSocketUpgrade, Query(q): Query<AttachQuery>) -> Response {
+///
+/// ### Phase 4 — поддержка `?server=<id>` (remote proxy)
+///
+/// Принимает Query как `HashMap<String,String>`, чтобы вытащить опциональный
+/// `server`. Логика:
+/// - `?server=<id>` отсутствует → парсим query в [`AttachQuery`] и идём в
+///   обычный локальный путь ([`handle_socket`]).
+/// - `?server=<id>` + `state.remote_mode == false` → upgrade, шлём Close{1008}
+///   и завершаем (policy violation).
+/// - `?server=<id>` + `state.remote_mode == true` → upgrade и делегируем в
+///   [`remote_proxy::proxy_websocket`] на upstream `/ws/attach`.
+pub async fn attach(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+    Query(raw): Query<HashMap<String, String>>,
+) -> Response {
+    // 1) Есть ли ?server=<id>?
+    if let Some(server_id) = extract_server_id(&raw) {
+        if !state.remote_mode {
+            tracing::warn!(server_id, "ws/attach: ?server requested in non-remote mode");
+            return ws.on_upgrade(move |socket| close_with_policy_violation(socket, "remote mode disabled"));
+        }
+        let upstream_query = rebuild_query_without_server(&raw);
+        return ws.on_upgrade(move |socket| async move {
+            let store = state.remotes.read().await;
+            if let Err(e) = remote_proxy::proxy_websocket(
+                &store,
+                &server_id,
+                "/ws/attach",
+                &upstream_query,
+                socket,
+            )
+            .await
+            {
+                tracing::trace!(error = %e, server_id, "ws/attach proxy_websocket finished with error");
+            }
+        });
+    }
+
+    // 2) Локальный путь — парсим в типизированный AttachQuery.
+    let q = match parse_attach_query(&raw) {
+        Ok(q) => q,
+        Err(e) => {
+            tracing::warn!(error = %e, "ws/attach: invalid query");
+            return ws.on_upgrade(move |socket| close_with_policy_violation(socket, "invalid query"));
+        }
+    };
     tracing::info!(session = %q.session, cols = q.cols, rows = q.rows, "ws upgrade");
     ws.on_upgrade(move |socket| handle_socket(socket, q))
+}
+
+/// Закрыть downstream WS с кодом 1008 (Policy Violation). Используется при
+/// `?server=<id>` в non-remote mode или при невалидных query-параметрах.
+async fn close_with_policy_violation(mut socket: WebSocket, reason: &str) {
+    let cf = CloseFrame {
+        code: 1008,
+        reason: std::borrow::Cow::Owned(reason.to_string()),
+    };
+    let _ = socket.send(Message::Close(Some(cf))).await;
+}
+
+/// Парсит [`AttachQuery`] из произвольного `HashMap` (после изоляции от `server`).
+///
+/// Обязательное поле — `session`. Опциональные — `cols`/`rows` (дефолт 80×24).
+fn parse_attach_query(q: &HashMap<String, String>) -> Result<AttachQuery, String> {
+    let session = q
+        .get("session")
+        .cloned()
+        .ok_or_else(|| "missing 'session' query parameter".to_string())?;
+    let cols = match q.get("cols") {
+        Some(v) => v.parse::<u16>().map_err(|e| format!("invalid cols: {e}"))?,
+        None => default_cols(),
+    };
+    let rows = match q.get("rows") {
+        Some(v) => v.parse::<u16>().map_err(|e| format!("invalid rows: {e}"))?,
+        None => default_rows(),
+    };
+    Ok(AttachQuery { session, cols, rows })
+}
+
+/// Парсит [`LazygitQuery`] из произвольного `HashMap`.
+fn parse_lazygit_query(q: &HashMap<String, String>) -> Result<LazygitQuery, String> {
+    let cwd = q
+        .get("cwd")
+        .cloned()
+        .ok_or_else(|| "missing 'cwd' query parameter".to_string())?;
+    let cols = match q.get("cols") {
+        Some(v) => v.parse::<u16>().map_err(|e| format!("invalid cols: {e}"))?,
+        None => default_cols(),
+    };
+    let rows = match q.get("rows") {
+        Some(v) => v.parse::<u16>().map_err(|e| format!("invalid rows: {e}"))?,
+        None => default_rows(),
+    };
+    Ok(LazygitQuery { cwd, cols, rows })
+}
+
+/// Извлекает значение `server` из query. Возвращает `Some` только при непустом
+/// значении (после trim).
+fn extract_server_id(q: &HashMap<String, String>) -> Option<String> {
+    q.get("server")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Сериализует пары `HashMap` обратно в query-строку для проксирования.
+/// `server` исключается. Минимальный url-encoding (alnum/-/_/./~ как есть,
+/// прочее — `%XX`). Возвращает строку БЕЗ ведущего `?`.
+fn rebuild_query_without_server(q: &HashMap<String, String>) -> String {
+    let mut parts: Vec<String> = Vec::with_capacity(q.len());
+    for (k, v) in q.iter() {
+        if k == "server" {
+            continue;
+        }
+        let kv = format!("{}={}", urlencode_minimal(k), urlencode_minimal(v));
+        parts.push(kv);
+    }
+    parts.join("&")
+}
+
+/// Минимальный url-encoder: оставляет alnum/`-`/`_`/`.`/`~`, всё прочее
+/// заменяет на `%XX`. Достаточно для query-значений типа имён сессий/cwd.
+fn urlencode_minimal(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if (b'a'..=b'z').contains(&b)
+            || (b'A'..=b'Z').contains(&b)
+            || (b'0'..=b'9').contains(&b)
+            || matches!(b, b'-' | b'_' | b'.' | b'~')
+        {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{:02X}", b));
+        }
+    }
+    out
 }
 
 /// Размер чанка чтения из PTY. 8 KiB достаточно для типичных escape-всплесков.
@@ -409,8 +545,39 @@ async fn handle_socket(socket: WebSocket, q: AttachQuery) {
 /// stdout через WebSocket в xterm.js во фронтенде.
 pub async fn lazygit_attach(
     ws: WebSocketUpgrade,
-    Query(q): Query<LazygitQuery>,
+    State(state): State<AppState>,
+    Query(raw): Query<HashMap<String, String>>,
 ) -> Response {
+    // Phase 4 — поддержка `?server=<id>`.
+    if let Some(server_id) = extract_server_id(&raw) {
+        if !state.remote_mode {
+            tracing::warn!(server_id, "ws/lazygit: ?server requested in non-remote mode");
+            return ws.on_upgrade(move |socket| close_with_policy_violation(socket, "remote mode disabled"));
+        }
+        let upstream_query = rebuild_query_without_server(&raw);
+        return ws.on_upgrade(move |socket| async move {
+            let store = state.remotes.read().await;
+            if let Err(e) = remote_proxy::proxy_websocket(
+                &store,
+                &server_id,
+                "/ws/lazygit",
+                &upstream_query,
+                socket,
+            )
+            .await
+            {
+                tracing::trace!(error = %e, server_id, "ws/lazygit proxy_websocket finished with error");
+            }
+        });
+    }
+
+    let q = match parse_lazygit_query(&raw) {
+        Ok(q) => q,
+        Err(e) => {
+            tracing::warn!(error = %e, "ws/lazygit: invalid query");
+            return ws.on_upgrade(move |socket| close_with_policy_violation(socket, "invalid query"));
+        }
+    };
     tracing::info!(cwd = %q.cwd, cols = q.cols, rows = q.rows, "ws lazygit upgrade");
     ws.on_upgrade(move |socket| handle_lazygit_socket(socket, q))
 }

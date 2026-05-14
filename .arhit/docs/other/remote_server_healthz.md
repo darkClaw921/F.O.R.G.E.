@@ -1,0 +1,3 @@
+# remote_server_healthz
+
+Phase 3 (forge-v5x9.4) — финальная реализация GET /api/remote-servers/:id/healthz. Заменяет 501-stub из Phase 2. Использует remote_proxy::proxy_request для запроса GET <remote.url>/healthz с Authorization: Bearer <token>. Маппинг ответов: (a) UnknownServer → 404; (b) Network error → 200 + JSON {online: false, error: '...'}  (фронт показывает badge offline без падения UI); (c) successful response — парсим тело как JSON и добавляем поле online: <bool из status.is_success()>. Маршрут регистрируется ТОЛЬКО при remote_mode=true (см. main.rs). Используется фронтом для pre-flight проверки при добавлении нового remote в Settings UI (Phase 5).

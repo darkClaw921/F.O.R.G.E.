@@ -180,10 +180,13 @@
 Один self-contained бинарь `devforge` — статика (HTML/CSS/JS, xterm.js) встроена прямо в исполняемый файл через [rust-embed](https://crates.io/crates/rust-embed), отдельный каталог `static/` не нужен.
 
 ```bash
-brew tap darkClaw921/devforge
+brew tap darkClaw921/tap
 brew install devforge
 devforge          # стартует на http://127.0.0.1:7331
 ```
+
+> Если ранее уже подключали неправильный tap — отвяжите его:
+> `brew untap darkClaw921/devforge 2>/dev/null || true`
 
 ### 🎛 Команды и флаги
 

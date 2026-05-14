@@ -20,10 +20,16 @@ use anyhow::{bail, Context, Result};
 
 use crate::cli;
 
-/// Запустить daemon в фоне на указанном порту. Если pid-файл существует и
+/// Запустить daemon в фоне с заданными опциями. Если pid-файл существует и
 /// процесс жив — отказ. Если pid-файл есть, но процесс мёртв — pid-файл
 /// удаляется и старт продолжается (нормальный recovery после краша).
-pub fn start(port: u16) -> Result<()> {
+///
+/// Все опции (`--port`, `--remote`, `--bind`, `--token`) прокидываются в
+/// child-процесс `devforge run …`, чтобы он точно унаследовал режим, выбранный
+/// пользователем. Без этого `devforge start --remote` молча превращался бы в
+/// localhost-режим, что нарушает single-source-of-truth для CLI.
+pub fn start(opts: &cli::RunOptions) -> Result<()> {
+    let port = opts.port;
     let pid_path = cli::pid_path()?;
     let log_path = cli::log_path()?;
     let state_dir = cli::state_dir()?;
@@ -54,8 +60,20 @@ pub fn start(port: u16) -> Result<()> {
 
     let exe = std::env::current_exe().context("failed to resolve current_exe")?;
     let mut cmd = Command::new(&exe);
-    cmd.args(["run", "--port", &port.to_string()])
-        .stdin(Stdio::null())
+    // Базовая команда — всегда `run --port N`.
+    cmd.arg("run").arg("--port").arg(port.to_string());
+    // Опционально пробрасываем remote-флаги. Это критично: иначе daemon
+    // запустился бы в legacy-режиме даже после `devforge start --remote`.
+    if opts.remote {
+        cmd.arg("--remote");
+    }
+    if let Some(bind) = &opts.bind {
+        cmd.arg("--bind").arg(bind);
+    }
+    if let Some(token) = &opts.token {
+        cmd.arg("--token").arg(token);
+    }
+    cmd.stdin(Stdio::null())
         .stdout(log)
         .stderr(log_err);
 

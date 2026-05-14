@@ -45,11 +45,12 @@
 //! `.beads/` — снапшот пустой, watcher не запускается, остаётся только
 //! heartbeat (чтобы клиент не реконнектился впустую).
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
 use axum::response::Response;
 use futures_util::{SinkExt, StreamExt};
@@ -58,6 +59,7 @@ use serde::Deserialize;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::{sleep_until, Instant};
 
+use crate::remote_proxy;
 use crate::tasks::{self, diff_issues, snapshot};
 use crate::tasks_watcher::{find_beads_dir, relevant_event, DEBOUNCE_MS};
 use crate::AppState;
@@ -69,6 +71,10 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 
 /// Query-параметры WS-handler'а. `project_id` опционален — если пуст,
 /// берём активный проект из `state.projects` на момент connect.
+///
+/// Phase 4: handler перешёл на `Query<HashMap<String,String>>` для поддержки
+/// `?server=<id>`-прокси; struct сохранён как документация контракта query.
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct TasksWsQuery {
     #[serde(default)]
@@ -76,14 +82,92 @@ pub struct TasksWsQuery {
 }
 
 /// `GET /ws/tasks?project_id=...` — upgrade в WebSocket, далее [`handle_socket`].
+///
+/// ### Phase 4 — поддержка `?server=<id>` (remote proxy)
+///
+/// Если в query присутствует `server=<id>`:
+/// - `state.remote_mode == false` → upgrade + Close{1008, 'remote mode disabled'}.
+/// - `state.remote_mode == true`  → upgrade + делегирование в
+///   [`remote_proxy::proxy_websocket`] на upstream `/ws/tasks` (с query без `server`).
 pub async fn tasks_ws(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
-    Query(q): Query<TasksWsQuery>,
+    Query(raw): Query<HashMap<String, String>>,
 ) -> Response {
-    let path = resolve_project_path(&state, q.project_id.as_deref()).await;
+    // Phase 4 — remote-proxy ветка.
+    if let Some(server_id) = extract_server_id(&raw) {
+        if !state.remote_mode {
+            tracing::warn!(server_id, "ws/tasks: ?server requested in non-remote mode");
+            return ws.on_upgrade(move |socket| close_with_policy_violation(socket, "remote mode disabled"));
+        }
+        let upstream_query = rebuild_query_without_server(&raw);
+        return ws.on_upgrade(move |socket| async move {
+            let store = state.remotes.read().await;
+            if let Err(e) = remote_proxy::proxy_websocket(
+                &store,
+                &server_id,
+                "/ws/tasks",
+                &upstream_query,
+                socket,
+            )
+            .await
+            {
+                tracing::trace!(error = %e, server_id, "ws/tasks proxy_websocket finished with error");
+            }
+        });
+    }
+
+    // Локальный путь — резолвим project_id (может быть пустой).
+    let project_id = raw.get("project_id").cloned();
+    let path = resolve_project_path(&state, project_id.as_deref()).await;
     tracing::info!(path = %path.display(), "ws/tasks upgrade");
     ws.on_upgrade(move |socket| handle_socket(socket, path))
+}
+
+/// Извлекает значение `server` из query. Возвращает `Some` только при непустом
+/// значении (после trim).
+fn extract_server_id(q: &HashMap<String, String>) -> Option<String> {
+    q.get("server")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Сериализует пары `HashMap` обратно в query-строку для проксирования.
+/// `server` исключается. Минимальный url-encoding. Возвращает строку БЕЗ ведущего `?`.
+fn rebuild_query_without_server(q: &HashMap<String, String>) -> String {
+    let mut parts: Vec<String> = Vec::with_capacity(q.len());
+    for (k, v) in q.iter() {
+        if k == "server" {
+            continue;
+        }
+        let kv = format!("{}={}", urlencode_minimal(k), urlencode_minimal(v));
+        parts.push(kv);
+    }
+    parts.join("&")
+}
+
+fn urlencode_minimal(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if (b'a'..=b'z').contains(&b)
+            || (b'A'..=b'Z').contains(&b)
+            || (b'0'..=b'9').contains(&b)
+            || matches!(b, b'-' | b'_' | b'.' | b'~')
+        {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{:02X}", b));
+        }
+    }
+    out
+}
+
+async fn close_with_policy_violation(mut socket: WebSocket, reason: &str) {
+    let cf = CloseFrame {
+        code: 1008,
+        reason: std::borrow::Cow::Owned(reason.to_string()),
+    };
+    let _ = socket.send(Message::Close(Some(cf))).await;
 }
 
 /// Резолвит `project_id` query → path.

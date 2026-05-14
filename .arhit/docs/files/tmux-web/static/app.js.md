@@ -1,26 +1,58 @@
 # tmux-web/static/app.js
 
-Frontend tmux-web (xterm + WS-attach + tasks/git/projects). Phase 4 добавил отдельную инстанцию xterm.js для git-таба, подключённую к /ws/lazygit:
+Frontend tmux-web (xterm + WS-attach + tasks/git/projects/themes/remote).
 
-Ключевые элементы Phase 4:
-- state.gitTerm = { term, fit, ws, mounted, currentCwd, errorSticky } — изолированный xterm-контекст git-таба
-- DOM-refs: $gitTermEl (#git-term), $gitPlaceholder (#git-placeholder), $gitError (#git-error), $gitErrorText, $gitErrorRetry, $gitErrorClose
-- mountGitTerm() — ленивая инициализация Terminal+FitAddon в #git-term (опции совпадают с основным term, тема из state.activeTheme через mapTermTheme)
-- openLazygitForActiveProject() — точка входа: проверяет наличие активного проекта (getActiveProject), показывает/скрывает placeholder/term, дергает mountGitTerm и connectGitWs
-- connectGitWs(cwd) — открывает WS ws://host/ws/lazygit?cwd=<encoded>&cols=&rows=, binaryType=arraybuffer
-  - onmessage: ArrayBuffer → term.write(Uint8Array); string → JSON.parse, при type=error показывает banner (lazygit-not-found распознаётся и заменяется подсказкой про brew install)
-  - term.onData → ws.send(encoder.encode(data)) как Binary
-  - term.onResize → ws.send JSON {type:'resize',cols,rows}
-  - onclose с code!=1000/1001 и errorSticky=false → banner 'Connection lost'
-- closeGitWs(reason) — снимает обработчики, ws.close(1000,...) без banner
-- gitSwitchCwd(newCwd) — ws.send {type:'switch_cwd',cwd}, term.clear() перед, fallback на close+reconnect при failure
-- showGitBanner/hideGitBanner/retryGitConnection — UI ошибок
-- getActiveProject() — возвращает ProjectDto с .path из state.projects по state.activeProjectId, null для transient ids
+## Сборка
+Один большой IIFE-modul (~5700 строк) в tmux-web/static/app.js. Embedded в бинарь через rust-embed.
 
-Lifecycle:
-- switchTab('git') → openLazygitForActiveProject()
-- switchTab(прочее) → closeGitWs() (term остаётся mounted для быстрого re-attach)
-- switchActiveProject() при activeTab==='git' → gitSwitchCwd(newPath)
-- beforeunload → closeGitWs()
+## Ключевые блоки
 
-Файл по-прежнему содержит legacy git-UI код (fetchGitAll, renderGitGraph, commitNow, polling) — будет удалён в Phase 5.
+### state (объект)
+Центральное хранилище в памяти. Поля:
+- ws, currentSession, sessions, term, fitAddon — основной /ws/attach + xterm.
+- attachWsBackoffStep / attachWsReconnectTimer / attachWsClosedByUs / attachWsOrigin (Phase 7) — backoff-reconnect /ws/attach.
+- activeTab ('terminal'|'tasks'|'git'), tasksData, tasksWs (+backoff/timer/closedByUs), todosData/todosWs.
+- projects, activeProjectId, projectFilter — мульти-проекты.
+- remoteMode, serverVersion, healthzLoaded — Phase 5: /healthz bootstrap.
+- remoteServers (Array<RemoteServerView>), remoteOnline (Map<id, 'online'|'offline'|'unknown'>) — Phase 5/7.
+- remoteSessions/remoteProjects (Map<server_id, ...>) — Phase 6 aggregated view.
+- activeOrigin ('all'|'local'|server_id) — Phase 5/6 origin-фильтр.
+- gitTerm { term, fit, ws, mounted, currentCwd, errorSticky } — изолированный xterm-context lazygit-таба.
+- activeTheme — Phase 3 themes.
+
+### Ключевые функции
+- bootstrap() — loadHealthz, тема, initTerminal, sidebar, project bar, WS connect.
+- connectWs(sessionName, origin) — /ws/attach с ?server=<origin>. Phase 7: backoff reconnect.
+- disconnectWs() — Phase 7: помечает attachWsClosedByUs, чтобы onclose не реконнектился.
+- scheduleAttachWsReconnect() (Phase 7) — backoff серии ATTACH_WS_BACKOFFS_MS=[2s,4s,8s,16s,32s,60s] + jitter(0..1s).
+- connectTasksWs / connectTodosWs / connectGitWs — WS подписки.
+- scheduleTasksWsReconnect / scheduleTodosWsReconnect — backoff для tasks/todos.
+- probeRemoteServer(serverId) (Phase 7) — per-server health probe с экспоненциальным backoff.
+- startRemoteHealthPoll/stopRemoteHealthPoll (Phase 7) — sync remoteProbeState с state.remoteServers.
+- renderSidebar / renderOriginSection — origin-табы и группировка сессий.
+- isRemoteMode() — guard для UI-features remote-режима.
+- fetchRemoteServers, loadRemoteProjects, loadRemoteSessions — lazy load.
+- openSettingsModal('remotes') — UI Add/Edit/Delete remote-сервера.
+
+## Phase 7 — reconnect & health probe
+
+### Health probe per-server
+remoteProbeState: Map<server_id, {timer, step, inFlight}>.
+REMOTE_PROBE_BACKOFFS_MS = [2000, 4000, 8000, 16000, 32000, 60000].
+REMOTE_PROBE_STEADY_INDEX = 1 (4s — interval когда сервер online).
+REMOTE_PROBE_JITTER_MAX_MS = 1000.
+Алгоритм:
+1. fetch /api/remote-servers/:id/healthz.
+2. ok && data.online → status='online', step=STEADY_INDEX.
+3. !ok / network error → status='offline', step++.
+4. setTimeout next probe через backoffs[step] + jitter(0..1s).
+5. На смену remoteOnline-статуса вызывает renderSidebar() (offline-badge).
+
+### WS reconnect
+- /ws/attach: ATTACH_WS_BACKOFFS_MS = [2s, 4s, 8s, 16s, 32s, 60s] + jitter. На onopen → step=0. Сохраняет currentSession+origin.
+- /ws/tasks: TASKS_WS_BACKOFFS_MS = [1s, 2s, 5s, 10s]. Fallback на polling /api/tasks.
+- /ws/todos: TODOS_WS_BACKOFFS_MS = [1s, 2s, 5s, 10s]. Fallback на polling /api/todos.
+- /ws/lazygit: manual retry через UI banner.
+
+## Зависимости (CDN/embedded)
+xterm.js + addon-fit + addon-web-links.

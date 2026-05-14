@@ -83,6 +83,18 @@ pub struct Todo {
     pub plan_mode: bool,
     pub created_at: String,
     pub updated_at: String,
+    /// Phase 3 — источник записи. Для локально-созданных TODO — всегда
+    /// `"local"`. Сериализуется ВСЕГДА (даже при remote_mode=false), чтобы
+    /// фронт получал унифицированный формат. `#[serde(default = "default_origin_local")]`
+    /// делает поле опциональным при загрузке старых todos.json (где origin не было).
+    #[serde(default = "default_origin_local")]
+    pub origin: String,
+}
+
+/// Default-функция для `Todo::origin` и других DTO-полей origin.
+/// Используется в `#[serde(default = "default_origin_local")]`.
+pub fn default_origin_local() -> String {
+    "local".to_string()
 }
 
 fn default_priority() -> u8 {
@@ -211,6 +223,7 @@ impl TodoStore {
             plan_mode,
             created_at: now.clone(),
             updated_at: now,
+            origin: default_origin_local(),
         };
         let mut inner = self.inner.write().expect("TodoStore lock poisoned");
         inner

@@ -1,0 +1,3 @@
+# tmux-web/static/app.js::aggregateAllOrigins
+
+Phase 6 helper — собирает структуру агрегированного вида для activeOrigin='all'. Возвращает Map<originKey, { label, online, projects, sessions }>, где originKey = 'local' либо server_id. Источник данных: state.projects/state.sessions (local) + state.remoteProjects/state.remoteSessions (remotes из кеша). Online-статус читается из state.remoteOnline. НЕ делает сетевых запросов — работает только с уже загруженными кешами. Используется регресс-тестами cca8.2 для проверки что структура группировки {origin: {project: [sessions]}} собирается корректно. Экспортирована в window.__forge.aggregateAllOrigins.

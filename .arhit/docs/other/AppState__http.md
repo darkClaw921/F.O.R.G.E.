@@ -1,0 +1,3 @@
+# AppState::http
+
+Phase 3 — поле reqwest::Client в AppState (tmux-web/src/main.rs). reqwest::Client внутри — Arc-обёртка над пулом TCP-соединений, cheap-clonable и потокобезопасен. Идиома reqwest: один Client на сервер (а не Client::new() в каждом handler'е) — переиспользует connection pool, что критично для производительности при множественных проксирующих запросах. Используется в remote_proxy::proxy_request (handler'ы подключают в Phase 3.4). Инициализируется при сборке AppState через reqwest::Client::new() — дефолтные настройки (общий таймаут 30s, connect timeout не задан). Подстройка таймаутов и retry — TODO для Phase 7 robustness.

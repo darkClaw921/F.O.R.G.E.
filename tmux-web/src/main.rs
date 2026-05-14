@@ -7,12 +7,21 @@
 //! `active.path` (`tmux new-session -c`).
 
 mod attention;
+mod auth;
 mod cli;
 mod daemon;
 #[allow(dead_code)] // публичный API используется в Phase 3 (POST /api/todos/:id/promote)
 mod notifier;
 mod projects;
 mod pty;
+// Phase 3 — модуль HTTP-прокси на удалённые devforge. Публичные функции
+// (`proxy_request`, `enrich_with_origin`) используются в handler'ах
+// resource-routes (task forge-v5x9.4), но до их подключения компилятор
+// видит как dead_code. Аллов точечно на уровне модуля.
+#[allow(dead_code)]
+mod remote_proxy;
+mod remotes;
+mod server_config;
 mod static_embed;
 mod tasks;
 mod tasks_watcher;
@@ -23,16 +32,19 @@ mod ws;
 mod ws_tasks;
 mod ws_todos;
 
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::Context;
-use axum::extract::{Path as AxumPath, State};
-use axum::http::StatusCode;
-use axum::response::Json;
+use axum::extract::{Path as AxumPath, Query, State};
+use axum::http::{HeaderMap as AxumHeaderMap, StatusCode};
+use axum::middleware::from_fn_with_state;
+use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{delete, get, patch, post, put};
 use axum::Router;
+use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use tokio::process::Command as TokioCommand;
 use tokio::sync::{broadcast, watch, RwLock};
@@ -99,6 +111,30 @@ struct AppState {
     /// что и `projects.json`). Хранится в state, чтобы не пересчитывать
     /// `default_registry_path` в каждом handler'е.
     themes_dir: PathBuf,
+    /// Phase 1 — флаг remote-mode. True ⇒ сервер запущен с `--remote`
+    /// (или с server_config.json, подразумевающим remote). Используется
+    /// `/healthz` для информирования frontend'а и (в будущем) для
+    /// активации `?server=<id>` веток и `/api/remote-servers` маршрутов.
+    remote_mode: bool,
+    /// Phase 1 — Bearer-token, ожидаемый middleware'ом. `None` в legacy
+    /// localhost-режиме (middleware не подключается). `Some` в remote-mode.
+    /// `Arc<Option<String>>` чтобы клонировать AppState дёшево.
+    #[allow(dead_code)]
+    auth_token: Arc<Option<String>>,
+    /// Phase 2 — реестр remote-серверов (другие devforge-инстансы, к которым
+    /// этот локальный клиент может подключаться). Store независим от
+    /// `remote_mode`: реестр редактируется CLI всегда; REST CRUD маршруты
+    /// `/api/remote-servers/...` регистрируются ТОЛЬКО при `remote_mode=true`.
+    /// Доступ через `Arc<RwLock<...>>` — параллельные чтения, сериализованные
+    /// записи.
+    remotes: Arc<RwLock<remotes::RemoteServerStore>>,
+    /// Phase 3 — общий HTTP-клиент для proxy-запросов на удалённые devforge.
+    /// `reqwest::Client` внутри — Arc-обёртка над пулом TCP-соединений
+    /// (cheap-clonable, потокобезопасен). Один клиент на сервер — это идиома
+    /// reqwest (а не `Client::new()` в каждом handler'е). Используется в
+    /// `remote_proxy::proxy_request` (handler'ы подключают в Phase 3.4).
+    #[allow(dead_code)]
+    http: reqwest::Client,
 }
 
 #[tokio::main]
@@ -125,9 +161,9 @@ async fn main() -> anyhow::Result<()> {
     // Подкоманды-менеджеры daemon'а не требуют ни tokio-runtime, ни
     // инициализации сервера — обрабатываем и выходим. (Сам runtime уже поднят
     // атрибутом #[tokio::main], но это дешёвый no-op для start/stop/status.)
-    let port = match mode {
-        cli::Mode::Start { port } => {
-            daemon::start(port)?;
+    let run_opts = match mode {
+        cli::Mode::Start(opts) => {
+            daemon::start(&opts)?;
             return Ok(());
         }
         cli::Mode::Stop => {
@@ -138,8 +174,43 @@ async fn main() -> anyhow::Result<()> {
             daemon::status()?;
             return Ok(());
         }
-        cli::Mode::Run { port } => port,
+        cli::Mode::Pair(opts) => {
+            cli::run_pair(&opts)?;
+            return Ok(());
+        }
+        cli::Mode::Remote(cmd) => {
+            cli::run_remote(&cmd)?;
+            return Ok(());
+        }
+        cli::Mode::Run(opts) => opts,
     };
+
+    // Phase 1 — резолвинг эффективной конфигурации сервера.
+    //
+    // Источники (в порядке приоритета): CLI > server_config.json > env > default.
+    // Env DEVFORGE_AUTH_TOKEN уже подмешан в run_opts.token парсером cli::parse,
+    // поэтому здесь видим CLI+env как одно целое.
+    //
+    // - Если файла нет — load() вернёт Ok(None), resolve() работает с CLI only.
+    // - Если файл повреждён — печатаем warning и игнорируем (legacy localhost
+    //   fall-back). Не fail-fast, чтобы битый конфиг не блокировал работу.
+    let file_cfg = match server_config::load() {
+        Ok(opt) => opt,
+        Err(e) => {
+            eprintln!(
+                "[devforge] WARNING: failed to load server_config.json: {e:#}. \
+                 Falling back to CLI/env only."
+            );
+            None
+        }
+    };
+    let effective = server_config::resolve(&run_opts, file_cfg.as_ref());
+    // Финализация токена: в remote-mode без явного токена генерируем 64-hex
+    // и сохраняем в server_config.json. Печатает банер при auto-gen.
+    let auth_token_value = server_config::finalize_token(&effective);
+    let port = effective.port;
+    let bind_host = effective.bind.clone();
+    let remote_mode = effective.remote_mode;
 
     // Инициализация логирования. По умолчанию: info для всего + debug для tmux_web.
     // Переопределяется переменной окружения RUST_LOG.
@@ -209,6 +280,42 @@ async fn main() -> anyhow::Result<()> {
         "loaded themes state"
     );
 
+    // Phase 2 — реестр remote-серверов. Файл создаётся лениво только при
+    // первом save() — пустой store не создаёт файл. Если загрузка упала
+    // (повреждённый JSON), печатаем warning и стартуем с пустым реестром —
+    // не fail-fast, чтобы битый файл не блокировал работу devforge.
+    let remotes_path = remotes::default_remotes_path()?;
+    let remotes_store = match remotes::RemoteServerStore::load(remotes_path.clone()) {
+        Ok(s) => {
+            tracing::info!(
+                path = %remotes_path.display(),
+                count = s.list().len(),
+                "loaded remote servers registry"
+            );
+            s
+        }
+        Err(e) => {
+            eprintln!(
+                "[devforge] WARNING: failed to load remote_servers.json: {e:#}. \
+                 Starting with empty registry."
+            );
+            // Загружаем по пустому пути — но если файл проблемный, новый
+            // load() с тем же путём упадёт снова. Возвращаем пустой store
+            // через manual init: load на несуществующий путь точно работает.
+            // Если path-каталог недоступен — пробрасываем оригинальную ошибку.
+            remotes::RemoteServerStore::load(remotes_path.clone())
+                .unwrap_or_else(|_| {
+                    // Последний резорт — создать в /tmp, чтобы AppState
+                    // имел валидный store. На практике это почти невозможный
+                    // путь, но статическая гарантия для типов важна.
+                    remotes::RemoteServerStore::load(
+                        std::env::temp_dir().join("devforge_remotes_fallback.json"),
+                    )
+                    .expect("tmp fallback for remotes store")
+                })
+        }
+    };
+
     let app_state = AppState {
         projects: Arc::new(RwLock::new(store)),
         tasks_tx: tasks_tx.clone(),
@@ -219,6 +326,13 @@ async fn main() -> anyhow::Result<()> {
         todos_tx,
         themes: Arc::new(RwLock::new(themes_state)),
         themes_dir,
+        remote_mode,
+        auth_token: Arc::new(auth_token_value.clone()),
+        remotes: Arc::new(RwLock::new(remotes_store)),
+        // Phase 3 — общий reqwest-клиент. Дефолтные настройки (без таймаутов
+        // выставленных явно — это TODO для Phase 7 robustness; пока полагаемся
+        // на дефолты reqwest 0.12, где connect timeout не задан, общий — 30s).
+        http: reqwest::Client::new(),
     };
 
     // Spawn фоновый watcher. Живёт всю жизнь процесса; завершится только
@@ -243,7 +357,7 @@ async fn main() -> anyhow::Result<()> {
     // ставить devforge через Homebrew/`cargo install` и запускать откуда угодно.
     tracing::info!("serving embedded static assets");
 
-    let app = Router::new()
+    let mut app = Router::new()
         .route("/healthz", get(healthz))
         // Sessions API.
         .route("/api/sessions", get(get_sessions).post(create_session))
@@ -278,22 +392,86 @@ async fn main() -> anyhow::Result<()> {
         .route("/ws/tasks", get(ws_tasks::tasks_ws))
         // Phase 3 — WS-стрим TODO-карточек.
         .route("/ws/todos", get(ws_todos::todos_ws))
-        .with_state(app_state)
+        .with_state(app_state.clone());
+
+    // Phase 2 — REST-эндпоинты реестра remote-серверов. Регистрируются ТОЛЬКО
+    // в remote-mode. В обычном (localhost) режиме обращение к
+    // /api/remote-servers вернёт 404 (fallback на статику). Это сознательное
+    // решение: реестр редактируется через CLI `devforge remote ...` всегда,
+    // но веб-UI настроек remote-серверов имеет смысл только в публичном
+    // режиме, где сам сервер может быть удалённым agregator'ом.
+    if remote_mode {
+        let remotes_router: Router<AppState> = Router::new()
+            .route(
+                "/api/remote-servers",
+                get(list_remote_servers).post(create_remote_server),
+            )
+            .route(
+                "/api/remote-servers/:id",
+                delete(delete_remote_server).patch(patch_remote_server),
+            )
+            .route(
+                "/api/remote-servers/:id/healthz",
+                get(remote_server_healthz),
+            );
+        app = app.merge(remotes_router.with_state(app_state.clone()));
+        tracing::info!("registered /api/remote-servers routes (remote mode)");
+    }
+
+    let mut app = app
         // Embedded static fallback: serve_static резолвит "/" → index.html и
         // отдаёт остальные ассеты с правильным Content-Type из bytes-секции
         // бинаря. Используется .fallback() (Handler), а не .fallback_service().
         .fallback(static_embed::serve_static)
         .layer(TraceLayer::new_for_http());
 
-    // Порт берётся из CLI (`--port`/`-p`, дефолт 7331). bind на 127.0.0.1 —
-    // сервер локальный, наружу не торчит.
-    let addr: SocketAddr = format!("127.0.0.1:{port}")
-        .parse()
-        .with_context(|| format!("invalid bind address for port {port}"))?;
+    // Phase 1 — Bearer-auth middleware (только в remote-mode с заданным
+    // токеном). В legacy localhost mode middleware вообще не подключается,
+    // что побитово сохраняет старое поведение.
+    //
+    // .layer применяется после .with_state/.fallback/.layer(Trace) — это
+    // axum-идиома: внешний слой выполняется первым на входящий запрос.
+    // Path-exclusion для /healthz и статики делает само middleware
+    // (см. `auth::is_path_excluded`).
+    if let Some(token) = auth_token_value.clone() {
+        let auth_state = auth::AuthState::new(Some(token));
+        app = app.layer(from_fn_with_state(auth_state, auth::bearer_auth));
+        tracing::info!("Bearer-auth middleware enabled (remote mode)");
+    }
+
+    // Phase 1 — финальный bind:
+    // - remote_mode=false → 127.0.0.1:<port> (legacy, hardcoded — гарант
+    //   что без --remote ничего наружу не торчит).
+    // - remote_mode=true → <bind_host>:<port>, где bind_host резолвится из
+    //   CLI/файла, или 0.0.0.0 по умолчанию.
+    let addr: SocketAddr = if remote_mode {
+        format!("{bind_host}:{port}")
+            .parse()
+            .with_context(|| format!("invalid bind address {bind_host}:{port}"))?
+    } else {
+        SocketAddr::from(([127, 0, 0, 1], port))
+    };
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .with_context(|| format!("failed to bind {addr}"))?;
-    tracing::info!(%addr, "listening on http://{addr}");
+    tracing::info!(
+        %addr,
+        remote_mode,
+        auth = auth_token_value.is_some(),
+        "listening on http://{addr}"
+    );
+
+    // Phase 7 — public-bind warning. Печатается ВСЕГДА при remote_mode и
+    // non-loopback bind, чтобы пользователь увидел отсутствие TLS даже если
+    // токен был явно передан через CLI/env (а не авто-сгенерён). На loopback
+    // — no-op.
+    if remote_mode {
+        server_config::print_public_bind_warning(
+            &bind_host,
+            port,
+            auth_token_value.as_deref(),
+        );
+    }
 
     axum::serve(listener, app)
         .await
@@ -302,9 +480,261 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Phase 1 — структура ответа `GET /healthz`. Используется frontend'ом ДО
+/// получения токена (см. контракт auth::is_path_excluded), чтобы прочитать
+/// `remote_mode` и решить, рисовать ли UI логина. Поле `version` берётся из
+/// `CARGO_PKG_VERSION` и пригодится для отображения в footer'е/about.
+#[derive(Debug, Serialize)]
+struct HealthzResponse {
+    status: &'static str,
+    remote_mode: bool,
+    version: &'static str,
+}
+
 /// Health-check endpoint.
-async fn healthz() -> &'static str {
-    "ok"
+///
+/// Возвращает `application/json` (axum::Json делает это автоматически):
+/// ```json
+/// { "status": "ok", "remote_mode": <bool>, "version": "<x.y.z>" }
+/// ```
+///
+/// Доступен без Bearer-токена (см. `auth::EXCLUDED_EXACT`). Это сознательное
+/// решение: frontend в remote-mode должен иметь возможность проверить факт
+/// доступности сервера и режим до того, как пользователь введёт токен.
+async fn healthz(State(state): State<AppState>) -> Json<HealthzResponse> {
+    Json(HealthzResponse {
+        status: "ok",
+        remote_mode: state.remote_mode,
+        version: env!("CARGO_PKG_VERSION"),
+    })
+}
+
+// =============================================================================
+// Phase 3 — общий хелпер для ?server=<id> ветки в handler'ах
+// =============================================================================
+
+/// Извлекает `server` из query-параметров.
+///
+/// Поведение: query — `HashMap<String, String>`, парсится axum'ом из строки
+/// типа `?server=office&foo=bar`. Возвращаем `Some(id)` только если значение
+/// непустое после trim. Это упрощает контракт: `?server=` (пустой) трактуется
+/// как «нет server».
+///
+/// `?server=local` — зарезервированное значение: воспринимается как «нет
+/// server» (passthrough к локальной логике). Это позволяет фронтенду явно
+/// указывать local-источник в URL без специальной ветки на стороне сервера.
+fn extract_server_id(q: &HashMap<String, String>) -> Option<String> {
+    q.get("server")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .filter(|s| s != "local")
+}
+
+/// Результат решения о dispatch'е запроса с возможным `?server=<id>`.
+///
+/// Pure helper, выделен для unit-тестов try_proxy_to_remote-логики (Phase 8 .3).
+/// Не зависит от tokio/AppState — принимает только две детали: server_id
+/// (после extract_server_id) и флаг remote_mode.
+#[derive(Debug, PartialEq, Eq)]
+enum DispatchDecision {
+    /// Локальная обработка (без проксирования). Происходит когда `?server=`
+    /// отсутствует, пустой или равен зарезервированному `local`.
+    Local,
+    /// Проксировать на удалённый сервер с указанным id. Гарантирует, что
+    /// `remote_mode == true`.
+    Proxy(String),
+    /// `?server=<id>` указан, но сервер запущен в legacy-режиме
+    /// (без `--remote`). Должен вернуться `400 Bad Request`.
+    LegacyRejection,
+}
+
+/// Чистый dispatcher для прокси-логики.
+///
+/// Контракт (зафиксирован в `Phase 8 .3` интеграционных тестах):
+/// - `q[server]` отсутствует / `""` / `"   "` → [`DispatchDecision::Local`].
+/// - `q[server] == "local"` → [`DispatchDecision::Local`] (зарезервированное имя).
+/// - `q[server] == "<id>"` && `remote_mode == false` → [`DispatchDecision::LegacyRejection`].
+/// - `q[server] == "<id>"` && `remote_mode == true` → [`DispatchDecision::Proxy(id)`].
+///
+/// Multiple `?server=a&server=b` — axum при парсинге в HashMap оставляет
+/// одно значение (последнее, как правило, но это implementation-detail
+/// serde_urlencoded). Тест-as-spec фиксирует: dispatcher работает с тем,
+/// что отдал axum.
+fn resolve_dispatch(q: &HashMap<String, String>, remote_mode: bool) -> DispatchDecision {
+    match extract_server_id(q) {
+        None => DispatchDecision::Local,
+        Some(id) if !remote_mode => {
+            tracing::trace!(server_id = %id, "resolve_dispatch: legacy mode rejects ?server");
+            DispatchDecision::LegacyRejection
+        }
+        Some(id) => DispatchDecision::Proxy(id),
+    }
+}
+
+/// Сериализует пары `HashMap<String, String>` обратно в query-строку для
+/// проксирования. Параметр `server` исключается (он адресован локальному
+/// прокси, а не remote'у). Возвращает строку БЕЗ ведущего `?`.
+///
+/// Порядок ключей не гарантирован (`HashMap` — unordered). Это допустимо,
+/// потому что HTTP query семантически — мульти-множество, а remote handler'ы
+/// читают по имени.
+fn rebuild_query_without_server(q: &HashMap<String, String>) -> String {
+    let mut parts: Vec<String> = Vec::with_capacity(q.len());
+    for (k, v) in q.iter() {
+        if k == "server" {
+            continue;
+        }
+        // Минимальный url-encoding для значений: replace & и = (рядом с этими
+        // спецсимволами axum/reqwest сами обрабатывают остальное; у нас же
+        // на практике передаются ids/строки без таких символов).
+        let kv = format!("{}={}", urlencode_minimal(k), urlencode_minimal(v));
+        parts.push(kv);
+    }
+    parts.join("&")
+}
+
+/// Минимальный url-encoder для query-значений: экранирует `&`, `=`, `?`,
+/// `#`, ` ` (space) в `%XX`. Для типичных id-значений (alnum, `-`, `_`)
+/// никаких изменений. Полноценный URL-encoder не тянем, чтобы не добавлять
+/// зависимость percent-encoding в Cargo.toml.
+fn urlencode_minimal(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '&' => out.push_str("%26"),
+            '=' => out.push_str("%3D"),
+            '?' => out.push_str("%3F"),
+            '#' => out.push_str("%23"),
+            ' ' => out.push_str("%20"),
+            '+' => out.push_str("%2B"),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// Превращает ответ от `remote_proxy::proxy_request` в `axum::Response`.
+///
+/// Если `enrich_array` == `true`, тело пытается распарситься как JSON, и при
+/// успехе — массивные item'ы обогащаются полем `origin = <server_id>` через
+/// [`remote_proxy::enrich_with_origin`]. Если тело не JSON — отдаём как есть.
+///
+/// При `enrich_array == false` тело пробрасывается дословно (для DELETE/
+/// 204 No Content, где тело пустое).
+fn proxy_response_to_axum(
+    status: reqwest::StatusCode,
+    headers: reqwest::header::HeaderMap,
+    body: Bytes,
+    server_id: &str,
+    enrich_array: bool,
+) -> Response {
+    // axum::StatusCode переиспользует http::StatusCode, как и reqwest:
+    // .as_u16() сохраняет точное значение.
+    let axum_status = StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+
+    // Прокидываем headers, переводя их в axum::http::HeaderMap (по факту это
+    // тоже http::HeaderMap из http crate, но reqwest и axum могут иметь разные
+    // версии). Делаем через имя+байты значения — безопасно для любой версии.
+    let mut axum_headers = AxumHeaderMap::new();
+    for (k, v) in headers.iter() {
+        if let (Ok(name), Ok(value)) = (
+            axum::http::HeaderName::from_bytes(k.as_str().as_bytes()),
+            axum::http::HeaderValue::from_bytes(v.as_bytes()),
+        ) {
+            axum_headers.insert(name, value);
+        }
+    }
+
+    // Решаем, обогащать ли тело. Только если включён enrich_array И
+    // content-type указывает на JSON.
+    let is_json = axum_headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_ascii_lowercase().contains("application/json"))
+        .unwrap_or(false);
+
+    let final_body: Bytes = if enrich_array && is_json && !body.is_empty() {
+        match serde_json::from_slice::<serde_json::Value>(&body) {
+            Ok(mut v) => {
+                remote_proxy::enrich_with_origin(&mut v, server_id);
+                match serde_json::to_vec(&v) {
+                    Ok(bytes) => {
+                        // Content-Length перепишется ниже только если он был в headers.
+                        // Иначе hyper посчитает сам по body.
+                        axum_headers.remove(axum::http::header::CONTENT_LENGTH);
+                        Bytes::from(bytes)
+                    }
+                    Err(_) => body,
+                }
+            }
+            Err(_) => body, // не JSON — отдаём как есть
+        }
+    } else {
+        body
+    };
+
+    (axum_status, axum_headers, final_body).into_response()
+}
+
+/// Высокоуровневый helper для прокси-ветки в handler'ах.
+///
+/// Возвращает `Some(Result)` если прокси должен сработать (есть `?server=<id>`),
+/// иначе `None` — handler продолжает локальную логику.
+///
+/// Логика:
+/// - `?server=` отсутствует / пустой → `None` (продолжать локально).
+/// - `?server=<id>` есть, но `state.remote_mode == false` → `Some(Err(400))`.
+/// - Иначе → `Some(Ok(proxy_response))` или `Some(Err(error))`.
+///
+/// `path` — путь без query, например `/api/sessions`. Query прокидывается
+/// автоматически (минус `server`).
+///
+/// `enrich_array` — нужно ли обогащать JSON-ответ полем `origin = <server_id>`.
+/// Для GET-ресурсов это `true`, для DELETE/204 — `false`.
+async fn try_proxy_to_remote(
+    state: &AppState,
+    raw_query: &HashMap<String, String>,
+    method: reqwest::Method,
+    path: &str,
+    content_type: Option<&str>,
+    body: Option<Bytes>,
+    enrich_array: bool,
+) -> Option<Result<Response, (StatusCode, String)>> {
+    let server_id = match resolve_dispatch(raw_query, state.remote_mode) {
+        DispatchDecision::Local => return None,
+        DispatchDecision::LegacyRejection => {
+            return Some(Err((
+                StatusCode::BAD_REQUEST,
+                "remote mode disabled — cannot use ?server=<id>".to_string(),
+            )))
+        }
+        DispatchDecision::Proxy(id) => id,
+    };
+
+    let query = rebuild_query_without_server(raw_query);
+    let store = state.remotes.read().await;
+    let result = remote_proxy::proxy_request(
+        &store,
+        &state.http,
+        &server_id,
+        method,
+        path,
+        &query,
+        content_type,
+        body,
+    )
+    .await;
+
+    match result {
+        Ok((status, headers, bytes)) => Some(Ok(proxy_response_to_axum(
+            status,
+            headers,
+            bytes,
+            &server_id,
+            enrich_array,
+        ))),
+        Err(e) => Some(Err(e.into_response())),
+    }
 }
 
 // =============================================================================
@@ -330,6 +760,12 @@ struct SessionDto {
     needs_attention: bool,
     project_id: Option<String>,
     project_name: Option<String>,
+    /// Phase 3 — источник записи. Для локально-сгенерированных сессий — всегда
+    /// `"local"`. Прокси через `?server=<id>` НЕ создаёт SessionDto на этой
+    /// стороне (там прокидывается уже готовый JSON remote'а, обогащённый
+    /// `remote_proxy::enrich_with_origin`). Поле сериализуется ВСЕГДА,
+    /// независимо от `remote_mode`, чтобы фронт получал унифицированный формат.
+    origin: String,
 }
 
 /// `GET /api/sessions` — JSON-массив ВСЕХ активных tmux-сессий (без фильтра
@@ -348,7 +784,22 @@ struct SessionDto {
 /// Если tmux-сервер не запущен — возвращает `[]` (а не 500).
 async fn get_sessions(
     State(state): State<AppState>,
-) -> Result<Json<Vec<SessionDto>>, (StatusCode, String)> {
+    Query(q): Query<HashMap<String, String>>,
+) -> Result<Response, (StatusCode, String)> {
+    if let Some(result) = try_proxy_to_remote(
+        &state,
+        &q,
+        reqwest::Method::GET,
+        "/api/sessions",
+        None,
+        None,
+        true,
+    )
+    .await
+    {
+        return result;
+    }
+
     let projects_snap = state.projects.read().await.list();
     match tmux::list_sessions().await {
         Ok(list) => {
@@ -363,10 +814,11 @@ async fn get_sessions(
                         project_id,
                         project_name,
                         info: s,
+                        origin: "local".to_string(),
                     }
                 })
                 .collect();
-            Ok(Json(dtos))
+            Ok(Json(dtos).into_response())
         }
         Err(e) => {
             tracing::error!(error = ?e, "list_sessions failed");
@@ -388,8 +840,26 @@ struct CreateSessionReq {
 /// - 400 Bad Request при невалидном имени или duplicate.
 async fn create_session(
     State(state): State<AppState>,
-    Json(req): Json<CreateSessionReq>,
-) -> Result<StatusCode, (StatusCode, String)> {
+    Query(q): Query<HashMap<String, String>>,
+    body: Bytes,
+) -> Result<Response, (StatusCode, String)> {
+    if let Some(result) = try_proxy_to_remote(
+        &state,
+        &q,
+        reqwest::Method::POST,
+        "/api/sessions",
+        Some("application/json"),
+        Some(body.clone()),
+        false,
+    )
+    .await
+    {
+        return result;
+    }
+
+    let req: CreateSessionReq = serde_json::from_slice(&body)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid body: {e}")))?;
+
     let (name, cwd) = {
         let store = state.projects.read().await;
         let active = store.active();
@@ -400,12 +870,10 @@ async fn create_session(
     match tmux::new_session(&name, &cwd).await {
         Ok(()) => {
             tracing::info!(name = %name, cwd = %cwd.display(), "tmux session created");
-            Ok(StatusCode::CREATED)
+            Ok(StatusCode::CREATED.into_response())
         }
         Err(e) => {
             tracing::warn!(name = %name, error = ?e, "new_session failed");
-            // Любая ошибка от tmux/валидатора — 400 (клиент дал плохой ввод
-            // либо состояние tmux-сервера противоречит запросу).
             Err((StatusCode::BAD_REQUEST, format!("{e:#}")))
         }
     }
@@ -416,12 +884,29 @@ async fn create_session(
 /// - 204 No Content при успехе.
 /// - 400 Bad Request при невалидном имени или если сессии нет.
 async fn delete_session(
+    State(state): State<AppState>,
     AxumPath(name): AxumPath<String>,
-) -> Result<StatusCode, (StatusCode, String)> {
+    Query(q): Query<HashMap<String, String>>,
+) -> Result<Response, (StatusCode, String)> {
+    let path = format!("/api/sessions/{}", urlencode_minimal(&name));
+    if let Some(result) = try_proxy_to_remote(
+        &state,
+        &q,
+        reqwest::Method::DELETE,
+        &path,
+        None,
+        None,
+        false,
+    )
+    .await
+    {
+        return result;
+    }
+
     match tmux::kill_session(&name).await {
         Ok(()) => {
             tracing::info!(%name, "tmux session killed");
-            Ok(StatusCode::NO_CONTENT)
+            Ok(StatusCode::NO_CONTENT.into_response())
         }
         Err(e) => {
             tracing::warn!(%name, error = ?e, "kill_session failed");
@@ -439,13 +924,87 @@ async fn delete_session(
 /// cwd для `br list --json --all --limit 0` берётся из active project.
 async fn get_tasks(
     State(state): State<AppState>,
-) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    Query(q): Query<HashMap<String, String>>,
+) -> Result<Response, (StatusCode, String)> {
+    // Phase 3: enrich_array=false, потому что remote отдаёт {issues:[...]},
+    // т.е. Object, не Array. enrich_with_origin поставит origin на корень,
+    // а нам нужно на каждый item внутри `issues`. Делаем это вручную.
+    if let Some(server_id) = extract_server_id(&q) {
+        if !state.remote_mode {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "remote mode disabled — cannot use ?server=<id>".to_string(),
+            ));
+        }
+        let query = rebuild_query_without_server(&q);
+        let store = state.remotes.read().await;
+        return match remote_proxy::proxy_request(
+            &store,
+            &state.http,
+            &server_id,
+            reqwest::Method::GET,
+            "/api/tasks",
+            &query,
+            None,
+            None,
+        )
+        .await
+        {
+            Ok((status, headers, body)) => {
+                // Парсим JSON, обогащаем `issues` каждого item полем origin.
+                let mut value: serde_json::Value = match serde_json::from_slice(&body) {
+                    Ok(v) => v,
+                    Err(_) => {
+                        return Ok(proxy_response_to_axum(
+                            status, headers, body, &server_id, false,
+                        ))
+                    }
+                };
+                if let Some(arr) = value.get_mut("issues").and_then(|v| v.as_array_mut()) {
+                    for item in arr.iter_mut() {
+                        if let Some(obj) = item.as_object_mut() {
+                            obj.insert(
+                                "origin".to_string(),
+                                serde_json::Value::String(server_id.clone()),
+                            );
+                        }
+                    }
+                }
+                let body_out = serde_json::to_vec(&value).unwrap_or_else(|_| body.to_vec());
+                let axum_status =
+                    StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+                Ok((
+                    axum_status,
+                    [(axum::http::header::CONTENT_TYPE, "application/json")],
+                    body_out,
+                )
+                    .into_response())
+            }
+            Err(e) => Err(e.into_response()),
+        };
+    }
+
     let cwd = {
         let store = state.projects.read().await;
         store.active().path.clone()
     };
     match tasks::list_tasks(&cwd).await {
-        Ok(value) => Ok(Json(value)),
+        Ok(mut value) => {
+            // Phase 3 — каждый issue в response.issues получает origin="local"
+            // для унификации формата с прокси-ответами `?server=<id>` (где
+            // remote_proxy::enrich_with_origin ставит remote id).
+            if let Some(arr) = value.get_mut("issues").and_then(|v| v.as_array_mut()) {
+                for item in arr.iter_mut() {
+                    if let Some(obj) = item.as_object_mut() {
+                        obj.insert(
+                            "origin".to_string(),
+                            serde_json::Value::String("local".to_string()),
+                        );
+                    }
+                }
+            }
+            Ok(Json(value).into_response())
+        }
         Err(e) => {
             tracing::error!(error = ?e, "list_tasks failed");
             Err((StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")))
@@ -484,8 +1043,26 @@ struct CreateTaskReq {
 /// `br create --json` одиночным объектом).
 async fn create_task(
     State(state): State<AppState>,
-    Json(req): Json<CreateTaskReq>,
-) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
+    Query(q): Query<HashMap<String, String>>,
+    body: Bytes,
+) -> Result<Response, (StatusCode, String)> {
+    if let Some(result) = try_proxy_to_remote(
+        &state,
+        &q,
+        reqwest::Method::POST,
+        "/api/tasks",
+        Some("application/json"),
+        Some(body.clone()),
+        false,
+    )
+    .await
+    {
+        return result;
+    }
+
+    let req: CreateTaskReq = serde_json::from_slice(&body)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid body: {e}")))?;
+
     let title = req.title.trim();
     if title.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "title is required".to_string()));
@@ -532,7 +1109,7 @@ async fn create_task(
     match tasks::run_br(&arg_refs, &cwd).await {
         Ok(value) => {
             tracing::info!(title = %title, "task created");
-            Ok((StatusCode::CREATED, Json(value)))
+            Ok((StatusCode::CREATED, Json(value)).into_response())
         }
         Err(e) => {
             tracing::warn!(error = ?e, "br create failed");
@@ -567,8 +1144,26 @@ struct PatchTaskReq {
 async fn patch_task(
     State(state): State<AppState>,
     AxumPath(id): AxumPath<String>,
-    Json(req): Json<PatchTaskReq>,
-) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    Query(q): Query<HashMap<String, String>>,
+    body: Bytes,
+) -> Result<Response, (StatusCode, String)> {
+    if let Some(result) = try_proxy_to_remote(
+        &state,
+        &q,
+        reqwest::Method::PATCH,
+        &format!("/api/tasks/{}", urlencode_minimal(&id)),
+        Some("application/json"),
+        Some(body.clone()),
+        false,
+    )
+    .await
+    {
+        return result;
+    }
+
+    let req: PatchTaskReq = serde_json::from_slice(&body)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid body: {e}")))?;
+
     let cwd = {
         let store = state.projects.read().await;
         store.active().path.clone()
@@ -614,7 +1209,7 @@ async fn patch_task(
     match tasks::run_br(&arg_refs, &cwd).await {
         Ok(value) => {
             tracing::info!(%id, "task updated");
-            Ok(Json(value))
+            Ok(Json(value).into_response())
         }
         Err(e) => {
             tracing::warn!(%id, error = ?e, "br update failed");
@@ -623,37 +1218,45 @@ async fn patch_task(
     }
 }
 
-/// Query-параметры для `DELETE /api/tasks/:id`.
-#[derive(Debug, Deserialize)]
-struct CloseTaskQuery {
-    #[serde(default)]
-    reason: Option<String>,
-}
-
 /// `DELETE /api/tasks/:id?reason=...` — закрывает issue через `br close --json -r`.
 ///
 /// 204 No Content при успехе; ошибка `br` маппится в 400.
 async fn close_task(
     State(state): State<AppState>,
     AxumPath(id): AxumPath<String>,
-    axum::extract::Query(q): axum::extract::Query<CloseTaskQuery>,
-) -> Result<StatusCode, (StatusCode, String)> {
+    Query(q): Query<HashMap<String, String>>,
+) -> Result<Response, (StatusCode, String)> {
+    if let Some(result) = try_proxy_to_remote(
+        &state,
+        &q,
+        reqwest::Method::DELETE,
+        &format!("/api/tasks/{}", urlencode_minimal(&id)),
+        None,
+        None,
+        false,
+    )
+    .await
+    {
+        return result;
+    }
+
     let cwd = {
         let store = state.projects.read().await;
         store.active().path.clone()
     };
 
+    let reason = q.get("reason").map(|s| s.as_str()).unwrap_or("");
     let mut args: Vec<String> = vec!["close".to_string(), "--json".to_string(), id.clone()];
-    if let Some(r) = q.reason.as_deref().filter(|s| !s.is_empty()) {
+    if !reason.is_empty() {
         args.push("-r".to_string());
-        args.push(r.to_string());
+        args.push(reason.to_string());
     }
 
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     match tasks::run_br(&arg_refs, &cwd).await {
         Ok(_) => {
             tracing::info!(%id, "task closed");
-            Ok(StatusCode::NO_CONTENT)
+            Ok(StatusCode::NO_CONTENT.into_response())
         }
         Err(e) => {
             tracing::warn!(%id, error = ?e, "br close failed");
@@ -667,7 +1270,22 @@ async fn close_task(
 async fn reopen_task(
     State(state): State<AppState>,
     AxumPath(id): AxumPath<String>,
-) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    Query(q): Query<HashMap<String, String>>,
+) -> Result<Response, (StatusCode, String)> {
+    if let Some(result) = try_proxy_to_remote(
+        &state,
+        &q,
+        reqwest::Method::POST,
+        &format!("/api/tasks/{}/reopen", urlencode_minimal(&id)),
+        None,
+        None,
+        false,
+    )
+    .await
+    {
+        return result;
+    }
+
     let cwd = {
         let store = state.projects.read().await;
         store.active().path.clone()
@@ -676,7 +1294,7 @@ async fn reopen_task(
     match tasks::run_br(&args, &cwd).await {
         Ok(value) => {
             tracing::info!(%id, "task reopened");
-            Ok(Json(value))
+            Ok(Json(value).into_response())
         }
         Err(e) => {
             tracing::warn!(%id, error = ?e, "br reopen failed");
@@ -707,6 +1325,9 @@ struct ProjectDto {
     notify_delay_minutes: u32,
     notify_wait_previous: bool,
     notify_session: Option<String>,
+    /// Phase 3 — источник записи. Для локального проекта — `"local"`. См.
+    /// комментарий у [`SessionDto::origin`] про унификацию формата.
+    origin: String,
 }
 
 impl ProjectDto {
@@ -721,6 +1342,7 @@ impl ProjectDto {
             notify_delay_minutes: p.notify_delay_minutes,
             notify_wait_previous: p.notify_wait_previous,
             notify_session: p.notify_session.clone(),
+            origin: "local".to_string(),
         }
     }
 }
@@ -772,15 +1394,32 @@ fn resolve_project(
 }
 
 /// `GET /api/projects` — массив всех проектов с пометкой `active`.
-async fn get_projects(State(state): State<AppState>) -> Json<Vec<ProjectDto>> {
+async fn get_projects(
+    State(state): State<AppState>,
+    Query(q): Query<HashMap<String, String>>,
+) -> Result<Response, (StatusCode, String)> {
+    if let Some(result) = try_proxy_to_remote(
+        &state,
+        &q,
+        reqwest::Method::GET,
+        "/api/projects",
+        None,
+        None,
+        true,
+    )
+    .await
+    {
+        return result;
+    }
+
     let store = state.projects.read().await;
     let active = store.active_id().to_string();
-    let dtos = store
+    let dtos: Vec<ProjectDto> = store
         .list()
         .iter()
         .map(|p| ProjectDto::new(p, &active))
         .collect();
-    Json(dtos)
+    Ok(Json(dtos).into_response())
 }
 
 /// Тело запроса `POST /api/projects`.
@@ -1093,27 +1732,33 @@ async fn run_in(cwd: &Path, cmd: &str, args: &[&str]) -> anyhow::Result<()> {
 // TODOs endpoints (Phase 3)
 // =============================================================================
 
-/// Query-параметры `GET /api/todos`. Если `project_id` не задан — берём
-/// активный проект из `state.projects`.
-#[derive(Debug, Deserialize)]
-struct TodosQuery {
-    #[serde(default)]
-    project_id: Option<String>,
-}
-
 /// `GET /api/todos?project_id=...` — JSON-массив TODO-карточек проекта.
 ///
 /// Если `project_id` не задан — используем активный проект. Возвращает
 /// пустой массив (не 404), если в проекте нет TODO.
 async fn get_todos(
     State(state): State<AppState>,
-    axum::extract::Query(q): axum::extract::Query<TodosQuery>,
-) -> Json<Vec<crate::todos::Todo>> {
-    let pid = match q.project_id.as_deref() {
+    Query(q): Query<HashMap<String, String>>,
+) -> Result<Response, (StatusCode, String)> {
+    if let Some(result) = try_proxy_to_remote(
+        &state,
+        &q,
+        reqwest::Method::GET,
+        "/api/todos",
+        None,
+        None,
+        true,
+    )
+    .await
+    {
+        return result;
+    }
+
+    let pid = match q.get("project_id").map(String::as_str) {
         Some(s) if !s.is_empty() => s.to_string(),
         _ => state.projects.read().await.active().id.clone(),
     };
-    Json(state.todos.list(&pid))
+    Ok(Json(state.todos.list(&pid)).into_response())
 }
 
 /// Тело запроса `POST /api/todos`.
@@ -1137,8 +1782,25 @@ struct CreateTodoReq {
 /// После создания → broadcast `TodoEvent::Upsert` всем подписчикам WS.
 async fn create_todo(
     State(state): State<AppState>,
-    Json(req): Json<CreateTodoReq>,
-) -> Result<(StatusCode, Json<crate::todos::Todo>), (StatusCode, String)> {
+    Query(q): Query<HashMap<String, String>>,
+    body: Bytes,
+) -> Result<Response, (StatusCode, String)> {
+    if let Some(result) = try_proxy_to_remote(
+        &state,
+        &q,
+        reqwest::Method::POST,
+        "/api/todos",
+        Some("application/json"),
+        Some(body.clone()),
+        false,
+    )
+    .await
+    {
+        return result;
+    }
+
+    let req: CreateTodoReq = serde_json::from_slice(&body)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid body: {e}")))?;
     let title = req.title.trim();
     if title.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "title is required".to_string()));
@@ -1152,7 +1814,7 @@ async fn create_todo(
             // Broadcast — игнорируем Err (нет подписчиков, ОК).
             let _ = state.todos_tx.send(ws_todos::upsert(t.clone()));
             tracing::info!(id = %t.id, project = %pid, "todo created");
-            Ok((StatusCode::CREATED, Json(t)))
+            Ok((StatusCode::CREATED, Json(t)).into_response())
         }
         Err(e) => {
             tracing::warn!(error = ?e, "todo create failed");
@@ -1201,8 +1863,25 @@ where
 async fn patch_todo(
     State(state): State<AppState>,
     AxumPath(id): AxumPath<String>,
-    Json(req): Json<PatchTodoReq>,
-) -> Result<Json<crate::todos::Todo>, (StatusCode, String)> {
+    Query(q): Query<HashMap<String, String>>,
+    body: Bytes,
+) -> Result<Response, (StatusCode, String)> {
+    if let Some(result) = try_proxy_to_remote(
+        &state,
+        &q,
+        reqwest::Method::PATCH,
+        &format!("/api/todos/{}", urlencode_minimal(&id)),
+        Some("application/json"),
+        Some(body.clone()),
+        false,
+    )
+    .await
+    {
+        return result;
+    }
+
+    let req: PatchTodoReq = serde_json::from_slice(&body)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid body: {e}")))?;
     if let Some(t) = req.title.as_deref() {
         if t.trim().is_empty() {
             return Err((
@@ -1218,7 +1897,7 @@ async fn patch_todo(
         Ok(Some(t)) => {
             let _ = state.todos_tx.send(ws_todos::upsert(t.clone()));
             tracing::info!(%id, "todo updated");
-            Ok(Json(t))
+            Ok(Json(t).into_response())
         }
         Ok(None) => Err((
             StatusCode::NOT_FOUND,
@@ -1238,7 +1917,22 @@ async fn patch_todo(
 async fn delete_todo(
     State(state): State<AppState>,
     AxumPath(id): AxumPath<String>,
-) -> Result<StatusCode, (StatusCode, String)> {
+    Query(q): Query<HashMap<String, String>>,
+) -> Result<Response, (StatusCode, String)> {
+    if let Some(result) = try_proxy_to_remote(
+        &state,
+        &q,
+        reqwest::Method::DELETE,
+        &format!("/api/todos/{}", urlencode_minimal(&id)),
+        None,
+        None,
+        false,
+    )
+    .await
+    {
+        return result;
+    }
+
     let project_id = match state.todos.get(&id) {
         Some(t) => t.project_id,
         None => {
@@ -1252,7 +1946,7 @@ async fn delete_todo(
         Ok(true) => {
             let _ = state.todos_tx.send(ws_todos::removed(project_id, id.clone()));
             tracing::info!(%id, "todo deleted");
-            Ok(StatusCode::NO_CONTENT)
+            Ok(StatusCode::NO_CONTENT.into_response())
         }
         Ok(false) => Err((
             StatusCode::NOT_FOUND,
@@ -1335,8 +2029,31 @@ struct PromoteTodoReq {
 async fn promote_todo(
     State(state): State<AppState>,
     AxumPath(id): AxumPath<String>,
-    Json(req): Json<PromoteTodoReq>,
-) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    Query(q): Query<HashMap<String, String>>,
+    body: Bytes,
+) -> Result<Response, (StatusCode, String)> {
+    if let Some(result) = try_proxy_to_remote(
+        &state,
+        &q,
+        reqwest::Method::POST,
+        &format!("/api/todos/{}/promote", urlencode_minimal(&id)),
+        Some("application/json"),
+        Some(body.clone()),
+        false,
+    )
+    .await
+    {
+        return result;
+    }
+
+    // Body может быть пустым (фронт иногда шлёт `{}`) — обрабатываем оба случая.
+    let req: PromoteTodoReq = if body.is_empty() {
+        PromoteTodoReq { session: None }
+    } else {
+        serde_json::from_slice(&body)
+            .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid body: {e}")))?
+    };
+
     // 1) Загружаем TODO.
     let todo = match state.todos.get(&id) {
         Some(t) => t,
@@ -1485,7 +2202,8 @@ async fn promote_todo(
             "promoted": true,
             "task_id": task_id,
             "notify_warning": format!("{e:#}"),
-        })));
+        }))
+        .into_response());
     }
 
     tracing::info!(
@@ -1497,7 +2215,8 @@ async fn promote_todo(
     Ok(Json(serde_json::json!({
         "promoted": true,
         "task_id": task_id,
-    })))
+    }))
+    .into_response())
 }
 
 /// Резолвит целевую tmux-сессию для уведомления.
@@ -1740,5 +2459,440 @@ async fn delete_custom_theme(
     }
     tracing::info!(%id, "custom theme deleted");
     Ok(StatusCode::NO_CONTENT)
+}
+
+// =============================================================================
+// Remote-servers endpoints (Phase 2)
+// =============================================================================
+
+/// Тело запроса `POST /api/remote-servers`.
+///
+/// Все три поля обязательны. URL валидируется на `http://` / `https://`,
+/// label/token — на непустоту. Дубликаты id разрешаются авто-суффиксом
+/// (см. `RemoteServerStore::add` → `allocate_id`).
+#[derive(Debug, Deserialize)]
+struct CreateRemoteServerReq {
+    label: String,
+    url: String,
+    token: String,
+}
+
+/// Тело запроса `PATCH /api/remote-servers/:id`.
+///
+/// Все поля опциональны. `label` и `token` могут быть обновлены;
+/// `url` намеренно не меняется (для смены URL — DELETE + POST с тем же
+/// label, чтобы id остался плюс-минус тот же).
+#[derive(Debug, Deserialize)]
+struct PatchRemoteServerReq {
+    #[serde(default)]
+    label: Option<String>,
+    #[serde(default)]
+    token: Option<String>,
+}
+
+/// `GET /api/remote-servers` — список всех зарегистрированных remote-серверов.
+///
+/// Возвращает `Json<Vec<RemoteServerView>>` — без поля `token`. Это
+/// архитектурное решение: token хранится локально, никогда не утекает в API.
+async fn list_remote_servers(
+    State(state): State<AppState>,
+) -> Json<Vec<remotes::RemoteServerView>> {
+    let store = state.remotes.read().await;
+    Json(store.list_views())
+}
+
+/// `POST /api/remote-servers` — добавляет remote-сервер в реестр.
+///
+/// Валидация: label/url/token непустые, url начинается с `http://` или
+/// `https://`. ID авто-генерится из label через slugify с дедупликацией.
+/// Pre-flight healthz-проверка пока не делается (это Phase 3, требует
+/// reqwest). После успешного add — atomic save на диск.
+///
+/// Ответ: 201 Created + `RemoteServerView` (без token).
+async fn create_remote_server(
+    State(state): State<AppState>,
+    Json(req): Json<CreateRemoteServerReq>,
+) -> Result<(StatusCode, Json<remotes::RemoteServerView>), (StatusCode, String)> {
+    let mut store = state.remotes.write().await;
+    match store.add(req.label, req.url, req.token) {
+        Ok(server) => {
+            if let Err(e) = store.save() {
+                tracing::error!(error = ?e, "remotes save failed");
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("save: {e:#}"),
+                ));
+            }
+            tracing::info!(id = %server.id, "remote server added");
+            Ok((StatusCode::CREATED, Json(remotes::RemoteServerView::from(&server))))
+        }
+        Err(e) => {
+            tracing::warn!(error = ?e, "create_remote_server failed");
+            Err((StatusCode::BAD_REQUEST, format!("{e:#}")))
+        }
+    }
+}
+
+/// `DELETE /api/remote-servers/:id` — удаляет запись по id.
+///
+/// - 204 No Content при успехе.
+/// - 404 Not Found если id отсутствует.
+async fn delete_remote_server(
+    State(state): State<AppState>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let mut store = state.remotes.write().await;
+    if !store.remove(&id) {
+        return Err((
+            StatusCode::NOT_FOUND,
+            format!("no remote server with id `{id}`"),
+        ));
+    }
+    if let Err(e) = store.save() {
+        tracing::error!(error = ?e, "remotes save failed");
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("save: {e:#}"),
+        ));
+    }
+    tracing::info!(%id, "remote server removed");
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `PATCH /api/remote-servers/:id` — обновляет label/token.
+///
+/// - 200 + `RemoteServerView` при успехе.
+/// - 404 если id неизвестен.
+async fn patch_remote_server(
+    State(state): State<AppState>,
+    AxumPath(id): AxumPath<String>,
+    Json(req): Json<PatchRemoteServerReq>,
+) -> Result<Json<remotes::RemoteServerView>, (StatusCode, String)> {
+    let mut store = state.remotes.write().await;
+    let updated = match store.update(&id, req.label, req.token) {
+        Some(s) => s,
+        None => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                format!("no remote server with id `{id}`"),
+            ));
+        }
+    };
+    if let Err(e) = store.save() {
+        tracing::error!(error = ?e, "remotes save failed");
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("save: {e:#}"),
+        ));
+    }
+    tracing::info!(%id, "remote server updated");
+    Ok(Json(remotes::RemoteServerView::from(&updated)))
+}
+
+/// `GET /api/remote-servers/:id/healthz` — реальный pre-flight на удалённый
+/// devforge.
+///
+/// Phase 3 (forge-v5x9.4) — заменяет заглушку из Phase 2. Делает
+/// `GET <remote.url>/healthz` с Bearer-токеном и возвращает либо тело
+/// remote'а (с добавленным полем `online: true`), либо JSON-описание ошибки
+/// (`{ online: false, error: "..." }`) с подходящим HTTP-статусом.
+///
+/// HTTP-маппинг:
+/// - 404 — `id` отсутствует в реестре;
+/// - 502 BAD_GATEWAY — remote недоступен / TLS / refused;
+/// - 200 — успех, тело — `{ online: true, status, remote_mode, version }`.
+async fn remote_server_healthz(
+    State(state): State<AppState>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let store = state.remotes.read().await;
+    match remote_proxy::proxy_request(
+        &store,
+        &state.http,
+        &id,
+        reqwest::Method::GET,
+        "/healthz",
+        "",
+        None,
+        None,
+    )
+    .await
+    {
+        Ok((status, _headers, bytes)) => {
+            // Парсим тело как JSON; если не JSON — обернём в {raw: <string>}.
+            let mut value: serde_json::Value = serde_json::from_slice(&bytes)
+                .unwrap_or_else(|_| {
+                    serde_json::json!({
+                        "raw": String::from_utf8_lossy(&bytes).to_string()
+                    })
+                });
+            // Помечаем online на основании HTTP-статуса remote'а.
+            let online = status.is_success();
+            if let Some(obj) = value.as_object_mut() {
+                obj.insert("online".to_string(), serde_json::Value::Bool(online));
+            }
+            Ok(Json(value))
+        }
+        Err(e) => match e {
+            remote_proxy::ProxyError::UnknownServer(_) => Err((
+                StatusCode::NOT_FOUND,
+                format!("no remote server with id `{id}`"),
+            )),
+            remote_proxy::ProxyError::Network(net_err) => {
+                tracing::warn!(error = ?net_err, %id, "remote healthz failed");
+                Ok(Json(serde_json::json!({
+                    "online": false,
+                    "error": net_err.to_string(),
+                })))
+            }
+            remote_proxy::ProxyError::InvalidUrl(msg) => Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("invalid proxy URL: {msg}"),
+            )),
+            remote_proxy::ProxyError::WebSocket(msg) => {
+                // healthz всегда HTTP, не WS — этот вариант сюда попасть не должен,
+                // но обрабатываем для exhaustiveness.
+                tracing::warn!(error = %msg, %id, "remote healthz: websocket error in http path");
+                Ok(Json(serde_json::json!({
+                    "online": false,
+                    "error": msg,
+                })))
+            }
+        },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Phase 1 — контракт ответа `GET /healthz`.
+    ///
+    /// Проверяет, что JSON-форма соответствует ожиданиям фронтенда:
+    /// `status`, `remote_mode`, `version` присутствуют и имеют правильные типы.
+    /// Версия читается из `CARGO_PKG_VERSION` (compile-time константа), значит
+    /// в тесте можно завязаться на её непустоту (точное значение зависит от
+    /// `Cargo.toml`).
+    #[test]
+    fn healthz_response_shape_remote_mode_off() {
+        let resp = HealthzResponse {
+            status: "ok",
+            remote_mode: false,
+            version: env!("CARGO_PKG_VERSION"),
+        };
+        let v: serde_json::Value = serde_json::to_value(&resp).unwrap();
+        assert_eq!(v.get("status").and_then(|x| x.as_str()), Some("ok"));
+        assert_eq!(v.get("remote_mode").and_then(|x| x.as_bool()), Some(false));
+        assert!(
+            v.get("version")
+                .and_then(|x| x.as_str())
+                .map(|s| !s.is_empty())
+                .unwrap_or(false),
+            "version must be a non-empty string"
+        );
+    }
+
+    #[test]
+    fn healthz_response_shape_remote_mode_on() {
+        let resp = HealthzResponse {
+            status: "ok",
+            remote_mode: true,
+            version: env!("CARGO_PKG_VERSION"),
+        };
+        let v: serde_json::Value = serde_json::to_value(&resp).unwrap();
+        assert_eq!(v.get("remote_mode").and_then(|x| x.as_bool()), Some(true));
+        assert_eq!(v.get("status").and_then(|x| x.as_str()), Some("ok"));
+    }
+
+    // =========================================================================
+    // Phase 3 — helpers для ?server=<id> и rebuild query.
+    // =========================================================================
+
+    #[test]
+    fn extract_server_id_returns_none_when_absent() {
+        let q: HashMap<String, String> =
+            [("foo".to_string(), "bar".to_string())].into_iter().collect();
+        assert_eq!(extract_server_id(&q), None);
+    }
+
+    #[test]
+    fn extract_server_id_returns_none_for_empty_value() {
+        let q: HashMap<String, String> =
+            [("server".to_string(), "".to_string())].into_iter().collect();
+        assert_eq!(extract_server_id(&q), None);
+    }
+
+    #[test]
+    fn extract_server_id_trims_whitespace() {
+        let q: HashMap<String, String> =
+            [("server".to_string(), "   ".to_string())].into_iter().collect();
+        assert_eq!(extract_server_id(&q), None);
+
+        let q: HashMap<String, String> =
+            [("server".to_string(), "  office  ".to_string())].into_iter().collect();
+        assert_eq!(extract_server_id(&q), Some("office".to_string()));
+    }
+
+    #[test]
+    fn extract_server_id_present_returns_value() {
+        let q: HashMap<String, String> = [
+            ("server".to_string(), "office-2".to_string()),
+            ("project_id".to_string(), "forge".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        assert_eq!(extract_server_id(&q), Some("office-2".to_string()));
+    }
+
+    #[test]
+    fn rebuild_query_excludes_server_key() {
+        let q: HashMap<String, String> = [
+            ("server".to_string(), "office".to_string()),
+            ("project_id".to_string(), "forge".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let s = rebuild_query_without_server(&q);
+        assert!(!s.contains("server"));
+        assert!(s.contains("project_id=forge"));
+    }
+
+    #[test]
+    fn rebuild_query_empty_when_only_server() {
+        let q: HashMap<String, String> =
+            [("server".to_string(), "x".to_string())].into_iter().collect();
+        let s = rebuild_query_without_server(&q);
+        assert_eq!(s, "");
+    }
+
+    // =========================================================================
+    // Phase 8 .3 — try_proxy_to_remote dispatch decision + reserved "local"
+    // =========================================================================
+
+    #[test]
+    fn extract_server_id_local_is_reserved() {
+        // ?server=local → None (passthrough к локальной логике).
+        let q: HashMap<String, String> =
+            [("server".to_string(), "local".to_string())].into_iter().collect();
+        assert_eq!(extract_server_id(&q), None);
+    }
+
+    #[test]
+    fn extract_server_id_local_with_whitespace_still_reserved() {
+        let q: HashMap<String, String> =
+            [("server".to_string(), "  local  ".to_string())].into_iter().collect();
+        assert_eq!(
+            extract_server_id(&q),
+            None,
+            "trim + reserved check: '  local  ' тоже passthrough"
+        );
+    }
+
+    #[test]
+    fn resolve_dispatch_no_server_param_is_local() {
+        let q: HashMap<String, String> =
+            [("foo".to_string(), "bar".to_string())].into_iter().collect();
+        assert_eq!(resolve_dispatch(&q, true), DispatchDecision::Local);
+        assert_eq!(resolve_dispatch(&q, false), DispatchDecision::Local);
+    }
+
+    #[test]
+    fn resolve_dispatch_empty_server_param_is_local() {
+        let q: HashMap<String, String> =
+            [("server".to_string(), "".to_string())].into_iter().collect();
+        assert_eq!(resolve_dispatch(&q, true), DispatchDecision::Local);
+        let q: HashMap<String, String> =
+            [("server".to_string(), "   ".to_string())].into_iter().collect();
+        assert_eq!(resolve_dispatch(&q, true), DispatchDecision::Local);
+    }
+
+    #[test]
+    fn resolve_dispatch_reserved_local_is_local() {
+        let q: HashMap<String, String> =
+            [("server".to_string(), "local".to_string())].into_iter().collect();
+        assert_eq!(
+            resolve_dispatch(&q, true),
+            DispatchDecision::Local,
+            "?server=local в remote-mode = passthrough"
+        );
+        assert_eq!(
+            resolve_dispatch(&q, false),
+            DispatchDecision::Local,
+            "?server=local в legacy = тоже passthrough (не reject)"
+        );
+    }
+
+    #[test]
+    fn resolve_dispatch_unknown_server_in_remote_mode_returns_proxy() {
+        // Сам dispatcher не проверяет существование server_id в store —
+        // это делает remote_proxy::proxy_request, возвращая UnknownServer→404.
+        let q: HashMap<String, String> =
+            [("server".to_string(), "office-12".to_string())].into_iter().collect();
+        assert_eq!(
+            resolve_dispatch(&q, true),
+            DispatchDecision::Proxy("office-12".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_dispatch_legacy_mode_with_server_returns_rejection() {
+        let q: HashMap<String, String> =
+            [("server".to_string(), "anything".to_string())].into_iter().collect();
+        assert_eq!(
+            resolve_dispatch(&q, false),
+            DispatchDecision::LegacyRejection,
+            "legacy (remote_mode=false) + ?server=any → 400"
+        );
+    }
+
+    #[test]
+    fn resolve_dispatch_server_with_project_param_proxies() {
+        // Сочетание ?server=foo&project_id=bar: dispatcher всё равно решает по server.
+        // project_id forward'ит rebuild_query_without_server.
+        let q: HashMap<String, String> = [
+            ("server".to_string(), "foo".to_string()),
+            ("project_id".to_string(), "bar".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        assert_eq!(
+            resolve_dispatch(&q, true),
+            DispatchDecision::Proxy("foo".to_string())
+        );
+        // И project_id попадёт в proxied query:
+        let qs = rebuild_query_without_server(&q);
+        assert!(qs.contains("project_id=bar"));
+        assert!(!qs.contains("server="));
+    }
+
+    #[test]
+    fn resolve_dispatch_multi_server_uses_what_axum_parsed() {
+        // axum/serde_urlencoded для HashMap<String,String> оставляет ОДНО
+        // значение при дубликатах ключей (последнее или первое — зависит от
+        // версии serde_urlencoded). Этот тест документирует контракт:
+        // dispatcher работает с тем, что в HashMap, и не пытается «угадывать»
+        // multiple values. То есть `?server=a&server=b` в продакшене
+        // распарсится в `{server: 'b'}` (или 'a') — и dispatcher вернёт
+        // Proxy с этим значением. Никаких 400 за «дубликат».
+        let q: HashMap<String, String> =
+            [("server".to_string(), "b".to_string())].into_iter().collect();
+        assert_eq!(
+            resolve_dispatch(&q, true),
+            DispatchDecision::Proxy("b".to_string())
+        );
+    }
+
+    #[test]
+    fn urlencode_minimal_basic() {
+        assert_eq!(urlencode_minimal("simple"), "simple");
+        assert_eq!(urlencode_minimal("a&b"), "a%26b");
+        assert_eq!(urlencode_minimal("a=b"), "a%3Db");
+        assert_eq!(urlencode_minimal("a b"), "a%20b");
+        assert_eq!(urlencode_minimal("a+b"), "a%2Bb");
+        assert_eq!(urlencode_minimal("a?b#c"), "a%3Fb%23c");
+        // alphanumerics, '-', '_', '.', '/' остаются как есть (наши id такие).
+        assert_eq!(urlencode_minimal("office-2"), "office-2");
+        assert_eq!(urlencode_minimal("a/b.c_d"), "a/b.c_d");
+    }
 }
 

@@ -1,6 +1,12 @@
 {
-  "generatedAt": "2026-05-13T12:28:28.871Z",
+  "generatedAt": "2026-05-14T12:07:25.199Z",
   "dependencies": [
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
@@ -483,6 +489,13 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "buildSessionItem",
+      "toElement": "dtoOrigin"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "buildSessionItem",
       "toElement": "document.createElement"
     },
     {
@@ -526,6 +539,27 @@
       "type": "call",
       "fromElement": "buildSessionItem",
       "toElement": "openSession"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderSidebar",
+      "toElement": "renderOriginTabs"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderSidebar",
+      "toElement": "isRemoteMode"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderSidebar",
+      "toElement": "renderSidebarWithOrigin"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -699,6 +733,804 @@
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
+      "fromElement": "loadActiveOriginFromStorage",
+      "toElement": "localStorage.getItem"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "loadActiveOriginFromStorage",
+      "toElement": "state.remoteServers.some"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "saveActiveOriginToStorage",
+      "toElement": "localStorage.setItem"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "getCollapsedOrigins",
+      "toElement": "localStorage.getItem"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "getCollapsedOrigins",
+      "toElement": "JSON.parse"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "getCollapsedOrigins",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "getCollapsedOrigins",
+      "toElement": "arr.forEach"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "getCollapsedOrigins",
+      "toElement": "_collapsedOrigins.add"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "persistCollapsedOrigins",
+      "toElement": "localStorage.setItem"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "persistCollapsedOrigins",
+      "toElement": "JSON.stringify"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "persistCollapsedOrigins",
+      "toElement": "Array.from"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "persistCollapsedOrigins",
+      "toElement": "getCollapsedOrigins"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "isOriginCollapsed",
+      "toElement": "getCollapsedOrigins"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "toggleOriginCollapsed",
+      "toElement": "getCollapsedOrigins"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "toggleOriginCollapsed",
+      "toElement": "set.has"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "toggleOriginCollapsed",
+      "toElement": "set.delete"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "toggleOriginCollapsed",
+      "toElement": "set.add"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "toggleOriginCollapsed",
+      "toElement": "persistCollapsedOrigins"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "isRemoteMode"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "btn.classList.add"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "btn.appendChild"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "btn.appendChild"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "btn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "saveActiveOriginToStorage"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "state.remoteSessions.has"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "loadRemoteSessions"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "renderSidebar"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "state.remoteProjects.has"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "loadRemoteProjects"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "disconnectTasksWs"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "disconnectTodosWs"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "setTimeout"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "connectTasksWs"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "connectTodosWs"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "renderSidebar"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "mkTab"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "mkTab"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "state.remoteOnline.get"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "mkTab"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "plus.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginTabs",
+      "toElement": "openSettingsModal"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderSidebarWithOrigin",
+      "toElement": "state.remoteServers.map"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderSidebarWithOrigin",
+      "toElement": "remoteIds.filter"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderSidebarWithOrigin",
+      "toElement": "renderOriginSection"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderSidebarWithOrigin",
+      "toElement": "state.remoteServers.find"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderSidebarWithOrigin",
+      "toElement": "state.remoteOnline.get"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderSidebarWithOrigin",
+      "toElement": "state.remoteProjects.get"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderSidebarWithOrigin",
+      "toElement": "state.remoteSessions.get"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderSidebarWithOrigin",
+      "toElement": "isOriginCollapsed"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderSidebarWithOrigin",
+      "toElement": "loadRemoteProjects"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderSidebarWithOrigin",
+      "toElement": "loadRemoteSessions"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderSidebarWithOrigin",
+      "toElement": "renderSidebar"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderSidebarWithOrigin",
+      "toElement": "renderOriginSection"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderSidebarWithOrigin",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "isOriginCollapsed"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "header.classList.add"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "header.appendChild"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "header.appendChild"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "header.appendChild"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "header.appendChild"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "header.appendChild"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "header.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "toggleOriginCollapsed"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "renderSidebar"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "groupSessionsByProject"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "byProject.get"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "buildSessionItem"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "li.classList.add"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "byProject.get"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "buildSessionItem"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "li.classList.add"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "renderedKeys.add"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "byProject.keys"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "renderedKeys.has"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "autoKeys.push"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "autoKeys.sort"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "byProject.get"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "buildSessionItem"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "li.classList.add"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "byProject.get"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "buildSessionItem"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "li.classList.add"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "groupSessionsByProject",
+      "toElement": "byProject.has"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "groupSessionsByProject",
+      "toElement": "byProject.set"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "groupSessionsByProject",
+      "toElement": "byProject.get"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "groupSessionsByProject",
+      "toElement": "byProject.values"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "groupSessionsByProject",
+      "toElement": "arr.sort"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "groupSessionsByProject",
+      "toElement": "a.name.localeCompare"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "aggregateAllOrigins",
+      "toElement": "out.set"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "aggregateAllOrigins",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "aggregateAllOrigins",
+      "toElement": "state.projects.slice"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "aggregateAllOrigins",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "aggregateAllOrigins",
+      "toElement": "state.sessions.slice"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "aggregateAllOrigins",
+      "toElement": "out.set"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "aggregateAllOrigins",
+      "toElement": "state.remoteOnline.get"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "aggregateAllOrigins",
+      "toElement": "state.remoteProjects.get"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "aggregateAllOrigins",
+      "toElement": "state.remoteSessions.get"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
       "fromElement": "startPolling",
       "toElement": "clearInterval"
     },
@@ -791,7 +1623,7 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "killSession",
-      "toElement": "fetch"
+      "toElement": "apiFetch"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -848,6 +1680,13 @@
       "type": "call",
       "fromElement": "openSession",
       "toElement": "state.sessions.find"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSession",
+      "toElement": "dtoOrigin"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -966,6 +1805,20 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "connectWs",
+      "toElement": "isRemoteMode"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "connectWs",
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "connectWs",
       "toElement": "encodeURIComponent"
     },
     {
@@ -995,6 +1848,13 @@
       "type": "call",
       "fromElement": "connectWs",
       "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "connectWs",
+      "toElement": "scheduleAttachWsReconnect"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -1084,8 +1944,71 @@
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
+      "fromElement": "connectWs",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "connectWs",
+      "toElement": "scheduleAttachWsReconnect"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "scheduleAttachWsReconnect",
+      "toElement": "Math.min"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "scheduleAttachWsReconnect",
+      "toElement": "Math.floor"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "scheduleAttachWsReconnect",
+      "toElement": "Math.random"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "scheduleAttachWsReconnect",
+      "toElement": "Math.min"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "scheduleAttachWsReconnect",
+      "toElement": "setTimeout"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "scheduleAttachWsReconnect",
+      "toElement": "connectWs"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
       "fromElement": "handleControlFromServer",
       "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "disconnectWs",
+      "toElement": "clearTimeout"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -1394,6 +2317,20 @@
       "type": "call",
       "fromElement": "connectGitWs",
       "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "connectGitWs",
+      "toElement": "isRemoteMode"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "connectGitWs",
+      "toElement": "encodeURIComponent"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -1918,6 +2855,20 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "connectTasksWs",
+      "toElement": "isRemoteMode"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "connectTasksWs",
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "connectTasksWs",
       "toElement": "encodeURIComponent"
     },
     {
@@ -2332,6 +3283,20 @@
       "type": "call",
       "fromElement": "connectTodosWs",
       "toElement": "currentTodosProjectId"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "connectTodosWs",
+      "toElement": "isRemoteMode"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "connectTodosWs",
+      "toElement": "encodeURIComponent"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -3234,7 +4199,14 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "promoteTodo",
-      "toElement": "fetch"
+      "toElement": "dtoOrigin"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "promoteTodo",
+      "toElement": "apiFetch"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -3913,6 +4885,20 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "openSettingsModal",
+      "toElement": "isRemoteMode"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "isRemoteMode"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
       "toElement": "overlay.appendChild"
     },
     {
@@ -3976,6 +4962,13 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "openSettingsModal",
+      "toElement": "renderRemotesTable"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
       "toElement": "btn.addEventListener"
     },
     {
@@ -3984,6 +4977,622 @@
       "type": "call",
       "fromElement": "openSettingsModal",
       "toElement": "showTab"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "card.querySelector"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "card.querySelector"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "card.querySelector"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "card.querySelector"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "card.querySelector"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "card.querySelector"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "card.querySelector"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "card.querySelector"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "url.startsWith"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "url.startsWith"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "validate"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "el.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "refreshSaveBtn"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "validate"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "JSON.stringify"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "r.text"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "r.json"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "h.json"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "refreshSaveBtn"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "fetchRemoteServers"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "renderRemotesTable"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "renderSidebar"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "fetchRemoteServers"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "renderRemotesTable"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "validate"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "JSON.stringify"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "r.text"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "refreshSaveBtn"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "fetchRemoteServers"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "renderRemotesTable"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "renderSidebar"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "tr.appendChild"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "tr.appendChild"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "tr.appendChild"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "state.remoteOnline.get"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "tdStatus.appendChild"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "tdStatus.appendChild"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "tr.appendChild"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "editBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "openEditRemoteRow"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "tdActions.appendChild"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "delBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "window.confirm"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "r.text"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "window.alert"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "saveActiveOriginToStorage"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "fetchRemoteServers"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "state.remoteProjects.delete"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "state.remoteSessions.delete"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "renderRemotesTable"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "renderSidebar"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "window.alert"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "tdActions.appendChild"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderRemotesTable",
+      "toElement": "tr.appendChild"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openEditRemoteRow",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openEditRemoteRow",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openEditRemoteRow",
+      "toElement": "escapeHtml"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openEditRemoteRow",
+      "toElement": "formTr.appendChild"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openEditRemoteRow",
+      "toElement": "tr.replaceWith"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openEditRemoteRow",
+      "toElement": "formTr.querySelectorAll"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openEditRemoteRow",
+      "toElement": "formTr.querySelector"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openEditRemoteRow",
+      "toElement": "formTr.querySelector"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openEditRemoteRow",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openEditRemoteRow",
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openEditRemoteRow",
+      "toElement": "JSON.stringify"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openEditRemoteRow",
+      "toElement": "r.text"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openEditRemoteRow",
+      "toElement": "window.alert"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openEditRemoteRow",
+      "toElement": "fetchRemoteServers"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openEditRemoteRow",
+      "toElement": "renderRemotesTable"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openEditRemoteRow",
+      "toElement": "renderSidebar"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openEditRemoteRow",
+      "toElement": "window.alert"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -4214,6 +5823,20 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "openSettingsModal",
+      "toElement": "isRemoteMode"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "showTab"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
       "toElement": "overlay.remove"
     },
     {
@@ -4236,6 +5859,13 @@
       "type": "call",
       "fromElement": "openSettingsModal",
       "toElement": "close"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "escapeHtml",
+      "toElement": "String"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -6614,7 +8244,14 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "updateTask",
-      "toElement": "fetch"
+      "toElement": "taskOriginById"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "updateTask",
+      "toElement": "apiFetch"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -6711,6 +8348,27 @@
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
+      "fromElement": "taskOriginById",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "taskOriginById",
+      "toElement": "state.tasksData.issues.find"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "taskOriginById",
+      "toElement": "dtoOrigin"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
       "fromElement": "closeTask",
       "toElement": "applyOptimisticPatch"
     },
@@ -6719,7 +8377,7 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "closeTask",
-      "toElement": "encodeURIComponent"
+      "toElement": "taskOriginById"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -6733,7 +8391,14 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "closeTask",
-      "toElement": "fetch"
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "closeTask",
+      "toElement": "apiFetch"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -6782,7 +8447,14 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "reopenTask",
-      "toElement": "fetch"
+      "toElement": "taskOriginById"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "reopenTask",
+      "toElement": "apiFetch"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -7545,7 +9217,14 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "openTodoEditModal",
-      "toElement": "fetch"
+      "toElement": "dtoOrigin"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openTodoEditModal",
+      "toElement": "apiFetch"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -7608,7 +9287,14 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "openTodoEditModal",
-      "toElement": "fetch"
+      "toElement": "dtoOrigin"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openTodoEditModal",
+      "toElement": "apiFetch"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -7705,6 +9391,545 @@
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
+      "fromElement": "loadHealthz",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "loadHealthz",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "loadHealthz",
+      "toElement": "r.json"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "loadHealthz",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "parseGlobalId",
+      "toElement": "s.indexOf"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "parseGlobalId",
+      "toElement": "s.slice"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "parseGlobalId",
+      "toElement": "s.slice"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "withServerParam",
+      "toElement": "path.indexOf"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "withServerParam",
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "apiFetch",
+      "toElement": "isRemoteMode"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "apiFetch",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "apiFetch",
+      "toElement": "withServerParam"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "apiFetch",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "fetchRemoteServers",
+      "toElement": "isRemoteMode"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "fetchRemoteServers",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "fetchRemoteServers",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "fetchRemoteServers",
+      "toElement": "r.json"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "fetchRemoteServers",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "fetchRemoteServers",
+      "toElement": "state.remoteServers.map"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "fetchRemoteServers",
+      "toElement": "Array.from"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "fetchRemoteServers",
+      "toElement": "state.remoteOnline.keys"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "fetchRemoteServers",
+      "toElement": "knownIds.has"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "fetchRemoteServers",
+      "toElement": "state.remoteOnline.delete"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "fetchRemoteServers",
+      "toElement": "startRemoteHealthPoll"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "fetchRemoteServers",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "loadRemoteProjects",
+      "toElement": "isRemoteMode"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "loadRemoteProjects",
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "loadRemoteProjects",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "loadRemoteProjects",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "loadRemoteProjects",
+      "toElement": "state.remoteProjects.set"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "loadRemoteProjects",
+      "toElement": "r.json"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "loadRemoteProjects",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "loadRemoteProjects",
+      "toElement": "state.remoteProjects.set"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "loadRemoteProjects",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "loadRemoteProjects",
+      "toElement": "state.remoteProjects.set"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "loadRemoteSessions",
+      "toElement": "isRemoteMode"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "loadRemoteSessions",
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "loadRemoteSessions",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "loadRemoteSessions",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "loadRemoteSessions",
+      "toElement": "state.remoteSessions.set"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "loadRemoteSessions",
+      "toElement": "r.json"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "loadRemoteSessions",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "loadRemoteSessions",
+      "toElement": "state.remoteSessions.set"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "loadRemoteSessions",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "loadRemoteSessions",
+      "toElement": "state.remoteSessions.set"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "probeRemoteServer",
+      "toElement": "isRemoteMode"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "probeRemoteServer",
+      "toElement": "remoteProbeState.get"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "probeRemoteServer",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "probeRemoteServer",
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "probeRemoteServer",
+      "toElement": "r.json"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "probeRemoteServer",
+      "toElement": "state.remoteOnline.get"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "probeRemoteServer",
+      "toElement": "state.remoteOnline.set"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "probeRemoteServer",
+      "toElement": "renderSidebar"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "probeRemoteServer",
+      "toElement": "Math.min"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "probeRemoteServer",
+      "toElement": "remoteProbeState.has"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "probeRemoteServer",
+      "toElement": "isRemoteMode"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "probeRemoteServer",
+      "toElement": "Math.floor"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "probeRemoteServer",
+      "toElement": "Math.random"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "probeRemoteServer",
+      "toElement": "setTimeout"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "probeRemoteServer",
+      "toElement": "remoteProbeState.get"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "probeRemoteServer",
+      "toElement": "probeRemoteServer"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "startRemoteHealthPoll",
+      "toElement": "isRemoteMode"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "startRemoteHealthPoll",
+      "toElement": "state.remoteServers.map"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "startRemoteHealthPoll",
+      "toElement": "remoteProbeState.has"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "startRemoteHealthPoll",
+      "toElement": "remoteProbeState.set"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "startRemoteHealthPoll",
+      "toElement": "probeRemoteServer"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "startRemoteHealthPoll",
+      "toElement": "Array.from"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "startRemoteHealthPoll",
+      "toElement": "remoteProbeState.keys"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "startRemoteHealthPoll",
+      "toElement": "knownIds.has"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "startRemoteHealthPoll",
+      "toElement": "remoteProbeState.get"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "startRemoteHealthPoll",
+      "toElement": "clearTimeout"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "startRemoteHealthPoll",
+      "toElement": "remoteProbeState.delete"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "startRemoteHealthPoll",
+      "toElement": "state.remoteOnline.delete"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "stopRemoteHealthPoll",
+      "toElement": "remoteProbeState.values"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "stopRemoteHealthPoll",
+      "toElement": "clearTimeout"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "stopRemoteHealthPoll",
+      "toElement": "remoteProbeState.clear"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "bootstrap",
+      "toElement": "loadHealthz"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
       "fromElement": "bootstrap",
       "toElement": "loadActiveThemeOrNull"
     },
@@ -7770,6 +9995,34 @@
       "type": "call",
       "fromElement": "bootstrap",
       "toElement": "localStorage.setItem"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "bootstrap",
+      "toElement": "renderSidebar"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "bootstrap",
+      "toElement": "isRemoteMode"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "bootstrap",
+      "toElement": "fetchRemoteServers"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "bootstrap",
+      "toElement": "loadActiveOriginFromStorage"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -7875,6 +10128,13 @@
       "type": "call",
       "fromElement": "bootstrap",
       "toElement": "closeGitWs"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "bootstrap",
+      "toElement": "stopRemoteHealthPoll"
     },
     {
       "from": "tmux-web/static/app.js",

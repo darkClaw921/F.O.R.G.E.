@@ -19,9 +19,9 @@
     "element": "tmux-web/static/app.js",
     "path": "tmux-web/static/app.js",
     "type": "file",
-    "content": "Frontend tmux-web (xterm + WS-attach + tasks/git/projects). Phase 4 добавил отдельную инстанцию xterm.js для git-таба, подключённую к /ws/lazygit:\n\nКлючевые элементы Phase 4:\n- state.gitTerm = { term, fit, ws, mounted, currentCwd, errorSticky } — изолированный xterm-контекст git-таба\n- DOM-refs: $gitTermEl (#git-term), $gitPlaceholder (#git-placeholder), $gitError (#git-error), $gitErrorText, $gitErrorRetry, $gitErrorClose\n- mountGitTerm() — ленивая инициализация Terminal+FitAddon в #git-term (опции совпадают с основным term, тема из state.activeTheme через mapTermTheme)\n- openLazygitForActiveProject() — точка входа: проверяет наличие активного проекта (getActiveProject), показывает/скрывает placeholder/term, дергает mountGitTerm и connectGitWs\n- connectGitWs(cwd) — открывает WS ws://host/ws/lazygit?cwd=<encoded>&cols=&rows=, binaryType=arraybuffer\n  - onmessage: ArrayBuffer → term.write(Uint8Array); string → JSON.parse, при type=error показывает banner (lazygit-not-found распознаётся и заменяется подсказкой про brew install)\n  - term.onData → ws.send(encoder.encode(data)) как Binary\n  - term.onResize → ws.send JSON {type:'resize',cols,rows}\n  - onclose с code!=1000/1001 и errorSticky=false → banner 'Connection lost'\n- closeGitWs(reason) — снимает обработчики, ws.close(1000,...) без banner\n- gitSwitchCwd(newCwd) — ws.send {type:'switch_cwd',cwd}, term.clear() перед, fallback на close+reconnect при failure\n- showGitBanner/hideGitBanner/retryGitConnection — UI ошибок\n- getActiveProject() — возвращает ProjectDto с .path из state.projects по state.activeProjectId, null для transient ids\n\nLifecycle:\n- switchTab('git') → openLazygitForActiveProject()\n- switchTab(прочее) → closeGitWs() (term остаётся mounted для быстрого re-attach)\n- switchActiveProject() при activeTab==='git' → gitSwitchCwd(newPath)\n- beforeunload → closeGitWs()\n\nФайл по-прежнему содержит legacy git-UI код (fetchGitAll, renderGitGraph, commitNow, polling) — будет удалён в Phase 5.",
+    "content": "Frontend tmux-web (xterm + WS-attach + tasks/git/projects/themes/remote).\n\n## Сборка\nОдин большой IIFE-modul (~5700 строк) в tmux-web/static/app.js. Embedded в бинарь через rust-embed.\n\n## Ключевые блоки\n\n### state (объект)\nЦентральное хранилище в памяти. Поля:\n- ws, currentSession, sessions, term, fitAddon — основной /ws/attach + xterm.\n- attachWsBackoffStep / attachWsReconnectTimer / attachWsClosedByUs / attachWsOrigin (Phase 7) — backoff-reconnect /ws/attach.\n- activeTab ('terminal'|'tasks'|'git'), tasksData, tasksWs (+backoff/timer/closedByUs), todosData/todosWs.\n- projects, activeProjectId, projectFilter — мульти-проекты.\n- remoteMode, serverVersion, healthzLoaded — Phase 5: /healthz bootstrap.\n- remoteServers (Array<RemoteServerView>), remoteOnline (Map<id, 'online'|'offline'|'unknown'>) — Phase 5/7.\n- remoteSessions/remoteProjects (Map<server_id, ...>) — Phase 6 aggregated view.\n- activeOrigin ('all'|'local'|server_id) — Phase 5/6 origin-фильтр.\n- gitTerm { term, fit, ws, mounted, currentCwd, errorSticky } — изолированный xterm-context lazygit-таба.\n- activeTheme — Phase 3 themes.\n\n### Ключевые функции\n- bootstrap() — loadHealthz, тема, initTerminal, sidebar, project bar, WS connect.\n- connectWs(sessionName, origin) — /ws/attach с ?server=<origin>. Phase 7: backoff reconnect.\n- disconnectWs() — Phase 7: помечает attachWsClosedByUs, чтобы onclose не реконнектился.\n- scheduleAttachWsReconnect() (Phase 7) — backoff серии ATTACH_WS_BACKOFFS_MS=[2s,4s,8s,16s,32s,60s] + jitter(0..1s).\n- connectTasksWs / connectTodosWs / connectGitWs — WS подписки.\n- scheduleTasksWsReconnect / scheduleTodosWsReconnect — backoff для tasks/todos.\n- probeRemoteServer(serverId) (Phase 7) — per-server health probe с экспоненциальным backoff.\n- startRemoteHealthPoll/stopRemoteHealthPoll (Phase 7) — sync remoteProbeState с state.remoteServers.\n- renderSidebar / renderOriginSection — origin-табы и группировка сессий.\n- isRemoteMode() — guard для UI-features remote-режима.\n- fetchRemoteServers, loadRemoteProjects, loadRemoteSessions — lazy load.\n- openSettingsModal('remotes') — UI Add/Edit/Delete remote-сервера.\n\n## Phase 7 — reconnect & health probe\n\n### Health probe per-server\nremoteProbeState: Map<server_id, {timer, step, inFlight}>.\nREMOTE_PROBE_BACKOFFS_MS = [2000, 4000, 8000, 16000, 32000, 60000].\nREMOTE_PROBE_STEADY_INDEX = 1 (4s — interval когда сервер online).\nREMOTE_PROBE_JITTER_MAX_MS = 1000.\nАлгоритм:\n1. fetch /api/remote-servers/:id/healthz.\n2. ok && data.online → status='online', step=STEADY_INDEX.\n3. !ok / network error → status='offline', step++.\n4. setTimeout next probe через backoffs[step] + jitter(0..1s).\n5. На смену remoteOnline-статуса вызывает renderSidebar() (offline-badge).\n\n### WS reconnect\n- /ws/attach: ATTACH_WS_BACKOFFS_MS = [2s, 4s, 8s, 16s, 32s, 60s] + jitter. На onopen → step=0. Сохраняет currentSession+origin.\n- /ws/tasks: TASKS_WS_BACKOFFS_MS = [1s, 2s, 5s, 10s]. Fallback на polling /api/tasks.\n- /ws/todos: TODOS_WS_BACKOFFS_MS = [1s, 2s, 5s, 10s]. Fallback на polling /api/todos.\n- /ws/lazygit: manual retry через UI banner.\n\n## Зависимости (CDN/embedded)\nxterm.js + addon-fit + addon-web-links.",
     "createdAt": "2026-05-09T18:11:58.215Z",
-    "updatedAt": "2026-05-10T18:04:23.972Z"
+    "updatedAt": "2026-05-14T10:42:34.383Z"
   },
   {
     "element": "tmux-web/static/style.css",
@@ -63,9 +63,9 @@
     "element": "ws::attach",
     "path": "",
     "type": "unknown",
-    "content": "HTTP+WS handler GET /ws/attach в tmux-web/src/ws.rs.\n\n## Сигнатура\npub async fn attach(ws: WebSocketUpgrade, Query(q): Query<AttachQuery>) -> Response\n\n## Query-параметры (AttachQuery)\n- session: String — обязателен. Имя tmux-сессии для tmux attach -t <session>.\n- cols: u16 — стартовые столбцы PTY, default 80.\n- rows: u16 — стартовые строки PTY, default 24.\n\nЕсли session отсутствует, axum Query-extractor возвращает 400 Bad Request.\n\n## Поведение\nЛогирует ws upgrade + session/cols/rows и вызывает ws.on_upgrade(|socket| handle_socket(socket, q)). Реальный bridge — в private async fn handle_socket.\n\n## Регистрация\nВ main.rs: .route('/ws/attach', get(ws::attach)).",
+    "content": "WebSocket-handler /ws/attach: tmux attach через PTY либо прокси на remote devforge.\n\n## Сигнатура\n```rust\npub async fn attach(\n    ws: WebSocketUpgrade,\n    State(state): State<AppState>,\n    Query(raw): Query<HashMap<String, String>>,\n) -> Response\n```\n\n## Query\n- session (required) — имя tmux-сессии.\n- cols/rows (optional, default 80×24) — стартовый размер PTY.\n- **server** (optional, Phase 4) — id remote-devforge для прокси.\n\n## Логика (Phase 4)\n1. Извлекает ?server=<id> через extract_server_id.\n2. Если server есть + state.remote_mode=false → upgrade и Close{1008, 'remote mode disabled'}.\n3. Если server есть + state.remote_mode=true → upgrade и proxy_websocket(store, id, '/ws/attach', query_без_server, socket).\n4. Иначе — парсит AttachQuery через parse_attach_query и идёт в локальный handle_socket (spawn tmux-PTY).\n\n## Wire-протокол (локальный путь)\n- Binary frames в обе стороны — сырые байты PTY.\n- Text frames от клиента — JSON control: {type:resize,cols,rows} или {type:switch,session}.\n- Close frame — teardown.\n\n## Поведение при ошибках\n- Невалидный query (нет session или плохой cols/rows) — upgrade и Close{1008, 'invalid query'}.\n- spawn_tmux_attach fail — Text frame с ошибкой + Close.\n\n## См. также\n- ws::handle_socket — основной обработчик локального PTY.\n- remote_proxy::proxy_websocket — WS-прокси для ?server веток.",
     "createdAt": "2026-05-09T18:34:09.093Z",
-    "updatedAt": "2026-05-09T18:34:09.093Z"
+    "updatedAt": "2026-05-14T10:05:37.898Z"
   },
   {
     "element": "ws::handle_socket",
@@ -1029,5 +1029,493 @@
       "install",
       "readme"
     ]
+  },
+  {
+    "element": "cli.rs",
+    "path": "cli.rs",
+    "type": "file",
+    "content": "Модуль cli.rs — парсинг и диспатч CLI команд devforge.\n\n## Назначение\nТочка входа CLI. Парсит argv в RunOptions / Subcommand, диспатчит команды (run/pair/remote), выводит help/version.\n\n## Структуры\n- RunOptions { port, remote, bind, token } — параметры запуска сервера (Phase 1).\n- Subcommand { Run(RunOptions), Pair(PairOptions), Remote(RemoteOptions), Help, Version } — диспатч.\n- PairOptions { generate: bool } — для devforge pair.\n- RemoteOptions { Add(...) , List, Remove(id) } — для devforge remote.\n\n## Ключевые функции\n- parse_from(argv: &[String]) → Result<Subcommand> — главный энтри-поинт. Делегирует в parse_run / parse_pair / parse_remote.\n- parse_run() / parse_pair() / parse_remote() / parse_remote_add() — sub-parsers.\n- print_help() / print_version() — stdout-выводы.\n- state_dir() → Result<PathBuf> — резолвит ~/.config/forge (XDG).\n- ensure_state_dir() — создаёт каталог если нет.\n- run_pair(opts) — реализация devforge pair --generate (создаёт server_config.json с токеном).\n- run_remote(opts) — реализация devforge remote list/add/remove (работает с RemoteServerStore напрямую без HTTP).\n- derive_label_from_url(url) — выводит label из host'а URL для 'remote add' без --label.\n\n## Phase 1 — флаги\n- --port <N> — порт (default 8787).\n- --remote — включить remote-mode (bind на bind/0.0.0.0, требовать токен).\n- --bind <ADDR> — адрес bind'а (default 127.0.0.1 в legacy, 0.0.0.0 в --remote).\n- --token <HEX> — Bearer-токен (или через env DEVFORGE_AUTH_TOKEN).\n\n## Phase 2 — devforge pair / remote\n- devforge pair --generate — генерит 64-hex токен и сохраняет в server_config.json (auth_token, bind=0.0.0.0). Печатает банер с инструкцией.\n- devforge remote list / ls — табличный вывод реестра ID|LABEL|URL (без token).\n- devforge remote add <URL> --token <HEX> [--label NAME] — добавляет запись через RemoteServerStore::add.\n- devforge remote remove <ID> / rm / delete — удаляет.\n\n## Архитектура\n- CLI команды remote/pair работают НАПРЯМУЮ с файлами (~/.config/forge/*.json) — НЕ через REST API. Это нужно, чтобы команды работали даже когда сервер не запущен.\n- parse_remote() диспатчит на parse_remote_add() при первом arg == 'add'. Поддерживает обе формы: --token=value и --token value.\n\n## Зависит от\n- crate::server_config — для PairOptions.\n- crate::remotes::RemoteServerStore — для remote-команд.\n- anyhow, std::env, std::fs, std::path.",
+    "createdAt": "2026-05-14T08:22:46.596Z",
+    "updatedAt": "2026-05-14T10:41:31.932Z"
+  },
+  {
+    "element": "server_config.rs",
+    "path": "server_config.rs",
+    "type": "file",
+    "content": "Модуль server_config.rs — конфигурация сервера devforge (Phase 1).\n\n## Назначение\nСводит параметры запуска (CLI флаги, env-переменные, ~/.config/forge/server_config.json) в одну эффективную конфигурацию. Также отвечает за:\n- Авто-генерацию 64-hex Bearer-токена при --remote без явного токена.\n- Atomic-save server_config.json при auto-gen.\n- Печать big-warning банеров (auto-token + public-bind без TLS).\n\n## Структуры\n- ServerConfig { auth_token, bind, port } — JSON-форма файла.\n- EffectiveConfig { bind, port, auth_token, remote_mode } — итог resolve().\n\n## Ключевые функции\n- default_server_config_path() → ~/.config/forge/server_config.json (через cli::state_dir()).\n- load() / load_from(path) → Result<Option<ServerConfig>> — атомарная загрузка. None если файла нет.\n- save(cfg) / save_to(path, cfg) — atomic tempfile+rename.\n- resolve(run_opts, file_cfg) → EffectiveConfig — приоритет: CLI > файл > env > defaults. remote_mode: bool из run_opts.remote.\n- is_localhost_bind(bind) → bool — true для 127.x.x.x, ::1, localhost. Используется для классификации public-bind в print_public_bind_warning.\n- generate_token_64hex() → String — два uuid::Uuid::new_v4 в hex (128 бит). Безопасный CSPRNG.\n- finalize_token(eff) → Option<String> — авто-генерит токен при remote_mode без явного auth_token. Сохраняет в server_config.json (с merge'ом существующих полей). Возвращает None при remote_mode=false.\n- print_auto_token_banner(token, bind, port) — приватная, печатает банер с авто-сгенерённым токеном на старте.\n- print_public_bind_warning(bind, port, token) (Phase 7) — печатает большой warning при remote_mode + non-loopback bind. Показывает truncated token (8…4 hex) для диагностики, без полного значения; на None токен — печатает 'UNSAFE'. На localhost-bind — no-op.\n\n## Бизнес-логика\n- finalize_token идемпотентен: если auth_token уже задан в effective — возвращает его как есть.\n- Auto-gen всегда обновляет файл (merge с существующими bind/port).\n- print_public_bind_warning вызывается из main.rs после bind и до axum::serve, ВСЕГДА в remote_mode на не-loopback bind (даже если токен передан через CLI).\n\n## Unit-тесты (10+ шт.)\n- resolve_priority_cli_over_file_over_env.\n- finalize_token_noop_when_non_remote.\n- finalize_token_preserves_existing.\n- finalize_token_autogen_writes_file.\n- finalize_token_autogen_merges_existing_file.\n- is_localhost_bind_recognises_loopback (Phase 7).\n- is_localhost_bind_rejects_public (Phase 7).\n- save/load roundtrip, atomic-write-on-temp.\n\n## Зависит от\n- cli::state_dir() — путь к каталогу конфига.\n- uuid — генерация токена.\n- anyhow, serde, serde_json — стандартный стек.",
+    "createdAt": "2026-05-14T08:40:18.384Z",
+    "updatedAt": "2026-05-14T10:42:41.701Z",
+    "aliases": [
+      "public bind warning",
+      "auto generated token"
+    ]
+  },
+  {
+    "element": "auth.rs",
+    "path": "auth.rs",
+    "type": "file",
+    "content": "Bearer-authentication middleware для remote-mode сервера (Phase 1).\n\n## Назначение\nКогда devforge запускается с --remote, сервер биндится на публичный адрес и требует Authorization: Bearer <token>. В legacy localhost-режиме middleware не подключается вообще (см. main.rs: layer добавляется только при auth_token=Some).\n\n## Структуры\n- AuthState { auth_token: Arc<Option<String>> } — параметры middleware, передаются через State.\n- AuthState::new(token: Option<String>) — конструктор.\n\n## Функции\n- bearer_auth(State<AuthState>, Request<Body>, Next) -> Response — axum 0.7 middleware. Path-исключения через is_path_excluded. На защищённом пути требует Bearer-token совпадающий с auth_token; иначе 401 с заголовком WWW-Authenticate: Bearer.\n- is_path_excluded(path) -> bool — проверка path-exclusion.\n- extract_bearer(req) -> Option<String> — парсит Authorization header.\n\n## Path exclusions\n- Точные: /healthz, / (root index.html)\n- Префиксы: /assets/, /static/ — статика идёт без auth, чтобы браузер мог загрузить app.js до того, как пользователь ввёл токен.\n- WS endpoints (/ws/*) аутентифицируются через handshake: Bearer-заголовок прокидывается браузером в Authorization (в нашем случае браузер не умеет, поэтому WS использует тот же Bearer в query или обрабатывается на TLS-уровне через reverse proxy).\n\n## Зависимости\n- axum 0.7 (middleware::Next, body::Body)\n- tower (только для тестов: ServiceExt::oneshot)\n\n## Тесты (8 unit)\npassthrough_none_token, healthz_no_header_200, no_header_401, correct_bearer_200, wrong_bearer_401, assets_excluded, malformed_header (Basic, Bearer без значения), is_path_excluded_matrix.\n\n## Интеграция\nПодключается в main.rs через axum::middleware::from_fn_with_state ТОЛЬКО когда AppState.auth_token=Some. См. ypp1.5.\n\n## Безопасность (Phase 7 smoke)\n- Token НЕ попадает в DOM/window через GET /api/remote-servers (DTO RemoteServerView без token).\n- Запрос с Authorization: Bearer <wrong> → 401.\n- Запрос без Authorization на защищённый путь → 401.\n- /healthz возвращает 200 даже без токена (intentional — UI должен прочитать remote_mode/version).",
+    "createdAt": "2026-05-14T09:00:01.286Z",
+    "updatedAt": "2026-05-14T10:42:41.168Z",
+    "aliases": [
+      "bearer middleware",
+      "bearer token auth"
+    ]
+  },
+  {
+    "element": "main.rs",
+    "path": "main.rs",
+    "type": "file",
+    "content": "Главный entry-point devforge.\n\nPhase 1 (remote mode):\n- main() парсит CLI через cli::parse() и обрабатывает Mode::Start/Stop/Status немедленно (daemon-команды).\n- Для Mode::Run(opts): загружает server_config.json через server_config::load() (Err — печатает warning, продолжает с CLI-only), затем server_config::resolve(&opts, file_cfg) даёт EffectiveConfig (bind/port/auth_token/remote_mode по приоритетам CLI > file > env > default). server_config::finalize_token(&effective) возвращает финальный токен: при remote_mode=true без существующего — генерирует 64-hex и сохраняет в файл, печатает банер.\n- AppState: дополнено полями remote_mode: bool и auth_token: Arc<Option<String>>. Передаётся в healthz через State<AppState>.\n- Router сначала строится без auth, после .with_state — условно навешивает axum::middleware::from_fn_with_state(auth::AuthState::new(Some(token)), auth::bearer_auth) ТОЛЬКО если auth_token=Some. Path-exclusion (/healthz, /, /assets/*, /static/*) — внутри bearer_auth.\n- Финальный bind: при remote_mode=false hardcoded SocketAddr::from(([127,0,0,1], port)) (legacy invariant); при remote_mode=true — <bind_host>:<port>.\n\nhealthz handler:\n- Принимает State<AppState>.\n- Возвращает Json(HealthzResponse{status:'ok', remote_mode: state.remote_mode, version: env!('CARGO_PKG_VERSION')}).\n- Content-Type автоматически application/json (axum::Json).\n- Покрыт unit-тестами healthz_response_shape_remote_mode_off/on (mod tests внизу файла).\n\nНе меняет: ни одного существующего endpoint'а или DTO; добавляет только новые поля в AppState и заменяет return string на JSON-структуру в healthz.",
+    "createdAt": "2026-05-14T09:12:08.884Z",
+    "updatedAt": "2026-05-14T09:12:08.884Z"
+  },
+  {
+    "element": "HealthzResponse",
+    "path": "",
+    "type": "unknown",
+    "content": "Struct в main.rs (Phase 1). JSON-ответ для GET /healthz.\n\nПоля:\n- status: &'static str — всегда 'ok' (зарезервировано для будущих degraded-состояний).\n- remote_mode: bool — true если сервер в remote-mode (--remote/server_config.json подразумевает remote); используется frontend'ом для рендера UI логина.\n- version: &'static str — env!('CARGO_PKG_VERSION'), e.g. '0.1.3'.\n\nКонтракт:\n- Доступен без Bearer-token (см. auth::EXCLUDED_EXACT). Frontend должен иметь возможность прочитать remote_mode ДО логина.\n- Content-Type: application/json (через axum::Json wrapper).\n\nUnit-tests: healthz_response_shape_remote_mode_off / _on в main.rs::tests.",
+    "createdAt": "2026-05-14T09:12:12.765Z",
+    "updatedAt": "2026-05-14T09:12:12.765Z"
+  },
+  {
+    "element": "AppState",
+    "path": "",
+    "type": "unknown",
+    "content": "Глобальное axum-state приложения, Clone (содержит Arc/broadcast::Sender).\n\nПоля (актуально на Phase 1):\n- projects: Arc<RwLock<ProjectStore>> — реестр проектов под shared lock.\n- tasks_tx: broadcast::Sender<TaskEvent> — глобальный канал tasks-watcher событий.\n- active_path_tx: Arc<watch::Sender<PathBuf>> — для пересоздания watcher при смене active project.\n- attention: Arc<attention::AttentionState> — флаги «session needs attention» от attention::watcher_loop.\n- notify: notifier::NotifyHandle — handle к notifier_loop для promote TODO.\n- todos: TodoStore — карточки активного проекта.\n- todos_tx: broadcast::Sender<TodoEvent> — канал TODO событий.\n- themes: Arc<RwLock<ThemesState>> — тема + custom-список.\n- themes_dir: PathBuf — каталог themes.json.\n- remote_mode: bool — Phase 1: true если запущен с --remote или server_config.json подразумевает remote. Читается healthz; будущие endpoints условно активируются.\n- auth_token: Arc<Option<String>> — Phase 1: Bearer-token, ожидаемый middleware. None в legacy localhost (middleware не подключается). Arc для дешёвого Clone.",
+    "createdAt": "2026-05-14T09:12:19.413Z",
+    "updatedAt": "2026-05-14T09:12:19.413Z"
+  },
+  {
+    "element": "healthz",
+    "path": "",
+    "type": "unknown",
+    "content": "Async-handler для GET /healthz (Phase 1).\n\nСигнатура: async fn healthz(State(state): State<AppState>) -> Json<HealthzResponse>.\n\nВозвращает {status:'ok', remote_mode: state.remote_mode, version: CARGO_PKG_VERSION}.\n\nДоступен без Bearer-токена (auth::EXCLUDED_EXACT). Используется:\n- Frontend'ом до получения токена в remote-mode (читает remote_mode для рендера UI логина).\n- Готовностью сервера (HTTP 200 при работающем axum-стек).\n\nИзменение от Phase 0: раньше возвращал статическую строку 'ok' (text/plain). Теперь — JSON. Контракт изменения зафиксирован в Phase 1.",
+    "createdAt": "2026-05-14T09:12:23.122Z",
+    "updatedAt": "2026-05-14T09:12:23.122Z"
+  },
+  {
+    "element": "remotes.rs",
+    "path": "remotes.rs",
+    "type": "file",
+    "content": "Модуль remotes.rs — реестр remote-серверов devforge (Phase 2).\n\n## Назначение\nЛокальный devforge может агрегировать несколько remote-инстансов devforge (запущенных на других машинах с --remote). Этот модуль хранит список таких удалённых серверов: id, label, base URL и Bearer-token.\nФайл персиста — ~/.config/forge/remote_servers.json (через cli::state_dir()).\n\n## Структуры\n- RemoteServer { id, label, url, token } — одна запись. Сериализуется как есть на диск; в API-ответы НЕ отдаётся (token утечёт).\n- RemoteServerView { id, label, url } — public DTO без token. Используется в /api/remote-servers responses.\n- RemoteServerStore — in-memory копия + путь к файлу. Не Clone намеренно; доступ из axum через Arc<RwLock<...>>.\n- RemotesFile — приватный envelope { servers: Vec<RemoteServer> }.\n\n## Ключевые методы RemoteServerStore\n- load(path) — читает JSON; если файла нет — возвращает пустой store БЕЗ создания файла.\n- save() — atomic write через tempfile + rename (паттерн projects.rs / server_config.rs).\n- list() / list_views() / get(id) — read-only.\n- add(label, url, token) → RemoteServer — генерит id через projects::slugify с авто-дедупликацией (-2, -3, ...). Валидирует: непустые label/url/token, url начинается с http:// или https://. Trim trailing slash в url.\n- remove(id) → bool — удаляет, возвращает true если было.\n- update(id, label?, token?) → Option<RemoteServer> — изменяет label/token; id и url неизменны.\n\n## Свободные функции\n- default_remotes_path() → ~/.config/forge/remote_servers.json.\n- is_valid_remote_url(s) — проверка http://|https://.\n- trim_trailing_slash(s) — нормализация URL.\n\n## Бизнес-логика\n- Реестр работает ВСЕГДА, независимо от remote_mode сервера. CLI 'devforge remote add/list/remove' работает даже при legacy localhost.\n- REST CRUD /api/remote-servers подключается только в remote_mode (Phase 2 task .3).\n- Token хранится только локально и используется проксированием в Phase 3-4. Никогда не утекает в API-ответы.\n- Slugify-collision: ID стабилен (база — slug от первого label), при коллизии добавляется -2, -3, ...\n- Atomic save: tempfile в той же папке, потом rename — защита от частичной записи при crash.\n\n## Unit-тесты (11 шт.)\nload_missing_returns_empty, save_load_roundtrip, add_then_remove, update_label_and_token_keeps_id, update_unknown_id_returns_none, slugify_collision_appends_suffix, add_rejects_invalid_input, add_trims_trailing_slash, view_excludes_token, atomic_save_via_tempfile_rename, is_valid_remote_url_matrix.\n\n## Зависит от\n- projects::slugify — генерация id.\n- cli::state_dir() — путь к ~/.config/forge/.\n- anyhow, serde, serde_json, tracing — стандартный стек.",
+    "createdAt": "2026-05-14T09:17:16.128Z",
+    "updatedAt": "2026-05-14T10:42:39.808Z",
+    "aliases": [
+      "remote servers registry"
+    ]
+  },
+  {
+    "element": "/api/remote-servers",
+    "path": "",
+    "type": "unknown",
+    "content": "REST CRUD endpoints для реестра remote-серверов devforge (Phase 2).\n\n## Регистрация\nЭндпоинты регистрируются в Router ТОЛЬКО при remote_mode=true. В обычном (localhost) режиме обращение к /api/remote-servers вернёт 404 (fallback на статику). Логика регистрации в main.rs внутри блока 'if remote_mode {...}'.\n\n## AppState\n- remotes: Arc<RwLock<RemoteServerStore>> — общий store; cheap-clonable.\n- Инициализируется в main() через remotes::default_remotes_path() + RemoteServerStore::load().\n\n## Endpoints\n### GET /api/remote-servers → 200 Json<Vec<RemoteServerView>>\nlist_remote_servers — возвращает массив { id, label, url }. Поле token НЕ включается (DTO RemoteServerView без token). Read-lock.\n\n### POST /api/remote-servers → 201 Json<RemoteServerView>\ncreate_remote_server — Тело { label, url, token }. Валидация в RemoteServerStore::add (label/url/token непустые, url начинается с http:// или https://). ID генерится через slugify(label) с авто-дедупликацией. После add вызывается store.save() (atomic). 400 при невалидном вводе.\n\n### DELETE /api/remote-servers/:id → 204\ndelete_remote_server — удаление. 404 если id неизвестен. После remove — save().\n\n### PATCH /api/remote-servers/:id → 200 Json<RemoteServerView>\npatch_remote_server — Тело { label?, token? }. Опциональные поля. 404 если id неизвестен. id/url неизменяемы. После update — save().\n\n### GET /api/remote-servers/:id/healthz → 501\nremote_server_healthz — Заглушка для Phase 2. Возвращает 501 'Not Implemented'. Phase 3 заменит это на проксирование GET <url>/healthz через reqwest::Client с Bearer-токеном, возвращая { online, remote_mode, version }. Сейчас просто проверяет существование id (404 если нет).\n\n## Безопасность\n- Token никогда не появляется в API-ответах (DTO RemoteServerView).\n- Все мутирующие операции под write-lock'ом.\n- POST/PATCH вызывают atomic save (tempfile+rename).\n\n## Зависит от\n- remotes::RemoteServerStore — реализует store.\n- AppState.remotes — Arc<RwLock<...>>.\n- axum::Json, axum::extract::Path/State.",
+    "createdAt": "2026-05-14T09:20:28.979Z",
+    "updatedAt": "2026-05-14T09:20:28.979Z"
+  },
+  {
+    "element": "cli::run_pair",
+    "path": "",
+    "type": "unknown",
+    "content": "Реализация подкоманды devforge pair --generate (Phase 2).\n\n## Назначение\nГенерирует 64-hex Bearer-token и сохраняет его в ~/.config/forge/server_config.json. НЕ запускает сервер. Печатает инструкцию пользователю, чтобы он мог зарегистрировать этот сервер на локальном devforge.\n\n## Алгоритм\n1. Резолвит путь через crate::server_config::default_server_config_path().\n2. Создаёт родительский каталог если нужно.\n3. Генерирует токен через crate::server_config::generate_token_64hex() (2x UUID v4 → 64 hex символа).\n4. Загружает существующий server_config.json через load_from():\n   - Если файл есть — мерджит: auth_token переписывается, bind/port заполняются дефолтами (0.0.0.0, 7331) если пусты.\n   - Если файла нет — создаёт ServerConfig { auth_token: Some(token), bind: Some('0.0.0.0'), port: Some(7331) }.\n5. Atomic save через crate::server_config::save_to() (tempfile + rename).\n6. Печатает банер: generated token / bind / port / instructions / saved path.\n\n## CLI парсинг\n- Грамматика: 'devforge pair --generate' или 'devforge pair -g'.\n- Разбирается отдельным parse_pair() в cli.rs (вызывается из parse_from при first arg == 'pair').\n- Без --generate возвращает ошибку.\n\n## Поведение\n- Идемпотентно — повторный запуск переписывает токен без подтверждения.\n- Не запускает сервер — главный main() выходит сразу после выполнения.\n- Если файл server_config.json повреждён — load_from() вернёт Err, run_pair тоже вернёт Err.\n\n## Зависит от\n- crate::server_config (generate_token_64hex, default_server_config_path, load_from, save_to, ServerConfig).\n- anyhow для error context.",
+    "createdAt": "2026-05-14T09:24:36.231Z",
+    "updatedAt": "2026-05-14T09:24:36.231Z"
+  },
+  {
+    "element": "cli::run_remote",
+    "path": "",
+    "type": "unknown",
+    "content": "Реализация CLI подкоманды devforge remote (Phase 2).\n\n## Назначение\nCLI-управление локальным реестром remote-серверов (~/.config/forge/remote_servers.json). Работает ВСЕГДА — независимо от того, запущен ли devforge с --remote или нет. Через эту команду пользователь регистрирует удалённые devforge-инстансы, к которым потом можно подключаться (в Phase 3+ — через ?server=ID в API/UI).\n\n## Подкоманды\n### devforge remote list (alias: ls)\nТабличный вывод реестра: ID | LABEL | URL. Токен НЕ печатается. Если реестр пуст — печатает подсказку, как добавить.\n\n### devforge remote add URL --token HEX [--label NAME]\nДобавляет запись в реестр. Логика:\n- Если --label не указан — выводится из host-а URL (derive_label_from_url).\n- Вызывает store.add(label, url, token), который генерит id через slugify(label) с дедупликацией.\n- Atomic save через store.save().\n- Печатает ID/Label/URL добавленной записи.\n\n### devforge remote remove ID (aliases: rm, delete)\nУдаляет запись. Возвращает ошибку, если id неизвестен. Atomic save после remove.\n\n## CLI парсинг\nparse_remote() диспатчит на parse_remote_add() при -add-. Принимает форму как --token=value, так и --token value. Positional URL — первый non-flag. Все unknown flags отлавливаются.\n\n## Архитектура\n- Команды работают НАПРЯМУЮ с remote_servers.json через RemoteServerStore — НЕ через REST API локального devforge. Это сознательное решение: не требуется запущенный сервер.\n- Парсинг отдельным parse_remote() — в parse_from() при first arg == remote. Это нужно чтобы --token/--remote не путались с глобальными флагами runner-а.\n\n## Зависит от\n- crate::remotes::RemoteServerStore — реализация store.\n- crate::remotes::default_remotes_path() — путь к файлу.\n\n## Связи (см. также)\n- RemoteServerStore::add / remove / save — низкоуровневые операции (документация в remotes.rs).\n- /api/remote-servers — параллельный REST интерфейс (только в remote_mode).",
+    "createdAt": "2026-05-14T09:25:24.337Z",
+    "updatedAt": "2026-05-14T09:25:24.337Z"
+  },
+  {
+    "element": "Cargo.toml::reqwest",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 3 — HTTP-клиент reqwest 0.12 (резолвится в 0.12.28). Добавлен в tmux-web/Cargo.toml для proxy-запросов на удалённые devforge-инстансы. Features: json (RequestBuilder::json / Response::json), stream (стриминг body — пригодится для WS-прокси в Phase 4), rustls-tls (TLS без OpenSSL). default-features = false, чтобы НЕ тянуть default-tls (нужно для Homebrew bottle на macOS без системного OpenSSL). Используется в модуле remote_proxy.rs и в AppState.http (reqwest::Client — cheap-clonable Arc-обёртка).",
+    "createdAt": "2026-05-14T09:34:39.359Z",
+    "updatedAt": "2026-05-14T09:34:39.359Z"
+  },
+  {
+    "element": "remote_proxy.rs",
+    "path": "remote_proxy.rs",
+    "type": "file",
+    "content": "HTTP- и WebSocket-прокси на удалённые devforge-инстансы. Расположение: tmux-web/src/remote_proxy.rs.\n\n## Назначение\nКогда локальный devforge запущен с --remote и в реестре RemoteServerStore есть записи о других серверах, фронтенд может попросить ресурс с конкретного remote через ?server=<id>. Локальный сервер выступает как прозрачный HTTP/WS-прокси.\n\n## Публичный API\n\n### ProxyError (enum)\n- UnknownServer(String) → 404 NOT_FOUND\n- InvalidUrl(String)    → 500 INTERNAL_SERVER_ERROR\n- Network(reqwest::Error) → 502 BAD_GATEWAY\n- WebSocket(String) (Phase 4) → 502 BAD_GATEWAY\nИмеет into_response() для axum-handler'ов и From<reqwest::Error>.\n\n### proxy_request(store, client, server_id, method, path, query, content_type, body) (Phase 3)\n- Достаёт url+token из store, склеивает <url><path>?<query>.\n- Делает reqwest запрос с Authorization: Bearer <token>.\n- Фильтрует hop-by-hop headers (RFC 7230 §6.1).\n- Возвращает (StatusCode, HeaderMap, Bytes).\n- Phase 7: warn! на network/timeout ошибки (с is_timeout/is_connect флагами), trace! на non-2xx.\n\n### enrich_with_origin(value, server_id) (Phase 3)\n- Array → каждый Object-item получает origin=<server_id>.\n- Object → origin в корне.\n- Скаляры/null — no-op.\n- Idempotent (перезаписывает существующий origin).\n\n### proxy_websocket(store, server_id, upstream_path, query, downstream) (Phase 4)\nGeneric WS-прокси для /ws/attach, /ws/lazygit, /ws/tasks, /ws/todos.\nАлгоритм:\n1. Достаёт RemoteServer{url, token} из store.\n2. Конвертирует http(s):// → ws(s):// (http_to_ws_url).\n3. tokio_tungstenite::connect_async с Authorization: Bearer <token> (build_upstream_request).\n4. Двунаправленный pump через tokio::join! (down_to_up, up_to_down).\n5. Phase 7: trace! на каждый Close-frame с обеих сторон (code+reason+server_id+path).\nНа отсутствующий server / handshake-fail закрывает downstream с code 1011.\n\n## Hop-by-hop фильтр\nis_hop_by_hop() матчит: connection, keep-alive, proxy-authenticate, proxy-authorization, te, trailers, transfer-encoding, upgrade.\n\n## Логирование (Phase 7)\n- HTTP: tracing::warn! на network errors с server_id/path/error/is_timeout/is_connect; tracing::trace! на non-2xx с server_id/path/status.\n- WS: tracing::trace! на upgrade-fail / Close-кадры / send-errors / recv-errors с server_id/path/code/reason.\nВидны при RUST_LOG=devforge=trace.\n\n## Unit-тесты (16+ штук)\nenrich_*: array/object/string/number/null/mixed/empty/idempotent.\nproxy_error_*: into_response для 404/500/502 (Network, WebSocket).\nis_hop_by_hop_matrix.\nproxy_request_unknown_server (smoke).\nhttp_to_ws_url_* (http→ws, https→wss, passthrough).\nbuild_upstream_request_adds_bearer / rejects_invalid_token.\n\n## Зависимости\n- reqwest 0.12 (rustls-tls, stream).\n- tokio_tungstenite (WS client).\n- axum 0.7 (downstream WebSocket).\n- futures_util (SinkExt/StreamExt).\n- bytes, serde_json.\n- crate::remotes::RemoteServerStore.",
+    "createdAt": "2026-05-14T09:37:04.936Z",
+    "updatedAt": "2026-05-14T10:42:40.601Z",
+    "aliases": [
+      "http proxy",
+      "ws proxy",
+      "websocket proxy"
+    ]
+  },
+  {
+    "element": "AppState::http",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 3 — поле reqwest::Client в AppState (tmux-web/src/main.rs). reqwest::Client внутри — Arc-обёртка над пулом TCP-соединений, cheap-clonable и потокобезопасен. Идиома reqwest: один Client на сервер (а не Client::new() в каждом handler'е) — переиспользует connection pool, что критично для производительности при множественных проксирующих запросах. Используется в remote_proxy::proxy_request (handler'ы подключают в Phase 3.4). Инициализируется при сборке AppState через reqwest::Client::new() — дефолтные настройки (общий таймаут 30s, connect timeout не задан). Подстройка таймаутов и retry — TODO для Phase 7 robustness.",
+    "createdAt": "2026-05-14T09:40:59.703Z",
+    "updatedAt": "2026-05-14T09:40:59.703Z"
+  },
+  {
+    "element": "SessionDto::origin",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 3 — поле origin: String в SessionDto (main.rs). Источник записи: всегда 'local' для локальных сессий. Сериализуется ВСЕГДА (даже при remote_mode=false), чтобы фронтенд получал унифицированный формат. Прокси-ответы через ?server=<id> НЕ создают SessionDto на этой стороне — там прокидывается готовый JSON remote'а, обогащённый remote_proxy::enrich_with_origin (Phase 3.4). Аналогичные поля добавлены в ProjectDto::origin и Todo::origin (см. их документацию).",
+    "createdAt": "2026-05-14T09:41:02.896Z",
+    "updatedAt": "2026-05-14T09:41:02.896Z"
+  },
+  {
+    "element": "todos::Todo",
+    "path": "",
+    "type": "unknown",
+    "content": "TODO-карточка проекта (tmux-web/src/todos.rs). Хранится в <project_root>/.forge/todos.json. Поля: id (UUID v4), project_id, title (обязательно), description (Option<String>), priority (u8, 0..=4, default 2), issue_type (String, default 'task'), labels (Vec<String>), plan_mode (bool — при promote добавляет PLAN_MODE_SUFFIX к notify-тексту), created_at/updated_at (RFC3339 UTC). Phase 3: добавлено поле origin: String с #[serde(default = 'default_origin_local')] — для локальных всегда 'local', сериализуется ВСЕГДА для унификации формата с прокси-ответами. Backward compat: старые todos.json без origin прогружаются благодаря serde default. default_origin_local() — public функция, используется и в тестах ws_todos.",
+    "createdAt": "2026-05-14T09:41:07.317Z",
+    "updatedAt": "2026-05-14T09:41:07.317Z"
+  },
+  {
+    "element": "main::try_proxy_to_remote",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 3 helper в main.rs — общая ветка ?server=<id> для resource handler'ов. Сигнатура: async fn try_proxy_to_remote(state, raw_query, method, path, content_type, body, enrich_array) -> Option<Result<Response, (StatusCode, String)>>. Логика: (1) если в query нет 'server' или пустой — возвращает None (handler продолжает локальную логику); (2) если ?server=<id> есть, но state.remote_mode == false — возвращает Some(Err((400, 'remote mode disabled — cannot use ?server=<id>'))); (3) иначе вызывает remote_proxy::proxy_request на target. Параметр enrich_array=true означает, что JSON-тело должно быть обогащено origin=<server_id> через remote_proxy::enrich_with_origin (только для Content-Type: application/json). Используется во ВСЕХ ресурсных handler'ах: get_sessions, create_session, delete_session, get_projects, get_tasks (специальная обработка для {issues:[...]}), create_task, patch_task, close_task, reopen_task, get_todos, create_todo, patch_todo, delete_todo, promote_todo. Сопутствующие хелперы: extract_server_id (trim + filter empty), rebuild_query_without_server (drops 'server' key), urlencode_minimal (для path-сегментов id), proxy_response_to_axum (reqwest::Response -> axum::Response, фильтрация hop-by-hop, опциональное обогащение JSON через enrich_with_origin).",
+    "createdAt": "2026-05-14T09:53:10.808Z",
+    "updatedAt": "2026-05-14T09:53:10.808Z"
+  },
+  {
+    "element": "remote_server_healthz",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 3 (forge-v5x9.4) — финальная реализация GET /api/remote-servers/:id/healthz. Заменяет 501-stub из Phase 2. Использует remote_proxy::proxy_request для запроса GET <remote.url>/healthz с Authorization: Bearer <token>. Маппинг ответов: (a) UnknownServer → 404; (b) Network error → 200 + JSON {online: false, error: '...'}  (фронт показывает badge offline без падения UI); (c) successful response — парсим тело как JSON и добавляем поле online: <bool из status.is_success()>. Маршрут регистрируется ТОЛЬКО при remote_mode=true (см. main.rs). Используется фронтом для pre-flight проверки при добавлении нового remote в Settings UI (Phase 5).",
+    "createdAt": "2026-05-14T09:53:15.650Z",
+    "updatedAt": "2026-05-14T09:53:15.650Z"
+  },
+  {
+    "element": "Cargo.toml",
+    "path": "",
+    "type": "unknown",
+    "content": "Манифест Rust-пакета devforge (бинарь tmux-web/devforge). \n\n## Зависимости\n- **axum 0.7** — HTTP/WS-сервер с features ws, macros.\n- **tokio 1** (full) — async-runtime.\n- **tower-http 0.6** — middleware (fs, trace).\n- **portable-pty 0.8** — кросс-платформенный PTY для tmux/lazygit.\n- **serde + serde_json** — сериализация DTO.\n- **tracing + tracing-subscriber** — структурное логирование.\n- **anyhow** — error-helpers.\n- **futures-util 0.3** — StreamExt/SinkExt для async-итерации.\n- **bytes 1** — буферы для proxy body.\n- **notify 6** — file-watcher для .beads/issues.jsonl (Phase 6.D).\n- **uuid 1.23** (v4) — генерация id.\n- **rust-embed 8** (interpolate-folder-path) — встраивание static/ в бинарь (Phase 1 Embedded).\n- **mime_guess 2** — Content-Type для embedded ассетов.\n- **reqwest 0.12** (json, stream, rustls-tls; default-features=false) — HTTP-клиент для proxy в Phase 3.\n- **tokio-tungstenite 0.24** (connect, handshake, rustls-tls-webpki-roots) — WS-клиент для proxy в Phase 4 (proxy_websocket для /ws/attach, /ws/lazygit, /ws/tasks, /ws/todos).\n- **libc 0.2** (target=unix) — setsid(2) для daemon-режима.\n\n## Профили\n- **release**: opt-level=3, lto=thin.\n\n## dev-dependencies\n- **tower 0.5** (util) — ServiceExt::oneshot для тестов auth.rs.\n\n## bin\n- name=devforge, path=src/main.rs.\n\n## Метаданные\nname=devforge, version=0.1.3, edition=2021, license=MIT, repo darkClaw921/F.O.R.G.E.",
+    "createdAt": "2026-05-14T09:57:17.254Z",
+    "updatedAt": "2026-05-14T09:57:17.254Z"
+  },
+  {
+    "element": "remote_proxy::proxy_websocket",
+    "path": "",
+    "type": "unknown",
+    "content": "Generic WebSocket-прокси для всех 4 endpoint'ов remote-devforge (/ws/attach, /ws/lazygit, /ws/tasks, /ws/todos).\n\n## Сигнатура\n```rust\npub async fn proxy_websocket(\n    store: &RemoteServerStore,\n    server_id: &str,\n    upstream_path: &str,\n    query: &str,\n    downstream: WebSocket,\n) -> Result<(), ProxyError>\n```\n\n## Поведение\n1. Берёт RemoteServer{url, token} из store. Если id неизвестен — закрывает downstream с close{1011, 'unknown remote server'} и возвращает Err(UnknownServer).\n2. Конвертирует http://→ws:// и https://→wss:// через http_to_ws_url.\n3. Собирает Request через IntoClientRequest + добавляет 'Authorization: Bearer <token>' через build_upstream_request.\n4. Открывает upstream через tokio_tungstenite::connect_async. На ошибку → close downstream с 1011 + Err(WebSocket).\n5. split() обоих WS на (tx, rx) и крутит две задачи через tokio::join!:\n   - down_to_up: читает axum::Message, конвертирует в tungstenite::Message через axum_to_tungstenite и шлёт в upstream. На Close или ошибку — посылает Close в upstream и завершается.\n   - up_to_down: симметрично в обратную сторону через tungstenite_to_axum.\n6. Когда один pump завершился, он шлёт Close в свою sink-сторону, что вызывает завершение второй задачи на следующей итерации (cascading close).\n7. Все ошибки логируются через tracing::trace! (server_id, url, error).\n\n## Конвертация фреймов\n- axum_to_tungstenite: Text/Binary/Ping/Pong → 1:1; Close(None) → Close(None); Close(Some(cf)) → Close(Some) с конвертацией CloseCode через .into().\n- tungstenite_to_axum: симметрично + Frame(f) → Binary(f.payload().to_vec()) как fallback (на практике reader не эмитит Frame).\n\n## Зависимости\n- tokio-tungstenite 0.24 с features connect/handshake/rustls-tls-webpki-roots.\n- futures_util::{SinkExt, StreamExt} для split() и .next()/.send().\n- axum::extract::ws::{Message, WebSocket, CloseFrame}.\n\n## Используется\n- ws::attach (Phase 4.3) — ?server=<id> → proxy_websocket(.., '/ws/attach', ..)\n- ws::lazygit_attach (Phase 4.3) — ?server=<id> → proxy_websocket(.., '/ws/lazygit', ..)\n- ws_tasks::tasks_ws (Phase 4.4)\n- ws_todos::todos_ws (Phase 4.4)\n\n## Ограничения\n- Кастомный Authorization передаётся ТОЛЬКО в handshake — refresh tokens не предусмотрены.\n- Reconnect-логика на caller'е (если нужно). Этот helper — однократный pump.\n- TLS-валидация — через webpki-roots (Mozilla CA bundle). Self-signed certs пока не поддержаны.",
+    "createdAt": "2026-05-14T10:03:20.280Z",
+    "updatedAt": "2026-05-14T10:03:20.280Z"
+  },
+  {
+    "element": "remote_proxy::ProxyError",
+    "path": "",
+    "type": "unknown",
+    "content": "Типизированные ошибки прокси-прохода (HTTP + WS).\n\n## Варианты\n- **UnknownServer(String)** — server_id отсутствует в RemoteServerStore. → 404 Not Found.\n- **InvalidUrl(String)** — невалидный URL/header. → 500 Internal Server Error.\n- **Network(reqwest::Error)** — сетевая ошибка HTTP-проходов (timeout, refused, TLS). → 502 Bad Gateway.\n- **WebSocket(String)** — Phase 4. Ошибка WebSocket handshake / connect_async / tungstenite. → 502 Bad Gateway. Хранит текст оригинальной ошибки, чтобы не тянуть tungstenite::Error в публичный API.\n\n## API\n- impl Display — человеко-читаемый текст.\n- impl std::error::Error — source() для Network варианта (chain).\n- into_response() → (axum::StatusCode, String) — для axum-handler'ов возвращающих Result<_, (StatusCode, String)>.\n\n## Используется\n- HTTP proxy: try_proxy_to_remote, remote_server_healthz, remote_proxy::proxy_request.\n- WS proxy: remote_proxy::proxy_websocket.",
+    "createdAt": "2026-05-14T10:03:25.624Z",
+    "updatedAt": "2026-05-14T10:03:25.624Z"
+  },
+  {
+    "element": "ws::lazygit_attach",
+    "path": "",
+    "type": "unknown",
+    "content": "WebSocket-handler /ws/lazygit: lazygit в PTY либо прокси на remote.\n\n## Сигнатура\n```rust\npub async fn lazygit_attach(\n    ws: WebSocketUpgrade,\n    State(state): State<AppState>,\n    Query(raw): Query<HashMap<String, String>>,\n) -> Response\n```\n\n## Query\n- cwd (required) — абсолютный путь к git-репо или подкаталогу.\n- cols/rows (optional, default 80×24).\n- **server** (optional, Phase 4) — id remote-devforge для прокси.\n\n## Логика (Phase 4)\n1. Если ?server=<id> + remote_mode=true → proxy_websocket на upstream /ws/lazygit.\n2. Если ?server=<id> + remote_mode=false → Close{1008, 'remote mode disabled'}.\n3. Иначе — parse_lazygit_query + handle_lazygit_socket (spawn lazygit в cwd).\n\n## Wire-протокол (локальный)\n- Binary in/out — PTY байты.\n- Text от клиента (snake_case tag): {type:resize,cols,rows} | {type:switch_cwd,cwd}.\n- Error frame: {type:error,message:...}.\n\n## См. также\n- ws::handle_lazygit_socket — локальная логика.\n- remote_proxy::proxy_websocket.",
+    "createdAt": "2026-05-14T10:05:42.668Z",
+    "updatedAt": "2026-05-14T10:05:42.668Z"
+  },
+  {
+    "element": "ws_tasks::tasks_ws",
+    "path": "",
+    "type": "unknown",
+    "content": "WebSocket-handler /ws/tasks: realtime task-стрим из per-connection beads watcher или прокси на remote.\n\n## Сигнатура\n```rust\npub async fn tasks_ws(\n    ws: WebSocketUpgrade,\n    State(state): State<AppState>,\n    Query(raw): Query<HashMap<String, String>>,\n) -> Response\n```\n\n## Query\n- project_id (optional) — id проекта или '__path__:<abs>'. Default — активный проект.\n- **server** (optional, Phase 4) — id remote-devforge для прокси.\n\n## Логика (Phase 4)\n1. Если ?server=<id> + remote_mode=true → proxy_websocket на upstream /ws/tasks (с query без server).\n2. Если ?server=<id> + remote_mode=false → Close{1008, 'remote mode disabled'}.\n3. Иначе — resolve_project_path → handle_socket (per-conn notify watcher на .beads/issues.jsonl).\n\n## Wire-протокол (локальный)\n- Server→Client (Text): {kind:snapshot,data:...} | {kind:upsert,issue:...} | {kind:removed,id:...} | {kind:reload}.\n- Client→Server: только Pong + Close.\n\n## Helpers\n- extract_server_id, rebuild_query_without_server, urlencode_minimal, close_with_policy_violation — приватные локальные дубликаты helper'ов из main.rs (для WS-handler'ов).",
+    "createdAt": "2026-05-14T10:08:09.626Z",
+    "updatedAt": "2026-05-14T10:08:09.626Z"
+  },
+  {
+    "element": "ws_todos::todos_ws",
+    "path": "",
+    "type": "unknown",
+    "content": "WebSocket-handler /ws/todos: realtime TODO-стрим или прокси на remote.\n\n## Сигнатура\n```rust\npub async fn todos_ws(\n    ws: WebSocketUpgrade,\n    State(state): State<AppState>,\n    Query(raw): Query<HashMap<String, String>>,\n) -> Response\n```\n\n## Query\n- project_id (optional) — id проекта. Default — активный.\n- **server** (optional, Phase 4) — id remote-devforge для прокси.\n\n## Логика (Phase 4)\n1. ?server=<id> + remote_mode=true → proxy_websocket('/ws/todos').\n2. ?server=<id> + remote_mode=false → Close{1008}.\n3. Иначе — handle_socket с фильтрацией broadcast по project_id.\n\n## Wire-протокол (локальный)\n- Server→Client (Text): {kind:snapshot,todos:[...]} | {kind:upsert,todo:...} | {kind:removed,project_id,id} | {kind:reload,project_id}.\n- На lag broadcast канала → шлём {kind:reload} (клиент делает fetchTodos).",
+    "createdAt": "2026-05-14T10:08:13.829Z",
+    "updatedAt": "2026-05-14T10:08:13.829Z"
+  },
+  {
+    "element": "app.js::loadHealthz",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5 — Async helper. GET /healthz и заполняет state.remoteMode (bool), state.serverVersion (string|null), state.healthzLoaded (bool). При ошибке fetch/HTTP/JSON — fallback remote_mode=false и healthzLoaded=true (чтобы остальной bootstrap не зависал). Эндпоинт доступен БЕЗ Bearer-auth (см. auth::is_path_excluded на бэке). Вызывается первым в bootstrap() ДО loadActiveThemeOrNull и initTerminal — некоторые ветки рендера читают isRemoteMode() уже на первом рендере. Контракт ответа: { status, remote_mode: bool, version: string }.",
+    "createdAt": "2026-05-14T10:12:18.459Z",
+    "updatedAt": "2026-05-14T10:12:18.459Z"
+  },
+  {
+    "element": "app.js::isRemoteMode",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5 — Guard-функция. Возвращает true, если frontend должен рендерить новый UI (origin-табы, Settings → Remote servers tab, кнопка Add remote, ?server= в API/WS-вызовах, глобальные id формата ::). При false поведение фронта побитово совпадает с legacy. Используется в renderSidebar, openSettingsModal, apiFetch и connectXxxWs.",
+    "createdAt": "2026-05-14T10:12:18.718Z",
+    "updatedAt": "2026-05-14T10:12:18.718Z"
+  },
+  {
+    "element": "app.js::fetchRemoteServers",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5 — async. GET /api/remote-servers → state.remoteServers (массив RemoteServerView {id,label,url} без token). No-op при remoteMode=false (эндпоинт регистрируется только в remote-mode). После успешной загрузки запускает periodic health-poll через startRemoteHealthPoll() (каждые 15s). Очищает state.remoteOnline от удалённых серверов.",
+    "createdAt": "2026-05-14T10:13:23.877Z",
+    "updatedAt": "2026-05-14T10:13:23.877Z"
+  },
+  {
+    "element": "app.js::loadRemoteProjects",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5 — async. GET /api/projects?server=<id> → state.remoteProjects[serverId]. Lazy-load: вызывается только при разворачивании origin-секции в sidebar или при выборе сервера в origin-табах. Кэш через Map. При ошибке кладёт пустой массив.",
+    "createdAt": "2026-05-14T10:13:24.150Z",
+    "updatedAt": "2026-05-14T10:13:24.150Z"
+  },
+  {
+    "element": "app.js::loadRemoteSessions",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5 — async. GET /api/sessions?server=<id> → state.remoteSessions[serverId]. Lazy-load (см. loadRemoteProjects). Бэкенд прокси добавит origin=<serverId> к каждой записи через remote_proxy::enrich_with_origin.",
+    "createdAt": "2026-05-14T10:13:24.413Z",
+    "updatedAt": "2026-05-14T10:13:24.413Z"
+  },
+  {
+    "element": "app.js::pingRemoteServers",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5 — async. Параллельно пингует GET /api/remote-servers/:id/healthz по всем зарегистрированным remote-серверам и обновляет state.remoteOnline (Map: id → 'online'|'offline'|'unknown'). Если хоть один статус изменился — вызывает renderSidebar для перерисовки индикаторов. Network/HTTP-ошибка → offline. Запускается periodic через startRemoteHealthPoll (15s интервал).",
+    "createdAt": "2026-05-14T10:13:24.672Z",
+    "updatedAt": "2026-05-14T10:13:24.672Z"
+  },
+  {
+    "element": "app.js::renderOriginTabs",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5 — Рендерит горизонтальные origin-табы над session-list: [All] [Local] [server-1] [server-2] ... [+]. Контейнер #origin-tabs (см. index.html). Hidden при remote_mode=false. Клик по табу → state.activeOrigin меняется + saveActiveOriginToStorage + перерисовка sidebar. При выборе конкретного remote — lazy-load его данных (loadRemoteSessions / loadRemoteProjects). [+] таб → openSettingsModal('remotes').",
+    "createdAt": "2026-05-14T10:15:56.536Z",
+    "updatedAt": "2026-05-14T10:15:56.536Z"
+  },
+  {
+    "element": "app.js::renderSidebarWithOrigin",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5 — Origin-aware рендер sidebar. Запускается из renderSidebar при isRemoteMode()=true. Структура: origin-group-header (collapse при клике) → project-sub-header → session-item.in-origin. Фильтр state.activeOrigin: 'all' (все), 'local' (только локальный), <server_id> (один remote). При первом рендере remote-секции (не свёрнута и нет кэша) — вызывает loadRemoteProjects/loadRemoteSessions; после загрузки sessions делает rerender sidebar.",
+    "createdAt": "2026-05-14T10:15:56.796Z",
+    "updatedAt": "2026-05-14T10:15:56.796Z"
+  },
+  {
+    "element": "app.js::renderOriginSection",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5 — Рендерит одну origin-секцию: collapsible header с цветной точкой (online/offline/local/unknown), затем projects (project-sub-header) с группами сессий внутри. originKey: 'local' либо server_id. Использует isOriginCollapsed/toggleOriginCollapsed (localStorage 'forge.collapsedOrigins'). Внутри секции группирует sessions по project_id, с auto-группами по cwd, orphan секцией в конце (как в legacy renderSidebar).",
+    "createdAt": "2026-05-14T10:15:57.058Z",
+    "updatedAt": "2026-05-14T10:15:57.058Z"
+  },
+  {
+    "element": "app.js::openSettingsModal",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5 — Settings modal. Принимает initialTab ('notifications' | 'themes' | 'remotes'). Вкладка 'Remote servers' добавляется только при isRemoteMode()=true. Структура: tab-bar + 3 panel'а (Notifications/Themes/Remotes). Remotes-panel содержит remotes-table (label/URL/status/edit-delete) + remotes-add форму (label, URL, token с toggle visibility, кнопка Test connection через POST+GET healthz, Save). Edit — PATCH с возможностью оставить token пустым. Delete — DELETE с confirm + сброс activeOrigin если удалили его. 'How to pair?' — раскрывающийся блок с инструкцией про devforge pair --generate.",
+    "createdAt": "2026-05-14T10:18:18.079Z",
+    "updatedAt": "2026-05-14T10:18:18.079Z"
+  },
+  {
+    "element": "app.js::escapeHtml",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5 — Безопасное HTML-экранирование строки для вставки в innerHTML. Используется в openEditRemoteRow для подстановки srv.label в input value. Заменяет &, <, >, \", ' на соответствующие entity.",
+    "createdAt": "2026-05-14T10:18:18.352Z",
+    "updatedAt": "2026-05-14T10:18:18.352Z"
+  },
+  {
+    "element": "app.js::parseGlobalId",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5 — Парсит глобальный id формата 'origin::local-id' → { origin, id }. Если в строке нет '::', возвращает { origin: 'local', id }. Используется когда фронт получает id извне (URL, history) и нужно распаковать в origin + бэкенд-id. В legacy-режиме id всегда простой, parseGlobalId возвращает origin='local'.",
+    "createdAt": "2026-05-14T10:22:07.797Z",
+    "updatedAt": "2026-05-14T10:22:07.797Z"
+  },
+  {
+    "element": "app.js::formatGlobalId",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5 — Собирает глобальный id из origin + local. Для origin='local' (или пустого) возвращает только local id без префикса. В remote-mode используется когда id уходит в localStorage / history.pushState / клипбоард, чтобы later parseGlobalId восстановил origin.",
+    "createdAt": "2026-05-14T10:22:08.070Z",
+    "updatedAt": "2026-05-14T10:22:08.070Z"
+  },
+  {
+    "element": "app.js::dtoOrigin",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5 — Возвращает origin для DTO-объекта (Project/Session/Task/Todo). Бэкенд проставляет поле .origin начиная с Phase 3 (см. remote_proxy::enrich_with_origin для прокси-ответов; локальные DTO имеют origin='local'). Fallback: 'local' если поле отсутствует.",
+    "createdAt": "2026-05-14T10:22:08.328Z",
+    "updatedAt": "2026-05-14T10:22:08.328Z"
+  },
+  {
+    "element": "app.js::apiFetch",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5 — Centralized fetch helper для API-вызовов, которые могут уходить на remote (sessions/projects/tasks/todos). Сигнатура: apiFetch(path, init, origin). Если isRemoteMode() и origin !== 'local' → добавляет ?server=<origin> к path (через withServerParam). Не используется для /healthz, /api/themes, /api/remote-servers — они только local. В legacy-режиме игнорирует origin.",
+    "createdAt": "2026-05-14T10:22:08.593Z",
+    "updatedAt": "2026-05-14T10:22:08.593Z"
+  },
+  {
+    "element": "app.js::withServerParam",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5 — Утилита: добавляет ?server=<origin> (или &server=...) к URL-path, если origin !== 'local'. Корректно работает с path, который уже содержит query.",
+    "createdAt": "2026-05-14T10:22:08.905Z",
+    "updatedAt": "2026-05-14T10:22:08.905Z"
+  },
+  {
+    "element": "app.js::taskOriginById",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5 — Ищет issue по id в state.tasksData.issues и возвращает его origin. Используется в closeTask/reopenTask/updateTask для решения — проксировать запрос или нет. Fallback 'local' если задача не найдена в snapshot'е.",
+    "createdAt": "2026-05-14T10:22:09.166Z",
+    "updatedAt": "2026-05-14T10:22:09.166Z"
+  },
+  {
+    "element": "app.js::connectWs",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5 — connectWs(sessionName, origin). Открывает WebSocket /ws/attach?session=<name>&cols=<c>&rows=<r>[&server=<origin>] для указанной tmux-сессии. Параметр origin определяет проксирование: 'local' (или undefined) — connect к локальному devforge; <server_id> — backend прокинет WS на remote через remote_proxy. В legacy-режиме (remoteMode=false) server-param не добавляется.",
+    "createdAt": "2026-05-14T10:23:49.401Z",
+    "updatedAt": "2026-05-14T10:23:49.401Z"
+  },
+  {
+    "element": "app.js::connectGitWs",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5 — connectGitWs(cwd). Открывает WebSocket /ws/lazygit?cwd=<cwd>&cols=<c>&rows=<r>[&server=<state.activeOrigin>]. server-param добавляется только если isRemoteMode() и activeOrigin != 'local'/'all'. Бэкенд при наличии &server проксирует WS на remote devforge.",
+    "createdAt": "2026-05-14T10:23:49.668Z",
+    "updatedAt": "2026-05-14T10:23:49.668Z"
+  },
+  {
+    "element": "app.js::connectTasksWs",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5 — Открывает WS /ws/tasks. URL формируется в зависимости от state.activeOrigin: 'local'/'all' (или legacy) → ?project_id=<activeProjectId>; <server_id> → ?server=<id> (без project_id, т.к. он на remote-стороне). Бэкенд прокси прокинет WS на remote и пересылает snapshot/upsert/removed/reload кадры. При смене activeOrigin (через origin-табы) connectTasksWs вызывается заново.",
+    "createdAt": "2026-05-14T10:23:49.929Z",
+    "updatedAt": "2026-05-14T10:23:49.929Z"
+  },
+  {
+    "element": "app.js::connectTodosWs",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 5 — Открывает WS /ws/todos. URL аналогично connectTasksWs: 'local'/'all' → ?project_id=<currentTodosProjectId()>; remote origin → ?server=<id>. При смене activeOrigin переподключается.",
+    "createdAt": "2026-05-14T10:23:50.191Z",
+    "updatedAt": "2026-05-14T10:23:50.191Z"
+  },
+  {
+    "element": "tmux-web/static/app.js::renderSidebarWithOrigin",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 6 — рендер агрегированного sidebar в remote-mode. Когда state.activeOrigin === 'all', отрисовывает все origin-секции: Local + все зарегистрированные remote-серверы. Для каждого remote выясняет статус через state.remoteOnline; offline-серверы рендерятся как disabled-секции (видны, но без списка сессий и с явным бейджем 'offline'). В All-view лениво подтягивает projects/sessions для online/unknown серверов даже если их секция свёрнута — чтобы счётчик 'N sess' был достоверным. Offline-сервера не пингуем (заведомо упадёт). Когда activeOrigin='local' — рендерим только Local. Когда activeOrigin=<server_id> — только этот один remote (lazy-load по collapse). Вызывает renderOriginSection для каждой видимой секции.",
+    "createdAt": "2026-05-14T10:28:17.800Z",
+    "updatedAt": "2026-05-14T10:28:17.800Z"
+  },
+  {
+    "element": "tmux-web/static/app.js::renderOriginSection",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 6 — рендерит ОДНУ origin-секцию в session-list: header (свёрнут/развёрнут с caret и dot-индикатором online/offline) → projects (sub-header) → sessions (item с in-origin классом). Параметры: originKey ('local' | server_id), label (текст header'а), dotKind ('online'|'offline'|'local'|'unknown'), projects (массив ProjectDto), sessions (массив SessionDto), opts.isRemote, opts.isOffline (если true — секция в disabled-стиле, без списка сессий, с бейджем 'offline' вместо счётчика), opts.remoteLoading (true → плейсхолдер 'Loading…'). Внутри origin'а применяет такую же группировку sessions по project_id как legacy renderSidebar при projectFilter=='__all__': projects в порядке передачи → авто-группы по project_id (которого нет в projects) → orphan (project_id=null). Двухуровневая фильтрация: если state.projectFilter !== '__all__' — показывает только сессии этого проекта внутри origin'а, без sub-header'а (как legacy single-project режим). Если проекта в origin'е нет — пустая секция с пометкой.",
+    "createdAt": "2026-05-14T10:28:24.071Z",
+    "updatedAt": "2026-05-14T10:28:24.071Z"
+  },
+  {
+    "element": "tmux-web/static/app.js::groupSessionsByProject",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 6 helper — группирует массив сессий по project_id внутри одного origin'а. Сессии с project_id=null/undefined попадают в ключ orphanKey (по умолчанию '__orphan__'). Внутри каждой группы сортирует сессии по name.localeCompare() для стабильного порядка. Возвращает Map<key, SessionDto[]>. Выделена в отдельную функцию, чтобы (а) переиспользовать логику группировки в renderOriginSection и (б) дать регресс-тестам (cca8.2) стабильный контракт для проверки структуры. Экспортирована в window.__forge.groupSessionsByProject.",
+    "createdAt": "2026-05-14T10:28:28.528Z",
+    "updatedAt": "2026-05-14T10:28:28.528Z"
+  },
+  {
+    "element": "tmux-web/static/app.js::aggregateAllOrigins",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 6 helper — собирает структуру агрегированного вида для activeOrigin='all'. Возвращает Map<originKey, { label, online, projects, sessions }>, где originKey = 'local' либо server_id. Источник данных: state.projects/state.sessions (local) + state.remoteProjects/state.remoteSessions (remotes из кеша). Online-статус читается из state.remoteOnline. НЕ делает сетевых запросов — работает только с уже загруженными кешами. Используется регресс-тестами cca8.2 для проверки что структура группировки {origin: {project: [sessions]}} собирается корректно. Экспортирована в window.__forge.aggregateAllOrigins.",
+    "createdAt": "2026-05-14T10:28:31.822Z",
+    "updatedAt": "2026-05-14T10:28:31.822Z"
+  },
+  {
+    "element": "tmux-web/tests/frontend/sidebar_grouping.test.js",
+    "path": "tmux-web/tests/frontend/sidebar_grouping.test.js",
+    "type": "file",
+    "content": "Phase 6 / forge-cca8.2 — регресс-тесты группировки sidebar. Standalone Node-test (без jest/vitest), запуск: node tmux-web/tests/frontend/sidebar_grouping.test.js. Покрывает: (1) groupSessionsByProject — сессии группируются по project_id, project_id=null/undefined → __orphan__, внутри группы сортировка по name.localeCompare, кастомный orphanKey; (2) decideVisibleOrigins — какие origin'ы рендерим при activeOrigin = 'all' | 'local' | <server_id>; (3) aggregateAllOrigins — структура {origin: {projects, sessions, online}} собирается из state.* + remote-кешей, offline-сервера присутствуют с пустыми данными; (4) applyProjectFilterInsideOrigin — двухуровневая фильтрация: __all__ внутри origin даёт группы, конкретный project_id даёт плоский список, проект отсутствующий в origin → пустой список; (5) переключение origin НЕ сбрасывает projectFilter (явное архитектурное решение); (6) legacy совместимость projectFilter='__all__'. Реплицирует pure-логику из app.js (без DOM); любое изменение контракта groupSessionsByProject/aggregateAllOrigins должно обновлять и этот файл.",
+    "createdAt": "2026-05-14T10:31:18.764Z",
+    "updatedAt": "2026-05-14T10:31:18.764Z"
+  },
+  {
+    "element": "remote-mode",
+    "path": "",
+    "type": "page",
+    "content": "# DevForge Remote Mode — Overview\n\nДокумент-обзор архитектуры режима remote (Phase 1-7).\n\n## Режимы запуска\n\n### Legacy (default, без флагов)\n- Bind: 127.0.0.1:8787 (hardcoded, не выходит наружу).\n- Auth: НЕТ (middleware не подключён).\n- REST /api/remote-servers: 404 (роуты не зарегистрированы).\n- /healthz: { status: 'ok', remote_mode: false, version: X.Y.Z }.\n- Frontend: UI origin-табов скрыт, кнопка 'Add remote' скрыта, ?server= в API/WS — 400.\n\n### Remote-mode (devforge run --remote [--bind ADDR] [--token HEX])\n- Bind: bind/0.0.0.0:port.\n- Auth: Bearer-token middleware подключён ВСЕГДА (auto-gen 64-hex при отсутствии --token).\n- REST /api/remote-servers/* CRUD доступен.\n- /healthz: { status: 'ok', remote_mode: true, version: X.Y.Z } — публично без auth (frontend читает ДО ввода token).\n- Frontend: origin-табы видны, Settings → Remote servers tab.\n- Public-bind warning (Phase 7) печатается на старте если bind != 127.x.x.x.\n\n## Конфигурация (server_config.json)\nПуть: ~/.config/forge/server_config.json\nПоля: { auth_token: Option<hex64>, bind: Option<String>, port: Option<u16> }.\nПриоритет resolve: CLI флаги > файл > env (DEVFORGE_AUTH_TOKEN) > defaults.\nAuto-gen: при remote_mode без token → finalize_token() генерит, печатает банер, atomic-save merge.\n\n## Pairing flow\n\n### На host-машине (где запущен devforge с --remote)\n1. devforge pair --generate — генерит токен + server_config.json (bind=0.0.0.0).\n   ИЛИ\n   devforge run --remote — auto-gen токена при первом старте, печатает банер.\n2. Скопировать токен из банера / server_config.json.\n\n### На client-машине (где работает фронт)\n1. Settings → Remote servers → Add.\n2. Поля: Label (для UI), URL (http://host:8787), Token (paste).\n3. Test connection — POST + GET healthz через локальный devforge.\n4. Save → запись в ~/.config/forge/remote_servers.json.\nИЛИ через CLI: devforge remote add http://host:8787 --token <HEX> [--label NAME].\n\n## Архитектура прокси\n\n### HTTP-прокси (Phase 3)\nFrontend делает fetch('/api/sessions?server=<id>').\nBackend handler через try_proxy_to_remote → remote_proxy::proxy_request:\n1. Достаёт RemoteServer{url, token} из state.remotes.\n2. reqwest <url><path>?<query> + Authorization: Bearer <token>.\n3. Hop-by-hop headers фильтруются.\n4. JSON-ответ обогащается origin=<server_id> через enrich_with_origin.\n5. Возвращается клиенту с тем же status+headers+body.\nЛогирование: warn! на network errors, trace! на non-2xx (Phase 7).\n\n### WebSocket-прокси (Phase 4)\nFrontend открывает ws('/ws/attach?session=X&server=<id>') или /ws/lazygit, /ws/tasks, /ws/todos.\nBackend ws-handler → remote_proxy::proxy_websocket:\n1. http(s):// → ws(s)://, connect_async с Bearer-header.\n2. tokio::join! двух pumps: down_to_up + up_to_down.\n3. На любой Close с любой стороны — каскадное закрытие другой.\nЛогирование: trace! на каждый Close + send/recv errors с server_id+path+code+reason (Phase 7).\n\n## Aggregated view (Phase 6)\nВ remote_mode фронт показывает origin-табы: All, Local, <remote labels>.\n- activeOrigin='all' — sidebar агрегирует local-сессии + lazy-load remote-сессий.\n- activeOrigin='local' — только local.\n- activeOrigin=<id> — только данный remote (lazy fetch при первом раскрытии origin-секции).\nDTO везде содержит origin: 'local' | server_id. Глобальные id вида '<origin>::<id>' для уникализации между origin'ами.\n\n## Reconnect (Phase 7)\n### Health probe per-server\nPer-server timer в frontend (remoteProbeState Map):\n- Backoff: 2s → 4s → 8s → 16s → 32s → 60s + jitter(0..1s).\n- На success: backoff reset to steady-state (4s).\n- На fail: step++.\n- UI badge: state.remoteOnline → renderSidebar() при смене online↔offline.\n\n### WS reconnect\nВсе WS на frontend имеют backoff-reconnect:\n- /ws/attach — 2s → 60s + jitter, сохраняет currentSession+origin.\n- /ws/tasks — 1s → 10s + degraded polling.\n- /ws/todos — 1s → 10s + degraded polling.\n- /ws/lazygit — manual retry (UI banner с Retry-кнопкой).\n\n## Безопасность\n- Token хранится ТОЛЬКО локально (~/.config/forge/{server_config,remote_servers}.json).\n- REST /api/remote-servers (GET) отдаёт RemoteServerView { id, label, url } — БЕЗ token.\n- Bearer-auth middleware на ВСЕХ путях кроме /healthz, /, /assets/, /static/.\n- 401 с WWW-Authenticate: Bearer на wrong/missing token.\n- Public-bind WARNING печатается на старте если bind != 127.x.x.x (Phase 7).\n- РЕКОМЕНДАЦИЯ: использовать SSH-tunnel / WireGuard / Tailscale / reverse-proxy с HTTPS для production — devforge сам TLS НЕ умеет.\n\n## Файлы реализации\n- tmux-web/src/cli.rs — argv → RunOptions/Subcommand, run_pair, run_remote.\n- tmux-web/src/server_config.rs — resolve, finalize_token, print_public_bind_warning.\n- tmux-web/src/auth.rs — Bearer middleware, path exclusions.\n- tmux-web/src/remotes.rs — RemoteServerStore, default_remotes_path.\n- tmux-web/src/remote_proxy.rs — proxy_request, proxy_websocket, enrich_with_origin, ProxyError.\n- tmux-web/src/main.rs — AppState, /healthz, try_proxy_to_remote, регистрация /api/remote-servers/* (only if remote_mode).\n- tmux-web/static/app.js — isRemoteMode, origin-табы, probeRemoteServer, reconnect-backoff WS, Settings → Remote servers UI.",
+    "createdAt": "2026-05-14T10:42:09.427Z",
+    "updatedAt": "2026-05-14T10:42:42.231Z",
+    "aliases": [
+      "remote mode overview",
+      "pairing flow"
+    ]
+  },
+  {
+    "element": "security-checklist",
+    "path": "",
+    "type": "page",
+    "content": "# DevForge Security Smoke Checklist (Phase 7)\n\nЧеклист пунктов безопасности, проверенных в Phase 7. Используется как regression-чеклист перед каждым релизом remote-mode.\n\n## 1. Token не утекает в JS / DOM\n\n### Проверка\n1. devforge run --remote (auto-gen токена).\n2. Открыть UI в браузере.\n3. Settings -> Remote servers -> Add: ввести label/URL/token, нажать Save.\n4. DevTools -> Network -> проверить ответ POST /api/remote-servers:\n   - В ответе должен быть RemoteServerView { id, label, url } -- без поля token.\n5. DevTools -> Network -> проверить GET /api/remote-servers:\n   - Массив из RemoteServerView. Поля token нет.\n6. DevTools -> Sources -> app.js: state.remoteServers содержит только { id, label, url } (без token).\n\n### Покрыто кодом\n- src/remotes.rs::RemoteServerView -- DTO без поля token.\n- impl From<&RemoteServer> for RemoteServerView -- копирует только id/label/url.\n- src/remotes.rs::tests::view_excludes_token -- unit-тест проверяет, что serde_json::to_string(&view) НЕ содержит ни значение токена, ни строку 'token' (имя поля).\n\n### Acceptance\nPASS -- token хранится только на disk (~/.config/forge/remote_servers.json) и в RemoteServer (in-memory под RwLock). В public API всегда отдаётся RemoteServerView.\n\n## 2. 401 на wrong Bearer\n\n### Проверка (curl)\n```\n$ devforge run --remote\n[devforge] auto-generated auth token saved to ~/.config/forge/server_config.json\nBearer token: abc123...\n\n$ curl -i http://localhost:8787/api/projects\nHTTP/1.1 401 Unauthorized\nWWW-Authenticate: Bearer realm=\"devforge\"\n\n$ curl -i -H 'Authorization: Bearer WRONG-TOKEN' http://localhost:8787/api/projects\nHTTP/1.1 401 Unauthorized\nWWW-Authenticate: Bearer realm=\"devforge\"\n\n$ curl -i -H 'Authorization: Bearer abc123...' http://localhost:8787/api/projects\nHTTP/1.1 200 OK\n```\n\n### Покрыто кодом\n- src/auth.rs::bearer_auth -- middleware. На path не из EXCLUDED_EXACT/PREFIXES и без правильного Bearer -> 401 + WWW-Authenticate.\n- src/auth.rs::tests::some_token_protected_without_header_returns_401 -- unit-тест.\n- src/auth.rs::tests::some_token_protected_with_wrong_bearer_returns_401 -- unit-тест.\n- src/auth.rs::tests::some_token_protected_with_correct_bearer_passes -- positive case.\n- src/auth.rs::tests::malformed_authorization_header_rejected -- Basic auth header / Bearer без значения -> 401.\n\n### Acceptance\nPASS -- middleware применяется через axum::middleware::from_fn_with_state ТОЛЬКО при auth_token=Some (см. main.rs).\n\n## 3. Public-bind WARNING печатается на старте\n\n### Проверка\n```\n$ devforge run --remote --bind 0.0.0.0 --token abc123...\n[INFO] listening on http://0.0.0.0:8787\n\n╔══════════════════════════════════════════════════════════════════════════╗\n║ WARNING: DevForge is bound to a public address WITHOUT TLS              ║\n║   Bind:  0.0.0.0:8787                                                   ║\n║   Token: abc12300...0123                                                ║\n║   Auth is on, but transport is plain HTTP. Anyone sniffing the wire     ║\n║   can capture the Bearer token. Use one of:                             ║\n║     - SSH tunnel:  ssh -L 8787:127.0.0.1:8787 user@host                 ║\n║     - WireGuard / Tailscale / ZeroTier private network                  ║\n║     - Reverse-proxy с HTTPS (Caddy / nginx / Traefik) перед devforge    ║\n╚══════════════════════════════════════════════════════════════════════════╝\n```\n\nНа localhost-bind (127.0.0.1) warning НЕ печатается.\n\n### Покрыто кодом\n- src/server_config.rs::print_public_bind_warning(bind, port, token) -- no-op при is_localhost_bind(bind)=true.\n- src/server_config.rs::is_localhost_bind -- true для 127.x.x.x, ::1, localhost.\n- src/server_config.rs::tests::is_localhost_bind_recognises_loopback (Phase 7) -- unit-тест.\n- src/server_config.rs::tests::is_localhost_bind_rejects_public (Phase 7) -- unit-тест.\n- src/main.rs -- вызывает print_public_bind_warning ПОСЛЕ bind и ДО axum::serve в блоке `if remote_mode { ... }`.\n\n### Acceptance\nPASS -- warning виден ВСЕГДА в remote_mode + non-loopback bind, независимо от того, авто-сгенерён токен или передан явно.\n\n## 4. /api/remote-servers НЕ зарегистрирован без --remote\n\n### Проверка (curl)\n```\n$ devforge run\n[INFO] listening on http://127.0.0.1:8787\n\n$ curl -i http://127.0.0.1:8787/api/remote-servers\nHTTP/1.1 404 Not Found\n```\n\n(точнее -- 404 от static-fallback'а, потому что роут не зарегистрирован -> axum NotFound -> fallback на static_embed -> файл не найден.)\n\n### Покрыто кодом\n- src/main.rs -- регистрация роутов в блоке `if remote_mode { app = app.route(...) }` для всех 4 endpoint'ов /api/remote-servers и /api/remote-servers/:id/healthz.\n- При remote_mode=false блок не выполняется, роутов нет.\n\n### Acceptance\nPASS -- структурно: endpoint'ы добавляются в Router только при remote_mode=true. В legacy localhost-режиме регистрация не происходит.\n\n## 5. /healthz публично доступен (intentional)\n\n### Проверка\n```\n$ curl -i http://localhost:8787/healthz\nHTTP/1.1 200 OK\nContent-Type: application/json\n{\"status\":\"ok\",\"remote_mode\":true,\"version\":\"0.1.3\"}\n```\n\nБез Authorization header -- должен работать.\n\n### Покрыто кодом\n- src/auth.rs::EXCLUDED_EXACT -- содержит \"/healthz\".\n- src/auth.rs::is_path_excluded -- true для /healthz.\n- src/auth.rs::tests::some_token_healthz_pass_without_header -- unit-тест.\n\n### Acceptance\nPASS -- intentional. Frontend должен прочитать remote_mode/version ДО ввода токена (UI логина).\n\n## 6. Логирование прокси-ошибок (Phase 7)\n\n### Проверка\n```\n$ RUST_LOG=devforge=trace devforge run --remote\n```\nЗатем дёрнуть из браузера GET /api/sessions?server=<unreachable-remote-id> -> в логах видим:\n```\nWARN devforge::remote_proxy: remote_proxy: upstream request failed server_id=ghost path=/api/sessions error=... is_timeout=false is_connect=true\n```\n\n### Покрыто кодом\n- src/remote_proxy.rs::proxy_request -- warn! на reqwest errors с is_timeout/is_connect; trace! на non-2xx ответы.\n- src/remote_proxy.rs::proxy_websocket -- trace! на Close-кадры в обе стороны с code+reason+server_id+path.\n\n### Acceptance\nPASS -- все ветки proxy ошибок инструментированы.\n\n## Сводка\n\n| #  | Пункт                                                    | Статус | Покрытие |\n|----|----------------------------------------------------------|--------|----------|\n| 1  | Token не в JS / DOM (RemoteServerView excludes token)    | PASS   | unit: view_excludes_token |\n| 2  | 401 на missing / wrong Bearer                            | PASS   | unit: auth tests x5 |\n| 3  | Public-bind WARNING при non-loopback bind                | PASS   | unit: is_localhost_bind matrix |\n| 4  | /api/remote-servers недоступен без --remote              | PASS   | структурно (main.rs `if remote_mode`) |\n| 5  | /healthz публичен (intentional)                          | PASS   | unit: healthz exclusion |\n| 6  | Прокси-ошибки логируются (trace+warn)                    | PASS   | manual через RUST_LOG=devforge=trace |\n\nВсе пункты прошли smoke-проверку. Чеклист должен проверяться перед каждым релизом, изменяющим auth / remote-proxy / server_config.",
+    "createdAt": "2026-05-14T10:45:10.734Z",
+    "updatedAt": "2026-05-14T10:45:14.315Z",
+    "aliases": [
+      "security smoke",
+      "401 bearer"
+    ]
+  },
+  {
+    "element": "remote_proxy",
+    "path": "",
+    "type": "unknown",
+    "content": "HTTP/WS-прокси на удалённые devforge-инстансы (tmux-web/src/remote_proxy.rs).\n\n## Назначение\nЛокальный devforge в режиме aggregator (--remote) принимает запросы с ?server=<id> и проксирует их на remote devforge через HTTP (reqwest) или WebSocket (tokio-tungstenite).\n\n## Публичный API\n- proxy_request(store, client, server_id, method, path, query, content_type, body) -> Result<(StatusCode, HeaderMap, Bytes), ProxyError> — основной HTTP-helper. Получает url+token из RemoteServerStore::get, добавляет Authorization: Bearer <token>, фильтрует hop-by-hop в ответе.\n- proxy_websocket(store, server_id, upstream_path, query, downstream) -> Result<(), ProxyError> — generic WS-прокси (Phase 4). connect_async к remote с Bearer-заголовком, tokio::select! на pump между axum::WebSocket и tungstenite.\n- enrich_with_origin(value, server_id) — добавляет поле origin=<server_id> в JSON-array элементы (Object) или сам Object.\n- ProxyError { UnknownServer, InvalidUrl, Network, WebSocket }, ProxyError::into_response() мапит на (StatusCode, String): 404/500/502/502.\n\n## Hop-by-hop фильтр\nis_hop_by_hop() возвращает true для: connection, keep-alive, proxy-authenticate, proxy-authorization, te, trailers, transfer-encoding, upgrade. Эти заголовки НЕ форвардятся клиенту (RFC 7230 §6.1).\n\n## Bearer injection\nproxy_request пишет Authorization: Bearer <token>, где token — приватное поле RemoteServer{token} из RemoteServerStore. Заголовки клиента НЕ форвардятся upstream (reqwest сам не копирует их с axum-стороны).\n\n## Тесты (Phase 8 .1)\nИнтеграционные тесты через wiremock в src/remote_proxy.rs tests:\n- proxy_request_passes_200_ok / _204_no_content / _404_not_found / _500_server_error — статус mapping.\n- proxy_request_timeout_returns_network_error — таймаут через ResponseTemplate::set_delay → ProxyError::Network(is_timeout).\n- proxy_request_connection_refused_returns_network_error — bind на свободный порт, drop, connect → ProxyError::Network(is_connect).\n- proxy_request_dns_fail_returns_network_error — .invalid TLD (RFC 6761).\n- proxy_request_content_length_zero_empty_body — Content-Length: 0 + пустое тело.\n- proxy_request_chunked_body_collected — крупное тело (~12 KB).\n- proxy_request_does_not_follow_redirect — 302 проходит насквозь (reqwest::redirect::Policy::none).\n- proxy_request_streams_large_body_10mb — 10 MB без OOM.\n\n## Зависимости\n- reqwest (HTTP-клиент, rustls-tls, redirect=none на прокси-стороне)\n- tokio-tungstenite 0.24 (WS-клиент с rustls-tls-webpki-roots)\n- futures-util (SinkExt/StreamExt для pump'а)\n- crate::remotes::RemoteServerStore — источник url+token\n- bytes, axum, serde_json",
+    "createdAt": "2026-05-14T11:56:37.970Z",
+    "updatedAt": "2026-05-14T11:56:37.970Z"
+  },
+  {
+    "element": "resolve_dispatch",
+    "path": "",
+    "type": "unknown",
+    "content": "Чистая функция диспетчеризации запроса с возможным ?server=<id>. Pure helper, выделен для тестирования логики try_proxy_to_remote (Phase 8 .3).\n\n## Сигнатура\nfn resolve_dispatch(q: &HashMap<String, String>, remote_mode: bool) -> DispatchDecision\n\n## Возвращает\n- DispatchDecision::Local — нет ?server / пустая строка / зарезервированное 'local'.\n- DispatchDecision::Proxy(id) — есть server_id, remote_mode=true.\n- DispatchDecision::LegacyRejection — есть server_id, remote_mode=false → 400.\n\n## Зарезервированное имя 'local'\n?server=local трактуется как passthrough (никакого прокси, локальная обработка). Это позволяет фронту явно указать local источник без специального case'а. Реализовано через filter в extract_server_id.\n\n## Multiple ?server=a&server=b\nHashMap<String,String> от axum хранит одно значение на ключ (последнее или первое — детальfont serde_urlencoded). Dispatcher работает с этим значением и не пытается обнаруживать дубликаты — никаких 400 за multi-value.\n\n## Тесты\nPhase 8 .3 в src/main.rs#tests — 9 тестов:\n- extract_server_id_local_is_reserved, extract_server_id_local_with_whitespace_still_reserved.\n- resolve_dispatch_{no_server_param,empty_server_param,reserved_local,unknown_server_in_remote_mode,legacy_mode_with_server,server_with_project_param,multi_server}.\n\n## Использование\ntry_proxy_to_remote вызывает resolve_dispatch и dispatch'ит:\n- Local → return None (handler продолжает локальную логику).\n- LegacyRejection → return Some(Err(400)).\n- Proxy(id) → выполняет remote_proxy::proxy_request.",
+    "createdAt": "2026-05-14T11:59:38.029Z",
+    "updatedAt": "2026-05-14T11:59:38.029Z"
+  },
+  {
+    "element": "auth",
+    "path": "",
+    "type": "unknown",
+    "content": "Bearer-аутентификация в remote-mode (tmux-web/src/auth.rs).\n\n## API\n- AuthState{auth_token: Arc<Option<String>>} — state для middleware.\n- AuthState::new(Option<String>) — конструктор.\n- is_path_excluded(path) — true для /healthz, /, /assets/*, /static/*.\n- extract_bearer(&Request) — парсит Authorization, поддерживает Bearer/bearer/BEARER/BeArEr (case-insensitive), trim вокруг токена.\n- bearer_auth() — axum middleware: auth_token=None passthrough; excluded paths passthrough; mismatch → 401 + WWW-Authenticate.\n\n## Контракт\n- Case-insensitive scheme: 'bearer X', 'BEARER X', 'BeArEr X' принимаются.\n- WWW-Authenticate: Bearer realm=\"devforge\" в каждом 401 (RFC 6750 §3).\n- Multiple Authorization headers: используется ПЕРВЫЙ (axum default for HeaderMap::get).\n- Path matching case-sensitive: /HEALTHZ ≠ /healthz (НЕ excluded, требует токен).\n- /static/*, /assets/* — статика без auth.\n- WS upgrade без Authorization → 401 (middleware отрабатывает ДО WebSocketUpgrade extractor).\n- Non-ASCII Authorization → 401 (HeaderValue::to_str → Err → None → 401).\n\n## Тесты (Phase 8 .5)\nВ src/auth.rs#tests — 18 тестов всего (9 новых):\n- bearer_scheme_lowercase/uppercase/mixed_case_accepted.\n- non_ascii_authorization_header_rejected_without_panic.\n- multiple_authorization_headers_use_first.\n- static_index_html_excluded_without_token.\n- healthz_uppercase_is_case_sensitive_requires_token.\n- ws_upgrade_without_auth_returns_401_not_426.\n- www_authenticate_header_present_in_401.\n- bearer_with_trailing_whitespace_in_token_accepted.",
+    "createdAt": "2026-05-14T12:02:03.516Z",
+    "updatedAt": "2026-05-14T12:02:03.516Z"
+  },
+  {
+    "element": "server_config",
+    "path": "",
+    "type": "unknown",
+    "content": "Конфигурация сервера (tmux-web/src/server_config.rs).\n\n## Файл ~/.config/forge/server_config.json\nФормат: {auth_token?, bind?, port?}. Все поля опциональны. Отсутствующий файл → Ok(None).\n\n## API\n- load() / load_from(&Path) → Result<Option<ServerConfig>>. None при отсутствии файла.\n- save() / save_to(&Path, &ServerConfig) → atomic write tmp + rename.\n- resolve(&RunOptions, Option<&ServerConfig>) → EffectiveConfig. Priority: CLI > file > env > default.\n- finalize_token(&EffectiveConfig) / finalize_token_at — авто-генерирует 64-hex Bearer при remote_mode=true без token; сохраняет файл.\n- is_localhost_bind(&str) → bool. True для 127.x, ::1, localhost. False для 0.0.0.0, fe80::1 (link-local), :: (unspecified), 192.168.*, [::1] (bracket-форма не распознаётся — известный case).\n- print_public_bind_warning() — banner про HTTP-without-TLS на public bind'е.\n- print_auto_token_banner() — banner про auto-generated token.\n\n## Контракт (закреплён тестами Phase 8 .6)\n- Невалидный JSON → Err с file path в message.\n- 0-байтный файл → Err (JSON требует хотя бы {}).\n- {} → Default-ServerConfig (все поля None).\n- Лишние поля игнорируются (serde без deny_unknown_fields).\n- save_to на read-only dir → Err не панику.\n- is_localhost_bind:\n  - '::1' — true (loopback)\n  - '[::1]' — false (bracket-форма не поддерживается)\n  - 'fe80::1' — false (link-local публичен)\n  - '::' — false (unspecified = публичен)\n- resolve в legacy-mode (remote=false) принудительно понижает bind до 127.0.0.1, даже если CLI/файл указали 0.0.0.0 — defense-in-depth.\n\n## Auto-remote\nServerConfig::implies_remote() = true если auth_token.is_some() || bind.is_some(). resolve() активирует remote_mode при таком файле даже без --remote в CLI.\n\n## Тесты\n30 unit-тестов в server_config::tests (Phase 1 + Phase 8 .6).",
+    "createdAt": "2026-05-14T12:03:11.128Z",
+    "updatedAt": "2026-05-14T12:03:11.128Z"
+  },
+  {
+    "element": "cli",
+    "path": "",
+    "type": "unknown",
+    "content": "CLI парсер devforge (tmux-web/src/cli.rs).\n\n## Команды\n- devforge run [--port N] [--remote] [--bind <addr>] [--token <hex>]\n- devforge start (background daemon) / stop / status\n- devforge pair --generate (или -g) — генерация Bearer-токена в server_config.json\n- devforge remote list/add/remove\n\n## API\n- parse() / parse_from(Vec<String>) → Result<Mode>\n- help_text() → String\n- run_pair(&PairOptions) — реализация pair-команды\n- run_remote(&RemoteCmd) — реализация remote-команд\n- state_dir() / pid_path() / log_path()\n\n## Контракт (закреплён тестами Phase 8 .7)\n- --token без --remote принимается парсером (server_config::resolve игнорирует token если remote_mode=false).\n- --bind '[::1]:8080' — bracketed IPv6 принимается как строка, валидация TCP-listener'ом.\n- --port range: 1..=65535 valid, 0 → Err, негативные → Err.\n- Unknown top-level cmd → Err с 'unknown' в сообщении.\n- pair --generate и pair -g — алиасы. Двойной --generate -g OK (boolean OR).\n- pair extra positional → Err.\n- remote add дубликат label → slug -2/-3 suffix (не Err — store::add).\n- run_pair (finalize_token) идемпотентен: существующий токен в файле preserved (НЕ rotation). Будущая force-rotation policy потребует --force флаг.\n\n## Тесты\n35 unit-тестов в cli::tests (Phase 1 + Phase 8 .7).",
+    "createdAt": "2026-05-14T12:04:44.753Z",
+    "updatedAt": "2026-05-14T12:04:44.753Z"
+  },
+  {
+    "element": "remotes",
+    "path": "",
+    "type": "unknown",
+    "content": "Реестр remote-серверов devforge (tmux-web/src/remotes.rs).\n\n## Структуры\n- RemoteServer{id, label, url, token} — внутреннее представление. КАСТОМНЫЙ Debug — token заменяется на '[REDACTED]'.\n- RemoteServerView{id, label, url} — DTO для API (БЕЗ token).\n- RemoteServerStore{file_path, servers: Vec<RemoteServer>} — in-memory + JSON-файл.\n\n## Файл ~/.config/forge/remote_servers.json\nEnvelope: {servers: [RemoteServer...]}. Атомарный save через tmp + rename.\n\n## API\n- load(PathBuf) → Result<Self>. Отсутствующий файл → пустой store. Broken JSON → Err.\n- save() → Result<()>. Создаёт каталог при отсутствии.\n- list() / list_views() / get(id) — чтение.\n- add(label, url, token) → Result<RemoteServer>. Slug из label через projects::slugify + дедупликация (-2/-3/...).\n- remove(id) → bool. update(id, label?, token?) → Option<RemoteServer>.\n\n## Контракт (Phase 8 .8)\n- Slug collision: до 100+ дубликатов label → office, office-2, ..., office-100 (детерминированно).\n- Unicode-only label ('Офис') → Err (пустой slug после ASCII-фильтра).\n- Очень длинный label (500 chars) → принимается, slug может быть длинным, всё ASCII-safe.\n- Debug на RemoteServer и RemoteServerStore НЕ светит token — [REDACTED].\n- view_excludes_token — JSON-сериализация RemoteServerView не содержит token field.\n- Broken JSON в файле → Err с file path в message, без паники.\n- URL валидация (is_valid_remote_url): http://* / https://* OK, остальное — Err.\n- URL trimming: trailing slash снимается при add.\n\n## Тесты\n17 unit-тестов в remotes::tests (Phase 2 + Phase 8 .8).",
+    "createdAt": "2026-05-14T12:07:12.460Z",
+    "updatedAt": "2026-05-14T12:07:12.460Z"
   }
 ]

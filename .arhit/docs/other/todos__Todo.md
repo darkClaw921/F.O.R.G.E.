@@ -1,0 +1,3 @@
+# todos::Todo
+
+TODO-карточка проекта (tmux-web/src/todos.rs). Хранится в <project_root>/.forge/todos.json. Поля: id (UUID v4), project_id, title (обязательно), description (Option<String>), priority (u8, 0..=4, default 2), issue_type (String, default 'task'), labels (Vec<String>), plan_mode (bool — при promote добавляет PLAN_MODE_SUFFIX к notify-тексту), created_at/updated_at (RFC3339 UTC). Phase 3: добавлено поле origin: String с #[serde(default = 'default_origin_local')] — для локальных всегда 'local', сериализуется ВСЕГДА для унификации формата с прокси-ответами. Backward compat: старые todos.json без origin прогружаются благодаря serde default. default_origin_local() — public функция, используется и в тестах ws_todos.

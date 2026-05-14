@@ -1,0 +1,3 @@
+# tmux-web/static/app.js::renderSidebarWithOrigin
+
+Phase 6 — рендер агрегированного sidebar в remote-mode. Когда state.activeOrigin === 'all', отрисовывает все origin-секции: Local + все зарегистрированные remote-серверы. Для каждого remote выясняет статус через state.remoteOnline; offline-серверы рендерятся как disabled-секции (видны, но без списка сессий и с явным бейджем 'offline'). В All-view лениво подтягивает projects/sessions для online/unknown серверов даже если их секция свёрнута — чтобы счётчик 'N sess' был достоверным. Offline-сервера не пингуем (заведомо упадёт). Когда activeOrigin='local' — рендерим только Local. Когда activeOrigin=<server_id> — только этот один remote (lazy-load по collapse). Вызывает renderOriginSection для каждой видимой секции.

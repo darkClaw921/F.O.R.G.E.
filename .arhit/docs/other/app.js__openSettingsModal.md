@@ -1,0 +1,3 @@
+# app.js::openSettingsModal
+
+Phase 5 — Settings modal. Принимает initialTab ('notifications' | 'themes' | 'remotes'). Вкладка 'Remote servers' добавляется только при isRemoteMode()=true. Структура: tab-bar + 3 panel'а (Notifications/Themes/Remotes). Remotes-panel содержит remotes-table (label/URL/status/edit-delete) + remotes-add форму (label, URL, token с toggle visibility, кнопка Test connection через POST+GET healthz, Save). Edit — PATCH с возможностью оставить token пустым. Delete — DELETE с confirm + сброс activeOrigin если удалили его. 'How to pair?' — раскрывающийся блок с инструкцией про devforge pair --generate.

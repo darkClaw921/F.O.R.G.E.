@@ -1,6 +1,6 @@
 [package]
 name = "devforge"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 description = "Web-viewer для tmux сессий через WebSocket + xterm.js"
 license = "MIT"
@@ -37,6 +37,28 @@ rust-embed = { version = "8", features = ["interpolate-folder-path"] }
 # text/css, image/*) при отдаче embedded ассетов через serve_static.
 mime_guess = "2"
 
+# Phase 3 — HTTP-клиент для proxy на удалённые devforge-инстансы.
+# Используется в `remote_proxy::proxy_request` (Bearer-token, json/stream
+# body). `default-features = false` отключает default-tls (openssl) — берём
+# rustls для предсказуемой сборки на разных платформах (включая Homebrew
+# bottle на macOS без OpenSSL). Features:
+#   - json   — `RequestBuilder::json` / `Response::json` (serde-сериализация);
+#   - stream — поддержка стримящегося body, нужна для WS-прокси в Phase 4;
+#   - rustls-tls — TLS без OpenSSL-зависимости.
+reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"], default-features = false }
+
+# Phase 4 — WebSocket-клиент для upstream-прокси на удалённые devforge-инстансы.
+# Используется в `remote_proxy::proxy_websocket` для проксирования /ws/attach,
+# /ws/lazygit, /ws/tasks, /ws/todos. Версия 0.24 — последняя стабильная линия
+# с тем же набором features, что и в проекте (rustls-tls-webpki-roots). 0.26+
+# тянут tungstenite 0.27 и breaking-changes в Request/Response API; апгрейд
+# отложен в технический долг.
+# Features:
+#   - connect / handshake — клиентский handshake (default включены, фиксируем явно).
+#   - rustls-tls-webpki-roots — TLS без OpenSSL, доверенные корни через
+#     webpki-roots (Mozilla CA bundle), консистентно с reqwest rustls-tls.
+tokio-tungstenite = { version = "0.24", features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
+
 # Daemon-режим (devforge start) — нужен setsid(2) чтобы детачнуть дочерний
 # процесс от controlling terminal, иначе он умрёт при закрытии shell.
 # libc уже есть транзитивно (tokio, mio); пинуем явно для предсказуемости.
@@ -46,6 +68,20 @@ libc = "0.2"
 [profile.release]
 opt-level = 3
 lto = "thin"
+
+# Dev-dependencies — нужны только для cargo test.
+#
+# tower с feature "util" даёт ServiceExt::oneshot — стандартный способ
+# гонять Router через единичный Request без поднятия настоящего HTTP-сервера.
+# Используется в auth.rs тестах (Phase 1 / ypp1.4).
+#
+# wiremock — HTTP-mock-сервер для интеграционных тестов remote_proxy.
+# Версия 0.6.x — последняя стабильная линия (0.6.5 на момент написания),
+# совместима с tokio 1.x. Используется в tests/proxy_http.rs (Phase 8 .1)
+# и tests/proxy_hop_by_hop.rs (Phase 8 .2).
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+wiremock = "0.6"
 
 [[bin]]
 name = "devforge"

@@ -36,10 +36,11 @@
 //! Каждые 30s — Ping; axum обрабатывает Pong автоматически. Это позволяет
 //! детектить полу-открытые соединения (NAT timeout, proxy idle).
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
 use axum::response::Response;
 use futures_util::{SinkExt, StreamExt};
@@ -47,6 +48,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::Mutex;
 
+use crate::remote_proxy;
 use crate::todos::Todo;
 use crate::AppState;
 
@@ -90,6 +92,10 @@ impl TodoEvent {
 
 /// Query-параметры WS-handler'а. `project_id` опционален — если пуст,
 /// берём активный проект из `state.projects` на момент connect.
+///
+/// Phase 4: handler перешёл на `Query<HashMap<String,String>>` для поддержки
+/// `?server=<id>`-прокси; struct сохранён как документация контракта query.
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct TodoWsQuery {
     #[serde(default)]
@@ -97,12 +103,41 @@ pub struct TodoWsQuery {
 }
 
 /// `GET /ws/todos?project_id=...` — upgrade в WebSocket, далее [`handle_socket`].
+///
+/// ### Phase 4 — поддержка `?server=<id>` (remote proxy)
+///
+/// При `?server=<id>` делегирует в [`remote_proxy::proxy_websocket`] на
+/// upstream `/ws/todos` (с query без `server`). При `server` + `remote_mode=false`
+/// → Close{1008}.
 pub async fn todos_ws(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
-    Query(q): Query<TodoWsQuery>,
+    Query(raw): Query<HashMap<String, String>>,
 ) -> Response {
-    let project_id = match q.project_id.as_deref() {
+    // Phase 4 — remote-proxy ветка.
+    if let Some(server_id) = extract_server_id(&raw) {
+        if !state.remote_mode {
+            tracing::warn!(server_id, "ws/todos: ?server requested in non-remote mode");
+            return ws.on_upgrade(move |socket| close_with_policy_violation(socket, "remote mode disabled"));
+        }
+        let upstream_query = rebuild_query_without_server(&raw);
+        return ws.on_upgrade(move |socket| async move {
+            let store = state.remotes.read().await;
+            if let Err(e) = remote_proxy::proxy_websocket(
+                &store,
+                &server_id,
+                "/ws/todos",
+                &upstream_query,
+                socket,
+            )
+            .await
+            {
+                tracing::trace!(error = %e, server_id, "ws/todos proxy_websocket finished with error");
+            }
+        });
+    }
+
+    let project_id = match raw.get("project_id").map(|s| s.as_str()) {
         Some(s) if !s.is_empty() => s.to_string(),
         _ => state.projects.read().await.active().id.clone(),
     };
@@ -241,6 +276,56 @@ pub fn reload(project_id: impl Into<String>) -> TodoEvent {
     }
 }
 
+// =============================================================================
+// Phase 4 — helpers для remote WS-proxy ветки
+// =============================================================================
+
+/// Извлекает значение `server` из query. Возвращает `Some` только при непустом
+/// значении (после trim).
+fn extract_server_id(q: &HashMap<String, String>) -> Option<String> {
+    q.get("server")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Сериализует пары `HashMap` обратно в query-строку для проксирования.
+/// `server` исключается. Минимальный url-encoding. Возвращает строку БЕЗ ведущего `?`.
+fn rebuild_query_without_server(q: &HashMap<String, String>) -> String {
+    let mut parts: Vec<String> = Vec::with_capacity(q.len());
+    for (k, v) in q.iter() {
+        if k == "server" {
+            continue;
+        }
+        let kv = format!("{}={}", urlencode_minimal(k), urlencode_minimal(v));
+        parts.push(kv);
+    }
+    parts.join("&")
+}
+
+fn urlencode_minimal(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if (b'a'..=b'z').contains(&b)
+            || (b'A'..=b'Z').contains(&b)
+            || (b'0'..=b'9').contains(&b)
+            || matches!(b, b'-' | b'_' | b'.' | b'~')
+        {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{:02X}", b));
+        }
+    }
+    out
+}
+
+async fn close_with_policy_violation(mut socket: WebSocket, reason: &str) {
+    let cf = CloseFrame {
+        code: 1008,
+        reason: std::borrow::Cow::Owned(reason.to_string()),
+    };
+    let _ = socket.send(Message::Close(Some(cf))).await;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,12 +343,15 @@ mod tests {
             plan_mode: false,
             created_at: "2026-05-10T00:00:00.000Z".into(),
             updated_at: "2026-05-10T00:00:00.000Z".into(),
+            origin: crate::todos::default_origin_local(),
         };
         let ev = TodoEvent::Upsert { todo };
         let s = serde_json::to_string(&ev).unwrap();
         assert!(s.contains("\"kind\":\"upsert\""));
         assert!(s.contains("\"todo\""));
         assert!(s.contains("\"project_id\":\"forge\""));
+        // Phase 3 — origin сериализуется ВСЕГДА, фронт получает унифицированный формат.
+        assert!(s.contains("\"origin\":\"local\""));
     }
 
     #[test]
@@ -301,6 +389,7 @@ mod tests {
             plan_mode: false,
             created_at: "2026-05-10T00:00:00.000Z".into(),
             updated_at: "2026-05-10T00:00:00.000Z".into(),
+            origin: crate::todos::default_origin_local(),
         };
         assert_eq!(TodoEvent::Upsert { todo }.project_id(), "p1");
         assert_eq!(

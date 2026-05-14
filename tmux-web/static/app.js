@@ -14,10 +14,35 @@
 
     // ---- глобальное состояние ----
     const state = {
+        // Phase 5 — режим запуска бэкенда. Загружается из GET /healthz один раз
+        // при bootstrap. По умолчанию false → весь новый UI (origin-табы,
+        // Settings → Remote servers tab, ?server в запросах, глобальные id)
+        // СКРЫТ, и поведение фронта побитово совпадает с legacy.
+        // При remote_mode=true активируются ветки рендера ниже.
+        remoteMode: false,
+        serverVersion: null,        // строка из /healthz.version (для footer/about)
+        healthzLoaded: false,       // true после первого fetch /healthz (успех или fail)
+        // Phase 5 — реестр и кэши remote-серверов. Заполняются ТОЛЬКО в remote-mode.
+        // remoteServers: список RemoteServerView { id, label, url } (без token).
+        // remoteProjects / remoteSessions: lazy-load кэши per server-id.
+        remoteServers: [],
+        remoteProjects: new Map(),  // server_id → ProjectDto[] (origin-aware)
+        remoteSessions: new Map(),  // server_id → SessionDto[]
+        // Phase 5 — активный origin-фильтр в sidebar. Значения:
+        //   'all'   — показывать всё (local + все remote);
+        //   'local' — только локальные;
+        //   <server_id> — только этот remote.
+        // По умолчанию 'all'; сохраняется в localStorage('forge.activeOrigin').
+        activeOrigin: 'all',
         term: null,
         fitAddon: null,
         webLinksAddon: null,
         ws: null,
+        // Phase 7 — auto-reconnect /ws/attach с экспоненциальным backoff.
+        attachWsBackoffStep: 0,
+        attachWsReconnectTimer: null,
+        attachWsClosedByUs: false,
+        attachWsOrigin: null,    // 'local' | server_id | null — last origin
         currentSession: null,    // имя активной сессии (или null)
         sessions: [],             // последний список сессий (для рендера)
         pollTimer: null,
@@ -107,6 +132,8 @@
     const $projectSelect = document.getElementById('project-select');
     const $projectNew = document.getElementById('project-new');
     const $projectSettings = document.getElementById('project-settings');
+    // Phase 5: origin-табы над session-list (hidden при remote_mode=false).
+    const $originTabs = document.getElementById('origin-tabs');
 
     // =========================================================================
     // xterm.js initialization (cx2.3)
@@ -397,6 +424,7 @@
 
         li.appendChild(meta);
 
+        const sessOrigin = dtoOrigin(s);
         const btnKill = document.createElement('button');
         btnKill.type = 'button';
         btnKill.className = 'btn-kill';
@@ -404,17 +432,29 @@
         btnKill.title = `Убить сессию ${s.name}`;
         btnKill.addEventListener('click', (ev) => {
             ev.stopPropagation();
-            killSession(s.name);
+            killSession(s.name, sessOrigin);
         });
         li.appendChild(btnKill);
 
         // Click по элементу (но не по кнопке) — open / switch (cx2.6).
-        li.addEventListener('click', () => openSession(s.name));
+        // Phase 5: передаём origin (берётся из DTO.origin).
+        li.addEventListener('click', () => openSession(s.name, sessOrigin));
 
         return li;
     }
 
     function renderSidebar() {
+        // Phase 5: в remote-mode рендерим origin-табы (или прячем UI, если не).
+        renderOriginTabs();
+
+        // Phase 5: в remote-mode используем двухуровневую группировку
+        // Origin → Project → Sessions. В legacy режиме — поведение Phase 6.B
+        // (project-grouping) сохраняется побитово.
+        if (isRemoteMode()) {
+            renderSidebarWithOrigin();
+            return;
+        }
+
         $sidebar.innerHTML = '';
         if (state.sessions.length === 0) {
             const li = document.createElement('li');
@@ -502,6 +542,471 @@
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Phase 5 — origin-табы и origin-aware рендер sidebar
+    // -------------------------------------------------------------------------
+
+    /**
+     * Восстанавливает activeOrigin из localStorage. Допустимые значения: 'all',
+     * 'local', либо id любого из state.remoteServers. Иначе fallback 'all'.
+     */
+    function loadActiveOriginFromStorage() {
+        try {
+            const saved = localStorage.getItem('forge.activeOrigin');
+            if (saved === 'all' || saved === 'local') {
+                state.activeOrigin = saved;
+            } else if (saved && state.remoteServers.some((s) => s.id === saved)) {
+                state.activeOrigin = saved;
+            } else {
+                state.activeOrigin = 'all';
+            }
+        } catch (_) {
+            state.activeOrigin = 'all';
+        }
+    }
+
+    function saveActiveOriginToStorage() {
+        try {
+            localStorage.setItem('forge.activeOrigin', state.activeOrigin);
+        } catch (_) { /* privacy mode — игнор */ }
+    }
+
+    /**
+     * Хранилище состояния "свёрнуто/развёрнуто" для origin-секций в sidebar.
+     * Map: originKey ('local' | server_id) → bool (true = collapsed).
+     * Загружается из localStorage('forge.collapsedOrigins') ленивo.
+     */
+    let _collapsedOrigins = null;
+    function getCollapsedOrigins() {
+        if (_collapsedOrigins) return _collapsedOrigins;
+        _collapsedOrigins = new Set();
+        try {
+            const raw = localStorage.getItem('forge.collapsedOrigins');
+            if (raw) {
+                const arr = JSON.parse(raw);
+                if (Array.isArray(arr)) {
+                    arr.forEach((k) => _collapsedOrigins.add(k));
+                }
+            }
+        } catch (_) { /* ignore */ }
+        return _collapsedOrigins;
+    }
+    function persistCollapsedOrigins() {
+        try {
+            localStorage.setItem(
+                'forge.collapsedOrigins',
+                JSON.stringify(Array.from(getCollapsedOrigins())),
+            );
+        } catch (_) { /* ignore */ }
+    }
+    function isOriginCollapsed(key) {
+        return getCollapsedOrigins().has(key);
+    }
+    function toggleOriginCollapsed(key) {
+        const set = getCollapsedOrigins();
+        if (set.has(key)) {
+            set.delete(key);
+        } else {
+            set.add(key);
+        }
+        persistCollapsedOrigins();
+    }
+
+    /**
+     * Рендерит горизонтальные origin-табы над session-list:
+     *   [All] [Local] [server-1] [server-2] … [+]
+     * Клик по табу обновляет state.activeOrigin и перерисовывает sidebar.
+     * '+' таб — открывает Settings modal на вкладке Remote servers.
+     *
+     * В legacy-режиме контейнер скрыт (hidden=true).
+     */
+    function renderOriginTabs() {
+        if (!$originTabs) return;
+        if (!isRemoteMode()) {
+            $originTabs.hidden = true;
+            $originTabs.innerHTML = '';
+            return;
+        }
+        $originTabs.hidden = false;
+        $originTabs.innerHTML = '';
+
+        const mkTab = (originKey, label, dotKind) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'origin-tab';
+            if (state.activeOrigin === originKey) btn.classList.add('active');
+            if (dotKind) {
+                const dot = document.createElement('span');
+                dot.className = 'origin-dot ' + dotKind;
+                btn.appendChild(dot);
+            }
+            const span = document.createElement('span');
+            span.textContent = label;
+            btn.appendChild(span);
+            btn.addEventListener('click', () => {
+                state.activeOrigin = originKey;
+                saveActiveOriginToStorage();
+                // При выборе конкретного remote — lazy-load его данных.
+                if (originKey !== 'all' && originKey !== 'local') {
+                    if (!state.remoteSessions.has(originKey)) {
+                        loadRemoteSessions(originKey).then(() => renderSidebar());
+                    }
+                    if (!state.remoteProjects.has(originKey)) {
+                        loadRemoteProjects(originKey);
+                    }
+                }
+                // Phase 5: реcоединяем tasks/todos WS чтобы они переподписались
+                // на нужный origin (см. connectTasksWs/connectTodosWs — они
+                // читают state.activeOrigin при формировании URL).
+                disconnectTasksWs();
+                disconnectTodosWs();
+                state.tasksData = null;
+                state.todosData = [];
+                setTimeout(() => { connectTasksWs(); connectTodosWs(); }, 0);
+                renderSidebar();
+            });
+            return btn;
+        };
+
+        $originTabs.appendChild(mkTab('all', 'All', null));
+        $originTabs.appendChild(mkTab('local', 'Local', 'local'));
+        for (const srv of state.remoteServers) {
+            const status = state.remoteOnline.get(srv.id) || 'unknown';
+            $originTabs.appendChild(mkTab(srv.id, srv.label || srv.id, status));
+        }
+        // [+] таб — открыть Settings → Remote servers.
+        const plus = document.createElement('button');
+        plus.type = 'button';
+        plus.className = 'origin-tab origin-tab-add';
+        plus.title = 'Add remote server';
+        plus.textContent = '+';
+        plus.addEventListener('click', () => {
+            openSettingsModal('remotes');
+        });
+        $originTabs.appendChild(plus);
+    }
+
+    /**
+     * Origin-aware рендер sidebar (только при remote_mode=true).
+     *
+     * Структура:
+     *   ▾ LOCAL              <- origin-group-header (collapse при клике)
+     *      Project A         <- project-sub-header
+     *        - session1      <- session-item.in-origin
+     *      Project B
+     *        - session2
+     *   ▸ SERVER office (online)
+     *      ...
+     *
+     * Фильтр state.activeOrigin:
+     *   'all'   — рендерим все origin'ы;
+     *   'local' — только локальный;
+     *   <id>    — только этот remote.
+     *
+     * lazy-load: при первом рендере remote-секции (origin раскрыт и нет
+     * закэшированных данных) — вызываем loadRemoteProjects/loadRemoteSessions.
+     */
+    function renderSidebarWithOrigin() {
+        $sidebar.innerHTML = '';
+
+        const showLocal = state.activeOrigin === 'all' || state.activeOrigin === 'local';
+        const remoteIds = state.remoteServers.map((s) => s.id);
+        const showRemotes = state.activeOrigin === 'all'
+            ? remoteIds
+            : (state.activeOrigin === 'local' ? [] : remoteIds.filter((id) => id === state.activeOrigin));
+
+        // Phase 6 — в All-view: лениво подтягиваем remote-данные для онлайн-серверов,
+        // даже если их секция свёрнута. Это нужно, чтобы агрегированный вид сразу
+        // показывал реальные счётчики (offline-сервера НЕ дёргаем, чтобы не штормить
+        // сетью). Поведение для single-remote-таба сохраняется ниже.
+        const isAllView = state.activeOrigin === 'all';
+
+        if (showLocal) {
+            renderOriginSection('local', 'Local', 'local', state.projects, state.sessions, {
+                isRemote: false,
+                isOffline: false,
+            });
+        }
+        for (const sid of showRemotes) {
+            const srv = state.remoteServers.find((s) => s.id === sid);
+            if (!srv) continue;
+            const status = state.remoteOnline.get(sid) || 'unknown';
+            const isOffline = status === 'offline';
+            const projects = state.remoteProjects.get(sid);
+            const sessions = state.remoteSessions.get(sid);
+
+            // Lazy-load:
+            //   - В режиме single-tab: грузим, когда секция раскрыта.
+            //   - В All-view: грузим для всех online/unknown серверов (даже свёрнутых),
+            //     чтобы агрегированный счётчик `N sess` был достоверным.
+            //   - Offline-серверы НЕ грузим (заведомо упадёт).
+            const shouldLazyLoad = !isOffline && (
+                isAllView || !isOriginCollapsed(sid)
+            );
+            if (shouldLazyLoad) {
+                if (projects === undefined) {
+                    loadRemoteProjects(sid);
+                }
+                if (sessions === undefined) {
+                    loadRemoteSessions(sid).then(() => renderSidebar());
+                }
+            }
+            renderOriginSection(
+                sid,
+                srv.label || sid,
+                status,
+                projects || [],
+                sessions || [],
+                {
+                    isRemote: true,
+                    isOffline,
+                    remoteLoading: !isOffline && sessions === undefined,
+                },
+            );
+        }
+
+        // Если ни одной секции/сессии — пустой плейсхолдер.
+        if ($sidebar.children.length === 0) {
+            const li = document.createElement('li');
+            li.className = 'empty';
+            li.textContent = 'Нет активных сессий';
+            $sidebar.appendChild(li);
+        }
+    }
+
+    /**
+     * Рендерит ОДНУ origin-секцию в session-list:
+     *   header (свёрнут/развёрнут) → projects (header) → sessions (item).
+     *
+     * Параметры:
+     *   originKey — 'local' либо server_id (используется как ключ collapse-state).
+     *   label — текст в header'е (например, 'Local' или srv.label).
+     *   dotKind — 'online'|'offline'|'local'|'unknown' (цвет точки в header'е).
+     *   projects — массив ProjectDto (с .id / .name) этого origin'а.
+     *   sessions — массив SessionDto этого origin'а.
+     *   opts.isRemote — true если это remote origin (используется для подписи "loading…").
+     *   opts.isOffline — true если remote-сервер сейчас offline. Секция всё равно
+     *                    рендерится (видна в All-view), но с классом 'origin-offline'
+     *                    и явным бейджем "offline" вместо счётчика. Sessions не рендерим.
+     *   opts.remoteLoading — true если сессии для этого remote ещё не загружены.
+     */
+    function renderOriginSection(originKey, label, dotKind, projects, sessions, opts) {
+        opts = opts || {};
+        const collapsed = isOriginCollapsed(originKey);
+        const isOffline = !!opts.isOffline;
+
+        const header = document.createElement('li');
+        header.className = 'origin-group-header';
+        if (isOffline) header.classList.add('origin-offline');
+        header.dataset.origin = originKey;
+
+        const caret = document.createElement('span');
+        caret.className = 'origin-caret';
+        caret.textContent = collapsed ? '▸' : '▾';
+        header.appendChild(caret);
+
+        const dot = document.createElement('span');
+        dot.className = 'origin-dot ' + (dotKind || 'unknown');
+        header.appendChild(dot);
+
+        const lbl = document.createElement('span');
+        lbl.className = 'origin-label';
+        lbl.textContent = label;
+        header.appendChild(lbl);
+
+        // Phase 6 — для offline-серверов в All-view показываем явный badge
+        // "offline" вместо счётчика сессий (он всё равно был бы 0 / устаревший).
+        if (isOffline) {
+            const badge = document.createElement('span');
+            badge.className = 'origin-badge origin-badge-offline';
+            badge.textContent = 'offline';
+            header.appendChild(badge);
+        } else {
+            const meta = document.createElement('span');
+            meta.className = 'origin-meta';
+            meta.textContent = `${sessions.length} sess`;
+            header.appendChild(meta);
+        }
+
+        header.addEventListener('click', () => {
+            toggleOriginCollapsed(originKey);
+            renderSidebar();
+        });
+        $sidebar.appendChild(header);
+
+        if (collapsed) return;
+
+        // Phase 6 — offline-секция: вместо списка сессий показываем
+        // disabled-плейсхолдер. Это явный сигнал пользователю, что данные
+        // недоступны (а не "0 сессий").
+        if (isOffline) {
+            const li = document.createElement('li');
+            li.className = 'empty empty-offline';
+            li.textContent = 'Сервер недоступен';
+            $sidebar.appendChild(li);
+            return;
+        }
+
+        if (opts.remoteLoading && sessions.length === 0) {
+            const li = document.createElement('li');
+            li.className = 'empty';
+            li.textContent = 'Loading…';
+            $sidebar.appendChild(li);
+            return;
+        }
+        if (sessions.length === 0) {
+            const li = document.createElement('li');
+            li.className = 'empty';
+            li.textContent = 'Нет активных сессий';
+            $sidebar.appendChild(li);
+            return;
+        }
+
+        // Phase 6 — внутри одного origin применяем такую же группировку, как
+        // legacy renderSidebar при projectFilter == '__all__':
+        // projects (в порядке state.projects/projectsForOrigin) → авто-группы → orphan.
+        //
+        // Двухуровневая фильтрация: если state.projectFilter !== '__all__' (выбран
+        // конкретный проект), и этот project_id присутствует в данном origin'е —
+        // показываем только сессии этого проекта, БЕЗ project-sub-header'а (как
+        // legacy в single-project режиме). Если проекта в origin'е нет — секция
+        // показывается пустой (но header origin'а остаётся видимым).
+        const ORPHAN_KEY = '__orphan__';
+        const byProject = groupSessionsByProject(sessions, ORPHAN_KEY);
+
+        const pf = state.projectFilter;
+        if (pf && pf !== '__all__') {
+            const arr = byProject.get(pf) || [];
+            if (arr.length === 0) {
+                const li = document.createElement('li');
+                li.className = 'empty';
+                li.textContent = 'Нет сессий в этом проекте';
+                $sidebar.appendChild(li);
+                return;
+            }
+            for (const sess of arr) {
+                const li = buildSessionItem(sess);
+                li.classList.add('in-origin');
+                $sidebar.appendChild(li);
+            }
+            return;
+        }
+
+        // Режим '__all__' внутри origin'а: project-headers + auto-groups + orphan.
+        const renderedKeys = new Set();
+        for (const p of projects) {
+            const arr = byProject.get(p.id);
+            if (!arr || arr.length === 0) continue;
+            const ph = document.createElement('li');
+            ph.className = 'project-sub-header';
+            ph.textContent = p.name;
+            $sidebar.appendChild(ph);
+            for (const sess of arr) {
+                const li = buildSessionItem(sess);
+                li.classList.add('in-origin');
+                $sidebar.appendChild(li);
+            }
+            renderedKeys.add(p.id);
+        }
+        // Авто-группы: project_id, которого нет в projects.
+        const autoKeys = [];
+        for (const key of byProject.keys()) {
+            if (key === ORPHAN_KEY) continue;
+            if (renderedKeys.has(key)) continue;
+            autoKeys.push(key);
+        }
+        autoKeys.sort();
+        for (const key of autoKeys) {
+            const arr = byProject.get(key);
+            const ph = document.createElement('li');
+            ph.className = 'project-sub-header';
+            ph.textContent = arr[0].project_name || key;
+            $sidebar.appendChild(ph);
+            for (const sess of arr) {
+                const li = buildSessionItem(sess);
+                li.classList.add('in-origin');
+                $sidebar.appendChild(li);
+            }
+        }
+        const orphans = byProject.get(ORPHAN_KEY);
+        if (orphans && orphans.length > 0) {
+            const ph = document.createElement('li');
+            ph.className = 'project-sub-header';
+            ph.textContent = 'Orphan';
+            $sidebar.appendChild(ph);
+            for (const sess of orphans) {
+                const li = buildSessionItem(sess);
+                li.classList.add('in-origin');
+                $sidebar.appendChild(li);
+            }
+        }
+    }
+
+    /**
+     * Phase 6 — вспомогательная функция, выделенная из renderOriginSection
+     * и переиспользуемая регресс-тестами. Группирует массив сессий по
+     * project_id (orphan = null/undefined → ORPHAN_KEY). Внутри каждой
+     * группы сортирует по name.localeCompare(). Возвращает Map<key, sessions[]>.
+     *
+     * Контракт стабильный, используется тестами cca8.2 для проверки
+     * структуры {project: [sessions]} внутри origin'а.
+     */
+    function groupSessionsByProject(sessions, orphanKey) {
+        const ORPHAN_KEY = orphanKey || '__orphan__';
+        const byProject = new Map();
+        for (const sess of sessions) {
+            const key = sess.project_id == null ? ORPHAN_KEY : sess.project_id;
+            if (!byProject.has(key)) byProject.set(key, []);
+            byProject.get(key).push(sess);
+        }
+        for (const arr of byProject.values()) {
+            arr.sort((a, b) => a.name.localeCompare(b.name));
+        }
+        return byProject;
+    }
+
+    /**
+     * Phase 6 — агрегатор для All-view: собирает структуру
+     *   { 'local': { projects, sessions, online }, [sid]: { projects, sessions, online }, ... }
+     *
+     * Источник: state.projects/state.sessions (local) + state.remoteProjects/
+     * state.remoteSessions (remotes). Не делает сетевых запросов — работает
+     * с уже загруженными кешами.
+     *
+     * Используется регресс-тестами (cca8.2) для верификации структуры
+     * группировки origin → project → sessions в режиме activeOrigin='all'.
+     *
+     * Возвращает Map<originKey, { projects: ProjectDto[], sessions: SessionDto[],
+     * online: 'online'|'offline'|'unknown'|'local', label: string }>.
+     */
+    function aggregateAllOrigins() {
+        const out = new Map();
+        out.set('local', {
+            label: 'Local',
+            online: 'local',
+            projects: Array.isArray(state.projects) ? state.projects.slice() : [],
+            sessions: Array.isArray(state.sessions) ? state.sessions.slice() : [],
+        });
+        for (const srv of (state.remoteServers || [])) {
+            const sid = srv.id;
+            out.set(sid, {
+                label: srv.label || sid,
+                online: state.remoteOnline.get(sid) || 'unknown',
+                projects: state.remoteProjects.get(sid) || [],
+                sessions: state.remoteSessions.get(sid) || [],
+            });
+        }
+        return out;
+    }
+
+    // Phase 6 — экспортируем хелперы в window.__forge для регресс-тестов
+    // (cca8.2). В обычной работе они не используются глобально.
+    if (typeof window !== 'undefined') {
+        window.__forge = window.__forge || {};
+        window.__forge.groupSessionsByProject = groupSessionsByProject;
+        window.__forge.aggregateAllOrigins = aggregateAllOrigins;
+    }
+
     function startPolling() {
         if (state.pollTimer) clearInterval(state.pollTimer);
         state.pollTimer = setInterval(fetchSessions, 3000);
@@ -542,12 +1047,12 @@
         }
     }
 
-    async function killSession(name) {
+    async function killSession(name, origin) {
         if (!window.confirm(`Убить сессию "${name}"?`)) return;
         try {
-            const resp = await fetch('/api/sessions/' + encodeURIComponent(name), {
+            const resp = await apiFetch('/api/sessions/' + encodeURIComponent(name), {
                 method: 'DELETE',
-            });
+            }, origin);
             if (!resp.ok && resp.status !== 204) {
                 const text = await resp.text();
                 window.alert('Не удалось убить сессию: ' + (text || resp.status));
@@ -565,9 +1070,13 @@
         }
     }
 
-    async function openSession(name) {
+    async function openSession(name, origin) {
         if (!name) return;
-        if (state.currentSession === name && state.ws && state.ws.readyState === WebSocket.OPEN) {
+        // Phase 5: origin (если передан) перевешивает дефолтный поиск в
+        // state.sessions. Это позволяет открыть remote-сессию по клику в
+        // sidebar — там есть полный DTO с origin.
+        const sessionKey = name; // legacy: ключи currentSession без origin.
+        if (state.currentSession === sessionKey && state.ws && state.ws.readyState === WebSocket.OPEN) {
             return;
         }
 
@@ -575,19 +1084,24 @@
         // вида '__path__:<cwd>') — переключаем active project на бэке, чтобы
         // Tasks-таб подхватил .beads/ нужного каталога. Orphan (project_id=null)
         // пропускаем — переключать не на что.
+        // Для remote-сессий backend-active-project переключать не нужно — там
+        // активный проект живёт на стороне remote'а.
         const sess = state.sessions.find((s) => s.name === name);
-        const targetProjectId = sess && sess.project_id ? sess.project_id : null;
-        if (targetProjectId && targetProjectId !== state.activeProjectId) {
-            await switchActiveProject(targetProjectId);
-            connectWs(name);
-            return;
+        const sessOrigin = origin || dtoOrigin(sess);
+        if (sessOrigin === 'local') {
+            const targetProjectId = sess && sess.project_id ? sess.project_id : null;
+            if (targetProjectId && targetProjectId !== state.activeProjectId) {
+                await switchActiveProject(targetProjectId);
+                connectWs(name, 'local');
+                return;
+            }
         }
 
         if (state.ws && state.ws.readyState === WebSocket.OPEN) {
             switchSession(name);
             return;
         }
-        connectWs(name);
+        connectWs(name, sessOrigin);
     }
 
     function switchSession(name) {
@@ -638,7 +1152,7 @@
         }
     }
 
-    function connectWs(sessionName) {
+    function connectWs(sessionName, origin) {
         // На всякий случай закрываем старый.
         disconnectWs();
 
@@ -653,12 +1167,19 @@
         const rows = state.term.rows || 24;
 
         const proto = (location.protocol === 'https:') ? 'wss:' : 'ws:';
+        // Phase 5: origin !== 'local' → добавляем &server=<id>, бэкенд прокинет
+        // WS на remote через remote_proxy.
+        const serverParam = (isRemoteMode() && origin && origin !== 'local')
+            ? `&server=${encodeURIComponent(origin)}`
+            : '';
         const url = `${proto}//${location.host}/ws/attach`
             + `?session=${encodeURIComponent(sessionName)}`
-            + `&cols=${cols}&rows=${rows}`;
+            + `&cols=${cols}&rows=${rows}`
+            + serverParam;
 
         setStatus('connecting', `connecting → ${sessionName}…`);
         state.currentSession = sessionName;
+        state.attachWsOrigin = origin || null;
         renderSidebar();
 
         let ws;
@@ -667,6 +1188,8 @@
         } catch (e) {
             console.error('WebSocket ctor failed', e);
             setStatus('error', 'ws ctor error');
+            // Phase 7 — расценим как обрыв и попробуем backoff-reconnect.
+            scheduleAttachWsReconnect();
             return;
         }
         ws.binaryType = 'arraybuffer';
@@ -676,6 +1199,8 @@
         ws.onopen = () => {
             setStatus('connected', `attached → ${sessionName}`);
             showPlaceholder(false);
+            // Phase 7 — успешный коннект сбрасывает backoff.
+            state.attachWsBackoffStep = 0;
             if (state.term) {
                 state.term.reset();
                 state.term.focus();
@@ -708,11 +1233,50 @@
 
         ws.onclose = (ev) => {
             console.info('ws closed', ev.code, ev.reason);
-            setStatus('disconnected', 'disconnected');
             state.ws = null;
-            // Не сбрасываем currentSession сразу — пользователь увидит, что
-            // сессия отвалилась, и может переподключиться кликом.
+            // Phase 7 — если закрытие НЕ инициировано нами, пробуем reconnect
+            // с экспоненциальным backoff, сохраняя currentSession и origin.
+            // attachWsClosedByUs выставляется в disconnectWs() (при switch,
+            // beforeunload, etc.). При успехе onopen → backoff сбрасывается.
+            if (state.attachWsClosedByUs) {
+                state.attachWsClosedByUs = false;
+                setStatus('disconnected', 'disconnected');
+                return;
+            }
+            setStatus('reconnecting', 'reconnecting…');
+            scheduleAttachWsReconnect();
         };
+    }
+
+    /**
+     * Phase 7 — backoff-серия для reconnect /ws/attach (мс, без jitter; jitter
+     * добавляется в scheduleAttachWsReconnect). Аналог TASKS_WS_BACKOFFS_MS,
+     * но длиннее, потому что attach — самый «дорогой» reconnect (terminal
+     * resync через tmux refresh-client).
+     */
+    const ATTACH_WS_BACKOFFS_MS = [2000, 4000, 8000, 16000, 32000, 60000];
+    const ATTACH_WS_JITTER_MAX_MS = 1000;
+
+    function scheduleAttachWsReconnect() {
+        if (state.attachWsClosedByUs) return;
+        if (state.attachWsReconnectTimer) return;
+        const session = state.currentSession;
+        if (!session) return;
+        const origin = state.attachWsOrigin || null;
+        const idx = Math.min(state.attachWsBackoffStep || 0, ATTACH_WS_BACKOFFS_MS.length - 1);
+        const base = ATTACH_WS_BACKOFFS_MS[idx];
+        const jitter = Math.floor(Math.random() * ATTACH_WS_JITTER_MAX_MS);
+        const delay = base + jitter;
+        state.attachWsBackoffStep = Math.min(
+            (state.attachWsBackoffStep || 0) + 1,
+            ATTACH_WS_BACKOFFS_MS.length - 1,
+        );
+        state.attachWsReconnectTimer = setTimeout(() => {
+            state.attachWsReconnectTimer = null;
+            // Не реконнектим, если currentSession поменялся / снёсся.
+            if (!state.currentSession) return;
+            connectWs(state.currentSession, origin);
+        }, delay);
     }
 
     function handleControlFromServer(msg) {
@@ -724,6 +1288,13 @@
     }
 
     function disconnectWs() {
+        // Phase 7 — пометим, что закрытие инициировано нами; onclose не
+        // запланирует reconnect.
+        state.attachWsClosedByUs = true;
+        if (state.attachWsReconnectTimer) {
+            clearTimeout(state.attachWsReconnectTimer);
+            state.attachWsReconnectTimer = null;
+        }
         if (state.ws) {
             try {
                 state.ws.onmessage = null;
@@ -1054,7 +1625,16 @@
         const cols = gt.term.cols || 80;
         const rows = gt.term.rows || 24;
         const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-        const url = `${proto}://${location.host}/ws/lazygit?cwd=${encodeURIComponent(cwd)}&cols=${cols}&rows=${rows}`;
+        // Phase 5: для remote origin (state.activeOrigin не 'local'/'all') —
+        // прокидываем &server=<id>, бэкенд прокинет WS на remote через
+        // remote_proxy. В legacy / 'local' / 'all' — URL без параметра.
+        const lgServer = (isRemoteMode()
+            && state.activeOrigin
+            && state.activeOrigin !== 'local'
+            && state.activeOrigin !== 'all')
+            ? `&server=${encodeURIComponent(state.activeOrigin)}`
+            : '';
+        const url = `${proto}://${location.host}/ws/lazygit?cwd=${encodeURIComponent(cwd)}&cols=${cols}&rows=${rows}${lgServer}`;
 
         let ws;
         try {
@@ -1380,7 +1960,21 @@
 
         const proto = location.protocol === 'https:' ? 'wss' : 'ws';
         const pid = state.activeProjectId || '';
-        const qs = pid ? `?project_id=${encodeURIComponent(pid)}` : '';
+        // Phase 5: при выборе remote origin'а через origin-табы — подписываемся
+        // на /ws/tasks remote-сервера (бэкенд прокинет WS через remote_proxy).
+        const server = (isRemoteMode()
+            && state.activeOrigin
+            && state.activeOrigin !== 'local'
+            && state.activeOrigin !== 'all')
+            ? state.activeOrigin
+            : null;
+        let qs = '';
+        if (pid && !server) {
+            qs = `?project_id=${encodeURIComponent(pid)}`;
+        } else if (server) {
+            // Для remote — pid живёт на той стороне, мы его не знаем.
+            qs = `?server=${encodeURIComponent(server)}`;
+        }
         const url = `${proto}://${location.host}/ws/tasks${qs}`;
         let ws;
         try {
@@ -1636,7 +2230,20 @@
 
         const pid = currentTodosProjectId();
         const proto = (location.protocol === 'https:') ? 'wss' : 'ws';
-        const qs = pid ? ('?project_id=' + encodeURIComponent(pid)) : '';
+        // Phase 5: при выборе remote origin'а — подписываемся на /ws/todos
+        // remote-сервера через прокси-бэкенд.
+        const server = (isRemoteMode()
+            && state.activeOrigin
+            && state.activeOrigin !== 'local'
+            && state.activeOrigin !== 'all')
+            ? state.activeOrigin
+            : null;
+        let qs = '';
+        if (pid && !server) {
+            qs = '?project_id=' + encodeURIComponent(pid);
+        } else if (server) {
+            qs = '?server=' + encodeURIComponent(server);
+        }
         const url = `${proto}://${location.host}/ws/todos${qs}`;
 
         let ws;
@@ -2142,11 +2749,13 @@
         }
 
         try {
-            const r = await fetch('/api/todos/' + encodeURIComponent(id) + '/promote', {
+            // Phase 5: для remote-todo (origin !== 'local') прокидываем ?server=.
+            const origin = dtoOrigin(prev) || 'local';
+            const r = await apiFetch('/api/todos/' + encodeURIComponent(id) + '/promote', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ session }),
-            });
+            }, origin);
             if (!r.ok) {
                 const text = await r.text();
                 window.alert('Promote не удался: ' + (text || r.status));
@@ -2484,18 +3093,58 @@
      *   - notify_session       — override tmux-сессии (пусто = текущая сессия проекта).
      * Save → PATCH /api/projects/:id/settings → optimistic-обновление state.projects.
      */
-    function openSettingsModal() {
+    function openSettingsModal(initialTab) {
         const overlay = buildModalOverlay();
         const card = document.createElement('div');
         card.className = 'modal-card settings-modal';
-        // Структура модала: tab-bar (Notifications | Themes) → активная панель.
+        // Структура модала: tab-bar (Notifications | Themes [| Remote servers]) → активная панель.
         // По умолчанию активна Notifications (исторически — это исходный контент
         // settings-модала с проектами + per-project формой нотификаций).
         // Themes — добавлена в Phase 4: пресеты + custom (см. renderThemesPanel).
+        // Phase 5: вкладка Remote servers видна только при remote_mode=true.
+        const remoteTabBtn = isRemoteMode()
+            ? '<button type="button" class="modal-tab-btn" data-tab="remotes" role="tab">Remote servers</button>'
+            : '';
+        const remotePanel = isRemoteMode()
+            ? `<div class="modal-tab-panel" id="ps-panel-remotes" data-panel="remotes" hidden>
+                <h2>Remote servers</h2>
+                <div id="ps-remotes-content">
+                    <table class="remotes-table" id="ps-remotes-table">
+                        <thead><tr><th>Label</th><th>URL</th><th>Status</th><th></th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                    <div class="remotes-add">
+                        <h3>Add new server</h3>
+                        <label>Label<br><input type="text" id="rs-label" placeholder="Office laptop"></label>
+                        <label>URL<br><input type="text" id="rs-url" placeholder="http://192.168.1.5:7331"></label>
+                        <label>Token<br>
+                            <span class="rs-token-wrap">
+                                <input type="password" id="rs-token" placeholder="Paste token">
+                                <button type="button" id="rs-token-toggle" class="rs-token-toggle" title="Show/hide">👁</button>
+                            </span>
+                        </label>
+                        <div class="rs-actions">
+                            <button type="button" id="rs-test">Test connection</button>
+                            <button type="button" id="rs-save" class="primary" disabled>Save</button>
+                            <span class="rs-test-status" id="rs-test-status"></span>
+                        </div>
+                        <details class="rs-help">
+                            <summary>How to pair?</summary>
+                            <div class="rs-help-body">
+                                На удалённой машине запустите:
+                                <pre><code>devforge pair --generate</code></pre>
+                                Скопируйте URL и token из вывода и вставьте сюда.
+                            </div>
+                        </details>
+                    </div>
+                </div>
+            </div>`
+            : '';
         card.innerHTML = `
             <div class="modal-tabs" role="tablist">
                 <button type="button" class="modal-tab-btn active" data-tab="notifications" role="tab">Notifications</button>
                 <button type="button" class="modal-tab-btn" data-tab="themes" role="tab">Themes</button>
+                ${remoteTabBtn}
             </div>
             <div class="modal-tab-panel" id="ps-panel-notifications" data-panel="notifications">
                 <h2>Projects</h2>
@@ -2507,6 +3156,7 @@
                     <div class="themes-loading">Loading themes…</div>
                 </div>
             </div>
+            ${remotePanel}
             <div class="modal-actions">
                 <button type="button" id="ps-close" class="primary">Close</button>
             </div>
@@ -2538,10 +3188,278 @@
             if (name === 'themes' && !themesState.loaded) {
                 loadThemesIntoPanel($themesContent, themesState);
             }
+            if (name === 'remotes') {
+                renderRemotesTable();
+            }
         };
         $tabBtns.forEach((btn) => {
             btn.addEventListener('click', () => showTab(btn.dataset.tab));
         });
+
+        // Phase 5 — Remote servers tab: таблица + форма Add.
+        const $remotesTbody = card.querySelector('#ps-remotes-table tbody');
+        const $rsLabel = card.querySelector('#rs-label');
+        const $rsUrl = card.querySelector('#rs-url');
+        const $rsToken = card.querySelector('#rs-token');
+        const $rsTokenToggle = card.querySelector('#rs-token-toggle');
+        const $rsTest = card.querySelector('#rs-test');
+        const $rsSave = card.querySelector('#rs-save');
+        const $rsTestStatus = card.querySelector('#rs-test-status');
+
+        if ($rsTokenToggle && $rsToken) {
+            $rsTokenToggle.addEventListener('click', () => {
+                $rsToken.type = $rsToken.type === 'password' ? 'text' : 'password';
+            });
+        }
+
+        // Pre-flight через /healthz remote-сервера. Используем dry-run путь:
+        // POSTить ничего не будем; вместо этого временно отправим запрос
+        // прямо на remote URL через no-cors? — нет, это не сработает с CORS.
+        // Правильный путь: POST сразу на /api/remote-servers (бэкенд сохранит
+        // запись и можно будет вызвать /api/remote-servers/:id/healthz).
+        // Здесь идём проще: при Test просто включаем кнопку Save (полагаемся
+        // на бэкенд: при сохранении неверного token health-poll сразу пометит
+        // offline). Однако делаем минимальную проверку URL — что он http(s).
+        const validate = () => {
+            const label = ($rsLabel.value || '').trim();
+            const url = ($rsUrl.value || '').trim();
+            const token = ($rsToken.value || '').trim();
+            return label && (url.startsWith('http://') || url.startsWith('https://')) && token;
+        };
+        const refreshSaveBtn = () => {
+            $rsSave.disabled = !validate();
+        };
+        [$rsLabel, $rsUrl, $rsToken].forEach((el) => {
+            if (el) el.addEventListener('input', () => {
+                $rsTestStatus.textContent = '';
+                refreshSaveBtn();
+            });
+        });
+
+        if ($rsTest) {
+            $rsTest.addEventListener('click', async () => {
+                if (!validate()) {
+                    $rsTestStatus.textContent = 'Fill label, URL (http/https) and token';
+                    $rsTestStatus.className = 'rs-test-status error';
+                    return;
+                }
+                $rsTestStatus.textContent = 'Pinging…';
+                $rsTestStatus.className = 'rs-test-status pending';
+                // Pre-flight через временный POST + delete? Чтобы не плодить
+                // мусор, используем такой паттерн: POST создаёт запись (валидация
+                // на бэке: label/url/token непустые, url начинается с http(s)),
+                // и сразу делаем GET /api/remote-servers/:id/healthz. Если
+                // online=false — оставляем запись (пользователь может Save вручную
+                // или Delete).
+                try {
+                    const r = await fetch('/api/remote-servers', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            label: $rsLabel.value.trim(),
+                            url: $rsUrl.value.trim(),
+                            token: $rsToken.value.trim(),
+                        }),
+                    });
+                    if (!r.ok) {
+                        const t = await r.text();
+                        $rsTestStatus.textContent = 'Create failed: ' + (t || r.status);
+                        $rsTestStatus.className = 'rs-test-status error';
+                        return;
+                    }
+                    const created = await r.json();
+                    // Ping healthz.
+                    const h = await fetch(
+                        '/api/remote-servers/' + encodeURIComponent(created.id) + '/healthz',
+                        { headers: { 'Accept': 'application/json' } },
+                    );
+                    let online = false;
+                    let detail = '';
+                    if (h.ok) {
+                        const data = await h.json();
+                        online = !!data.online;
+                        if (!online && data.error) detail = ' (' + data.error + ')';
+                    }
+                    if (online) {
+                        $rsTestStatus.textContent = 'OK — saved as `' + created.id + '`';
+                        $rsTestStatus.className = 'rs-test-status ok';
+                        // Очистка формы; запись уже сохранена → перерисуем
+                        // таблицу и обновим state.remoteServers.
+                        $rsLabel.value = '';
+                        $rsUrl.value = '';
+                        $rsToken.value = '';
+                        refreshSaveBtn();
+                        await fetchRemoteServers();
+                        renderRemotesTable();
+                        renderSidebar();
+                    } else {
+                        $rsTestStatus.textContent = 'Offline' + detail + '. Запись сохранена — можно проверить позже.';
+                        $rsTestStatus.className = 'rs-test-status warn';
+                        await fetchRemoteServers();
+                        renderRemotesTable();
+                    }
+                } catch (e) {
+                    $rsTestStatus.textContent = 'Network error: ' + e.message;
+                    $rsTestStatus.className = 'rs-test-status error';
+                }
+            });
+        }
+
+        if ($rsSave) {
+            // Save без preflight — POST и обновить state.remoteServers.
+            $rsSave.addEventListener('click', async () => {
+                if (!validate()) return;
+                try {
+                    const r = await fetch('/api/remote-servers', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            label: $rsLabel.value.trim(),
+                            url: $rsUrl.value.trim(),
+                            token: $rsToken.value.trim(),
+                        }),
+                    });
+                    if (!r.ok) {
+                        const t = await r.text();
+                        $rsTestStatus.textContent = 'Save failed: ' + (t || r.status);
+                        $rsTestStatus.className = 'rs-test-status error';
+                        return;
+                    }
+                    $rsLabel.value = '';
+                    $rsUrl.value = '';
+                    $rsToken.value = '';
+                    $rsTestStatus.textContent = '';
+                    refreshSaveBtn();
+                    await fetchRemoteServers();
+                    renderRemotesTable();
+                    renderSidebar();
+                } catch (e) {
+                    $rsTestStatus.textContent = 'Network error: ' + e.message;
+                    $rsTestStatus.className = 'rs-test-status error';
+                }
+            });
+        }
+
+        function renderRemotesTable() {
+            if (!$remotesTbody) return;
+            $remotesTbody.innerHTML = '';
+            if (state.remoteServers.length === 0) {
+                const tr = document.createElement('tr');
+                const td = document.createElement('td');
+                td.colSpan = 4;
+                td.className = 'remotes-empty';
+                td.textContent = 'No remote servers configured yet.';
+                tr.appendChild(td);
+                $remotesTbody.appendChild(tr);
+                return;
+            }
+            for (const srv of state.remoteServers) {
+                const tr = document.createElement('tr');
+                const tdLabel = document.createElement('td');
+                tdLabel.textContent = srv.label || srv.id;
+                tr.appendChild(tdLabel);
+
+                const tdUrl = document.createElement('td');
+                tdUrl.className = 'remotes-url';
+                tdUrl.textContent = srv.url;
+                tr.appendChild(tdUrl);
+
+                const tdStatus = document.createElement('td');
+                const status = state.remoteOnline.get(srv.id) || 'unknown';
+                const dot = document.createElement('span');
+                dot.className = 'origin-dot ' + status;
+                tdStatus.appendChild(dot);
+                const stxt = document.createElement('span');
+                stxt.textContent = ' ' + status;
+                tdStatus.appendChild(stxt);
+                tr.appendChild(tdStatus);
+
+                const tdActions = document.createElement('td');
+                tdActions.className = 'remotes-actions';
+                const editBtn = document.createElement('button');
+                editBtn.type = 'button';
+                editBtn.className = 'btn-edit-remote';
+                editBtn.textContent = 'Edit';
+                editBtn.addEventListener('click', () => openEditRemoteRow(tr, srv));
+                tdActions.appendChild(editBtn);
+
+                const delBtn = document.createElement('button');
+                delBtn.type = 'button';
+                delBtn.className = 'btn-remove';
+                delBtn.textContent = 'Delete';
+                delBtn.addEventListener('click', async () => {
+                    if (!window.confirm('Delete remote server `' + (srv.label || srv.id) + '`?')) return;
+                    try {
+                        const r = await fetch(
+                            '/api/remote-servers/' + encodeURIComponent(srv.id),
+                            { method: 'DELETE' },
+                        );
+                        if (!r.ok && r.status !== 204) {
+                            const t = await r.text();
+                            window.alert('Delete failed: ' + (t || r.status));
+                            return;
+                        }
+                        // Reset активный origin если удалили его.
+                        if (state.activeOrigin === srv.id) {
+                            state.activeOrigin = 'all';
+                            saveActiveOriginToStorage();
+                        }
+                        await fetchRemoteServers();
+                        state.remoteProjects.delete(srv.id);
+                        state.remoteSessions.delete(srv.id);
+                        renderRemotesTable();
+                        renderSidebar();
+                    } catch (e) {
+                        window.alert('Network error: ' + e.message);
+                    }
+                });
+                tdActions.appendChild(delBtn);
+
+                tr.appendChild(tdActions);
+                $remotesTbody.appendChild(tr);
+            }
+        }
+
+        function openEditRemoteRow(tr, srv) {
+            // Заменяем строку формой inline. Token — опциональный; если оставить
+            // пустым, бэкенд оставит старый token (см. RemoteServerStore::update).
+            const formTr = document.createElement('tr');
+            formTr.className = 'remotes-edit-row';
+            const td = document.createElement('td');
+            td.colSpan = 4;
+            td.innerHTML = `
+                <label>Label <input type="text" value="${escapeHtml(srv.label || '')}"></label>
+                <label>New token (optional) <input type="password" placeholder="leave empty to keep"></label>
+                <button type="button" class="primary rs-edit-save">Save</button>
+                <button type="button" class="rs-edit-cancel">Cancel</button>
+            `;
+            formTr.appendChild(td);
+            tr.replaceWith(formTr);
+            const inputs = formTr.querySelectorAll('input');
+            formTr.querySelector('.rs-edit-cancel').addEventListener('click', renderRemotesTable);
+            formTr.querySelector('.rs-edit-save').addEventListener('click', async () => {
+                const body = { label: inputs[0].value.trim() };
+                const newTok = inputs[1].value.trim();
+                if (newTok) body.token = newTok;
+                try {
+                    const r = await fetch('/api/remote-servers/' + encodeURIComponent(srv.id), {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body),
+                    });
+                    if (!r.ok) {
+                        const t = await r.text();
+                        window.alert('Update failed: ' + (t || r.status));
+                        return;
+                    }
+                    await fetchRemoteServers();
+                    renderRemotesTable();
+                    renderSidebar();
+                } catch (e) {
+                    window.alert('Network error: ' + e.message);
+                }
+            });
+        }
 
         // Локальный набор раскрытых секций Notifications (по project.id), чтобы
         // re-render списка не схлопывал открытые формы.
@@ -2625,11 +3543,31 @@
         };
         renderList();
 
+        // Phase 5 — initialTab переключает на нужный таб сразу при открытии
+        // (например, кликом по '+' в origin-табах). Допустимые значения:
+        // 'notifications' (default), 'themes', 'remotes' (только в remote-mode).
+        if (initialTab && (initialTab === 'themes' || (initialTab === 'remotes' && isRemoteMode()))) {
+            showTab(initialTab);
+        }
+
         const close = () => overlay.remove();
         card.querySelector('#ps-close').addEventListener('click', close);
         overlay.addEventListener('click', (ev) => {
             if (ev.target === overlay) close();
         });
+    }
+
+    /**
+     * Phase 5 — Безопасное экранирование строки для вставки в innerHTML
+     * (используется в openEditRemoteRow для подстановки label в input value).
+     */
+    function escapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     // =========================================================================
@@ -3936,11 +4874,13 @@
         const prev = applyOptimisticPatch(id, optimisticPatch);
 
         try {
-            const r = await fetch('/api/tasks/' + encodeURIComponent(id), {
+            // Phase 5: проксируем PATCH на remote, если задача origin !== 'local'.
+            const origin = taskOriginById(id);
+            const r = await apiFetch('/api/tasks/' + encodeURIComponent(id), {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
-            });
+            }, origin);
             if (!r.ok) {
                 const text = await r.text();
                 window.alert('Update не удался: ' + (text || r.status));
@@ -3967,15 +4907,28 @@
     }
 
     /**
-     * DELETE /api/tasks/:id?reason=... Optimistic переводит карточку в colorum
+     * Phase 5 — Возвращает origin для задачи по id (ищем в state.tasksData.issues).
+     * Если задачи нет в текущем snapshot'е — fallback 'local'.
+     */
+    function taskOriginById(id) {
+        if (!state.tasksData || !Array.isArray(state.tasksData.issues)) return 'local';
+        const issue = state.tasksData.issues.find((it) => it && it.id === id);
+        return dtoOrigin(issue);
+    }
+
+    /**
+     * DELETE /api/tasks/:id?reason=... Optimistic переводит карточку в
      * `closed`, при ошибке возвращает прежний status.
+     *
+     * Phase 5: для remote-задач (issue.origin !== 'local') добавляем ?server=.
      */
     async function closeTask(id, reason) {
         const prev = applyOptimisticPatch(id, { status: 'closed' });
         try {
-            const url = '/api/tasks/' + encodeURIComponent(id)
+            const origin = taskOriginById(id);
+            let url = '/api/tasks/' + encodeURIComponent(id)
                 + (reason ? ('?reason=' + encodeURIComponent(reason)) : '');
-            const r = await fetch(url, { method: 'DELETE' });
+            const r = await apiFetch(url, { method: 'DELETE' }, origin);
             if (!r.ok && r.status !== 204) {
                 const text = await r.text();
                 window.alert('Close не удался: ' + (text || r.status));
@@ -3992,13 +4945,16 @@
 
     /**
      * POST /api/tasks/:id/reopen. Переводит карточку в `open`.
+     *
+     * Phase 5: для remote-задач (issue.origin !== 'local') добавляем ?server=.
      */
     async function reopenTask(id) {
         const prev = applyOptimisticPatch(id, { status: 'open' });
         try {
-            const r = await fetch('/api/tasks/' + encodeURIComponent(id) + '/reopen', {
+            const origin = taskOriginById(id);
+            const r = await apiFetch('/api/tasks/' + encodeURIComponent(id) + '/reopen', {
                 method: 'POST',
-            });
+            }, origin);
             if (!r.ok && r.status !== 204) {
                 const text = await r.text();
                 window.alert('Reopen не удался: ' + (text || r.status));
@@ -4339,11 +5295,13 @@
             }
             close();
             try {
-                const r = await fetch('/api/todos/' + encodeURIComponent(todo.id), {
+                // Phase 5: для remote-todo (origin !== 'local') проксируем.
+                const origin = dtoOrigin(todo);
+                const r = await apiFetch('/api/todos/' + encodeURIComponent(todo.id), {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(patch),
-                });
+                }, origin);
                 if (!r.ok) {
                     const text = await r.text();
                     window.alert('Update не удался: ' + (text || r.status));
@@ -4360,9 +5318,11 @@
             if (!window.confirm('Удалить TODO?')) return;
             close();
             try {
-                const r = await fetch('/api/todos/' + encodeURIComponent(todo.id), {
+                // Phase 5: для remote-todo (origin !== 'local') проксируем.
+                const origin = dtoOrigin(todo);
+                const r = await apiFetch('/api/todos/' + encodeURIComponent(todo.id), {
                     method: 'DELETE',
-                });
+                }, origin);
                 if (!r.ok && r.status !== 204) {
                     const text = await r.text();
                     window.alert('Delete не удался: ' + (text || r.status));
@@ -4410,7 +5370,347 @@
         }
     }
 
+    /**
+     * Phase 5 — GET /healthz; пишет state.remoteMode и state.serverVersion.
+     *
+     * Контракт: эндпоинт доступен без Bearer-auth (см. auth::is_path_excluded
+     * на бэке) и отдаёт { status, remote_mode, version }. Если запрос упал —
+     * считаем remote_mode=false (legacy-friendly fallback), но всё равно
+     * выставляем healthzLoaded=true чтобы остальной bootstrap продолжился.
+     */
+    async function loadHealthz() {
+        try {
+            const r = await fetch('/healthz', { headers: { 'Accept': 'application/json' } });
+            if (!r.ok) {
+                console.warn('GET /healthz failed:', r.status);
+                state.remoteMode = false;
+                state.healthzLoaded = true;
+                return;
+            }
+            const data = await r.json();
+            state.remoteMode = !!data.remote_mode;
+            state.serverVersion = typeof data.version === 'string' ? data.version : null;
+            state.healthzLoaded = true;
+        } catch (e) {
+            console.warn('loadHealthz failed:', e);
+            state.remoteMode = false;
+            state.healthzLoaded = true;
+        }
+    }
+
+    /**
+     * Phase 5 — true если frontend должен рендерить новый UI (origin-табы,
+     * Settings → Remote servers tab, кнопка add-remote, и т.п.).
+     * Используется как guard в renderSidebar, openSettingsModal и API-helper'ах.
+     * При false поведение фронта побитово совпадает с legacy.
+     */
+    function isRemoteMode() {
+        return state.remoteMode === true;
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase 5 — Global id (origin::local-id) и origin-aware API-helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Глобальный id в remote-mode имеет формат `<origin>::<local-id>`, где
+     * `origin` — 'local' либо `<server_id>`. Local-id (без префикса) — это id,
+     * которым оперирует бэкенд target'а (локальный devforge или remote).
+     *
+     * В legacy-режиме id всегда «простой» (без префикса) и parseGlobalId
+     * возвращает { origin: 'local', id }.
+     *
+     * Возвращает { origin: string, id: string }.
+     */
+    function parseGlobalId(s) {
+        if (typeof s !== 'string' || !s) return { origin: 'local', id: '' };
+        const idx = s.indexOf('::');
+        if (idx < 0) return { origin: 'local', id: s };
+        return { origin: s.slice(0, idx), id: s.slice(idx + 2) };
+    }
+
+    /**
+     * Собирает глобальный id из origin + local. В remote-mode используем
+     * везде, где id уходит на сервер ИЛИ хранится в state (тогда отдельные
+     * helper'ы знают, как из него вырезать local-id обратно).
+     */
+    function formatGlobalId(origin, id) {
+        if (!origin || origin === 'local') return id;
+        return origin + '::' + id;
+    }
+
+    /**
+     * Origin DTO-объекта. Бэкенд проставляет поле `origin` в Session/Project/
+     * Task/Todo DTO начиная с Phase 3 (см. remote_proxy::enrich_with_origin).
+     * Fallback на 'local' если поле отсутствует.
+     */
+    function dtoOrigin(dto) {
+        if (!dto || typeof dto !== 'object') return 'local';
+        return typeof dto.origin === 'string' && dto.origin ? dto.origin : 'local';
+    }
+
+    /**
+     * Добавляет `?server=<origin>` к path если origin !== 'local'. Path может
+     * уже содержать query — корректно подклеит через `&`.
+     *
+     * Origin='local' либо falsy → возвращает path без изменений (это покрывает
+     * и legacy-режим, где origin всегда 'local').
+     */
+    function withServerParam(path, origin) {
+        if (!origin || origin === 'local') return path;
+        const sep = path.indexOf('?') >= 0 ? '&' : '?';
+        return path + sep + 'server=' + encodeURIComponent(origin);
+    }
+
+    /**
+     * Centralized fetch helper для остальных API-вызовов. Используется ТОЛЬКО
+     * там, где запрос может уходить на remote (sessions/projects/tasks/todos).
+     * Не трогает /healthz, /api/themes, /api/remote-servers (они только local).
+     *
+     * Origin определяется так:
+     *   1) Явный аргумент `origin` (если передан и !== 'local');
+     *   2) Иначе path остаётся как есть.
+     *
+     * В legacy-режиме (remoteMode=false) — игнорирует origin (всё локально).
+     */
+    function apiFetch(path, init, origin) {
+        if (isRemoteMode() && origin && origin !== 'local') {
+            return fetch(withServerParam(path, origin), init);
+        }
+        return fetch(path, init);
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase 5 — Remote servers registry + lazy-load remote projects/sessions
+    // -------------------------------------------------------------------------
+
+    /**
+     * Phase 5/7 — карта server_id → 'online'|'offline'|'unknown'. Обновляется
+     * `probeRemoteServer()` per-server с экспоненциальным backoff (см. ниже).
+     * До первого пинга — 'unknown' (UI рендерит серую точку). Используется в
+     * sidebar для индикатора online/offline у origin-секции и в
+     * Settings-таблице.
+     */
+    state.remoteOnline = new Map();
+
+    // Phase 7 — per-server exponential backoff (с jitter) для health-probe.
+    //
+    // Базовая серия задержек: 2s → 4s → 8s → 16s → 32s → 60s (cap). После
+    // успеха backoffStep сбрасывается; начинаем со второй точки (4s),
+    // чтобы UI не дёргался слишком часто на стабильных серверах.
+    //
+    // Состояние per-server хранится в state.remoteProbeState[serverId]:
+    //   { timer, step, lastResult: 'online'|'offline'|null }.
+    //
+    // Реализация: при каждом probe → schedule следующий probe через delay
+    // соответствующего step'а. Это «event-driven backoff»: при потере связи
+    // step растёт (medленнее retries), при восстановлении step=0 (опять 2s)
+    // и UI быстро вернётся в online.
+    const REMOTE_PROBE_BACKOFFS_MS = [2000, 4000, 8000, 16000, 32000, 60000];
+    const REMOTE_PROBE_STEADY_INDEX = 1; // 4s — интервал когда сервер online
+    const REMOTE_PROBE_JITTER_MAX_MS = 1000;
+    /** @type {Map<string, {timer: any, step: number, inFlight: boolean}>} */
+    const remoteProbeState = new Map();
+
+    /**
+     * GET /api/remote-servers → state.remoteServers. Затем стартует периодический
+     * health-poll (если ещё не запущен). Возвращает Promise, чтобы caller'ы могли
+     * дождаться загрузки (например, перед первым renderSidebar в remote-mode).
+     *
+     * No-op при remoteMode=false (registry-эндпоинты доступны только в
+     * remote-mode; в legacy режиме отдают 404 и захламят консоль).
+     */
+    async function fetchRemoteServers() {
+        if (!isRemoteMode()) return;
+        try {
+            const r = await fetch('/api/remote-servers', { headers: { 'Accept': 'application/json' } });
+            if (!r.ok) {
+                console.warn('GET /api/remote-servers failed:', r.status);
+                return;
+            }
+            const data = await r.json();
+            state.remoteServers = Array.isArray(data) ? data : [];
+            // Сбрасываем online-статусы для серверов которых больше нет в реестре.
+            const knownIds = new Set(state.remoteServers.map((s) => s.id));
+            for (const id of Array.from(state.remoteOnline.keys())) {
+                if (!knownIds.has(id)) state.remoteOnline.delete(id);
+            }
+            // Обеспечим запуск health-poll'а.
+            startRemoteHealthPoll();
+        } catch (e) {
+            console.warn('fetchRemoteServers failed:', e);
+        }
+    }
+
+    /**
+     * Lazy-load массива проектов с конкретного remote-сервера.
+     * Кладёт результат в state.remoteProjects[serverId] (Map.set).
+     * При ошибке кладёт пустой массив, чтобы UI не зависал на "Loading…".
+     */
+    async function loadRemoteProjects(serverId) {
+        if (!isRemoteMode() || !serverId) return [];
+        try {
+            const url = '/api/projects?server=' + encodeURIComponent(serverId);
+            const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+            if (!r.ok) {
+                console.warn('GET /api/projects?server=' + serverId + ' failed:', r.status);
+                state.remoteProjects.set(serverId, []);
+                return [];
+            }
+            const data = await r.json();
+            const arr = Array.isArray(data) ? data : [];
+            state.remoteProjects.set(serverId, arr);
+            return arr;
+        } catch (e) {
+            console.warn('loadRemoteProjects(' + serverId + ') failed:', e);
+            state.remoteProjects.set(serverId, []);
+            return [];
+        }
+    }
+
+    /**
+     * Lazy-load массива сессий с конкретного remote-сервера.
+     * Кладёт результат в state.remoteSessions[serverId] (Map.set).
+     */
+    async function loadRemoteSessions(serverId) {
+        if (!isRemoteMode() || !serverId) return [];
+        try {
+            const url = '/api/sessions?server=' + encodeURIComponent(serverId);
+            const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+            if (!r.ok) {
+                console.warn('GET /api/sessions?server=' + serverId + ' failed:', r.status);
+                state.remoteSessions.set(serverId, []);
+                return [];
+            }
+            const data = await r.json();
+            const arr = Array.isArray(data) ? data : [];
+            state.remoteSessions.set(serverId, arr);
+            return arr;
+        } catch (e) {
+            console.warn('loadRemoteSessions(' + serverId + ') failed:', e);
+            state.remoteSessions.set(serverId, []);
+            return [];
+        }
+    }
+
+    /**
+     * Phase 7 — выполняет ОДИН health-probe конкретного remote-сервера.
+     *
+     * Алгоритм:
+     * 1. GET /api/remote-servers/:id/healthz.
+     * 2. На !ok / network / catch → онлайн-статус сервера в state.remoteOnline
+     *    переключается в 'offline', step backoff'а увеличивается до cap'а.
+     * 3. На ok с {online:true} → статус 'online', step сбрасывается в
+     *    REMOTE_PROBE_STEADY_INDEX (медленный устойчивый polling).
+     * 4. Расчитывается следующий delay = backoffs[step] + jitter(0..jitterMax).
+     * 5. setTimeout планирует следующий probe того же сервера.
+     *
+     * Состояние UI: при смене remoteOnline-статуса вызывается renderSidebar(),
+     * чтобы offline-badge у origin-секции мгновенно обновился. WS-подписки
+     * (tasksWs/todosWs/attachWs/lazygitWs) не трогаются — они имеют
+     * собственный auto-reconnect и сами вернутся в OPEN при восстановлении
+     * связи. UI-состояние (открытая сессия, активный origin) сохраняется.
+     */
+    async function probeRemoteServer(serverId) {
+        if (!isRemoteMode()) return;
+        const entry = remoteProbeState.get(serverId);
+        if (!entry) return;
+        if (entry.inFlight) return;
+        entry.inFlight = true;
+        let nextStatus = 'offline';
+        try {
+            const r = await fetch(
+                '/api/remote-servers/' + encodeURIComponent(serverId) + '/healthz',
+                { headers: { 'Accept': 'application/json' } },
+            );
+            if (r.ok) {
+                try {
+                    const data = await r.json();
+                    nextStatus = data && data.online ? 'online' : 'offline';
+                } catch (_) {
+                    nextStatus = 'offline';
+                }
+            } else {
+                nextStatus = 'offline';
+            }
+        } catch (_) {
+            nextStatus = 'offline';
+        } finally {
+            entry.inFlight = false;
+        }
+
+        // Обновляем UI-состояние.
+        const prev = state.remoteOnline.get(serverId);
+        if (prev !== nextStatus) {
+            state.remoteOnline.set(serverId, nextStatus);
+            renderSidebar();
+        }
+
+        // Управляем step backoff'а.
+        if (nextStatus === 'online') {
+            entry.step = REMOTE_PROBE_STEADY_INDEX;
+        } else {
+            entry.step = Math.min(entry.step + 1, REMOTE_PROBE_BACKOFFS_MS.length - 1);
+        }
+
+        // Schedule следующий probe.
+        const stillTracked = remoteProbeState.has(serverId);
+        if (!stillTracked || !isRemoteMode()) return;
+        const baseDelay = REMOTE_PROBE_BACKOFFS_MS[entry.step];
+        const jitter = Math.floor(Math.random() * REMOTE_PROBE_JITTER_MAX_MS);
+        const delay = baseDelay + jitter;
+        entry.timer = setTimeout(() => {
+            const e = remoteProbeState.get(serverId);
+            if (!e) return;
+            e.timer = null;
+            probeRemoteServer(serverId);
+        }, delay);
+    }
+
+    /**
+     * Phase 7 — синхронизирует таблицу remoteProbeState с текущим списком
+     * state.remoteServers:
+     *   - Для каждого нового сервера: создаёт запись (step=0) и сразу запускает
+     *     первый probe.
+     *   - Для удалённых из реестра: clearTimeout и удаление записи.
+     *
+     * Идемпотентна: повторный вызов не порождает дубль-таймеров.
+     */
+    function startRemoteHealthPoll() {
+        if (!isRemoteMode()) return;
+        const knownIds = new Set(state.remoteServers.map((s) => s.id));
+        // Стартуем новые probes.
+        for (const srv of state.remoteServers) {
+            if (!remoteProbeState.has(srv.id)) {
+                remoteProbeState.set(srv.id, { timer: null, step: 0, inFlight: false });
+                // Первый probe — немедленно.
+                probeRemoteServer(srv.id);
+            }
+        }
+        // Сносим probes для удалённых.
+        for (const id of Array.from(remoteProbeState.keys())) {
+            if (!knownIds.has(id)) {
+                const e = remoteProbeState.get(id);
+                if (e && e.timer) clearTimeout(e.timer);
+                remoteProbeState.delete(id);
+                state.remoteOnline.delete(id);
+            }
+        }
+    }
+
+    function stopRemoteHealthPoll() {
+        for (const e of remoteProbeState.values()) {
+            if (e.timer) clearTimeout(e.timer);
+        }
+        remoteProbeState.clear();
+    }
+
     async function bootstrap() {
+        // Phase 5: GET /healthz сразу — нужно знать remote_mode ДО initTerminal,
+        // т.к. некоторые ветки рендера (sidebar header, project bar) проверяют
+        // isRemoteMode() уже на первом рендере.
+        await loadHealthz();
+
         // Phase 3: тема грузится ДО initTerminal — иначе xterm создаётся со
         // старой темой и переключение через options.theme не применит
         // background сразу. См. комментарий в initTerminal.
@@ -4456,6 +5756,17 @@
             $projectSettings.addEventListener('click', openSettingsModal);
         }
 
+        // Phase 5 — параллельно с проектами загружаем реестр remote-серверов.
+        // No-op в legacy (remote_mode=false). fetchRemoteServers сам запускает
+        // health-poll после успешной загрузки.
+        if (isRemoteMode()) {
+            fetchRemoteServers().then(() => {
+                // Восстанавливаем activeOrigin (зависит от состава remoteServers).
+                loadActiveOriginFromStorage();
+                renderSidebar();
+            });
+        }
+
         // Сначала проекты (нужны для контекста sessions/tasks), потом — sessions+polling.
         fetchProjects().finally(() => {
             fetchSessions();
@@ -4483,6 +5794,8 @@
             disconnectWs();
             // Phase 4: закрываем lazygit WS при unload.
             closeGitWs('beforeunload');
+            // Phase 5: остановим periodic health-poll'инг remote-серверов.
+            stopRemoteHealthPoll();
         });
         // На скрытие страницы (mobile) — пауза polling, на показ — возобновление.
         // WS оставляем — браузер сам разорвёт его если надо, а connect-ретраи

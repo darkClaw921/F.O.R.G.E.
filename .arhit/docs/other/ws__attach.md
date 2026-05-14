@@ -1,19 +1,36 @@
 # ws::attach
 
-HTTP+WS handler GET /ws/attach в tmux-web/src/ws.rs.
+WebSocket-handler /ws/attach: tmux attach через PTY либо прокси на remote devforge.
 
 ## Сигнатура
-pub async fn attach(ws: WebSocketUpgrade, Query(q): Query<AttachQuery>) -> Response
+```rust
+pub async fn attach(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+    Query(raw): Query<HashMap<String, String>>,
+) -> Response
+```
 
-## Query-параметры (AttachQuery)
-- session: String — обязателен. Имя tmux-сессии для tmux attach -t <session>.
-- cols: u16 — стартовые столбцы PTY, default 80.
-- rows: u16 — стартовые строки PTY, default 24.
+## Query
+- session (required) — имя tmux-сессии.
+- cols/rows (optional, default 80×24) — стартовый размер PTY.
+- **server** (optional, Phase 4) — id remote-devforge для прокси.
 
-Если session отсутствует, axum Query-extractor возвращает 400 Bad Request.
+## Логика (Phase 4)
+1. Извлекает ?server=<id> через extract_server_id.
+2. Если server есть + state.remote_mode=false → upgrade и Close{1008, 'remote mode disabled'}.
+3. Если server есть + state.remote_mode=true → upgrade и proxy_websocket(store, id, '/ws/attach', query_без_server, socket).
+4. Иначе — парсит AttachQuery через parse_attach_query и идёт в локальный handle_socket (spawn tmux-PTY).
 
-## Поведение
-Логирует ws upgrade + session/cols/rows и вызывает ws.on_upgrade(|socket| handle_socket(socket, q)). Реальный bridge — в private async fn handle_socket.
+## Wire-протокол (локальный путь)
+- Binary frames в обе стороны — сырые байты PTY.
+- Text frames от клиента — JSON control: {type:resize,cols,rows} или {type:switch,session}.
+- Close frame — teardown.
 
-## Регистрация
-В main.rs: .route('/ws/attach', get(ws::attach)).
+## Поведение при ошибках
+- Невалидный query (нет session или плохой cols/rows) — upgrade и Close{1008, 'invalid query'}.
+- spawn_tmux_attach fail — Text frame с ошибкой + Close.
+
+## См. также
+- ws::handle_socket — основной обработчик локального PTY.
+- remote_proxy::proxy_websocket — WS-прокси для ?server веток.

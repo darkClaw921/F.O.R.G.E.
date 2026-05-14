@@ -370,6 +370,158 @@ body {
     text-align: center;
 }
 
+/* ===== Phase 5 — origin-табы над session-list ===== */
+
+.origin-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-header-alt);
+}
+
+.origin-tab {
+    appearance: none;
+    background: transparent;
+    color: var(--fg-mute);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2px 9px;
+    font-size: 0.72rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    line-height: 1.4;
+}
+
+.origin-tab:hover {
+    color: var(--fg);
+    border-color: var(--fg-mute);
+}
+
+.origin-tab.active {
+    color: var(--fg);
+    background: var(--bg-pill);
+    border-color: var(--accent, var(--fg-mute));
+}
+
+.origin-tab .origin-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--status-neutral);
+    flex: 0 0 auto;
+}
+
+.origin-tab .origin-dot.online { background: var(--success); }
+.origin-tab .origin-dot.offline { background: var(--danger-soft); }
+.origin-tab .origin-dot.local { background: var(--success); }
+.origin-tab .origin-dot.unknown { background: var(--status-neutral); }
+
+.origin-tab.origin-tab-add {
+    color: var(--fg-mute);
+    font-weight: 600;
+}
+
+/* ===== Phase 5 — origin/project headers внутри session-list ===== */
+
+.origin-group-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px 4px;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--fg-mute);
+    cursor: pointer;
+    user-select: none;
+}
+
+.origin-group-header:hover {
+    color: var(--fg);
+}
+
+.origin-group-header .origin-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--status-neutral);
+    flex: 0 0 auto;
+}
+
+.origin-group-header .origin-dot.online { background: var(--success); }
+.origin-group-header .origin-dot.offline { background: var(--danger-soft); }
+.origin-group-header .origin-dot.local { background: var(--success); }
+.origin-group-header .origin-dot.unknown { background: var(--status-neutral); }
+
+.origin-group-header .origin-caret {
+    font-size: 0.65rem;
+    color: var(--fg-mute);
+    width: 10px;
+    display: inline-block;
+}
+
+.origin-group-header .origin-label {
+    flex: 1;
+    font-weight: 600;
+}
+
+.origin-group-header .origin-meta {
+    font-size: 0.65rem;
+    color: var(--fg-mute);
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+/*
+ * Phase 6 — disabled-look для offline-remote в All-view: origin-header
+ * по-прежнему виден (пользователь должен знать, что сервер существует),
+ * но визуально приглушён + явный бейдж "offline".
+ */
+.origin-group-header.origin-offline {
+    opacity: 0.55;
+}
+
+.origin-group-header.origin-offline:hover {
+    color: var(--fg-mute);
+    opacity: 0.7;
+}
+
+.origin-group-header .origin-badge {
+    font-size: 0.6rem;
+    padding: 1px 6px;
+    border-radius: 8px;
+    text-transform: lowercase;
+    letter-spacing: 0.04em;
+}
+
+.origin-group-header .origin-badge-offline {
+    background: var(--danger-soft);
+    color: var(--bg);
+}
+
+.empty.empty-offline {
+    color: var(--fg-mute);
+    font-style: italic;
+    opacity: 0.7;
+}
+
+.project-sub-header {
+    padding: 4px 14px 4px 26px;
+    font-size: 0.72rem;
+    color: var(--fg-dim);
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 500;
+}
+
+.session-item.in-origin {
+    padding-left: 26px;
+}
+
 /* ===== Sidebar footer (status) ===== */
 
 .sidebar-footer {
@@ -2185,4 +2337,210 @@ body {
     font-weight: 600;
     letter-spacing: 0.3px;
     margin-left: 4px;
+}
+
+/* ============================================================ */
+/* Phase 5 — Settings → Remote servers tab                      */
+/* ============================================================ */
+
+.remotes-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 14px;
+    font-size: 0.85rem;
+}
+
+.remotes-table th,
+.remotes-table td {
+    text-align: left;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+    color: var(--fg);
+    vertical-align: middle;
+}
+
+.remotes-table th {
+    color: var(--fg-mute);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 0.7rem;
+}
+
+.remotes-table .remotes-url {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.78rem;
+    color: var(--fg-mute);
+    word-break: break-all;
+}
+
+.remotes-table .remotes-empty {
+    color: var(--fg-mute);
+    font-style: italic;
+    text-align: center;
+    padding: 14px;
+}
+
+.remotes-table .remotes-actions {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.remotes-table .btn-edit-remote {
+    appearance: none;
+    background: transparent;
+    color: var(--fg-mute);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    margin-right: 6px;
+}
+
+.remotes-table .btn-edit-remote:hover {
+    color: var(--fg);
+    border-color: var(--fg-mute);
+}
+
+.remotes-edit-row td {
+    background: var(--bg-header-alt);
+    padding: 10px 8px;
+}
+
+.remotes-edit-row label {
+    margin-right: 10px;
+    font-size: 0.75rem;
+    color: var(--fg-mute);
+}
+
+.remotes-edit-row input[type="text"],
+.remotes-edit-row input[type="password"] {
+    margin-left: 6px;
+    padding: 3px 6px;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+}
+
+.remotes-add {
+    border-top: 1px solid var(--border);
+    padding-top: 14px;
+}
+
+.remotes-add h3 {
+    margin: 0 0 10px 0;
+    font-size: 0.9rem;
+    color: var(--fg);
+}
+
+.remotes-add label {
+    display: block;
+    margin-bottom: 10px;
+    font-size: 0.78rem;
+    color: var(--fg-mute);
+}
+
+.remotes-add input[type="text"],
+.remotes-add input[type="password"] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 5px 8px;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 0.82rem;
+}
+
+.rs-token-wrap {
+    display: flex;
+    gap: 6px;
+    align-items: stretch;
+}
+
+.rs-token-wrap input {
+    flex: 1;
+}
+
+.rs-token-toggle {
+    appearance: none;
+    background: transparent;
+    color: var(--fg-mute);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    cursor: pointer;
+}
+
+.rs-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+.rs-actions button {
+    appearance: none;
+    padding: 5px 12px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--fg);
+    cursor: pointer;
+    font-size: 0.82rem;
+}
+
+.rs-actions button.primary {
+    background: var(--accent, #4f87d4);
+    color: #fff;
+    border-color: var(--accent, #4f87d4);
+}
+
+.rs-actions button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.rs-test-status {
+    font-size: 0.75rem;
+    color: var(--fg-mute);
+}
+
+.rs-test-status.ok { color: var(--success, #6cc070); }
+.rs-test-status.error { color: var(--danger-soft, #d96868); }
+.rs-test-status.warn { color: var(--warn-icon-bg, #d4a04f); }
+.rs-test-status.pending { color: var(--fg-mute); font-style: italic; }
+
+.rs-help {
+    margin-top: 8px;
+    font-size: 0.78rem;
+}
+
+.rs-help summary {
+    cursor: pointer;
+    color: var(--fg-mute);
+    user-select: none;
+}
+
+.rs-help summary:hover {
+    color: var(--fg);
+}
+
+.rs-help-body {
+    padding: 8px 0;
+    color: var(--fg);
+}
+
+.rs-help pre {
+    background: var(--bg-header-alt);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px 8px;
+    margin: 6px 0;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.78rem;
+    color: var(--fg);
 }
