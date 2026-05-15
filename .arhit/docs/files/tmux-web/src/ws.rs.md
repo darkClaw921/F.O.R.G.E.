@@ -1,29 +1,30 @@
 # tmux-web/src/ws.rs
 
-WebSocket-handlers модуля. Содержит два публичных endpoint'а: /ws/attach (tmux session bridge) и /ws/lazygit (lazygit TUI bridge). Оба переиспользуют общую low-level функцию spawn_pty_reader из этого же модуля.
+WebSocket-handlers модуля. Содержит четыре публичных endpoint'а: /ws/attach (tmux session bridge), /ws/lazygit, /ws/lazydocker и /ws/telescope (все три — TUI bridges).
 
-## Endpoints
+## Публичные handler-функции
 
-### GET /ws/attach?session=<name>&cols=<u16>&rows=<u16>
-Апгрейд в WebSocket. Дефолты: cols=80, rows=24. session обязателен (axum Query-extractor вернёт 400 если отсутствует). Spawn'ит tmux attach -t <session> через spawn_tmux_attach.
+- pub async fn attach(...) — GET /ws/attach. Spawn'ит tmux attach через spawn_tmux_attach.
+- pub async fn lazygit_attach(...) — GET /ws/lazygit. Spawn'ит lazygit через spawn_lazygit.
+- pub async fn lazydocker_attach(...) — GET /ws/lazydocker. Spawn'ит lazydocker через spawn_lazydocker (Phase 1, forge-ddyl).
+- pub async fn telescope_attach(...) — GET /ws/telescope. Spawn'ит tv через spawn_television (Phase 1, forge-ddyl).
 
-### GET /ws/lazygit?cwd=<abs-path>&cols=<u16>&rows=<u16>
-Апгрейд в WebSocket. cwd обязателен (абсолютный путь к git-репозиторию или к любой папке внутри него — lazygit найдёт ближайший .git). Дефолты: cols=80, rows=24. Spawn'ит lazygit через spawn_lazygit с CWD=cwd. Назначен для xterm.js во фронтенде в git-tab.
+Все три TUI-handler'а имеют идентичную структуру:
+1. Парсинг ?server=<id> для remote-mode → remote_proxy::proxy_websocket с upstream_path соответствующего endpoint'а.
+2. parse_lazygit_query (общий: cwd + cols + rows).
+3. ws.on_upgrade → handle_tui_socket(socket, q, spawn_fn, label).
 
-## Зачем два отдельных handler'а (а не один параметризованный)
+## Generic-функция handle_tui_socket<F>
 
-LazygitControl::SwitchCwd { cwd } и Control::Switch { session } — семантически разные операции:
-- attach оперирует именами tmux-сессий (короткие, без слешей).
-- lazygit оперирует абсолютными путями к проектам.
-Объединять в один enum означает либо терять типизацию (String с двойным смыслом), либо плодить варианты — оба плохо. Раздельные handler'ы позволяют независимо эволюционировать (например, добавить read-only flag для lazygit, не задевая attach).
+Phase 1 рефакторинг: бывший handle_lazygit_socket переименован и сделан generic. Принимает spawn-фабрику F: Fn(&Path, u16, u16) -> Result<PtyHandle> + Send + Sync + 'static и метку label для tracing.
 
-## Wire-протокол (одинаковый для обоих)
+Старая функция handle_lazygit_socket теперь one-line wrapper: handle_tui_socket(socket, q, spawn_lazygit, 'lazygit').await.
 
-Binary frames в обе стороны — сырые байты PTY (escape-последовательности xterm-256color). Browser xterm.js пишет введённые символы как Binary, сервер шлёт stdout PTY как Binary.
+## Wire-протокол (общий для всех 4 endpoint'ов)
 
-Text frames от клиента — JSON control-сообщения. Tag discriminator — поле type.
-
-Close frame — корректный teardown.
+- Binary frames в обе стороны = сырые байты PTY (xterm-256color).
+- Text frames от клиента = JSON control-сообщения (tag=type).
+- Error frames от сервера: {\"type\":\"error\",\"message\":\"...\"} (см. ErrorFrame), сразу за ним Close.
 
 ## DTO структуры
 
@@ -31,22 +32,23 @@ Close frame — корректный teardown.
 { session: String, cols: u16 (default 80), rows: u16 (default 24) }
 
 ### Control (для /ws/attach, #[serde(tag='type', rename_all='lowercase')])
-- {\"type\":\"resize\",\"cols\":120,\"rows\":40} — pty.resize().
-- {\"type\":\"switch\",\"session\":\"other\"} — kill старого PTY, spawn нового.
+- {\"type\":\"resize\",\"cols\":120,\"rows\":40} → pty.resize().
+- {\"type\":\"switch\",\"session\":\"other\"} → kill старого, spawn нового.
 
-### LazygitQuery (для /ws/lazygit)
+### LazygitQuery (используется ВСЕМИ TUI: lazygit/lazydocker/telescope)
 { cwd: String, cols: u16 (default 80), rows: u16 (default 24) }
+Имя сохранено для обратной совместимости.
 
-### LazygitControl (для /ws/lazygit, #[serde(tag='type', rename_all='snake_case')])
-- {\"type\":\"resize\",\"cols\":80,\"rows\":24} — pty.resize().
-- {\"type\":\"switch_cwd\",\"cwd\":\"/abs/path/to/other/repo\"} — kill старого lazygit, spawn нового в новом cwd.
+### LazygitControl (используется ВСЕМИ TUI: #[serde(tag='type', rename_all='snake_case')])
+- {\"type\":\"resize\",\"cols\":80,\"rows\":24} → pty.resize().
+- {\"type\":\"switch_cwd\",\"cwd\":\"/abs/path\"} → kill старого PTY, spawn нового в новом cwd через ту же spawn_fn.
 
 ### ErrorFrame<'a>
-Сериализуется как {\"type\":\"error\",\"message\":\"...\"}. Используется при spawn-fail (как при первом upgrade'е, так и при switch_cwd). После отправки сразу шлётся Close frame и WS закрывается. Frontend ожидает этот формат для error-баннера.
+Сериализуется как {\"type\":\"error\",\"message\":\"...\"}. Используется при spawn-fail (как при первом upgrade'е, так и при switch_cwd). После отправки сразу шлётся Close frame.
 
-## Архитектура handle_socket / handle_lazygit_socket
+## Архитектура handle_socket / handle_tui_socket
 
-Обе функции структурно идентичны — отличаются только spawn-функцией и control-enum'ом. Каждая владеет:
+Обе функции структурно идентичны — отличаются только spawn-источником и control-enum'ом. Каждая владеет:
 - pty: Arc<Mutex<Option<PtyHandle>>> — PTY под mutex (None во время switch swap).
 - cancel: Arc<AtomicBool> — сигнал останова reader-task'у (для switch / teardown).
 - pty_eof_notify: Arc<Notify> — сигнал от reader-task о EOF/ошибке PTY.
@@ -54,48 +56,42 @@ Close frame — корректный teardown.
 - reader_handle: Arc<Mutex<Option<JoinHandle>>> — для await при switch и teardown.
 
 Запускает три tokio-таска:
-1. PTY→WS reader-task (spawn_pty_reader): tokio::task::spawn_blocking, синхронно read() из PTY reader (Box<dyn Read+Send>) в буфер 8 KiB (READ_BUF), отправляет Vec<u8> через mpsc::channel(64). При EOF/error и cancel=false — notify_one() в pty_eof_notify.
-2. WS-writer task: получает чанки из mpsc::Receiver, шлёт ws_tx.send(Message::Binary(chunk)). Не проверяет cancel-флаг — живёт пока есть senders.
-3. Главный future: tokio::select! на ws_rx.next() и pty_eof_notify.notified() (BIASED — eof проверяется первым).
+1. PTY→WS reader-task (spawn_pty_reader): spawn_blocking, синхронный read() из PTY reader (8 KiB), отправка Vec<u8> через mpsc::channel(64). При EOF/error и cancel=false — notify_one().
+2. WS-writer task: получает чанки из mpsc::Receiver, шлёт ws_tx.send(Message::Binary(chunk)).
+3. Главный future: tokio::select! на ws_rx.next() и pty_eof_notify.notified() (BIASED — eof первым).
 
 ## Switch flow (Switch / SwitchCwd)
 
 1. cancel.store(true).
 2. *pty.lock = None → Drop PtyHandle → kill+wait child → reader получит EOF.
 3. await старого reader-task'а.
-4. spawn_<tmux_attach|lazygit>(new_target, cur_cols, cur_rows). Если упал — JSON ErrorFrame и break (закрытие WS).
-5. cancel.store(false), pty_eof_notify = Arc::new(Notify::new()) (новый Notify, чтобы EOF старого reader не разбудил handler), spawn_pty_reader снова с тем же mpsc::Sender clone.
+4. spawn_fn(new_target, cur_cols, cur_rows). Если упал — JSON ErrorFrame и break (закрытие WS).
+5. cancel.store(false), новый Notify (чтобы EOF старого reader не разбудил handler), spawn_pty_reader снова.
 
-## Teardown (after main loop break)
+## Teardown
 
-1. cancel.store(true).
-2. *pty.lock = None → Drop → kill+wait.
-3. await reader_handle.
-4. drop(pty_to_ws_tx) → writer-task получает None → завершение.
-5. await writer_task.
-6. ws_tx.send(Close) + close() (best-effort).
+1. cancel.store(true). 2. drop PTY. 3. await reader_handle. 4. drop sender → writer-task завершается. 5. ws_tx.send(Close) + close().
 
-## spawn_pty_reader (общая функция)
+## spawn_pty_reader (общая)
 
-Принимает &Arc<Mutex<Option<PtyHandle>>>, mpsc::Sender, cancel-AtomicBool, eof-Notify. Берёт reader из handle (take_reader, one-shot), spawn_blocking-loop читает READ_BUF=8 KiB, blocking_send в mpsc. Завершается на EOF/ошибке/cancel. notify_one() только если natural_death=true И cancel=false (не сигнализит при switch/teardown).
+Принимает &Arc<Mutex<Option<PtyHandle>>>, mpsc::Sender, cancel-AtomicBool, eof-Notify. Берёт reader из handle (take_reader), spawn_blocking-loop читает READ_BUF=8 KiB. Завершается на EOF/ошибке/cancel. notify_one() только если natural_death=true И cancel=false.
 
 ## Bug-fix forge-qs0 (Phase 5, attach)
 
-До фикса: при внешнем kill-session reader-task детектировал EOF и завершался, но главный handle_socket loop продолжал ждать ws_rx.next() — клиент не получал Close. Решение: добавлен tokio::sync::Notify, на EOF (когда cancel=false) reader сигналит через notify_one(). lazygit-handler наследует это поведение через ту же spawn_pty_reader.
+Добавлен tokio::sync::Notify для надёжного teardown при внешнем kill-session: на EOF (когда cancel=false) reader сигналит через notify_one(). Все TUI-handler'ы (lazygit/lazydocker/telescope) наследуют это через handle_tui_socket.
+
+## remote_proxy интеграция
+
+Все WS-эндпоинты поддерживают ?server=<id> в remote-mode. lazydocker_attach/telescope_attach используют upstream_path '/ws/lazydocker' и '/ws/telescope' соответственно при проксировании на удалённый сервер.
 
 ## Константы
 
-- READ_BUF = 8 KiB — размер чанка чтения из PTY.
-- CHAN_DEPTH = 64 — глубина mpsc-канала PTY→WS (~0.5 MiB буферизации).
+- READ_BUF = 8 KiB.
+- CHAN_DEPTH = 64.
 
 ## Регистрация в main.rs
 
 - .route('/ws/attach', get(ws::attach))
 - .route('/ws/lazygit', get(ws::lazygit_attach))
-
-## Smoke-test (Phase 2, forge-nbl.4)
-
-curl-проверки:
-- GET без Upgrade → 400 'Connection header did not include upgrade'.
-- GET ?cwd=...&Upgrade → 101 Switching Protocols + (если lazygit отсутствует) Text-frame {\"type\":\"error\",\"message\":\"spawn failed: failed to spawn lazygit in '/path': lazygit not found in PATH, install via brew install lazygit (macOS) or your distro's package manager\"} + Close.
-- Missing cwd query → 400.
+- .route('/ws/lazydocker', get(ws::lazydocker_attach))
+- .route('/ws/telescope', get(ws::telescope_attach))

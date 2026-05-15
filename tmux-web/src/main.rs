@@ -388,6 +388,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/ws/attach", get(ws::attach))
         // WebSocket — lazygit TUI в браузере (по cwd проекта).
         .route("/ws/lazygit", get(ws::lazygit_attach))
+        // WebSocket — lazydocker TUI (Docker manager) в браузере.
+        .route("/ws/lazydocker", get(ws::lazydocker_attach))
+        // WebSocket — television (tv) TUI fuzzy-finder в браузере.
+        .route("/ws/telescope", get(ws::telescope_attach))
         // Phase 6.D — WS-стрим realtime событий из beads watcher'а.
         .route("/ws/tasks", get(ws_tasks::tasks_ws))
         // Phase 3 — WS-стрим TODO-карточек.

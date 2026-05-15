@@ -40,6 +40,8 @@
                 <button id="tab-terminal" class="tab-btn active" type="button">Terminal</button>
                 <button id="tab-tasks" class="tab-btn" type="button">Tasks</button>
                 <button id="tab-git" class="tab-btn" type="button">Git</button>
+                <button id="tab-docker" class="tab-btn" type="button">Docker</button>
+                <button id="tab-telescope" class="tab-btn" type="button">Find</button>
                 <span id="git-status-meta" class="tab-meta"></span>
                 <span id="tasks-status" class="tab-meta"></span>
             </div>
@@ -72,6 +74,44 @@
                     </div>
                 </div>
                 <div id="git-term" class="git-term"></div>
+            </div>
+            <div id="docker" hidden>
+                <!-- lazydocker-tab: xterm-терминал подключён к /ws/lazydocker.
+                     Структура зеркальна #git (см. createTuiTab factory в app.js). -->
+                <div class="tui-placeholder" id="docker-placeholder">Select a project to open lazydocker</div>
+                <div class="tui-error" id="docker-error" hidden>
+                    <span class="tui-error-text" id="docker-error-text"></span>
+                    <button type="button" class="tui-error-retry" id="docker-error-retry">Retry</button>
+                    <button type="button" class="tui-error-close" id="docker-error-close" title="Dismiss">×</button>
+                    <div class="tui-install-help" id="docker-install-help" hidden>
+                        <div class="tui-install-title">Install lazydocker:</div>
+                        <ul class="tui-install-list" id="docker-install-list"></ul>
+                        <a class="tui-install-link" href="https://github.com/jesseduffield/lazydocker#installation" target="_blank" rel="noopener noreferrer">Full installation guide →</a>
+                    </div>
+                </div>
+                <div id="docker-term" class="tui-term"></div>
+            </div>
+            <div id="telescope" hidden>
+                <!-- telescope-tab: xterm-терминал подключён к /ws/telescope (tv).
+                     Структура зеркальна #git (см. createTuiTab factory в app.js). -->
+                <div class="tui-channel-bar" id="telescope-channel-bar">
+                    <button type="button" class="tui-channel-btn active" id="telescope-ch-files" data-channel="files" title="Поиск по именам файлов">Files</button>
+                    <button type="button" class="tui-channel-btn" id="telescope-ch-text" data-channel="text" title="Поиск по содержимому файлов (ripgrep)">Content</button>
+                    <button type="button" class="tui-channel-btn" id="telescope-ch-dirs" data-channel="dirs" title="Поиск директорий">Dirs</button>
+                    <button type="button" class="tui-channel-btn" id="telescope-ch-git" data-channel="git-log" title="Git log">Git log</button>
+                </div>
+                <div class="tui-placeholder" id="telescope-placeholder">Select a project to open telescope</div>
+                <div class="tui-error" id="telescope-error" hidden>
+                    <span class="tui-error-text" id="telescope-error-text"></span>
+                    <button type="button" class="tui-error-retry" id="telescope-error-retry">Retry</button>
+                    <button type="button" class="tui-error-close" id="telescope-error-close" title="Dismiss">×</button>
+                    <div class="tui-install-help" id="telescope-install-help" hidden>
+                        <div class="tui-install-title">Install television (tv):</div>
+                        <ul class="tui-install-list" id="telescope-install-list"></ul>
+                        <a class="tui-install-link" href="https://github.com/alexpasmantier/television" target="_blank" rel="noopener noreferrer">Full installation guide →</a>
+                    </div>
+                </div>
+                <div id="telescope-term" class="tui-term"></div>
             </div>
         </main>
     </div>

@@ -1,6 +1,126 @@
 {
-  "generatedAt": "2026-05-14T17:29:07.885Z",
+  "generatedAt": "2026-05-15T06:26:07.350Z",
   "dependencies": [
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
@@ -2001,6 +2121,20 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "switchTab",
+      "toElement": "state.dockerTerm.close"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "switchTab",
+      "toElement": "state.telescopeTerm.close"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "switchTab",
       "toElement": "stopTasksPolling"
     },
     {
@@ -2063,498 +2197,512 @@
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "getActiveProject",
-      "toElement": "Array.isArray"
+      "fromElement": "switchTab",
+      "toElement": "state.dockerTerm.openForActiveProject"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "getActiveProject",
-      "toElement": "list.find"
+      "fromElement": "switchTab",
+      "toElement": "state.telescopeTerm.openForActiveProject"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "getActiveProject",
-      "toElement": "id.startsWith"
+      "fromElement": "detectClientOS",
+      "toElement": "platform.includes"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "getActiveProject",
-      "toElement": "id.slice"
+      "fromElement": "detectClientOS",
+      "toElement": "ua.includes"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "mountGitTerm",
+      "fromElement": "detectClientOS",
+      "toElement": "ua.includes"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "detectClientOS",
+      "toElement": "platform.includes"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "detectClientOS",
+      "toElement": "ua.includes"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "detectClientOS",
+      "toElement": "platform.includes"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "detectClientOS",
+      "toElement": "ua.includes"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "detectClientOS",
+      "toElement": "ua.includes"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "copyToClipboardSafe",
+      "toElement": "navigator.clipboard.writeText"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "copyToClipboardSafe",
+      "toElement": "fallbackCopy"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "copyToClipboardSafe",
+      "toElement": "Promise.resolve"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "copyToClipboardSafe",
+      "toElement": "fallbackCopy"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "fallbackCopy",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "fallbackCopy",
+      "toElement": "ta.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "fallbackCopy",
+      "toElement": "document.body.appendChild"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "fallbackCopy",
+      "toElement": "ta.select"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "fallbackCopy",
+      "toElement": "document.execCommand"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "fallbackCopy",
+      "toElement": "document.body.removeChild"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "mount",
       "toElement": "console.error"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "mountGitTerm",
+      "fromElement": "mount",
       "toElement": "console.error"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "mountGitTerm",
+      "fromElement": "mount",
       "toElement": "mapTermTheme"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "mountGitTerm",
+      "fromElement": "mount",
       "toElement": "term.loadAddon"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "mountGitTerm",
+      "fromElement": "mount",
       "toElement": "term.open"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "mountGitTerm",
+      "fromElement": "mount",
       "toElement": "fit.fit"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "mountGitTerm",
+      "fromElement": "mount",
       "toElement": "console.warn"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "mountGitTerm",
+      "fromElement": "mount",
       "toElement": "term.onData"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "mountGitTerm",
+      "fromElement": "mount",
       "toElement": "ws.send"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "mountGitTerm",
+      "fromElement": "mount",
       "toElement": "state.encoder.encode"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "mountGitTerm",
+      "fromElement": "mount",
       "toElement": "console.warn"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "mountGitTerm",
+      "fromElement": "mount",
       "toElement": "term.onResize"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "mountGitTerm",
+      "fromElement": "mount",
       "toElement": "ws.send"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "mountGitTerm",
+      "fromElement": "mount",
       "toElement": "JSON.stringify"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "mountGitTerm",
+      "fromElement": "mount",
       "toElement": "console.warn"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "mountGitTerm",
-      "toElement": "state.gitTerm.fit.fit"
+      "fromElement": "mount",
+      "toElement": "tabState.fit.fit"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "mountGitTerm",
+      "fromElement": "mount",
       "toElement": "ro.observe"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "mountGitTerm",
+      "fromElement": "mount",
       "toElement": "window.addEventListener"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "mountGitTerm",
-      "toElement": "state.gitTerm.fit.fit"
+      "fromElement": "mount",
+      "toElement": "tabState.fit.fit"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "openLazygitForActiveProject",
-      "toElement": "getActiveProject"
+      "fromElement": "connect",
+      "toElement": "tabState.ws.close"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "openLazygitForActiveProject",
-      "toElement": "closeGitWs"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "openLazygitForActiveProject",
-      "toElement": "mountGitTerm"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "openLazygitForActiveProject",
-      "toElement": "showGitBanner"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "openLazygitForActiveProject",
-      "toElement": "requestAnimationFrame"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "openLazygitForActiveProject",
-      "toElement": "state.gitTerm.fit.fit"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "openLazygitForActiveProject",
-      "toElement": "connectGitWs"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "openLazygitForActiveProject",
-      "toElement": "term.focus"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "connectGitWs",
-      "toElement": "gt.ws.close"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "connectGitWs",
+      "fromElement": "connect",
       "toElement": "console.warn"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "connectGitWs",
+      "fromElement": "connect",
       "toElement": "isRemoteMode"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "connectGitWs",
+      "fromElement": "connect",
       "toElement": "encodeURIComponent"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "connectGitWs",
+      "fromElement": "connect",
       "toElement": "encodeURIComponent"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "connectGitWs",
+      "fromElement": "connect",
       "toElement": "console.warn"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "connectGitWs",
-      "toElement": "showGitBanner"
+      "fromElement": "connect",
+      "toElement": "showBanner"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "connectGitWs",
+      "fromElement": "connect",
       "toElement": "String"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "connectGitWs",
-      "toElement": "hideGitBanner"
+      "fromElement": "connect",
+      "toElement": "hideBanner"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "connectGitWs",
+      "fromElement": "connect",
       "toElement": "ws.send"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "connectGitWs",
+      "fromElement": "connect",
       "toElement": "JSON.stringify"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "connectGitWs",
-      "toElement": "gt.term.write"
+      "fromElement": "connect",
+      "toElement": "tabState.term.write"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "connectGitWs",
+      "fromElement": "connect",
       "toElement": "console.warn"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "connectGitWs",
+      "fromElement": "connect",
       "toElement": "JSON.parse"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "connectGitWs",
+      "fromElement": "connect",
       "toElement": "console.warn"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "connectGitWs",
+      "fromElement": "connect",
       "toElement": "msg.toLowerCase"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "connectGitWs",
+      "fromElement": "connect",
+      "toElement": "installHelp.binary.toLowerCase"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "connect",
       "toElement": "lower.includes"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "connectGitWs",
+      "fromElement": "connect",
       "toElement": "lower.includes"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "connectGitWs",
+      "fromElement": "connect",
       "toElement": "lower.includes"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "connectGitWs",
-      "toElement": "showGitBanner"
+      "fromElement": "connect",
+      "toElement": "showBanner"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "connectGitWs",
+      "fromElement": "connect",
       "toElement": "console.debug"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "connectGitWs",
-      "toElement": "showGitBanner"
+      "fromElement": "connect",
+      "toElement": "showBanner"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "closeGitWs",
-      "toElement": "gt.ws.close"
+      "fromElement": "close",
+      "toElement": "tabState.ws.close"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "closeGitWs",
+      "fromElement": "close",
       "toElement": "console.debug"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "gitSwitchCwd",
-      "toElement": "connectGitWs"
+      "fromElement": "switchCwd",
+      "toElement": "connect"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "gitSwitchCwd",
-      "toElement": "gt.term.clear"
+      "fromElement": "switchCwd",
+      "toElement": "tabState.term.clear"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "gitSwitchCwd",
-      "toElement": "gt.ws.send"
+      "fromElement": "switchCwd",
+      "toElement": "tabState.ws.send"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "gitSwitchCwd",
+      "fromElement": "switchCwd",
       "toElement": "JSON.stringify"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "gitSwitchCwd",
+      "fromElement": "switchCwd",
       "toElement": "console.warn"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "gitSwitchCwd",
-      "toElement": "closeGitWs"
+      "fromElement": "switchCwd",
+      "toElement": "close"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "gitSwitchCwd",
-      "toElement": "connectGitWs"
+      "fromElement": "switchCwd",
+      "toElement": "connect"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "showGitBanner",
+      "fromElement": "showBanner",
       "toElement": "renderInstallHelp"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "detectClientOS",
-      "toElement": "platform.includes"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "detectClientOS",
-      "toElement": "ua.includes"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "detectClientOS",
-      "toElement": "ua.includes"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "detectClientOS",
-      "toElement": "platform.includes"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "detectClientOS",
-      "toElement": "ua.includes"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "detectClientOS",
-      "toElement": "platform.includes"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "detectClientOS",
-      "toElement": "ua.includes"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "detectClientOS",
-      "toElement": "ua.includes"
+      "fromElement": "renderInstallHelp",
+      "toElement": "Array.isArray"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -2582,7 +2730,7 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "renderInstallHelp",
-      "toElement": "entries.sort"
+      "toElement": "entries.slice"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -2707,92 +2855,260 @@
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "copyToClipboardSafe",
-      "toElement": "navigator.clipboard.writeText"
+      "fromElement": "renderInstallHelp",
+      "toElement": "refs.installListEl.appendChild"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "copyToClipboardSafe",
-      "toElement": "fallbackCopy"
+      "fromElement": "retry",
+      "toElement": "hideBanner"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "copyToClipboardSafe",
-      "toElement": "Promise.resolve"
+      "fromElement": "retry",
+      "toElement": "close"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "copyToClipboardSafe",
-      "toElement": "fallbackCopy"
+      "fromElement": "retry",
+      "toElement": "openForActiveProject"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "fallbackCopy",
-      "toElement": "document.createElement"
+      "fromElement": "openForActiveProject",
+      "toElement": "getActiveProject"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "fallbackCopy",
-      "toElement": "ta.setAttribute"
+      "fromElement": "openForActiveProject",
+      "toElement": "close"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "fallbackCopy",
-      "toElement": "document.body.appendChild"
+      "fromElement": "openForActiveProject",
+      "toElement": "mount"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "fallbackCopy",
-      "toElement": "ta.select"
+      "fromElement": "openForActiveProject",
+      "toElement": "showBanner"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "fallbackCopy",
-      "toElement": "document.execCommand"
+      "fromElement": "openForActiveProject",
+      "toElement": "requestAnimationFrame"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "fallbackCopy",
-      "toElement": "document.body.removeChild"
+      "fromElement": "openForActiveProject",
+      "toElement": "tabState.fit.fit"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openForActiveProject",
+      "toElement": "connect"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openForActiveProject",
+      "toElement": "term.focus"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "createTuiTab",
+      "toElement": "refs.retryBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "createTuiTab",
+      "toElement": "refs.closeBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "initTuiTabs",
+      "toElement": "createTuiTab"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "initTuiTabs",
+      "toElement": "createTuiTab"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "initTuiTabs",
+      "toElement": "createTuiTab"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "getActiveProject",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "getActiveProject",
+      "toElement": "list.find"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "getActiveProject",
+      "toElement": "id.startsWith"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "getActiveProject",
+      "toElement": "id.slice"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "mountGitTerm",
+      "toElement": "_git"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "mountGitTerm",
+      "toElement": "t.mount"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openLazygitForActiveProject",
+      "toElement": "_git"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "openLazygitForActiveProject",
+      "toElement": "t.openForActiveProject"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "connectGitWs",
+      "toElement": "_git"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "connectGitWs",
+      "toElement": "t.connect"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "closeGitWs",
+      "toElement": "_git"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "closeGitWs",
+      "toElement": "t.close"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "gitSwitchCwd",
+      "toElement": "_git"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "gitSwitchCwd",
+      "toElement": "t.switchCwd"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "showGitBanner",
+      "toElement": "_git"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "showGitBanner",
+      "toElement": "t.showBanner"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "hideGitBanner",
+      "toElement": "_git"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "hideGitBanner",
+      "toElement": "t.hideBanner"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "retryGitConnection",
-      "toElement": "hideGitBanner"
+      "toElement": "_git"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "retryGitConnection",
-      "toElement": "closeGitWs"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "retryGitConnection",
-      "toElement": "openLazygitForActiveProject"
+      "toElement": "t.retry"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -4535,6 +4851,20 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "fetchProjects",
+      "toElement": "state.dockerTerm.openForActiveProject"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "fetchProjects",
+      "toElement": "state.telescopeTerm.openForActiveProject"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "fetchProjects",
       "toElement": "console.warn"
     },
     {
@@ -4675,14 +5005,21 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "switchActiveProject",
-      "toElement": "gitSwitchCwd"
+      "toElement": "entry.tab.switchCwd"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "switchActiveProject",
-      "toElement": "closeGitWs"
+      "toElement": "entry.tab.openForActiveProject"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "switchActiveProject",
+      "toElement": "entry.tab.close"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -9959,6 +10296,27 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "bootstrap",
+      "toElement": "initTuiTabs"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "bootstrap",
+      "toElement": "switchTab"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "bootstrap",
+      "toElement": "switchTab"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "bootstrap",
       "toElement": "switchTab"
     },
     {
@@ -10100,6 +10458,20 @@
       "type": "call",
       "fromElement": "bootstrap",
       "toElement": "closeGitWs"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "bootstrap",
+      "toElement": "state.dockerTerm.close"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "bootstrap",
+      "toElement": "state.telescopeTerm.close"
     },
     {
       "from": "tmux-web/static/app.js",

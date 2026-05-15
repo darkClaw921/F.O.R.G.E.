@@ -44,7 +44,9 @@ use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, Mutex, Notify};
 
-use crate::pty::{spawn_lazygit, spawn_tmux_attach, PtyHandle};
+use std::path::Path;
+
+use crate::pty::{spawn_lazydocker, spawn_lazygit, spawn_television, spawn_tmux_attach, PtyHandle};
 use crate::remote_proxy;
 use crate::AppState;
 
@@ -92,6 +94,11 @@ pub struct LazygitQuery {
     pub cols: u16,
     #[serde(default = "default_rows")]
     pub rows: u16,
+    /// Опциональный cable channel для television (`files` / `text` / ...).
+    /// Игнорируется lazygit-/lazydocker-handler'ами (там нет каналов).
+    /// Используется только в `telescope_attach`.
+    #[serde(default)]
+    pub channel: Option<String>,
 }
 
 /// JSON control-сообщения от клиента lazygit-handler'а (frame `Message::Text`).
@@ -231,7 +238,11 @@ fn parse_lazygit_query(q: &HashMap<String, String>) -> Result<LazygitQuery, Stri
         Some(v) => v.parse::<u16>().map_err(|e| format!("invalid rows: {e}"))?,
         None => default_rows(),
     };
-    Ok(LazygitQuery { cwd, cols, rows })
+    let channel = q
+        .get("channel")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    Ok(LazygitQuery { cwd, cols, rows, channel })
 }
 
 /// Извлекает значение `server` из query. Возвращает `Some` только при непустом
@@ -582,22 +593,141 @@ pub async fn lazygit_attach(
     ws.on_upgrade(move |socket| handle_lazygit_socket(socket, q))
 }
 
-/// Основной обработчик WS-соединения для lazygit.
+/// `GET /ws/lazydocker` — upgrade и переход в [`handle_tui_socket`] с
+/// [`spawn_lazydocker`].
 ///
-/// Симметричен [`handle_socket`], но использует [`spawn_lazygit`] вместо
-/// [`spawn_tmux_attach`]. Логика switch'а другая — `SwitchCwd { cwd }` вместо
-/// `Switch { session }`. Reader-task переиспользуется: [`spawn_pty_reader`].
+/// Регистрируется в `main.rs` как `.route("/ws/lazydocker", get(ws::lazydocker_attach))`.
+/// Симметричен [`lazygit_attach`] — отличается только бинарём, label'ом и
+/// upstream_path в remote-режиме.
+pub async fn lazydocker_attach(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+    Query(raw): Query<HashMap<String, String>>,
+) -> Response {
+    // Phase 4 — поддержка `?server=<id>`.
+    if let Some(server_id) = extract_server_id(&raw) {
+        if !state.remote_mode {
+            tracing::warn!(server_id, "ws/lazydocker: ?server requested in non-remote mode");
+            return ws.on_upgrade(move |socket| close_with_policy_violation(socket, "remote mode disabled"));
+        }
+        let upstream_query = rebuild_query_without_server(&raw);
+        return ws.on_upgrade(move |socket| async move {
+            let store = state.remotes.read().await;
+            if let Err(e) = remote_proxy::proxy_websocket(
+                &store,
+                &server_id,
+                "/ws/lazydocker",
+                &upstream_query,
+                socket,
+            )
+            .await
+            {
+                tracing::trace!(error = %e, server_id, "ws/lazydocker proxy_websocket finished with error");
+            }
+        });
+    }
+
+    let q = match parse_lazygit_query(&raw) {
+        Ok(q) => q,
+        Err(e) => {
+            tracing::warn!(error = %e, "ws/lazydocker: invalid query");
+            return ws.on_upgrade(move |socket| close_with_policy_violation(socket, "invalid query"));
+        }
+    };
+    tracing::info!(cwd = %q.cwd, cols = q.cols, rows = q.rows, "ws lazydocker upgrade");
+    ws.on_upgrade(move |socket| handle_tui_socket(socket, q, spawn_lazydocker, "lazydocker"))
+}
+
+/// `GET /ws/telescope` — upgrade и переход в [`handle_tui_socket`] с
+/// [`spawn_television`].
+///
+/// Регистрируется в `main.rs` как `.route("/ws/telescope", get(ws::telescope_attach))`.
+/// Симметричен [`lazygit_attach`] — отличается только бинарём (`tv`),
+/// label'ом и upstream_path в remote-режиме.
+pub async fn telescope_attach(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+    Query(raw): Query<HashMap<String, String>>,
+) -> Response {
+    // Phase 4 — поддержка `?server=<id>`.
+    if let Some(server_id) = extract_server_id(&raw) {
+        if !state.remote_mode {
+            tracing::warn!(server_id, "ws/telescope: ?server requested in non-remote mode");
+            return ws.on_upgrade(move |socket| close_with_policy_violation(socket, "remote mode disabled"));
+        }
+        let upstream_query = rebuild_query_without_server(&raw);
+        return ws.on_upgrade(move |socket| async move {
+            let store = state.remotes.read().await;
+            if let Err(e) = remote_proxy::proxy_websocket(
+                &store,
+                &server_id,
+                "/ws/telescope",
+                &upstream_query,
+                socket,
+            )
+            .await
+            {
+                tracing::trace!(error = %e, server_id, "ws/telescope proxy_websocket finished with error");
+            }
+        });
+    }
+
+    let q = match parse_lazygit_query(&raw) {
+        Ok(q) => q,
+        Err(e) => {
+            tracing::warn!(error = %e, "ws/telescope: invalid query");
+            return ws.on_upgrade(move |socket| close_with_policy_violation(socket, "invalid query"));
+        }
+    };
+    tracing::info!(cwd = %q.cwd, cols = q.cols, rows = q.rows, channel = ?q.channel, "ws telescope upgrade");
+    // channel выносим в Arc, чтобы closure был Fn + Send + Sync + 'static.
+    let channel: Arc<Option<String>> = Arc::new(q.channel.clone());
+    let spawn = move |cwd: &Path, cols: u16, rows: u16| {
+        let ch: Option<&str> = channel.as_ref().as_ref().map(|s| s.as_str());
+        spawn_television(cwd, cols, rows, ch)
+    };
+    ws.on_upgrade(move |socket| handle_tui_socket(socket, q, spawn, "telescope"))
+}
+
+/// Тонкая обёртка над generic [`handle_tui_socket`] для lazygit-таба.
+///
+/// Используется ws-handler'ом [`lazygit_attach`]. Логика switch'а CWD,
+/// resize, teardown — все в [`handle_tui_socket`].
 async fn handle_lazygit_socket(socket: WebSocket, q: LazygitQuery) {
+    handle_tui_socket(socket, q, spawn_lazygit, "lazygit").await
+}
+
+/// Generic-обработчик WS-соединения для одиночной TUI-сессии (lazygit,
+/// lazydocker, tv/television и т.п.).
+///
+/// Симметричен [`handle_socket`] (tmux attach), но:
+/// - использует переданную фабрику `spawn_fn(&Path, cols, rows)` для запуска
+///   TUI-бинаря в указанном cwd (вместо `spawn_tmux_attach` по имени сессии);
+/// - принимает [`LazygitControl`] (resize / switch_cwd) — этот контракт общий
+///   для всех cwd-ориентированных TUI-вкладок;
+/// - `label` используется в tracing-логах и в error-frame'ах клиенту
+///   (`spawn failed: ...`).
+///
+/// Reader-task переиспользует [`spawn_pty_reader`]. При SwitchCwd убивает
+/// старый PTY, спавнит новый через ту же `spawn_fn` в новом cwd.
+async fn handle_tui_socket<F>(
+    socket: WebSocket,
+    q: LazygitQuery,
+    spawn_fn: F,
+    label: &'static str,
+) where
+    F: Fn(&Path, u16, u16) -> anyhow::Result<PtyHandle> + Send + Sync + 'static,
+{
     let mut cur_cwd = PathBuf::from(&q.cwd);
     let mut cur_cols = q.cols;
     let mut cur_rows = q.rows;
 
-    // Создаём первый PTY с lazygit. При ошибке — Text frame с типом "error",
-    // потом Close. Это контракт с фронтендом: error-баннер в git-tab.
-    let pty_initial = match spawn_lazygit(&cur_cwd, cur_cols, cur_rows) {
+    // Создаём первый PTY. При ошибке — Text frame с типом "error", потом Close.
+    // Это контракт с фронтендом: error-баннер в соответствующем tab'е.
+    let pty_initial = match spawn_fn(&cur_cwd, cur_cols, cur_rows) {
         Ok(p) => p,
         Err(e) => {
-            tracing::error!(error = ?e, cwd = ?cur_cwd, "spawn_lazygit failed");
+            tracing::error!(error = ?e, cwd = ?cur_cwd, %label, "spawn failed");
             let mut s = socket;
             let msg = format!("spawn failed: {e}");
             let payload = serde_json::to_string(&ErrorFrame::new(&msg))
@@ -631,11 +761,11 @@ async fn handle_lazygit_socket(socket: WebSocket, q: LazygitQuery) {
         while let Some(chunk) = pty_to_ws_rx.recv().await {
             let mut guard = ws_tx_clone.lock().await;
             if let Err(e) = guard.send(Message::Binary(chunk)).await {
-                tracing::debug!(error = ?e, "lazygit ws send Binary failed; closing");
+                tracing::debug!(error = ?e, %label, "tui ws send Binary failed; closing");
                 break;
             }
         }
-        tracing::debug!("lazygit ws-writer task finished");
+        tracing::debug!(%label, "tui ws-writer task finished");
     });
 
     let reader_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>> =
@@ -646,17 +776,17 @@ async fn handle_lazygit_socket(socket: WebSocket, q: LazygitQuery) {
         let msg = tokio::select! {
             biased;
             _ = pty_eof_notify.notified() => {
-                tracing::info!(cwd = ?cur_cwd, "lazygit pty EOF / death — closing WS");
+                tracing::info!(cwd = ?cur_cwd, %label, "tui pty EOF / death — closing WS");
                 break;
             }
             opt = ws_rx.next() => match opt {
                 Some(Ok(m)) => m,
                 Some(Err(e)) => {
-                    tracing::debug!(error = ?e, "lazygit ws recv error; tearing down");
+                    tracing::debug!(error = ?e, %label, "tui ws recv error; tearing down");
                     break;
                 }
                 None => {
-                    tracing::debug!("lazygit ws stream ended");
+                    tracing::debug!(%label, "tui ws stream ended");
                     break;
                 }
             }
@@ -680,11 +810,11 @@ async fn handle_lazygit_socket(socket: WebSocket, q: LazygitQuery) {
                 match res {
                     Ok(Ok(())) => {}
                     Ok(Err(e)) => {
-                        tracing::debug!(error = ?e, "lazygit pty write failed; tearing down");
+                        tracing::debug!(error = ?e, %label, "tui pty write failed; tearing down");
                         break;
                     }
                     Err(e) => {
-                        tracing::debug!(error = ?e, "lazygit spawn_blocking pty write join error");
+                        tracing::debug!(error = ?e, %label, "tui spawn_blocking pty write join error");
                         break;
                     }
                 }
@@ -697,20 +827,20 @@ async fn handle_lazygit_socket(socket: WebSocket, q: LazygitQuery) {
                         let guard = pty.lock().await;
                         if let Some(h) = guard.as_ref() {
                             if let Err(e) = h.resize(cols, rows) {
-                                tracing::warn!(error = ?e, cols, rows, "lazygit resize failed");
+                                tracing::warn!(error = ?e, cols, rows, %label, "tui resize failed");
                             } else {
-                                tracing::debug!(cols, rows, "lazygit pty resized");
+                                tracing::debug!(cols, rows, %label, "tui pty resized");
                             }
                         }
                     }
                     Ok(LazygitControl::SwitchCwd { cwd: new_cwd }) => {
                         let new_path = PathBuf::from(&new_cwd);
-                        tracing::info!(from = ?cur_cwd, to = ?new_path, "lazygit switch cwd");
+                        tracing::info!(from = ?cur_cwd, to = ?new_path, %label, "tui switch cwd");
 
                         // 1) Сигнал старому reader'у завершиться.
                         cancel.store(true, Ordering::Relaxed);
 
-                        // 2) Дроп старого PtyHandle → kill+wait lazygit.
+                        // 2) Дроп старого PtyHandle → kill+wait child.
                         {
                             let mut guard = pty.lock().await;
                             *guard = None;
@@ -721,11 +851,11 @@ async fn handle_lazygit_socket(socket: WebSocket, q: LazygitQuery) {
                             let _ = h.await;
                         }
 
-                        // 4) Spawn новый lazygit в новом cwd.
-                        let new_handle = match spawn_lazygit(&new_path, cur_cols, cur_rows) {
+                        // 4) Spawn новый PTY (через переданную фабрику) в новом cwd.
+                        let new_handle = match spawn_fn(&new_path, cur_cols, cur_rows) {
                             Ok(h) => h,
                             Err(e) => {
-                                tracing::error!(error = ?e, cwd = ?new_path, "switch_cwd: spawn_lazygit failed");
+                                tracing::error!(error = ?e, cwd = ?new_path, %label, "switch_cwd: spawn failed");
                                 let msg = format!("switch spawn failed: {e}");
                                 let payload = serde_json::to_string(&ErrorFrame::new(&msg))
                                     .unwrap_or_else(|_| {
@@ -758,12 +888,12 @@ async fn handle_lazygit_socket(socket: WebSocket, q: LazygitQuery) {
                         *reader_handle.lock().await = Some(new_reader);
                     }
                     Err(e) => {
-                        tracing::warn!(error = ?e, raw = %text, "invalid lazygit control JSON; ignored");
+                        tracing::warn!(error = ?e, raw = %text, %label, "invalid tui control JSON; ignored");
                     }
                 }
             }
             Message::Close(_) => {
-                tracing::debug!("lazygit ws close received");
+                tracing::debug!(%label, "tui ws close received");
                 break;
             }
             Message::Ping(_) | Message::Pong(_) => {}
@@ -786,7 +916,7 @@ async fn handle_lazygit_socket(socket: WebSocket, q: LazygitQuery) {
         let _ = g.send(Message::Close(None)).await;
         let _ = g.close().await;
     }
-    tracing::info!(cwd = ?cur_cwd, "lazygit ws session terminated cleanly");
+    tracing::info!(cwd = ?cur_cwd, %label, "tui ws session terminated cleanly");
 }
 
 /// Запускает spawn_blocking-задачу, которая синхронно читает PTY reader

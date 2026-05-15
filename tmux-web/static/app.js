@@ -84,20 +84,14 @@
         // Структура: { id, name, kind: 'preset'|'custom', ui: {...}, term: {...} }.
         // null до первого fetch /api/themes/active (см. bootstrap).
         activeTheme: null,
-        // ---- Phase 4 (lazygit-tab): xterm-инстанция git-таба ----
-        // Изолированный Terminal + FitAddon, монтируется в #git-term
-        // лениво при первом switchTab('git') с активным проектом.
-        // ws — WebSocket к /ws/lazygit?cwd=<active project path>.
-        // currentCwd хранится для switch_cwd / reconnect-стратегии при
-        // смене активного проекта.
-        gitTerm: {
-            term: null,          // xterm.js Terminal | null
-            fit: null,           // FitAddon | null
-            ws: null,            // WebSocket | null
-            mounted: false,      // true после первого mountGitTerm()
-            currentCwd: null,    // последний cwd, использованный при open WS
-            errorSticky: false,  // true → не перезатирать banner на ws.close
-        },
+        // ---- TUI-tabs: xterm-инстанции lazygit / lazydocker / telescope ----
+        // Каждая вкладка — отдельный экземпляр TuiTab, созданный через
+        // createTuiTab() (см. ниже). Поля term/fit/ws/mounted/currentCwd/
+        // errorSticky лежат внутри tab.state. Здесь оставлены прямые ссылки,
+        // чтобы существующий код (state.gitTerm.*) не сломался.
+        gitTerm: null,          // TuiTab.state — заполняется в bootstrap createTuiTab
+        dockerTerm: null,
+        telescopeTerm: null,
     };
 
     // ---- DOM-узлы ----
@@ -128,6 +122,28 @@
     const $gitErrorClose = document.getElementById('git-error-close');
     const $gitInstallHelp = document.getElementById('git-install-help');
     const $gitInstallList = document.getElementById('git-install-list');
+    // TUI-tabs: Docker (lazydocker) и Telescope (tv) — структура зеркальна #git.
+    const $tabDocker = document.getElementById('tab-docker');
+    const $dockerEl = document.getElementById('docker');
+    const $dockerTermEl = document.getElementById('docker-term');
+    const $dockerPlaceholder = document.getElementById('docker-placeholder');
+    const $dockerError = document.getElementById('docker-error');
+    const $dockerErrorText = document.getElementById('docker-error-text');
+    const $dockerErrorRetry = document.getElementById('docker-error-retry');
+    const $dockerErrorClose = document.getElementById('docker-error-close');
+    const $dockerInstallHelp = document.getElementById('docker-install-help');
+    const $dockerInstallList = document.getElementById('docker-install-list');
+    const $tabTelescope = document.getElementById('tab-telescope');
+    const $telescopeEl = document.getElementById('telescope');
+    const $telescopeTermEl = document.getElementById('telescope-term');
+    const $telescopePlaceholder = document.getElementById('telescope-placeholder');
+    const $telescopeError = document.getElementById('telescope-error');
+    const $telescopeErrorText = document.getElementById('telescope-error-text');
+    const $telescopeErrorRetry = document.getElementById('telescope-error-retry');
+    const $telescopeErrorClose = document.getElementById('telescope-error-close');
+    const $telescopeInstallHelp = document.getElementById('telescope-install-help');
+    const $telescopeInstallList = document.getElementById('telescope-install-list');
+    const $telescopeChannelBar = document.getElementById('telescope-channel-bar');
     // Phase 6.B: Project bar.
     const $projectSelect = document.getElementById('project-select');
     const $projectNew = document.getElementById('project-new');
@@ -1351,7 +1367,8 @@
      *   polling. При уходе — clearInterval.
      */
     function switchTab(name) {
-        if (name !== 'terminal' && name !== 'tasks' && name !== 'git') return;
+        if (name !== 'terminal' && name !== 'tasks' && name !== 'git'
+            && name !== 'docker' && name !== 'telescope') return;
         if (state.activeTab === name) return;
         const prev = state.activeTab;
         state.activeTab = name;
@@ -1359,23 +1376,34 @@
         const onTerminal = name === 'terminal';
         const onTasks = name === 'tasks';
         const onGit = name === 'git';
+        const onDocker = name === 'docker';
+        const onTelescope = name === 'telescope';
         // Видимость контейнеров.
         $terminalEl.hidden = !onTerminal;
         if ($placeholder) $placeholder.hidden = !onTerminal;
         $tasksEl.hidden = !onTasks;
         if ($gitEl) $gitEl.hidden = !onGit;
+        if ($dockerEl) $dockerEl.hidden = !onDocker;
+        if ($telescopeEl) $telescopeEl.hidden = !onTelescope;
 
         // Active state на кнопках.
         $tabTerminal.classList.toggle('active', onTerminal);
         $tabTasks.classList.toggle('active', onTasks);
         if ($tabGit) $tabGit.classList.toggle('active', onGit);
+        if ($tabDocker) $tabDocker.classList.toggle('active', onDocker);
+        if ($tabTelescope) $tabTelescope.classList.toggle('active', onTelescope);
 
-        // Уход с Git — закрываем WS /ws/lazygit.
+        // Уход с TUI-вкладок — закрываем соответствующий WS.
+        // Сам term оставляем смонтированным — реактивация быстрее без
+        // term.dispose() + повторного term.open().
         if (prev === 'git' && !onGit) {
-            // При уходе с git-таба закрываем WS /ws/lazygit.
-            // Сам term оставляем смонтированным — реактивация быстрее без
-            // term.dispose() + повторного term.open().
             closeGitWs('tab switched away');
+        }
+        if (prev === 'docker' && !onDocker && state.dockerTerm) {
+            state.dockerTerm.close('tab switched away');
+        }
+        if (prev === 'telescope' && !onTelescope && state.telescopeTerm) {
+            state.telescopeTerm.close('tab switched away');
         }
         // Уход с Tasks — гасим fallback polling (WS остаётся живым).
         if (prev === 'tasks' && !onTasks) {
@@ -1406,381 +1434,42 @@
             // активного проекта. Если активного проекта нет — показать
             // placeholder, скрыть term и не открывать WS.
             openLazygitForActiveProject();
+        } else if (onDocker) {
+            if (state.dockerTerm) state.dockerTerm.openForActiveProject();
+        } else if (onTelescope) {
+            if (state.telescopeTerm) state.telescopeTerm.openForActiveProject();
         }
     }
 
     // -------------------------------------------------------------------------
-    // Phase 4 — lazygit-tab: xterm Terminal + /ws/lazygit WebSocket
+    // TUI-tabs framework: createTuiTab() factory
+    //
+    // Generic-обёртка для xterm-вкладок, говорящих по WebSocket с PTY на
+    // бэкенде. Контракт WS идентичен для всех (lazygit/lazydocker/telescope):
+    //   - query: ?cwd=<path>&cols=<n>&rows=<n>[&server=<id>]
+    //   - input: raw bytes (Uint8Array) → ws.send в Binary frame
+    //   - control: ws.send({type:"resize",cols,rows}) и
+    //              ws.send({type:"switch_cwd",cwd}) — Text frame
+    //   - backend → frontend: Binary frame = pty output, Text frame =
+    //              {type:"error",message:"..."}.
+    //
+    // Параметры:
+    //   name         — строка для логов ('lazygit'|'lazydocker'|'telescope').
+    //   wsPath       — путь WS ('/ws/lazygit'|'/ws/lazydocker'|'/ws/telescope').
+    //   refs         — DOM-ссылки: termEl, placeholderEl, errorEl, errorTextEl,
+    //                  retryBtn, closeBtn, installHelpEl, installListEl.
+    //   installHelp  — { binary, entries:[{id,label,cmd}], notFoundMsg, fullGuideUrl }.
+    //                  binary — имя бинаря (для эвристики "not found").
+    //                  entries — список команд установки per-platform.
+    //                  notFoundMsg — сообщение в banner если бинарь не найден.
+    //
+    // Возвращает: { state, mount(), connect(cwd), close(reason), switchCwd(cwd),
+    //               showBanner(msg, opts), hideBanner(), retry(), getActiveTabName() }.
     // -------------------------------------------------------------------------
-
-    /**
-     * Возвращает активный проект (ProjectDto с .path) или null если его нет.
-     * state.activeProjectId может указывать на transient `__path__:...` id,
-     * который не присутствует в state.projects — тогда возвращаем null.
-     */
-    function getActiveProject() {
-        const id = state.activeProjectId;
-        if (!id) return null;
-        const list = Array.isArray(state.projects) ? state.projects : [];
-        const found = list.find((p) => p && p.id === id);
-        if (found) return found;
-        // Transient auto-group id вида `__path__:<cwd>` — registered project
-        // нет, но cwd известен. Возвращаем pseudo-project, чтобы lazygit-tab
-        // мог открыть терминал с этим cwd.
-        if (typeof id === 'string' && id.startsWith('__path__:')) {
-            const cwd = id.slice('__path__:'.length);
-            if (cwd) return { id, name: cwd, path: cwd };
-        }
-        return null;
-    }
-
-    /**
-     * Ленивая инициализация второй инстанции xterm.js — изолированной от
-     * основного state.term. Использует те же опции (theme/font), но Web
-     * Links не нужен (lazygit рисует TUI, URLs там не отображаются обычно).
-     *
-     * Идемпотентно: повторные вызовы возвращают существующий term.
-     */
-    function mountGitTerm() {
-        const gt = state.gitTerm;
-        if (gt.mounted && gt.term) return gt.term;
-        const Terminal = window.Terminal;
-        const FitAddon = window.FitAddon && window.FitAddon.FitAddon;
-        if (!Terminal || !FitAddon) {
-            console.error('[lazygit] xterm.js / FitAddon not loaded');
-            return null;
-        }
-        if (!$gitTermEl) {
-            console.error('[lazygit] #git-term element missing');
-            return null;
-        }
-
-        // Опции совпадают с основным term (initTerminal) — UX единообразен.
-        const fallbackTheme = {
-            background: '#000000',
-            foreground: '#d8dee9',
-            cursor: '#d8dee9',
-            selectionBackground: '#3a4356',
-        };
-        // mapTermTheme возможно недоступен до bootstrap-loadActiveTheme;
-        // safe-fallback на инлайн-тему. Активная тема применится при
-        // следующем applyTheme через переоткрытие term (Phase 3 redraw).
-        const termTheme = (state.activeTheme && typeof mapTermTheme === 'function')
-            ? mapTermTheme(state.activeTheme)
-            : fallbackTheme;
-
-        const term = new Terminal({
-            cursorBlink: true,
-            fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
-            fontSize: 13,
-            scrollback: 5000,
-            allowProposedApi: true,
-            theme: termTheme || fallbackTheme,
-        });
-        const fit = new FitAddon();
-        term.loadAddon(fit);
-        term.open($gitTermEl);
-        try { fit.fit(); } catch (e) { console.warn('[lazygit] initial fit failed', e); }
-
-        // Ввод пользователя в xterm → WS (raw bytes).
-        // lazygit ожидает байты в Binary frames — отправляем как Uint8Array.
-        term.onData((data) => {
-            const ws = state.gitTerm.ws;
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                try {
-                    ws.send(state.encoder.encode(data));
-                } catch (e) {
-                    console.warn('[lazygit] ws.send (input) failed', e);
-                }
-            }
-        });
-
-        // onResize xterm (изменение cols/rows) → control JSON в Text frame.
-        // Срабатывает после fit.fit() если геометрия pty изменилась.
-        term.onResize(({ cols, rows }) => {
-            const ws = state.gitTerm.ws;
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                try {
-                    ws.send(JSON.stringify({ type: 'resize', cols, rows }));
-                } catch (e) {
-                    console.warn('[lazygit] ws.send (resize) failed', e);
-                }
-            }
-        });
-
-        // ResizeObserver на #git-term — ловит любые изменения размера контейнера
-        // (window resize, sidebar collapse, font-size change, tab show/hide).
-        // Дополнительно слушаем window resize как страховку.
-        try {
-            const ro = new ResizeObserver(() => {
-                if (state.activeTab !== 'git') return;
-                try { state.gitTerm.fit && state.gitTerm.fit.fit(); } catch (_) {}
-            });
-            ro.observe($gitTermEl);
-            state.gitTerm.resizeObserver = ro;
-        } catch (_) { /* ResizeObserver missing — fallback на window resize ниже */ }
-        window.addEventListener('resize', () => {
-            if (state.activeTab !== 'git') return;
-            try { state.gitTerm.fit && state.gitTerm.fit.fit(); } catch (_) {}
-        });
-
-        state.gitTerm.term = term;
-        state.gitTerm.fit = fit;
-        state.gitTerm.mounted = true;
-        return term;
-    }
-
-    /**
-     * Открывает (или переподключает) WS /ws/lazygit для активного проекта.
-     * Точка входа из switchTab('git') и из switchActiveProject (как fallback,
-     * если SwitchCwd-control не сработал).
-     *
-     * Поведение:
-     *  - Нет активного проекта → показать placeholder, скрыть #git-term,
-     *    закрыть WS (если был).
-     *  - Активный проект есть → скрыть placeholder, смонтировать term
-     *    (если ещё не), закрыть прежнюю WS (если cwd сменился), открыть
-     *    WS на новый cwd.
-     */
-    function openLazygitForActiveProject() {
-        const project = getActiveProject();
-        if (!project || !project.path) {
-            // Placeholder visible, term hidden, WS closed.
-            if ($gitPlaceholder) $gitPlaceholder.hidden = false;
-            if ($gitTermEl) $gitTermEl.hidden = true;
-            closeGitWs('no active project');
-            return;
-        }
-
-        if ($gitPlaceholder) $gitPlaceholder.hidden = true;
-        if ($gitTermEl) $gitTermEl.hidden = false;
-
-        const term = mountGitTerm();
-        if (!term) {
-            showGitBanner('Failed to initialize terminal (xterm.js not loaded)');
-            return;
-        }
-
-        // requestAnimationFrame чтобы pane получил размер (был hidden), и
-        // только потом fit.fit() — иначе cols/rows будут от 0×0.
-        requestAnimationFrame(() => {
-            try { state.gitTerm.fit && state.gitTerm.fit.fit(); } catch (_) {}
-            connectGitWs(project.path);
-            // Focus в term, чтобы пользователь сразу мог жать клавиши.
-            try { term.focus(); } catch (_) {}
-        });
-    }
-
-    /**
-     * Открывает WebSocket /ws/lazygit?cwd=...&cols=...&rows=...
-     * для указанного cwd. Если есть открытый WS на тот же cwd —
-     * no-op. Если на другой cwd — close + reconnect.
-     */
-    function connectGitWs(cwd) {
-        const gt = state.gitTerm;
-        // Уже подключены к нужному cwd?
-        if (gt.ws && gt.ws.readyState === WebSocket.OPEN && gt.currentCwd === cwd) {
-            return;
-        }
-        // CONNECTING к нужному cwd — дождёмся onopen.
-        if (gt.ws && gt.ws.readyState === WebSocket.CONNECTING && gt.currentCwd === cwd) {
-            return;
-        }
-        // Другой cwd или закрытое соединение — закрыть и переподключиться.
-        if (gt.ws) {
-            try {
-                gt.ws.onopen = null;
-                gt.ws.onmessage = null;
-                gt.ws.onerror = null;
-                gt.ws.onclose = null;
-                gt.ws.close();
-            } catch (_) {}
-            gt.ws = null;
-        }
-        if (!gt.term) {
-            console.warn('[lazygit] connectGitWs: term not mounted');
-            return;
-        }
-        const cols = gt.term.cols || 80;
-        const rows = gt.term.rows || 24;
-        const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-        // Phase 5: для remote origin (state.activeOrigin не 'local'/'all') —
-        // прокидываем &server=<id>, бэкенд прокинет WS на remote через
-        // remote_proxy. В legacy / 'local' / 'all' — URL без параметра.
-        const lgServer = (isRemoteMode()
-            && state.activeOrigin
-            && state.activeOrigin !== 'local'
-            && state.activeOrigin !== 'all')
-            ? `&server=${encodeURIComponent(state.activeOrigin)}`
-            : '';
-        const url = `${proto}://${location.host}/ws/lazygit?cwd=${encodeURIComponent(cwd)}&cols=${cols}&rows=${rows}${lgServer}`;
-
-        let ws;
-        try {
-            ws = new WebSocket(url);
-        } catch (e) {
-            console.warn('[lazygit] WebSocket constructor failed', e);
-            showGitBanner('Failed to open WebSocket: ' + (e && e.message ? e.message : String(e)));
-            return;
-        }
-        ws.binaryType = 'arraybuffer';
-        gt.ws = ws;
-        gt.currentCwd = cwd;
-        gt.errorSticky = false;
-
-        ws.onopen = () => {
-            // На успешный connect снимаем banner (если был от прошлой попытки).
-            hideGitBanner();
-            // Принудительно send resize — backend строит pty c cols/rows из
-            // query, но если xterm к этому моменту перепосчитал размер
-            // (после rAF + fit.fit), pty надо синхронизировать.
-            try {
-                if (gt.term) {
-                    ws.send(JSON.stringify({
-                        type: 'resize',
-                        cols: gt.term.cols,
-                        rows: gt.term.rows,
-                    }));
-                }
-            } catch (_) {}
-        };
-
-        ws.onmessage = (ev) => {
-            const data = ev.data;
-            if (data instanceof ArrayBuffer) {
-                // Binary frame — raw pty output, в xterm.
-                try {
-                    gt.term.write(new Uint8Array(data));
-                } catch (e) {
-                    console.warn('[lazygit] term.write failed', e);
-                }
-                return;
-            }
-            // Text frame — control JSON. Backend шлёт {type:"error",message:"..."}
-            // при ошибках запуска lazygit / pty.
-            if (typeof data === 'string') {
-                let payload;
-                try {
-                    payload = JSON.parse(data);
-                } catch (_) {
-                    console.warn('[lazygit] non-JSON text frame:', data);
-                    return;
-                }
-                if (payload && payload.type === 'error' && typeof payload.message === 'string') {
-                    let msg = payload.message;
-                    const lower = msg.toLowerCase();
-                    const notFound = lower.includes('lazygit') && (lower.includes('not found') || lower.includes('no such file'));
-                    if (notFound) {
-                        msg = 'lazygit not found in PATH. Install it using one of the commands below:';
-                    }
-                    showGitBanner(msg, { showInstall: notFound });
-                    gt.errorSticky = true;
-                }
-            }
-        };
-
-        ws.onerror = (ev) => {
-            console.debug('[lazygit] ws error', ev);
-        };
-
-        ws.onclose = (ev) => {
-            // Если уже показали error-banner с message (lazygit-not-found etc) —
-            // не перезатираем «Connection lost». Иначе пользователь потеряет
-            // конкретный диагноз.
-            if (gt.ws === ws) {
-                gt.ws = null;
-            }
-            if (!gt.errorSticky && state.activeTab === 'git') {
-                const reason = ev && ev.reason ? ev.reason : '';
-                const code = ev && typeof ev.code === 'number' ? ev.code : 0;
-                // Нормальное закрытие (1000/1001) — не шумим.
-                if (code !== 1000 && code !== 1001) {
-                    showGitBanner('Connection lost' + (reason ? ': ' + reason : '') + '. Press Retry.');
-                }
-            }
-        };
-    }
-
-    /**
-     * Закрывает текущий WS /ws/lazygit (если есть). Не вызывает term.dispose().
-     * Если `silent` (по умолчанию) — onclose не показывает banner.
-     */
-    function closeGitWs(reason) {
-        const gt = state.gitTerm;
-        if (!gt.ws) return;
-        try {
-            // Снимаем обработчики чтобы onclose не показал banner при ручном close.
-            gt.ws.onopen = null;
-            gt.ws.onmessage = null;
-            gt.ws.onerror = null;
-            gt.ws.onclose = null;
-            gt.ws.close(1000, reason || 'closed');
-        } catch (e) {
-            console.debug('[lazygit] close failed', e);
-        }
-        gt.ws = null;
-    }
-
-    /**
-     * Отправляет ws.send {type:"switch_cwd", cwd}. Backend перезапустит
-     * lazygit в новом cwd с тем же pty. Если WS не OPEN — fallback на
-     * reconnect через closeGitWs+connectGitWs.
-     */
-    function gitSwitchCwd(newCwd) {
-        const gt = state.gitTerm;
-        if (!newCwd) return;
-        if (!gt.ws || gt.ws.readyState !== WebSocket.OPEN) {
-            // Нет живого WS — просто переподключаемся.
-            connectGitWs(newCwd);
-            return;
-        }
-        try {
-            // Очистим term перед переключением, чтобы старый вывод не
-            // путал пользователя.
-            if (gt.term) {
-                try { gt.term.clear(); } catch (_) {}
-            }
-            gt.ws.send(JSON.stringify({ type: 'switch_cwd', cwd: newCwd }));
-            gt.currentCwd = newCwd;
-        } catch (e) {
-            console.warn('[lazygit] switch_cwd send failed, falling back to reconnect', e);
-            closeGitWs('switch_cwd failed');
-            connectGitWs(newCwd);
-        }
-    }
-
-    /**
-     * Banner-плашка ошибки в git-tab. Показывает текст, кнопки Retry/×.
-     * Перезаписывает текст при повторном вызове.
-     */
-    function showGitBanner(message, opts) {
-        if (!$gitError || !$gitErrorText) return;
-        $gitErrorText.textContent = message;
-        $gitError.hidden = false;
-        const showInstall = !!(opts && opts.showInstall);
-        if (showInstall) {
-            renderInstallHelp();
-            if ($gitInstallHelp) $gitInstallHelp.hidden = false;
-        } else if ($gitInstallHelp) {
-            $gitInstallHelp.hidden = true;
-        }
-    }
-
-    /**
-     * Скрывает banner.
-     */
-    function hideGitBanner() {
-        if (!$gitError) return;
-        $gitError.hidden = true;
-        if ($gitInstallHelp) $gitInstallHelp.hidden = true;
-        state.gitTerm.errorSticky = false;
-    }
 
     /**
      * Эвристика определения OS клиента по navigator.userAgent / userAgentData.
      * Возвращает 'mac' | 'linux-debian' | 'linux-arch' | 'linux-fedora' | 'linux' | 'windows' | null.
-     * Дистрибутив Linux точно определить нельзя, поэтому возвращаем 'linux' и
-     * показываем все варианты (apt/pacman/dnf) без detected-метки.
      */
     function detectClientOS() {
         const nav = (typeof navigator !== 'undefined') ? navigator : null;
@@ -1791,66 +1480,6 @@
         if (platform.includes('win') || ua.includes('windows')) return 'windows';
         if (platform.includes('linux') || ua.includes('linux') || ua.includes('x11')) return 'linux';
         return null;
-    }
-
-    /**
-     * Рендерит список команд установки lazygit для разных OS внутри
-     * #git-install-list. Текущая OS получает класс .detected (выводится первой).
-     */
-    function renderInstallHelp() {
-        if (!$gitInstallList) return;
-        const detected = detectClientOS();
-        const entries = [
-            { id: 'mac',      label: 'macOS (Homebrew)',     cmd: 'brew install lazygit' },
-            { id: 'mac-port', label: 'macOS (MacPorts)',     cmd: 'sudo port install lazygit' },
-            { id: 'linux-debian', label: 'Debian / Ubuntu', cmd: 'LAZYGIT_VERSION=$(curl -s "https://api.github.com/repos/jesseduffield/lazygit/releases/latest" | grep -Po \'"tag_name": "v\\K[^"]*\') && \\\ncurl -Lo lazygit.tar.gz "https://github.com/jesseduffield/lazygit/releases/latest/download/lazygit_${LAZYGIT_VERSION}_Linux_x86_64.tar.gz" && \\\ntar xf lazygit.tar.gz lazygit && sudo install lazygit -D -t /usr/local/bin/' },
-            { id: 'linux-arch',   label: 'Arch Linux',       cmd: 'sudo pacman -S lazygit' },
-            { id: 'linux-fedora', label: 'Fedora',           cmd: 'sudo dnf copr enable atim/lazygit -y && sudo dnf install lazygit' },
-            { id: 'windows',  label: 'Windows (winget)',     cmd: 'winget install -e --id=JesseDuffield.lazygit' },
-            { id: 'windows-scoop', label: 'Windows (Scoop)', cmd: 'scoop install lazygit' },
-            { id: 'go',       label: 'Go (any OS)',          cmd: 'go install github.com/jesseduffield/lazygit@latest' },
-        ];
-
-        const isDetected = (id) => {
-            if (!detected) return false;
-            if (detected === 'mac' && (id === 'mac' || id === 'mac-port')) return true;
-            if (detected === 'linux' && id.startsWith('linux-')) return true;
-            if (detected === 'windows' && id.startsWith('windows')) return true;
-            return false;
-        };
-
-        entries.sort((a, b) => Number(isDetected(b.id)) - Number(isDetected(a.id)));
-
-        $gitInstallList.innerHTML = '';
-        for (const e of entries) {
-            const li = document.createElement('li');
-            const label = document.createElement('span');
-            label.className = 'os-label' + (isDetected(e.id) ? ' detected' : '');
-            label.textContent = e.label;
-            const cmd = document.createElement('code');
-            cmd.className = 'os-cmd';
-            cmd.textContent = e.cmd;
-            const copy = document.createElement('button');
-            copy.type = 'button';
-            copy.className = 'os-copy';
-            copy.textContent = 'Copy';
-            copy.addEventListener('click', () => {
-                copyToClipboardSafe(e.cmd).then((ok) => {
-                    if (!ok) return;
-                    const prev = copy.textContent;
-                    copy.textContent = 'Copied';
-                    copy.classList.add('copied');
-                    setTimeout(() => {
-                        copy.textContent = prev;
-                        copy.classList.remove('copied');
-                    }, 1400);
-                });
-            });
-            li.appendChild(label);
-            li.appendChild(cmd);
-            li.appendChild(copy);
-            $gitInstallList.appendChild(li);
-        }
     }
 
     /**
@@ -1881,16 +1510,611 @@
         }
     }
 
+    function createTuiTab(opts) {
+        const name = opts.name;
+        const wsPath = opts.wsPath;
+        const refs = opts.refs || {};
+        const installHelp = opts.installHelp || null;
+        // tabName в state.activeTab: для wsPath '/ws/lazygit' → 'git', и т.д.
+        const activeTabName = opts.activeTabName || name;
+
+        const tabState = {
+            term: null,
+            fit: null,
+            ws: null,
+            mounted: false,
+            currentCwd: null,
+            errorSticky: false,
+            resizeObserver: null,
+        };
+
+        function mount() {
+            if (tabState.mounted && tabState.term) return tabState.term;
+            const Terminal = window.Terminal;
+            const FitAddon = window.FitAddon && window.FitAddon.FitAddon;
+            if (!Terminal || !FitAddon) {
+                console.error('[' + name + '] xterm.js / FitAddon not loaded');
+                return null;
+            }
+            if (!refs.termEl) {
+                console.error('[' + name + '] term element missing');
+                return null;
+            }
+
+            const fallbackTheme = {
+                background: '#000000',
+                foreground: '#d8dee9',
+                cursor: '#d8dee9',
+                selectionBackground: '#3a4356',
+            };
+            const termTheme = (state.activeTheme && typeof mapTermTheme === 'function')
+                ? mapTermTheme(state.activeTheme)
+                : fallbackTheme;
+
+            const term = new Terminal({
+                cursorBlink: true,
+                fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
+                fontSize: 13,
+                scrollback: 5000,
+                allowProposedApi: true,
+                // Многие TUI (tv, lazygit, lazydocker) захватывают мышь — без
+                // этих опций пользователь не может выделить текст в preview.
+                // На macOS Option+drag и на любой OS Shift+drag всегда дают
+                // selection в обход TUI mouse mode.
+                macOptionClickForcesSelection: true,
+                rightClickSelectsWord: true,
+                theme: termTheme || fallbackTheme,
+            });
+            const fit = new FitAddon();
+            term.loadAddon(fit);
+            term.open(refs.termEl);
+            try { fit.fit(); } catch (e) { console.warn('[' + name + '] initial fit failed', e); }
+
+            // Cmd+C (macOS) / Ctrl+Shift+C (Linux/Win) — копируем выделенный
+            // текст в буфер обмена. Без перехвата xterm пытается отправить
+            // ^C в PTY, что для TUI бесполезно и портит работу tv/lazygit.
+            term.attachCustomKeyEventHandler((ev) => {
+                if (ev.type !== 'keydown') return true;
+                const isMac = navigator.platform.toUpperCase().includes('MAC');
+                const copyShortcut =
+                    (isMac && ev.metaKey && !ev.ctrlKey && ev.key === 'c') ||
+                    (!isMac && ev.ctrlKey && ev.shiftKey && ev.key.toUpperCase() === 'C');
+                if (copyShortcut) {
+                    const sel = term.getSelection();
+                    if (sel && navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(sel).catch((e) => {
+                            console.warn('[' + name + '] clipboard.writeText failed', e);
+                        });
+                        return false;
+                    }
+                }
+                return true;
+            });
+
+            term.onData((data) => {
+                const ws = tabState.ws;
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    try {
+                        ws.send(state.encoder.encode(data));
+                    } catch (e) {
+                        console.warn('[' + name + '] ws.send (input) failed', e);
+                    }
+                }
+            });
+
+            term.onResize(({ cols, rows }) => {
+                const ws = tabState.ws;
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    try {
+                        ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+                    } catch (e) {
+                        console.warn('[' + name + '] ws.send (resize) failed', e);
+                    }
+                }
+            });
+
+            try {
+                const ro = new ResizeObserver(() => {
+                    if (state.activeTab !== activeTabName) return;
+                    try { tabState.fit && tabState.fit.fit(); } catch (_) {}
+                });
+                ro.observe(refs.termEl);
+                tabState.resizeObserver = ro;
+            } catch (_) { /* ResizeObserver missing */ }
+            window.addEventListener('resize', () => {
+                if (state.activeTab !== activeTabName) return;
+                try { tabState.fit && tabState.fit.fit(); } catch (_) {}
+            });
+
+            tabState.term = term;
+            tabState.fit = fit;
+            tabState.mounted = true;
+            return term;
+        }
+
+        function connect(cwd) {
+            if (tabState.ws && tabState.ws.readyState === WebSocket.OPEN && tabState.currentCwd === cwd) {
+                return;
+            }
+            if (tabState.ws && tabState.ws.readyState === WebSocket.CONNECTING && tabState.currentCwd === cwd) {
+                return;
+            }
+            if (tabState.ws) {
+                try {
+                    tabState.ws.onopen = null;
+                    tabState.ws.onmessage = null;
+                    tabState.ws.onerror = null;
+                    tabState.ws.onclose = null;
+                    tabState.ws.close();
+                } catch (_) {}
+                tabState.ws = null;
+            }
+            if (!tabState.term) {
+                console.warn('[' + name + '] connect: term not mounted');
+                return;
+            }
+            const cols = tabState.term.cols || 80;
+            const rows = tabState.term.rows || 24;
+            const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+            const srv = (isRemoteMode()
+                && state.activeOrigin
+                && state.activeOrigin !== 'local'
+                && state.activeOrigin !== 'all')
+                ? `&server=${encodeURIComponent(state.activeOrigin)}`
+                : '';
+            const chParam = (tabState.channel && String(tabState.channel).trim())
+                ? `&channel=${encodeURIComponent(tabState.channel)}`
+                : '';
+            const url = `${proto}://${location.host}${wsPath}?cwd=${encodeURIComponent(cwd)}&cols=${cols}&rows=${rows}${srv}${chParam}`;
+
+            let ws;
+            try {
+                ws = new WebSocket(url);
+            } catch (e) {
+                console.warn('[' + name + '] WebSocket constructor failed', e);
+                showBanner('Failed to open WebSocket: ' + (e && e.message ? e.message : String(e)));
+                return;
+            }
+            ws.binaryType = 'arraybuffer';
+            tabState.ws = ws;
+            tabState.currentCwd = cwd;
+            tabState.errorSticky = false;
+
+            ws.onopen = () => {
+                hideBanner();
+                try {
+                    if (tabState.term) {
+                        ws.send(JSON.stringify({
+                            type: 'resize',
+                            cols: tabState.term.cols,
+                            rows: tabState.term.rows,
+                        }));
+                    }
+                } catch (_) {}
+            };
+
+            ws.onmessage = (ev) => {
+                const data = ev.data;
+                if (data instanceof ArrayBuffer) {
+                    try {
+                        tabState.term.write(new Uint8Array(data));
+                    } catch (e) {
+                        console.warn('[' + name + '] term.write failed', e);
+                    }
+                    return;
+                }
+                if (typeof data === 'string') {
+                    let payload;
+                    try {
+                        payload = JSON.parse(data);
+                    } catch (_) {
+                        console.warn('[' + name + '] non-JSON text frame:', data);
+                        return;
+                    }
+                    if (payload && payload.type === 'error' && typeof payload.message === 'string') {
+                        let msg = payload.message;
+                        const lower = msg.toLowerCase();
+                        const binary = installHelp && installHelp.binary ? installHelp.binary.toLowerCase() : null;
+                        const notFound = binary
+                            && lower.includes(binary)
+                            && (lower.includes('not found') || lower.includes('no such file'));
+                        if (notFound && installHelp && installHelp.notFoundMsg) {
+                            msg = installHelp.notFoundMsg;
+                        }
+                        showBanner(msg, { showInstall: !!notFound });
+                        tabState.errorSticky = true;
+                    }
+                }
+            };
+
+            ws.onerror = (ev) => {
+                console.debug('[' + name + '] ws error', ev);
+            };
+
+            ws.onclose = (ev) => {
+                if (tabState.ws === ws) {
+                    tabState.ws = null;
+                }
+                if (!tabState.errorSticky && state.activeTab === activeTabName) {
+                    const reason = ev && ev.reason ? ev.reason : '';
+                    const code = ev && typeof ev.code === 'number' ? ev.code : 0;
+                    if (code !== 1000 && code !== 1001) {
+                        showBanner('Connection lost' + (reason ? ': ' + reason : '') + '. Press Retry.');
+                    }
+                }
+            };
+        }
+
+        function close(reason) {
+            if (!tabState.ws) return;
+            try {
+                tabState.ws.onopen = null;
+                tabState.ws.onmessage = null;
+                tabState.ws.onerror = null;
+                tabState.ws.onclose = null;
+                tabState.ws.close(1000, reason || 'closed');
+            } catch (e) {
+                console.debug('[' + name + '] close failed', e);
+            }
+            tabState.ws = null;
+        }
+
+        function switchCwd(newCwd) {
+            if (!newCwd) return;
+            if (!tabState.ws || tabState.ws.readyState !== WebSocket.OPEN) {
+                connect(newCwd);
+                return;
+            }
+            try {
+                if (tabState.term) {
+                    try { tabState.term.clear(); } catch (_) {}
+                }
+                tabState.ws.send(JSON.stringify({ type: 'switch_cwd', cwd: newCwd }));
+                tabState.currentCwd = newCwd;
+            } catch (e) {
+                console.warn('[' + name + '] switch_cwd send failed, falling back to reconnect', e);
+                close('switch_cwd failed');
+                connect(newCwd);
+            }
+        }
+
+        function showBanner(message, bannerOpts) {
+            if (!refs.errorEl || !refs.errorTextEl) return;
+            refs.errorTextEl.textContent = message;
+            refs.errorEl.hidden = false;
+            const showInstall = !!(bannerOpts && bannerOpts.showInstall);
+            if (showInstall) {
+                renderInstallHelp();
+                if (refs.installHelpEl) refs.installHelpEl.hidden = false;
+            } else if (refs.installHelpEl) {
+                refs.installHelpEl.hidden = true;
+            }
+        }
+
+        function hideBanner() {
+            if (!refs.errorEl) return;
+            refs.errorEl.hidden = true;
+            if (refs.installHelpEl) refs.installHelpEl.hidden = true;
+            tabState.errorSticky = false;
+        }
+
+        function renderInstallHelp() {
+            if (!refs.installListEl || !installHelp || !Array.isArray(installHelp.entries)) return;
+            const detected = detectClientOS();
+            const entries = installHelp.entries;
+
+            const isDetected = (id) => {
+                if (!detected) return false;
+                if (detected === 'mac' && (id === 'mac' || id === 'mac-port')) return true;
+                if (detected === 'linux' && id.startsWith('linux-')) return true;
+                if (detected === 'windows' && id.startsWith('windows')) return true;
+                return false;
+            };
+
+            const sorted = entries.slice().sort(
+                (a, b) => Number(isDetected(b.id)) - Number(isDetected(a.id))
+            );
+
+            refs.installListEl.innerHTML = '';
+            for (const e of sorted) {
+                const li = document.createElement('li');
+                const label = document.createElement('span');
+                label.className = 'os-label' + (isDetected(e.id) ? ' detected' : '');
+                label.textContent = e.label;
+                const cmd = document.createElement('code');
+                cmd.className = 'os-cmd';
+                cmd.textContent = e.cmd;
+                const copy = document.createElement('button');
+                copy.type = 'button';
+                copy.className = 'os-copy';
+                copy.textContent = 'Copy';
+                copy.addEventListener('click', () => {
+                    copyToClipboardSafe(e.cmd).then((ok) => {
+                        if (!ok) return;
+                        const prev = copy.textContent;
+                        copy.textContent = 'Copied';
+                        copy.classList.add('copied');
+                        setTimeout(() => {
+                            copy.textContent = prev;
+                            copy.classList.remove('copied');
+                        }, 1400);
+                    });
+                });
+                li.appendChild(label);
+                li.appendChild(cmd);
+                li.appendChild(copy);
+                refs.installListEl.appendChild(li);
+            }
+        }
+
+        function retry() {
+            hideBanner();
+            close('retry');
+            tabState.currentCwd = null;
+            openForActiveProject();
+        }
+
+        function openForActiveProject() {
+            const project = getActiveProject();
+            if (!project || !project.path) {
+                if (refs.placeholderEl) refs.placeholderEl.hidden = false;
+                if (refs.termEl) refs.termEl.hidden = true;
+                close('no active project');
+                return;
+            }
+            if (refs.placeholderEl) refs.placeholderEl.hidden = true;
+            if (refs.termEl) refs.termEl.hidden = false;
+            const term = mount();
+            if (!term) {
+                showBanner('Failed to initialize terminal (xterm.js not loaded)');
+                return;
+            }
+            requestAnimationFrame(() => {
+                try { tabState.fit && tabState.fit.fit(); } catch (_) {}
+                connect(project.path);
+                try { term.focus(); } catch (_) {}
+            });
+        }
+
+        // Привязываем кнопки Retry / Close один раз при создании.
+        if (refs.retryBtn) refs.retryBtn.addEventListener('click', retry);
+        if (refs.closeBtn) refs.closeBtn.addEventListener('click', hideBanner);
+
+        // Возвращаем тот же tabState (с полями term/fit/ws/mounted/currentCwd/
+        // errorSticky/resizeObserver) с примонтированными методами. Так
+        // существующий код, обращающийся к state.gitTerm.ws, продолжит работу.
+        tabState.mount = mount;
+        tabState.connect = connect;
+        tabState.close = close;
+        tabState.switchCwd = switchCwd;
+        tabState.showBanner = showBanner;
+        tabState.hideBanner = hideBanner;
+        tabState.retry = retry;
+        tabState.openForActiveProject = openForActiveProject;
+        tabState.name = name;
+        tabState.activeTabName = activeTabName;
+        return tabState;
+    }
+
     /**
-     * Retry: пытается переоткрыть WS для текущего активного проекта.
+     * Списки команд установки lazygit/lazydocker/television для разных OS.
+     * Используются createTuiTab() при рендере install-help в error-banner
+     * (binary-not-found сценарий).
      */
+    const LAZYGIT_INSTALL_ENTRIES = [
+        { id: 'mac',      label: 'macOS (Homebrew)',     cmd: 'brew install lazygit' },
+        { id: 'mac-port', label: 'macOS (MacPorts)',     cmd: 'sudo port install lazygit' },
+        { id: 'linux-debian', label: 'Debian / Ubuntu', cmd: 'LAZYGIT_VERSION=$(curl -s "https://api.github.com/repos/jesseduffield/lazygit/releases/latest" | grep -Po \'"tag_name": "v\\K[^"]*\') && \\\ncurl -Lo lazygit.tar.gz "https://github.com/jesseduffield/lazygit/releases/latest/download/lazygit_${LAZYGIT_VERSION}_Linux_x86_64.tar.gz" && \\\ntar xf lazygit.tar.gz lazygit && sudo install lazygit -D -t /usr/local/bin/' },
+        { id: 'linux-arch',   label: 'Arch Linux',       cmd: 'sudo pacman -S lazygit' },
+        { id: 'linux-fedora', label: 'Fedora',           cmd: 'sudo dnf copr enable atim/lazygit -y && sudo dnf install lazygit' },
+        { id: 'windows',  label: 'Windows (winget)',     cmd: 'winget install -e --id=JesseDuffield.lazygit' },
+        { id: 'windows-scoop', label: 'Windows (Scoop)', cmd: 'scoop install lazygit' },
+        { id: 'go',       label: 'Go (any OS)',          cmd: 'go install github.com/jesseduffield/lazygit@latest' },
+    ];
+
+    const LAZYDOCKER_INSTALL_ENTRIES = [
+        { id: 'mac',      label: 'macOS (Homebrew)',     cmd: 'brew install jesseduffield/lazydocker/lazydocker' },
+        { id: 'linux-debian', label: 'Linux (script)',   cmd: 'curl https://raw.githubusercontent.com/jesseduffield/lazydocker/master/scripts/install_update_linux.sh | bash' },
+        { id: 'linux-arch',   label: 'Arch Linux (AUR)', cmd: 'yay -S lazydocker' },
+        { id: 'windows',  label: 'Windows (Scoop)',      cmd: 'scoop install lazydocker' },
+        { id: 'go',       label: 'Go (any OS)',          cmd: 'go install github.com/jesseduffield/lazydocker@latest' },
+    ];
+
+    // Telescope (television) требует helper-утилиты `fd`, `bat` и `rg`
+    // (ripgrep) для своих каналов: fd — files/dirs, bat — preview, rg —
+    // content search (канал text, используется по умолчанию у нас). Без них
+    // UI поднимется, но все panel'и покажут "command not found". Поэтому
+    // ставим единой командой все 4 пакета — пользователю не нужно ловить
+    // вторую ошибку.
+    const TELESCOPE_INSTALL_ENTRIES = [
+        { id: 'mac',      label: 'macOS (Homebrew) — все 4 пакета одной командой', cmd: 'brew install television fd bat ripgrep' },
+        { id: 'linux-arch',   label: 'Arch Linux',       cmd: 'sudo pacman -S television fd bat ripgrep' },
+        { id: 'linux-fedora', label: 'Fedora',           cmd: 'sudo dnf copr enable atim/television -y && sudo dnf install television fd-find bat ripgrep' },
+        { id: 'linux-debian', label: 'Debian / Ubuntu',  cmd: 'sudo apt install fd-find bat ripgrep && cargo install --locked television   # tv недоступен в apt, ставим через cargo' },
+        { id: 'cargo',    label: 'Cargo (any OS, требует Rust)', cmd: 'cargo install --locked television fd-find bat ripgrep' },
+    ];
+
+    /**
+     * Инициализирует все TUI-вкладки (lazygit, lazydocker, telescope) через
+     * createTuiTab(). Вызывается из bootstrap после того, как DOM прогружен.
+     * После этого state.gitTerm/dockerTerm/telescopeTerm — это TuiTab state-
+     * объекты с методами mount/connect/close/switchCwd и полями term/fit/ws.
+     */
+    function initTuiTabs() {
+        state.gitTerm = createTuiTab({
+            name: 'lazygit',
+            wsPath: '/ws/lazygit',
+            activeTabName: 'git',
+            refs: {
+                termEl: $gitTermEl,
+                placeholderEl: $gitPlaceholder,
+                errorEl: $gitError,
+                errorTextEl: $gitErrorText,
+                retryBtn: $gitErrorRetry,
+                closeBtn: $gitErrorClose,
+                installHelpEl: $gitInstallHelp,
+                installListEl: $gitInstallList,
+            },
+            installHelp: {
+                binary: 'lazygit',
+                notFoundMsg: 'lazygit not found in PATH. Install it using one of the commands below:',
+                entries: LAZYGIT_INSTALL_ENTRIES,
+            },
+        });
+
+        state.dockerTerm = createTuiTab({
+            name: 'lazydocker',
+            wsPath: '/ws/lazydocker',
+            activeTabName: 'docker',
+            refs: {
+                termEl: $dockerTermEl,
+                placeholderEl: $dockerPlaceholder,
+                errorEl: $dockerError,
+                errorTextEl: $dockerErrorText,
+                retryBtn: $dockerErrorRetry,
+                closeBtn: $dockerErrorClose,
+                installHelpEl: $dockerInstallHelp,
+                installListEl: $dockerInstallList,
+            },
+            installHelp: {
+                binary: 'lazydocker',
+                notFoundMsg: 'lazydocker not found in PATH. Install it using one of the commands below:',
+                entries: LAZYDOCKER_INSTALL_ENTRIES,
+            },
+        });
+
+        state.telescopeTerm = createTuiTab({
+            name: 'telescope',
+            wsPath: '/ws/telescope',
+            activeTabName: 'telescope',
+            refs: {
+                termEl: $telescopeTermEl,
+                placeholderEl: $telescopePlaceholder,
+                errorEl: $telescopeError,
+                errorTextEl: $telescopeErrorText,
+                retryBtn: $telescopeErrorRetry,
+                closeBtn: $telescopeErrorClose,
+                installHelpEl: $telescopeInstallHelp,
+                installListEl: $telescopeInstallList,
+            },
+            installHelp: {
+                binary: 'tv',
+                notFoundMsg: 'television (tv) и helper-утилиты fd / bat / rg (ripgrep) нужны для Find-вкладки. Установите все 4 одной командой:',
+                entries: TELESCOPE_INSTALL_ENTRIES,
+            },
+        });
+
+        // Дефолтный cable channel television: files (поиск по именам).
+        // Пользователь переключает через кнопки .tui-channel-btn в #telescope.
+        state.telescopeTerm.channel = 'files';
+
+        // Channel-bar (Files / Content / Dirs / Git log): при клике меняем
+        // channel в state, переключаем .active, и реконнектимся к /ws/telescope
+        // с новым ?channel=... — backend пересоздаст PTY с другим `tv <channel>`.
+        if ($telescopeChannelBar) {
+            $telescopeChannelBar.querySelectorAll('.tui-channel-btn').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const newChannel = btn.dataset.channel || 'files';
+                    if (state.telescopeTerm.channel === newChannel
+                        && state.telescopeTerm.ws
+                        && state.telescopeTerm.ws.readyState === WebSocket.OPEN) {
+                        return; // уже на этом канале и подключены — no-op
+                    }
+                    state.telescopeTerm.channel = newChannel;
+                    // обновляем visual-active
+                    $telescopeChannelBar.querySelectorAll('.tui-channel-btn').forEach((b) => {
+                        b.classList.toggle('active', b.dataset.channel === newChannel);
+                    });
+                    // принудительный reconnect: close → openForActiveProject
+                    state.telescopeTerm.close('channel switched');
+                    if (state.telescopeTerm.term) {
+                        try { state.telescopeTerm.term.clear(); } catch (_) {}
+                        try { state.telescopeTerm.term.reset(); } catch (_) {}
+                    }
+                    state.telescopeTerm.openForActiveProject();
+                });
+            });
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase 4 — lazygit-tab: xterm Terminal + /ws/lazygit WebSocket
+    // Phase 2 (TUI framework): lazygit/lazydocker/telescope собираются
+    // через createTuiTab(). state.gitTerm/dockerTerm/telescopeTerm — это
+    // .state каждой инстанции. Старые функции mountGitTerm/connectGitWs/
+    // closeGitWs/gitSwitchCwd/showGitBanner/hideGitBanner/retryGitConnection/
+    // openLazygitForActiveProject оставлены как тонкие алиасы для
+    // обратной совместимости.
+    // -------------------------------------------------------------------------
+
+    /**
+     * Возвращает активный проект (ProjectDto с .path) или null если его нет.
+     * state.activeProjectId может указывать на transient `__path__:...` id,
+     * который не присутствует в state.projects — тогда возвращаем null.
+     */
+    function getActiveProject() {
+        const id = state.activeProjectId;
+        if (!id) return null;
+        const list = Array.isArray(state.projects) ? state.projects : [];
+        const found = list.find((p) => p && p.id === id);
+        if (found) return found;
+        // Transient auto-group id вида `__path__:<cwd>` — registered project
+        // нет, но cwd известен. Возвращаем pseudo-project, чтобы lazygit-tab
+        // мог открыть терминал с этим cwd.
+        if (typeof id === 'string' && id.startsWith('__path__:')) {
+            const cwd = id.slice('__path__:'.length);
+            if (cwd) return { id, name: cwd, path: cwd };
+        }
+        return null;
+    }
+
+    // Тонкие алиасы на API state.gitTerm (TuiTab из createTuiTab). Сохранены
+     // для обратной совместимости с местами, где код напрямую дергает
+     // mountGitTerm/connectGitWs/closeGitWs/gitSwitchCwd/openLazygitForActiveProject.
+     // Реальная логика — в createTuiTab() выше.
+
+    function _git() {
+        return state.gitTerm; // TuiTab или null до bootstrap.
+    }
+
+    function mountGitTerm() {
+        const t = _git();
+        return t ? t.mount() : null;
+    }
+
+    function openLazygitForActiveProject() {
+        const t = _git();
+        if (t) t.openForActiveProject();
+    }
+
+    function connectGitWs(cwd) {
+        const t = _git();
+        if (t) t.connect(cwd);
+    }
+
+    function closeGitWs(reason) {
+        const t = _git();
+        if (t) t.close(reason);
+    }
+
+    function gitSwitchCwd(newCwd) {
+        const t = _git();
+        if (t) t.switchCwd(newCwd);
+    }
+
+    function showGitBanner(message, opts) {
+        const t = _git();
+        if (t) t.showBanner(message, opts);
+    }
+
+    function hideGitBanner() {
+        const t = _git();
+        if (t) t.hideBanner();
+    }
+
     function retryGitConnection() {
-        hideGitBanner();
-        // Сбросим cwd чтобы connectGitWs точно открыл новое соединение.
-        const gt = state.gitTerm;
-        closeGitWs('retry');
-        gt.currentCwd = null;
-        openLazygitForActiveProject();
+        const t = _git();
+        if (t) t.retry();
     }
 
     /**
@@ -2889,11 +3113,17 @@
                 state.projectFilter = '__all__';
             }
             renderProjectSelect();
-            // Если git-таб активен и до этого не было активного проекта
+            // Если TUI-таб активен и до этого не было активного проекта
             // (placeholder висел), теперь когда projects загрузились —
-            // переоткрываем lazygit-сессию.
-            if (state.activeTab === 'git' && !state.gitTerm.ws) {
+            // переоткрываем соответствующую сессию.
+            if (state.activeTab === 'git' && state.gitTerm && !state.gitTerm.ws) {
                 openLazygitForActiveProject();
+            }
+            if (state.activeTab === 'docker' && state.dockerTerm && !state.dockerTerm.ws) {
+                state.dockerTerm.openForActiveProject();
+            }
+            if (state.activeTab === 'telescope' && state.telescopeTerm && !state.telescopeTerm.ws) {
+                state.telescopeTerm.openForActiveProject();
             }
         } catch (e) {
             console.warn('fetchProjects failed', e);
@@ -2973,18 +3203,53 @@
             disconnectTodosWs();
             setTimeout(connectTodosWs, 0);
             fetchTodos();
-            // Phase 4 (lazygit-tab): если git-таб открыт — переключим cwd
-            // через {type:"switch_cwd"} (или fallback reconnect).
-            if (state.activeTab === 'git') {
-                const newActive = getActiveProject();
-                if (newActive && newActive.path) {
-                    if ($gitPlaceholder) $gitPlaceholder.hidden = true;
-                    if ($gitTermEl) $gitTermEl.hidden = false;
-                    gitSwitchCwd(newActive.path);
+            // TUI-tabs (lazygit / lazydocker / telescope): для каждой
+            // вкладки с открытым WS — переключаем cwd через
+            // {type:"switch_cwd"} (fallback — reconnect). Для активной
+            // (видимой) вкладки также обновляем placeholder/term visibility.
+            const newActive = getActiveProject();
+            const newPath = newActive && newActive.path ? newActive.path : null;
+            const tuiTabs = [
+                {
+                    tab: state.gitTerm,
+                    activeTabName: 'git',
+                    placeholderEl: $gitPlaceholder,
+                    termEl: $gitTermEl,
+                },
+                {
+                    tab: state.dockerTerm,
+                    activeTabName: 'docker',
+                    placeholderEl: $dockerPlaceholder,
+                    termEl: $dockerTermEl,
+                },
+                {
+                    tab: state.telescopeTerm,
+                    activeTabName: 'telescope',
+                    placeholderEl: $telescopePlaceholder,
+                    termEl: $telescopeTermEl,
+                },
+            ];
+            for (const entry of tuiTabs) {
+                if (!entry.tab) continue;
+                const isActive = state.activeTab === entry.activeTabName;
+                if (newPath) {
+                    if (isActive) {
+                        if (entry.placeholderEl) entry.placeholderEl.hidden = true;
+                        if (entry.termEl) entry.termEl.hidden = false;
+                    }
+                    // Если WS уже открыт — переключаем cwd через control JSON.
+                    // Если активная вкладка но WS ещё не открыт — открываем.
+                    if (entry.tab.ws) {
+                        entry.tab.switchCwd(newPath);
+                    } else if (isActive) {
+                        entry.tab.openForActiveProject();
+                    }
                 } else {
-                    if ($gitPlaceholder) $gitPlaceholder.hidden = false;
-                    if ($gitTermEl) $gitTermEl.hidden = true;
-                    closeGitWs('no active project after switch');
+                    if (isActive) {
+                        if (entry.placeholderEl) entry.placeholderEl.hidden = false;
+                        if (entry.termEl) entry.termEl.hidden = true;
+                    }
+                    entry.tab.close('no active project after switch');
                 }
             }
         } catch (e) {
@@ -5707,11 +5972,16 @@
         // Phase 6.C: + New task → openCreateModal без preset (status default open).
         if ($tasksNew) $tasksNew.addEventListener('click', () => openCreateModal());
 
-        // Git-таб: переключение через tab-bar.
+        // TUI-tabs (lazygit/lazydocker/telescope): инициализируем после
+        // initTerminal — нужны DOM-элементы (которые уже есть, но также
+        // полезно держать инициализацию вблизи listeners-привязок tab-bar).
+        initTuiTabs();
+
+        // TUI-табы: переключение через tab-bar. Кнопки Retry / × внутри
+        // error-banner привязываются прямо в createTuiTab() (см. initTuiTabs).
         if ($tabGit) $tabGit.addEventListener('click', () => switchTab('git'));
-        // lazygit-tab: error-banner кнопки.
-        if ($gitErrorRetry) $gitErrorRetry.addEventListener('click', retryGitConnection);
-        if ($gitErrorClose) $gitErrorClose.addEventListener('click', hideGitBanner);
+        if ($tabDocker) $tabDocker.addEventListener('click', () => switchTab('docker'));
+        if ($tabTelescope) $tabTelescope.addEventListener('click', () => switchTab('telescope'));
 
         // Phase 6.B: Project bar listeners.
         if ($projectSelect) {
@@ -5771,8 +6041,10 @@
             disconnectTasksWs();
             disconnectTodosWs();
             disconnectWs();
-            // Phase 4: закрываем lazygit WS при unload.
+            // TUI-tabs: закрываем lazygit / lazydocker / telescope WS при unload.
             closeGitWs('beforeunload');
+            if (state.dockerTerm) state.dockerTerm.close('beforeunload');
+            if (state.telescopeTerm) state.telescopeTerm.close('beforeunload');
             // Phase 5: остановим periodic health-poll'инг remote-серверов.
             stopRemoteHealthPoll();
         });

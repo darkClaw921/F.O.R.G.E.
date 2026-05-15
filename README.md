@@ -35,7 +35,7 @@
 
 - живые **tmux-сессии** через WebSocket + xterm.js,
 - **канбан-доски** на базе [beads_rust](https://github.com/Dicklesworthstone/beads_rust),
-- **lazygit** прямо в браузерной вкладке,
+- **lazygit**, **lazydocker** и **television** (fuzzy-finder) — каждый в своей браузерной вкладке,
 - **TODO**-конвейер, прокидывающий задачи прямо в tmux-сессию,
 - **AI-агенты** Claude Code (декомпозиция плана, выполнение фаз, трекинг времени),
 - мульти-проектность, темы, нотификации.
@@ -99,10 +99,22 @@
 - Настройка отправки: сразу или после завершения предыдущей TODO в этом проекте.
 - WebSocket-стрим `/ws/todos`.
 
-### 🌿 Git (lazygit)
+### 🧰 TUI-табы (lazygit / lazydocker / television)
 
-- Вкладка **Git** — встроенный `lazygit` через тот же PTY/WS-механизм (`/ws/lazygit`).
-- Авто-определение установки + подсказка по установке на macOS/Linux при отсутствии.
+Три вкладки, построенные на общем фреймворке `createTuiTab`: отдельный `xterm.js`-инстанс в браузере, отдельный WebSocket на сервере, PTY-процесс работает в cwd активного проекта. Переключение проекта прозрачно дёргает `switch_cwd` (kill old → spawn new в новом каталоге, тот же WS).
+
+- 🌿 **Git** — встроенный [`lazygit`](https://github.com/jesseduffield/lazygit) (`/ws/lazygit`).
+- 🐳 **Docker** — встроенный [`lazydocker`](https://github.com/jesseduffield/lazydocker) (`/ws/lazydocker`).
+- 🔭 **Find** — встроенный [`television`](https://github.com/alexpasmantier/television) (`tv`), fuzzy-finder в духе telescope.nvim (`/ws/telescope`). Над терминалом — переключатель каналов **`Files / Content / Dirs / Git log`** (Files = по именам через fd, Content = по содержимому через ripgrep, Dirs = по каталогам, Git log = по коммитам). Клик по кнопке — мгновенный reconnect с новым каналом. Требует helpers `fd` + `bat` + `rg` — ставятся одной командой `brew install television fd bat ripgrep`.
+
+Каждая вкладка:
+- автодетектит установку бинаря и показывает install-banner с командами для macOS/Linux при отсутствии,
+- поддерживает retry + ResizeObserver + Binary-frame stdin (контракт идентичен `/ws/attach`),
+- работает в remote-режиме через generic `remote_proxy` — `?server=<id>` прозрачно проксируется на upstream-сервер по тому же пути.
+
+**Копирование текста из preview-панели:** TUI-программы (tv/lazygit/lazydocker) захватывают мышь, поэтому обычное выделение не работает. Используй стандартный xterm.js-bypass:
+- macOS: `⌥ Option + drag` для selection → `⌘ Cmd + C` для копирования
+- Linux/Windows: `Shift + drag` для selection → `Ctrl + Shift + C` для копирования
 
 ### 📁 Projects
 
@@ -126,7 +138,7 @@
 ### ⌨️ UX
 
 - Vim-style hotkeys + Cmd-hint mode (`hotkeys.js`).
-- Sidebar + табы (Terminal / Tasks / Git), полностью клавиатурный воркфлоу.
+- Sidebar + табы (Terminal / Tasks / Git / Docker / Find), полностью клавиатурный воркфлоу.
 - Status-dot WS-соединения, авто-reconnect.
 
 ---
@@ -140,29 +152,34 @@
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │  Browser (xterm.js + app.js + hotkeys.js)                            │
-│  Sidebar │ Terminal │ Tasks (Kanban) │ Git (lazygit) │ Themes        │
-└─────┬──────────────────┬─────────────────┬─────────────────┬─────────┘
-      │ WS /ws/attach    │ WS /ws/lazygit  │ WS /ws/tasks    │ WS /ws/todos
-      │ (binary PTY)     │ (binary PTY)    │ (JSON events)   │ (JSON events)
-┌─────▼──────────────────▼─────────────────▼─────────────────▼─────────┐
-│  Rust server (axum 0.7 + tokio)                                      │
+│  Terminal │ Tasks │ Git │ Docker │ Find │ Themes                     │
+└─────┬─────────────┬──────────────┬──────────────┬────────────────────┘
+      │ WS /ws/attach              │ WS /ws/lazygit                    │
+      │ WS /ws/lazydocker          │ WS /ws/telescope                  │
+      │ WS /ws/tasks               │ WS /ws/todos                      │
+      │ (binary PTY / JSON events)                                     │
+┌─────▼──────────────────────────────────────────────────────────────┐
+│  Rust server (axum 0.7 + tokio)                                    │
 │  REST: /api/sessions /api/tasks /api/todos /api/projects /api/themes │
-│                                                                      │
-│  pty.rs ── portable-pty ── tmux attach / lazygit                     │
-│  tasks.rs ── shells out to `br` (beads_rust)                         │
-│  tasks_watcher.rs ── notify(6) ── .beads/issues.jsonl                │
-│  projects.rs ── .forge/projects.json + git init scaffolding          │
-│  themes.rs   ── 9 presets + custom (atomic write)                    │
-│  attention.rs + notifier.rs ── desktop notifications                 │
-└──────────────────────────────────────────────────────────────────────┘
+│                                                                    │
+│  pty.rs ── portable-pty ── tmux attach / lazygit / lazydocker / tv │
+│  ws.rs  ── generic handle_tui_socket<F> для всех TUI-табов        │
+│  tasks.rs ── shells out to `br` (beads_rust)                       │
+│  tasks_watcher.rs ── notify(6) ── .beads/issues.jsonl              │
+│  projects.rs ── .forge/projects.json + git init scaffolding        │
+│  themes.rs   ── 9 presets + custom (atomic write)                  │
+│  attention.rs + notifier.rs ── desktop notifications               │
+│  remote_proxy.rs ── прозрачный WS-proxy на upstream-серверы       │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
 | Модуль                               | Назначение                                                             |
 | ------------------------------------------ | -------------------------------------------------------------------------------- |
 | `src/main.rs`                            | Axum-роутер, REST endpoints, статика, health-check.                 |
 | `src/tmux.rs`                            | Обёртка над `tmux` CLI: list / new / kill.                           |
-| `src/pty.rs`                             | `portable-pty` + `tmux attach` / `lazygit` на одну WS-сессию.  |
-| `src/ws.rs`                              | WebSocket-bridge: байты PTY ↔ браузер + control-сообщения. |
+| `src/pty.rs`                             | `portable-pty` + `tmux attach` / `lazygit` / `lazydocker` / `tv` на одну WS-сессию. |
+| `src/ws.rs`                              | WebSocket-bridge: байты PTY ↔ браузер + control-сообщения. Generic `handle_tui_socket<F>` для всех TUI-табов. |
+| `src/remote_proxy.rs`                    | Прозрачный WS-proxy для remote-режима (все `/ws/*` пути, включая TUI). |
 | `src/tasks.rs`                           | REST `/api/tasks`, дёргает `br`.                                      |
 | `src/ws_tasks.rs` + `tasks_watcher.rs` | WS-стрим изменений `.beads/issues.jsonl`.                        |
 | `src/todos.rs` + `ws_todos.rs`         | TODO-конвейер с прокидыванием в tmux.                     |
@@ -219,6 +236,13 @@ devforge --help                # полный список опций
 
 - **обязательно:** `tmux` в `$PATH` (нужен для Terminal-вкладки и подцеплен в формуле как `depends_on`).
 - *(опционально)* `lazygit` — для встроенной Git-вкладки (`brew install lazygit`).
+- *(опционально)* `lazydocker` — для встроенной Docker-вкладки (`brew install lazydocker`).
+- *(опционально)* **Find-вкладка** требует **четыре** бинаря — `tv` ([television](https://github.com/alexpasmantier/television)) + `fd` + `bat` + `rg` ([ripgrep](https://github.com/BurntSushi/ripgrep)). По умолчанию вкладка стартует в режиме `files` (поиск по именам через fd), переключатель каналов в UI: `Files / Content / Dirs / Git log`. `rg` нужен для канала Content, `bat` — для preview. Без любой из утилит панели покажут `command not found`. Одной командой:
+  - macOS: `brew install television fd bat ripgrep`
+  - Arch: `sudo pacman -S television fd bat ripgrep`
+  - Fedora: `sudo dnf copr enable atim/television -y && sudo dnf install television fd-find bat ripgrep`
+  - Debian/Ubuntu: `sudo apt install fd-find bat ripgrep && cargo install --locked television`
+  - any (через Cargo): `cargo install --locked television fd-find bat ripgrep`
 - *(опционально)* `br` ([beads_rust](https://github.com/Dicklesworthstone/beads_rust)) — для канбан-доски в Tasks-вкладке.
 
 Как устроен tap (`homebrew-devforge`), как обновлять формулу и как сделать релиз — см. [`docs/homebrew-tap-setup.md`](docs/homebrew-tap-setup.md).
@@ -228,7 +252,9 @@ devforge --help                # полный список опций
 - **Rust** 1.75+
 - **tmux** в `$PATH`
 - **macOS / Linux** (Windows не поддерживается из-за PTY)
-- *(опционально)* `lazygit` для git-вкладки
+- *(опционально)* `lazygit` для Git-вкладки
+- *(опционально)* `lazydocker` для Docker-вкладки
+- *(опционально)* `tv` + `fd` + `bat` + `rg` для Find-вкладки (одной командой: `brew install television fd bat ripgrep`)
 - *(опционально)* `br` ([beads_rust](https://github.com/Dicklesworthstone/beads_rust)) для канбана
 - *(опционально)* Claude Code CLI для AI-агентов
 
@@ -288,7 +314,9 @@ git config core.hooksPath .githooks
 | GET / PATCH                 | `/api/themes[/active]`            | Темы.                                          |
 | POST / PUT / DELETE         | `/api/themes/custom[/:id]`        | Custom-темы.                                   |
 | GET (WS)                    | `/ws/attach?session=&cols=&rows=` | tmux attach.                                       |
-| GET (WS)                    | `/ws/lazygit?project=`            | lazygit.                                           |
+| GET (WS)                    | `/ws/lazygit?cwd=&cols=&rows=`    | lazygit TUI в cwd проекта.            |
+| GET (WS)                    | `/ws/lazydocker?cwd=&cols=&rows=` | lazydocker TUI в cwd проекта.    |
+| GET (WS)                    | `/ws/telescope?cwd=&cols=&rows=`  | television (`tv`) fuzzy-finder.            |
 | GET (WS)                    | `/ws/tasks` / `/ws/todos`       | Live-стримы JSON.                            |
 
 ---
@@ -369,6 +397,8 @@ git status && git push
 - [`xterm.js`](https://xtermjs.org) 5.3 + `fit` + `web-links` — терминал
 - [`beads_rust`](https://github.com/Dicklesworthstone/beads_rust) (`br`) — issue tracker
 - [`lazygit`](https://github.com/jesseduffield/lazygit) — git UI
+- [`lazydocker`](https://github.com/jesseduffield/lazydocker) — docker UI
+- [`television`](https://github.com/alexpasmantier/television) (`tv`) — fuzzy-finder
 - [`arhit`](https://github.com/) — архитектурная документация
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — AI-агенты
 
@@ -380,6 +410,9 @@ git status && git push
 - [X] Канбан на beads + file-watcher
 - [X] TODO-конвейер с прокидыванием в tmux
 - [X] Lazygit-таб
+- [X] Lazydocker-таб
+- [X] Telescope/Find-таб (television)
+- [X] Generic TUI-tab framework (`createTuiTab` + `handle_tui_socket<F>`)
 - [X] Мульти-проекты + init
 - [X] 9 тем + custom
 - [X] Sub-agents (create-tasks / run-phase / time-tracker)

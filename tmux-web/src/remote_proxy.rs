@@ -35,7 +35,8 @@
 //!
 //! Помимо HTTP-помощников, модуль содержит [`proxy_websocket`] — generic-helper
 //! для проксирования WebSocket-соединений на remote-инстанс. Используется
-//! ws-handler'ами `/ws/attach`, `/ws/lazygit`, `/ws/tasks`, `/ws/todos`. Логика:
+//! ws-handler'ами `/ws/attach`, `/ws/lazygit`, `/ws/lazydocker`, `/ws/telescope`,
+//! `/ws/tasks`, `/ws/todos`. Логика:
 //!   1. Берёт `RemoteServer{url, token}` из store.
 //!   2. Конвертирует `http(s)://` → `ws(s)://` через [`http_to_ws_url`].
 //!   3. Открывает upstream через `tokio_tungstenite::connect_async` с заголовком
@@ -367,8 +368,11 @@ fn tungstenite_to_axum(msg: TungsteniteMessage) -> AxumWsMessage {
 /// Параметры:
 /// - `store`        — реестр remote-серверов (для получения url+token).
 /// - `server_id`    — id записи в реестре.
-/// - `upstream_path`— путь на remote (`/ws/attach`, `/ws/lazygit`, `/ws/tasks`,
+/// - `upstream_path`— путь на remote (`/ws/attach`, `/ws/lazygit`,
+///                    `/ws/lazydocker`, `/ws/telescope`, `/ws/tasks`,
 ///                    `/ws/todos`). Должен начинаться со `/`.
+///                    Никакого allowlist'а нет — helper generic по path; caller
+///                    отвечает за корректность строки.
 /// - `query`        — query-строка без ведущего `?` и БЕЗ параметра `server`
 ///                    (caller обязан отфильтровать). Может быть пустой.
 /// - `downstream`   — уже-апгрейженный `WebSocket` от axum (со стороны браузера).

@@ -19,10 +19,35 @@
 //!    зомби-процессов.
 
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
+
+/// Допустимое имя cable channel для television: только ASCII-alphanumeric,
+/// `-` и `_`, длина 1..=64. Защита от инъекции произвольных аргументов
+/// через query-параметр `?channel=...` (хотя `CommandBuilder::arg` уже не
+/// шеллит, лишний валидатор полезен — например, чтобы исключить `--config`
+/// и подобные флаги).
+fn is_safe_channel_name(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 64
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+/// Ищет бинарь в `$PATH` (упрощённый `which`). Возвращает `None`, если
+/// исполняемого файла с таким именем нет ни в одном элементе PATH.
+fn which_in_path(name: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path) {
+        let candidate = dir.join(name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
 
 /// Дескриптор живого PTY, в котором запущен `tmux attach`.
 ///
@@ -207,6 +232,181 @@ pub fn spawn_lazygit(cwd: &Path, cols: u16, rows: u16) -> Result<PtyHandle> {
     // После spawn slave-fd нам больше не нужен в текущем процессе: ребёнок
     // унаследовал fd. Закрываем slave явно, иначе master-side EOF не
     // придёт после exit'а ребёнка (на некоторых платформах). drop(slave).
+    drop(pair.slave);
+
+    let reader = pair
+        .master
+        .try_clone_reader()
+        .context("master.try_clone_reader failed")?;
+    let writer = pair
+        .master
+        .take_writer()
+        .context("master.take_writer failed")?;
+
+    Ok(PtyHandle {
+        master: pair.master,
+        child: Some(child),
+        reader: Some(reader),
+        writer: Some(writer),
+    })
+}
+
+/// Запускает `lazydocker` в указанном рабочем каталоге через `portable-pty` и
+/// возвращает живой [`PtyHandle`].
+///
+/// Семантически идентичен [`spawn_lazygit`] — отличие только в бинаре
+/// (`lazydocker` вместо `lazygit`). Используется ws-handler'ом
+/// `lazydocker_attach` для отдельной TUI-вкладки управления Docker'ом.
+///
+/// Параметры:
+/// - `cwd` — рабочий каталог. Для lazydocker может быть любой папкой; он
+///   подключается к локальному docker-daemon'у вне зависимости от текущего
+///   каталога. Обычно совпадает с cwd активного проекта.
+/// - `cols`/`rows` — стартовый размер PTY (xterm grid).
+///
+/// Env / поведение совпадают с [`spawn_lazygit`]: `TERM=xterm-256color`,
+/// остальное наследуется от текущего процесса (важно для
+/// `$HOME/.config/lazydocker/config.yml`).
+///
+/// Обработка ошибок:
+/// - Если бинарь `lazydocker` не найден в `PATH`, оборачиваем ошибку в
+///   `with_context`-сообщение с подсказкой по установке. Это позволяет
+///   ws-handler'у показать осмысленный баннер пользователю.
+pub fn spawn_lazydocker(cwd: &Path, cols: u16, rows: u16) -> Result<PtyHandle> {
+    let pty_system = native_pty_system();
+    let pair = pty_system
+        .openpty(PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .context("openpty failed")?;
+
+    let mut cmd = CommandBuilder::new("lazydocker");
+    cmd.cwd(cwd);
+    cmd.env("TERM", "xterm-256color");
+
+    let child = pair.slave.spawn_command(cmd).with_context(|| {
+        format!(
+            "failed to spawn `lazydocker` in {:?}: lazydocker not found in PATH. \
+             Install: brew install lazydocker (macOS) | pacman -S lazydocker (Arch) | \
+             https://github.com/jesseduffield/lazydocker",
+            cwd
+        )
+    })?;
+
+    drop(pair.slave);
+
+    let reader = pair
+        .master
+        .try_clone_reader()
+        .context("master.try_clone_reader failed")?;
+    let writer = pair
+        .master
+        .take_writer()
+        .context("master.take_writer failed")?;
+
+    Ok(PtyHandle {
+        master: pair.master,
+        child: Some(child),
+        reader: Some(reader),
+        writer: Some(writer),
+    })
+}
+
+/// Запускает `tv` (television) в указанном рабочем каталоге через
+/// `portable-pty` и возвращает живой [`PtyHandle`].
+///
+/// Семантически идентичен [`spawn_lazygit`] — отличие только в бинаре
+/// (`tv` вместо `lazygit`). Используется ws-handler'ом `telescope_attach`
+/// для отдельной TUI-вкладки fuzzy-поиска по проекту.
+///
+/// Параметры:
+/// - `cwd` — рабочий каталог. `tv` использует cwd как корень поиска
+///   (файлы, директории, git-history и т.п.).
+/// - `cols`/`rows` — стартовый размер PTY (xterm grid).
+///
+/// Env / поведение совпадают с [`spawn_lazygit`]: `TERM=xterm-256color`,
+/// остальное наследуется от текущего процесса (важно для
+/// `$HOME/.config/television/config.toml`).
+///
+/// Обработка ошибок:
+/// - Если бинарь `tv` или его helper-утилиты (`fd`, `bat`) не найдены в
+///   `PATH`, возвращаем понятную ошибку (frontend ловит её по подстроке
+///   "not found" + имя бинаря и показывает install-banner).
+///
+/// **Helper-утилиты:** television использует `fd` для каналов `files` /
+/// `dirs`, `bat` для preview и `rg` (ripgrep) для канала `text` (content
+/// search). Без них UI поднимется, но панели будут крутить `command not
+/// found`. Поэтому проверяем все три на старте и проваливаем spawn с одним
+/// общим сообщением.
+///
+/// **Канал:** `channel` — имя cable channel television (`files` / `text` /
+/// `dirs` / `env` / `git-log` / `gh-issues` / `dotfiles` / ...). Если `None`
+/// или пустая строка — стартуем без аргумента в Default channel. Frontend
+/// передаёт это через query-param `?channel=...` и переподключается при
+/// переключении пользователем кнопки `Files / Content` в Find-вкладке.
+pub fn spawn_television(
+    cwd: &Path,
+    cols: u16,
+    rows: u16,
+    channel: Option<&str>,
+) -> Result<PtyHandle> {
+    if which_in_path("tv").is_none() {
+        return Err(anyhow!(
+            "television (tv) not found in PATH. \
+             Install all 4 helper tools: brew install television fd bat ripgrep (macOS) | \
+             sudo pacman -S television fd bat ripgrep (Arch) | \
+             cargo install --locked television fd-find bat ripgrep (any)"
+        ));
+    }
+    let missing: Vec<&str> = ["fd", "bat", "rg"]
+        .into_iter()
+        .filter(|b| which_in_path(b).is_none())
+        .collect();
+    if !missing.is_empty() {
+        return Err(anyhow!(
+            "television helper tools not found in PATH: {}. \
+             Without these `tv` will start, but file-search, preview and content-search panels won't work. \
+             Install all 4 helpers: brew install television fd bat ripgrep (macOS) | \
+             sudo pacman -S television fd bat ripgrep (Arch) | \
+             cargo install --locked television fd-find bat ripgrep (any)",
+            missing.join(", ")
+        ));
+    }
+
+    let pty_system = native_pty_system();
+    let pair = pty_system
+        .openpty(PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .context("openpty failed")?;
+
+    let mut cmd = CommandBuilder::new("tv");
+    let chan = channel
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty() && is_safe_channel_name(s));
+    if let Some(c) = chan {
+        cmd.arg(c);
+    }
+    cmd.cwd(cwd);
+    cmd.env("TERM", "xterm-256color");
+
+    let chan_display = chan.unwrap_or("(default)");
+    let child = pair.slave.spawn_command(cmd).with_context(|| {
+        format!(
+            "failed to spawn `tv {}` in {:?}: television (tv) not found in PATH. \
+             Install: brew install television fd bat ripgrep (macOS) | \
+             cargo install --locked television fd-find bat ripgrep | \
+             https://github.com/alexpasmantier/television",
+            chan_display, cwd
+        )
+    })?;
+
     drop(pair.slave);
 
     let reader = pair
