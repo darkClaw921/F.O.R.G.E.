@@ -1517,6 +1517,14 @@
         const installHelp = opts.installHelp || null;
         // tabName в state.activeTab: для wsPath '/ws/lazygit' → 'git', и т.д.
         const activeTabName = opts.activeTabName || name;
+        // autoReconnectOnClose: при abnormal/normal close WS автоматически
+        // переподключаемся (если вкладка активна). Используется для tv:
+        // он завершается после Enter/edit, и пользователю нужен fresh tv,
+        // а не "Connection lost".
+        const autoReconnectOnClose = !!opts.autoReconnectOnClose;
+        const autoReconnectDelayMs = typeof opts.autoReconnectDelayMs === 'number'
+            ? opts.autoReconnectDelayMs
+            : 150;
 
         const tabState = {
             term: null,
@@ -1589,6 +1597,26 @@
                     }
                 }
                 return true;
+            });
+
+            // Auto-copy при изменении selection: TUI после mouseup перерисовывает
+            // экран и стирает selection — пользователь не успевает скопировать
+            // вручную. xterm-event `onSelectionChange` срабатывает сразу при
+            // движении мыши и при отпуске, ДО того как TUI обрабатывает mouseup
+            // в PTY. Берём непустой selection и кладём в clipboard.
+            let lastCopied = '';
+            term.onSelectionChange(() => {
+                const sel = term.getSelection();
+                if (sel && sel.length > 0 && sel !== lastCopied) {
+                    lastCopied = sel;
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(sel).catch((e) => {
+                            console.debug('[' + name + '] auto-copy failed', e);
+                        });
+                    } else {
+                        fallbackCopy(sel);
+                    }
+                }
             });
 
             term.onData((data) => {
@@ -1735,12 +1763,31 @@
                 if (tabState.ws === ws) {
                     tabState.ws = null;
                 }
-                if (!tabState.errorSticky && state.activeTab === activeTabName) {
-                    const reason = ev && ev.reason ? ev.reason : '';
-                    const code = ev && typeof ev.code === 'number' ? ev.code : 0;
-                    if (code !== 1000 && code !== 1001) {
-                        showBanner('Connection lost' + (reason ? ': ' + reason : '') + '. Press Retry.');
+                if (tabState.errorSticky || state.activeTab !== activeTabName) {
+                    return;
+                }
+                const reason = ev && ev.reason ? ev.reason : '';
+                const code = ev && typeof ev.code === 'number' ? ev.code : 0;
+                // Auto-reconnect для telescope: tv завершается после Enter
+                // (output выбранного path) или после execute-action (vim exit).
+                // PTY EOF → ws close. Вместо "Connection lost" — fresh tv.
+                if (autoReconnectOnClose) {
+                    const cwd = tabState.currentCwd;
+                    if (cwd) {
+                        setTimeout(() => {
+                            if (state.activeTab !== activeTabName) return;
+                            if (tabState.ws) return;
+                            if (tabState.term) {
+                                try { tabState.term.clear(); } catch (_) {}
+                                try { tabState.term.reset(); } catch (_) {}
+                            }
+                            connect(cwd);
+                        }, autoReconnectDelayMs);
+                        return;
                     }
+                }
+                if (code !== 1000 && code !== 1001) {
+                    showBanner('Connection lost' + (reason ? ': ' + reason : '') + '. Press Retry.');
                 }
             };
         }
@@ -1987,6 +2034,11 @@
             name: 'telescope',
             wsPath: '/ws/telescope',
             activeTabName: 'telescope',
+            // tv завершается после Enter (output path) или после edit-action
+            // (vim/$EDITOR exit). Чтобы пользователь не видел "Connection lost"
+            // — авто-reconnect через 150ms, fresh tv-сессия в той же cwd.
+            autoReconnectOnClose: true,
+            autoReconnectDelayMs: 150,
             refs: {
                 termEl: $telescopeTermEl,
                 placeholderEl: $telescopePlaceholder,
