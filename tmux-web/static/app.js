@@ -95,6 +95,8 @@
     };
 
     // ---- DOM-узлы ----
+    const $layout = document.getElementById('layout');
+    const $btnSidebarToggle = document.getElementById('btn-sidebar-toggle');
     const $sidebar = document.getElementById('session-list');
     const $btnNew = document.getElementById('btn-new');
     const $terminalEl = document.getElementById('terminal');
@@ -549,6 +551,66 @@
             }
         }
     }
+
+    // -------------------------------------------------------------------------
+    // Sidebar collapse — кнопка ☰ в #tab-bar + hotkey Cmd/Ctrl+B
+    // -------------------------------------------------------------------------
+
+    /**
+     * Применяет collapsed-состояние к #layout и кэширует флаг в state.
+     * После CSS transition (~180ms) вызывает refit всех видимых xterm-инстансов,
+     * чтобы они подстроили cols/rows под новую ширину #main.
+     */
+    function applySidebarCollapsed(collapsed) {
+        if (!$layout) return;
+        state.sidebarCollapsed = !!collapsed;
+        $layout.classList.toggle('sidebar-collapsed', state.sidebarCollapsed);
+        if ($btnSidebarToggle) {
+            $btnSidebarToggle.setAttribute('aria-pressed', String(state.sidebarCollapsed));
+            $btnSidebarToggle.title = state.sidebarCollapsed
+                ? 'Показать сайдбар (Cmd/Ctrl+B)'
+                : 'Скрыть сайдбар (Cmd/Ctrl+B)';
+        }
+        // Refit активного xterm после завершения CSS-transition.
+        setTimeout(() => {
+            try { state.fitAddon && state.fitAddon.fit(); } catch (_) {}
+            try { scheduleResizeFromTerm && scheduleResizeFromTerm(); } catch (_) {}
+            const tuis = [state.gitTerm, state.dockerTerm, state.telescopeTerm];
+            tuis.forEach((t) => {
+                if (t && t.fit) { try { t.fit.fit(); } catch (_) {} }
+            });
+        }, 200);
+    }
+
+    function toggleSidebar() {
+        applySidebarCollapsed(!state.sidebarCollapsed);
+        try {
+            localStorage.setItem('forge.sidebarCollapsed', state.sidebarCollapsed ? '1' : '0');
+        } catch (_) { /* privacy mode — игнор */ }
+    }
+
+    function restoreSidebarState() {
+        let collapsed = false;
+        try {
+            collapsed = localStorage.getItem('forge.sidebarCollapsed') === '1';
+        } catch (_) { /* privacy mode — дефолт false */ }
+        applySidebarCollapsed(collapsed);
+    }
+
+    if ($btnSidebarToggle) {
+        $btnSidebarToggle.addEventListener('click', toggleSidebar);
+    }
+    // Hotkey Cmd+B / Ctrl+B — toggle. Перехватываем на window-capture-phase,
+    // чтобы хоткей не съедался xterm/TUI-mouse-mode.
+    window.addEventListener('keydown', (ev) => {
+        const isMac = navigator.platform.toUpperCase().includes('MAC');
+        const mod = isMac ? ev.metaKey && !ev.ctrlKey : ev.ctrlKey && !ev.metaKey;
+        if (mod && !ev.altKey && !ev.shiftKey && ev.key.toLowerCase() === 'b') {
+            ev.preventDefault();
+            ev.stopPropagation();
+            toggleSidebar();
+        }
+    }, true);
 
     // -------------------------------------------------------------------------
     // Phase 5 — origin-табы и origin-aware рендер sidebar
@@ -6006,6 +6068,11 @@
         // т.к. некоторые ветки рендера (sidebar header, project bar) проверяют
         // isRemoteMode() уже на первом рендере.
         await loadHealthz();
+
+        // Восстановить collapsed-состояние сайдбара ДО initTerminal — иначе
+        // xterm посчитает cols/rows по старой ширине #main и потом нужен
+        // дополнительный refit.
+        restoreSidebarState();
 
         // Phase 3: тема грузится ДО initTerminal — иначе xterm создаётся со
         // старой темой и переключение через options.theme не применит

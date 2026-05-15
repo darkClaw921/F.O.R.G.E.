@@ -1,6 +1,24 @@
 {
-  "generatedAt": "2026-05-15T06:26:07.350Z",
+  "generatedAt": "2026-05-15T14:35:38.026Z",
   "dependencies": [
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
@@ -841,6 +859,112 @@
       "type": "call",
       "fromElement": "renderSidebar",
       "toElement": "buildSessionItem"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "applySidebarCollapsed",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "applySidebarCollapsed",
+      "toElement": "setTimeout"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "applySidebarCollapsed",
+      "toElement": "state.fitAddon.fit"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "applySidebarCollapsed",
+      "toElement": "scheduleResizeFromTerm"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "applySidebarCollapsed",
+      "toElement": "tuis.forEach"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "applySidebarCollapsed",
+      "toElement": "t.fit.fit"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "toggleSidebar",
+      "toElement": "applySidebarCollapsed"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "toggleSidebar",
+      "toElement": "localStorage.setItem"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "restoreSidebarState",
+      "toElement": "localStorage.getItem"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "restoreSidebarState",
+      "toElement": "applySidebarCollapsed"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "window.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "navigator.platform.toUpperCase"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "ev.key.toLowerCase"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "ev.preventDefault"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "ev.stopPropagation"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "toggleSidebar"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -2387,6 +2511,83 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "mount",
+      "toElement": "term.attachCustomKeyEventHandler"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "mount",
+      "toElement": "navigator.platform.toUpperCase"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "mount",
+      "toElement": "ev.key.toUpperCase"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "mount",
+      "toElement": "term.getSelection"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "mount",
+      "toElement": "navigator.clipboard.writeText"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "mount",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "mount",
+      "toElement": "term.onSelectionChange"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "mount",
+      "toElement": "term.getSelection"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "mount",
+      "toElement": "navigator.clipboard.writeText"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "mount",
+      "toElement": "console.debug"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "mount",
+      "toElement": "fallbackCopy"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "mount",
       "toElement": "term.onData"
     },
     {
@@ -2486,6 +2687,20 @@
       "type": "call",
       "fromElement": "connect",
       "toElement": "isRemoteMode"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "connect",
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "connect",
+      "toElement": "String"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -2619,6 +2834,34 @@
       "type": "call",
       "fromElement": "connect",
       "toElement": "console.debug"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "connect",
+      "toElement": "setTimeout"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "connect",
+      "toElement": "tabState.term.clear"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "connect",
+      "toElement": "tabState.term.reset"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "connect",
+      "toElement": "connect"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -2969,6 +3212,48 @@
       "type": "call",
       "fromElement": "initTuiTabs",
       "toElement": "createTuiTab"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "initTuiTabs",
+      "toElement": "btn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "initTuiTabs",
+      "toElement": "b.classList.toggle"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "initTuiTabs",
+      "toElement": "state.telescopeTerm.close"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "initTuiTabs",
+      "toElement": "state.telescopeTerm.term.clear"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "initTuiTabs",
+      "toElement": "state.telescopeTerm.term.reset"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "initTuiTabs",
+      "toElement": "state.telescopeTerm.openForActiveProject"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -10234,6 +10519,13 @@
       "type": "call",
       "fromElement": "bootstrap",
       "toElement": "loadHealthz"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "bootstrap",
+      "toElement": "restoreSidebarState"
     },
     {
       "from": "tmux-web/static/app.js",

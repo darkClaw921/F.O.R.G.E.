@@ -210,7 +210,7 @@ pub fn save(data_dir: &Path, state: &ThemesState) -> std::io::Result<()> {
 }
 
 // =============================================================================
-// Built-in presets — 9 тем
+// Built-in presets — 13 тем
 // =============================================================================
 
 /// Хелпер для лаконичного построения `String` из строкового литерала.
@@ -218,10 +218,11 @@ fn s(v: &str) -> String {
     v.to_string()
 }
 
-/// Возвращает 9 встроенных пресетов в фиксированном порядке.
+/// Возвращает 13 встроенных пресетов в фиксированном порядке.
 ///
 /// Список (в порядке возврата): Default, Dracula, Solarized Dark,
-/// Solarized Light, Monokai, Nord, Gruvbox Dark, One Dark, Tokyo Night.
+/// Solarized Light, Monokai, Nord, Gruvbox Dark, One Dark, Tokyo Night,
+/// Catppuccin Latte, Catppuccin Frappé, Catppuccin Macchiato, Catppuccin Mocha.
 ///
 /// Для каждой темы:
 /// - `ui` — 11 цветов, подобранных под палитру (фон/текст/акцент/состояния).
@@ -610,6 +611,174 @@ pub fn built_in_presets() -> Vec<Theme> {
                 bright_white: s("#c0caf5"),
             },
         },
+        // ---------------------------------------------------------------
+        // 10. Catppuccin Latte — light flavor (catppuccin/catppuccin).
+        // ---------------------------------------------------------------
+        Theme {
+            id: s("catppuccin-latte"),
+            name: s("Catppuccin Latte"),
+            ui: UiColors {
+                bg: s("#eff1f5"),
+                bg_elev: s("#e6e9ef"),
+                fg: s("#4c4f69"),
+                fg_dim: s("#6c6f85"),
+                border: s("#ccd0da"),
+                accent: s("#1e66f5"),
+                warn: s("#df8e1d"),
+                danger: s("#d20f39"),
+                p0: s("#d20f39"),
+                p1: s("#fe640b"),
+                p2: s("#1e66f5"),
+            },
+            term: TermColors {
+                foreground: s("#4c4f69"),
+                background: s("#eff1f5"),
+                cursor: s("#dc8a78"),
+                selection: s("#acb0be"),
+                black: s("#5c5f77"),
+                red: s("#d20f39"),
+                green: s("#40a02b"),
+                yellow: s("#df8e1d"),
+                blue: s("#1e66f5"),
+                magenta: s("#ea76cb"),
+                cyan: s("#179299"),
+                white: s("#acb0be"),
+                bright_black: s("#6c6f85"),
+                bright_red: s("#d20f39"),
+                bright_green: s("#40a02b"),
+                bright_yellow: s("#df8e1d"),
+                bright_blue: s("#1e66f5"),
+                bright_magenta: s("#ea76cb"),
+                bright_cyan: s("#179299"),
+                bright_white: s("#bcc0cc"),
+            },
+        },
+        // ---------------------------------------------------------------
+        // 11. Catppuccin Frappé — medium-dark flavor.
+        // ---------------------------------------------------------------
+        Theme {
+            id: s("catppuccin-frappe"),
+            name: s("Catppuccin Frappé"),
+            ui: UiColors {
+                bg: s("#303446"),
+                bg_elev: s("#292c3c"),
+                fg: s("#c6d0f5"),
+                fg_dim: s("#a5adce"),
+                border: s("#414559"),
+                accent: s("#8caaee"),
+                warn: s("#e5c890"),
+                danger: s("#e78284"),
+                p0: s("#e78284"),
+                p1: s("#ef9f76"),
+                p2: s("#8caaee"),
+            },
+            term: TermColors {
+                foreground: s("#c6d0f5"),
+                background: s("#303446"),
+                cursor: s("#f2d5cf"),
+                selection: s("#414559"),
+                black: s("#51576d"),
+                red: s("#e78284"),
+                green: s("#a6d189"),
+                yellow: s("#e5c890"),
+                blue: s("#8caaee"),
+                magenta: s("#f4b8e4"),
+                cyan: s("#81c8be"),
+                white: s("#b5bfe2"),
+                bright_black: s("#626880"),
+                bright_red: s("#e78284"),
+                bright_green: s("#a6d189"),
+                bright_yellow: s("#e5c890"),
+                bright_blue: s("#8caaee"),
+                bright_magenta: s("#f4b8e4"),
+                bright_cyan: s("#81c8be"),
+                bright_white: s("#a5adce"),
+            },
+        },
+        // ---------------------------------------------------------------
+        // 12. Catppuccin Macchiato — darker flavor.
+        // ---------------------------------------------------------------
+        Theme {
+            id: s("catppuccin-macchiato"),
+            name: s("Catppuccin Macchiato"),
+            ui: UiColors {
+                bg: s("#24273a"),
+                bg_elev: s("#1e2030"),
+                fg: s("#cad3f5"),
+                fg_dim: s("#a5adcb"),
+                border: s("#363a4f"),
+                accent: s("#8aadf4"),
+                warn: s("#eed49f"),
+                danger: s("#ed8796"),
+                p0: s("#ed8796"),
+                p1: s("#f5a97f"),
+                p2: s("#8aadf4"),
+            },
+            term: TermColors {
+                foreground: s("#cad3f5"),
+                background: s("#24273a"),
+                cursor: s("#f4dbd6"),
+                selection: s("#363a4f"),
+                black: s("#494d64"),
+                red: s("#ed8796"),
+                green: s("#a6da95"),
+                yellow: s("#eed49f"),
+                blue: s("#8aadf4"),
+                magenta: s("#f5bde6"),
+                cyan: s("#8bd5ca"),
+                white: s("#b8c0e0"),
+                bright_black: s("#5b6078"),
+                bright_red: s("#ed8796"),
+                bright_green: s("#a6da95"),
+                bright_yellow: s("#eed49f"),
+                bright_blue: s("#8aadf4"),
+                bright_magenta: s("#f5bde6"),
+                bright_cyan: s("#8bd5ca"),
+                bright_white: s("#a5adcb"),
+            },
+        },
+        // ---------------------------------------------------------------
+        // 13. Catppuccin Mocha — darkest flavor (default Catppuccin).
+        // ---------------------------------------------------------------
+        Theme {
+            id: s("catppuccin-mocha"),
+            name: s("Catppuccin Mocha"),
+            ui: UiColors {
+                bg: s("#1e1e2e"),
+                bg_elev: s("#181825"),
+                fg: s("#cdd6f4"),
+                fg_dim: s("#a6adc8"),
+                border: s("#313244"),
+                accent: s("#89b4fa"),
+                warn: s("#f9e2af"),
+                danger: s("#f38ba8"),
+                p0: s("#f38ba8"),
+                p1: s("#fab387"),
+                p2: s("#89b4fa"),
+            },
+            term: TermColors {
+                foreground: s("#cdd6f4"),
+                background: s("#1e1e2e"),
+                cursor: s("#f5e0dc"),
+                selection: s("#313244"),
+                black: s("#45475a"),
+                red: s("#f38ba8"),
+                green: s("#a6e3a1"),
+                yellow: s("#f9e2af"),
+                blue: s("#89b4fa"),
+                magenta: s("#f5c2e7"),
+                cyan: s("#94e2d5"),
+                white: s("#bac2de"),
+                bright_black: s("#585b70"),
+                bright_red: s("#f38ba8"),
+                bright_green: s("#a6e3a1"),
+                bright_yellow: s("#f9e2af"),
+                bright_blue: s("#89b4fa"),
+                bright_magenta: s("#f5c2e7"),
+                bright_cyan: s("#94e2d5"),
+                bright_white: s("#a6adc8"),
+            },
+        },
     ]
 }
 
@@ -637,11 +806,11 @@ mod tests {
     #[test]
     fn presets_count_and_unique_ids() {
         let presets = built_in_presets();
-        assert_eq!(presets.len(), 9);
+        assert_eq!(presets.len(), 13);
         let mut ids: Vec<&str> = presets.iter().map(|t| t.id.as_str()).collect();
         ids.sort();
         ids.dedup();
-        assert_eq!(ids.len(), 9, "preset ids must be unique");
+        assert_eq!(ids.len(), 13, "preset ids must be unique");
         // Default присутствует.
         assert!(presets.iter().any(|t| t.id == "default"));
         // Default = baseline tmux-web.
@@ -707,6 +876,10 @@ mod tests {
         assert!(find_preset("default").is_some());
         assert!(find_preset("dracula").is_some());
         assert!(find_preset("tokyo-night").is_some());
+        assert!(find_preset("catppuccin-latte").is_some());
+        assert!(find_preset("catppuccin-frappe").is_some());
+        assert!(find_preset("catppuccin-macchiato").is_some());
+        assert!(find_preset("catppuccin-mocha").is_some());
         assert!(find_preset("nope").is_none());
     }
 }
