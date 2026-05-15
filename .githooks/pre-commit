@@ -1,25 +1,21 @@
 #!/usr/bin/env bash
-# Pre-commit hook: автоматически инкрементирует patch-версию devforge
-# в tmux-web/Cargo.toml (и соответствующую запись в Cargo.lock) при каждом
-# коммите. Изменения добавляются в индекс автоматически — в коммит уйдёт
-# уже новая версия.
+# Pre-commit hook:
+#   1) Запускает `cargo test` (если в коммите есть Rust-изменения) —
+#      коммит abort'ится при падении тестов.
+#   2) Автоматически инкрементирует patch-версию devforge в
+#      tmux-web/Cargo.toml (и соответствующую запись в Cargo.lock).
+#      Изменения добавляются в индекс автоматически — в коммит уйдёт
+#      уже новая версия.
 #
 # Включается командой: git config core.hooksPath .githooks
 # (выполнено один раз при настройке репозитория, см. README).
 #
-# Поведение:
-#   - читает текущую версию X.Y.Z из tmux-web/Cargo.toml
-#   - PATCH += 1, MAJOR/MINOR не трогаются
-#   - переписывает Cargo.toml + соответствующий блок [[package]] в Cargo.lock
-#   - git add обоих файлов (внутри pre-commit это безопасно, не вызывает рекурсию)
-#   - пишет в stderr [pre-commit] X.Y.Z → X.Y.(Z+1)
+# Bypass: `git commit --no-verify` (отключает и тесты, и bump). Только
+# при крайней необходимости — лучше починить тесты.
 #
-# Bypass: `git commit --no-verify` (только при крайней необходимости).
-# Запрет на amend/rebase не накладываем — каждый коммит = +1 patch.
-#
-# Skip-условие: если Cargo.toml уже стейджнут с ВРУЧНУЮ выставленной более
-# высокой версией (например, пользователь поднял MAJOR/MINOR), хук уважает
-# это и НЕ перезаписывает. См. compare_versions ниже.
+# Skip-логика для тестов: если в staged-изменениях нет ни одного
+# `.rs` / `Cargo.toml` / `Cargo.lock` — `cargo test` не запускается
+# (чистый docs-/README-/JS-коммит проходит без перекомпиляции Rust).
 
 set -euo pipefail
 
@@ -31,6 +27,38 @@ if [ ! -f "$CARGO_TOML" ]; then
     # Не наш репо или Cargo.toml ещё не создан — молча пропускаем.
     exit 0
 fi
+
+# ----------------------------------------------------------------------
+# 1) Запуск cargo test
+# ----------------------------------------------------------------------
+# Проверяем, есть ли в staged-изменениях Rust-файлы или manifest. Если
+# нет — пропускаем тесты (docs-/README-/JS-only коммит).
+STAGED_RUST=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null \
+    | grep -E '(\.rs$|/Cargo\.(toml|lock)$)' || true)
+
+if [ -n "$STAGED_RUST" ]; then
+    echo "[pre-commit] running 'cargo test' (staged Rust changes)..." >&2
+    if ! ( cd "$REPO_ROOT/tmux-web" && cargo test --quiet --color=always ) >&2; then
+        echo "" >&2
+        echo "[pre-commit] ❌  cargo test FAILED — commit aborted." >&2
+        echo "[pre-commit] Fix the failing tests and try again." >&2
+        echo "[pre-commit] To bypass (NOT recommended): git commit --no-verify" >&2
+        exit 1
+    fi
+    echo "[pre-commit] ✓ cargo test passed." >&2
+else
+    echo "[pre-commit] no Rust changes — skipping cargo test." >&2
+fi
+
+# ----------------------------------------------------------------------
+# 2) Bump patch-версии devforge
+# ----------------------------------------------------------------------
+# Поведение:
+#   - читает текущую версию X.Y.Z из tmux-web/Cargo.toml
+#   - PATCH += 1, MAJOR/MINOR не трогаются
+#   - переписывает Cargo.toml + соответствующий блок [[package]] в Cargo.lock
+#   - git add обоих файлов (внутри pre-commit это безопасно, не вызывает рекурсию)
+#   - пишет в stderr [pre-commit] X.Y.Z → X.Y.(Z+1)
 
 # Текущая версия из Cargo.toml (первая строка `version = "..."` в [package]).
 current=$(awk -F'"' '/^version = / { print $2; exit }' "$CARGO_TOML")
