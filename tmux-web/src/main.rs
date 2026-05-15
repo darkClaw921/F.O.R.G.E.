@@ -760,6 +760,17 @@ struct SessionDto {
     needs_attention: bool,
     project_id: Option<String>,
     project_name: Option<String>,
+    /// Идентификатор папочно-ориентированной группы для sidebar-группировки.
+    /// Формат: `"__folder:<absolute_path>"`. Префикс `__folder:` гарантирует
+    /// отсутствие коллизий с `project_id` (формы `<uuid>` / `__path__:<cwd>` /
+    /// tmux-префикс). `None` только для сессий с пустым или некорректным
+    /// `path` (file_name отсутствует). Сериализуется всегда — фронт ожидает
+    /// унифицированный формат.
+    folder_id: Option<String>,
+    /// Человекочитаемая метка папочной группы — basename последней папки
+    /// `session.path`. Отображается в group-header sidebar. `None` зеркалит
+    /// `folder_id == None` (orphan-ветка sidebar).
+    folder_label: Option<String>,
     /// Phase 3 — источник записи. Для локально-сгенерированных сессий — всегда
     /// `"local"`. Прокси через `?server=<id>` НЕ создаёт SessionDto на этой
     /// стороне (там прокидывается уже готовый JSON remote'а, обогащённый
@@ -809,10 +820,13 @@ async fn get_sessions(
                 .map(|s| {
                     let needs_attention = attention.get(&s.name).copied().unwrap_or(false);
                     let (project_id, project_name) = resolve_project(&s, &projects_snap);
+                    let (folder_id, folder_label) = resolve_folder(&s);
                     SessionDto {
                         needs_attention,
                         project_id,
                         project_name,
+                        folder_id,
+                        folder_label,
                         info: s,
                         origin: "local".to_string(),
                     }
@@ -1391,6 +1405,34 @@ fn resolve_project(
     }
 
     (None, None)
+}
+
+/// Резолвит папочно-ориентированную группу для сессии.
+///
+/// Возвращает кортеж `(folder_id, folder_label)`:
+/// - `folder_id` — стабильный ключ группы вида `"__folder:<absolute_path>"`.
+///   Префикс `__folder:` исключает коллизии с `project_id` (формы registered-uuid,
+///   `__path__:<cwd>`, tmux-префикс), используемыми в `switchActiveProject`
+///   и фильтрах TODO/`.beads`.
+/// - `folder_label` — basename последней папки `session.path` для отображения
+///   в заголовке группы sidebar.
+///
+/// Если `session.path` пустой или равен `/` (нет `file_name`), либо basename
+/// пустая строка — оба значения `None` (orphan-ветка sidebar отрисует через
+/// `ORPHAN_KEY`).
+///
+/// В отличие от [`resolve_project`], НЕ учитывает зарегистрированные проекты
+/// и tmux-префиксы — это чисто файловая группировка для UI, независимая от
+/// семантики `project_id`.
+fn resolve_folder(s: &tmux::SessionInfo) -> (Option<String>, Option<String>) {
+    let p = std::path::Path::new(&s.path);
+    match p.file_name().and_then(|os| os.to_str()) {
+        Some(name) if !name.is_empty() => (
+            Some(format!("__folder:{}", s.path)),
+            Some(name.to_string()),
+        ),
+        _ => (None, None),
+    }
 }
 
 /// `GET /api/projects` — массив всех проектов с пометкой `active`.

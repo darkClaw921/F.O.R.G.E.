@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-14T12:07:25.199Z",
+  "generatedAt": "2026-05-14T17:29:07.885Z",
   "dependencies": [
     {
       "from": "tmux-web/static/app.js",
@@ -573,6 +573,20 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "renderSidebar",
+      "toElement": "state.sessions.filter"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderSidebar",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderSidebar",
       "toElement": "groups.has"
     },
     {
@@ -615,55 +629,6 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "renderSidebar",
-      "toElement": "groups.get"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "buildSessionItem"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "groups.get"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "buildSessionItem"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "renderedKeys.add"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
       "toElement": "groups.keys"
     },
     {
@@ -671,21 +636,14 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "renderSidebar",
-      "toElement": "renderedKeys.has"
+      "toElement": "nonOrphanKeys.push"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "renderSidebar",
-      "toElement": "autoKeys.push"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "autoKeys.sort"
+      "toElement": "nonOrphanKeys.sort"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -693,6 +651,41 @@
       "type": "call",
       "fromElement": "renderSidebar",
       "toElement": "groups.get"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderSidebar",
+      "toElement": "groups.get"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderSidebar",
+      "toElement": "la.localeCompare"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderSidebar",
+      "toElement": "groups.get"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderSidebar",
+      "toElement": "key.startsWith"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderSidebar",
+      "toElement": "key.slice"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -1273,14 +1266,84 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "renderOriginSection",
-      "toElement": "groupSessionsByProject"
+      "toElement": "sessions.filter"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "renderOriginSection",
-      "toElement": "byProject.get"
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "groupSessionsByFolder"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "byFolder.keys"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "nonOrphanKeys.push"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "nonOrphanKeys.sort"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "byFolder.get"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "byFolder.get"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "la.localeCompare"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "byFolder.get"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "key.startsWith"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "renderOriginSection",
+      "toElement": "key.slice"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -1308,7 +1371,7 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "renderOriginSection",
-      "toElement": "byProject.get"
+      "toElement": "byFolder.get"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -1335,133 +1398,42 @@
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "renderOriginSection",
-      "toElement": "renderedKeys.add"
+      "fromElement": "groupSessionsByFolder",
+      "toElement": "byFolder.has"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "renderOriginSection",
-      "toElement": "byProject.keys"
+      "fromElement": "groupSessionsByFolder",
+      "toElement": "byFolder.set"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "renderOriginSection",
-      "toElement": "renderedKeys.has"
+      "fromElement": "groupSessionsByFolder",
+      "toElement": "byFolder.get"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "renderOriginSection",
-      "toElement": "autoKeys.push"
+      "fromElement": "groupSessionsByFolder",
+      "toElement": "byFolder.values"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "renderOriginSection",
-      "toElement": "autoKeys.sort"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "renderOriginSection",
-      "toElement": "byProject.get"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "renderOriginSection",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "renderOriginSection",
-      "toElement": "buildSessionItem"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "renderOriginSection",
-      "toElement": "li.classList.add"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "renderOriginSection",
-      "toElement": "byProject.get"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "renderOriginSection",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "renderOriginSection",
-      "toElement": "buildSessionItem"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "renderOriginSection",
-      "toElement": "li.classList.add"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "groupSessionsByProject",
-      "toElement": "byProject.has"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "groupSessionsByProject",
-      "toElement": "byProject.set"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "groupSessionsByProject",
-      "toElement": "byProject.get"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "groupSessionsByProject",
-      "toElement": "byProject.values"
-    },
-    {
-      "from": "tmux-web/static/app.js",
-      "to": "tmux-web/static/app.js",
-      "type": "call",
-      "fromElement": "groupSessionsByProject",
+      "fromElement": "groupSessionsByFolder",
       "toElement": "arr.sort"
     },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
-      "fromElement": "groupSessionsByProject",
+      "fromElement": "groupSessionsByFolder",
       "toElement": "a.name.localeCompare"
     },
     {

@@ -464,15 +464,34 @@
             return;
         }
 
-        // Cross-project sessions visibility:
-        //   - Группируем сессии по project_id (orphan = null/undefined).
-        //   - Если projectFilter — конкретный проект, рендерим плоско без header.
-        //   - Если '__all__', рендерим группами в порядке state.projects + orphan в конце.
-        // Внутри каждой группы — сортировка по имени для стабильного порядка.
+        // Cross-folder sessions visibility:
+        //   - projectFilter применяется ДО группировки (фильтр по project_id остаётся
+        //     корректным: клик в project-bar показывает сессии одного registered-проекта).
+        //   - Группируем отфильтрованные сессии по folder_id (orphan = null/undefined).
+        //   - Заголовок группы = folder_label сессий внутри (basename полного пути).
+        //   - Сортировка групп по folder_label (case-insensitive), Orphan в конце.
+        //   - Внутри группы сессии сортируются по имени для стабильного порядка.
+        // project_id остаётся в DTO и используется openSession→switchActiveProject,
+        // но не участвует в группировке sidebar.
         const ORPHAN_KEY = '__orphan__';
-        const groups = new Map(); // project_id|ORPHAN_KEY → Session[]
-        for (const sess of state.sessions) {
-            const key = sess.project_id == null ? ORPHAN_KEY : sess.project_id;
+        const projectFilter = state.projectFilter;
+        const visible = projectFilter === '__all__'
+            ? state.sessions
+            : state.sessions.filter((s) => s.project_id === projectFilter);
+
+        if (visible.length === 0) {
+            const li = document.createElement('li');
+            li.className = 'empty';
+            li.textContent = projectFilter === '__all__'
+                ? 'Нет активных сессий'
+                : 'Нет сессий в этом проекте';
+            $sidebar.appendChild(li);
+            return;
+        }
+
+        const groups = new Map(); // folder_id|ORPHAN_KEY → Session[]
+        for (const sess of visible) {
+            const key = sess.folder_id == null ? ORPHAN_KEY : sess.folder_id;
             if (!groups.has(key)) groups.set(key, []);
             groups.get(key).push(sess);
         }
@@ -480,51 +499,24 @@
             arr.sort((a, b) => a.name.localeCompare(b.name));
         }
 
-        // Режим фильтра одного проекта: плоско, без header.
-        if (state.projectFilter !== '__all__') {
-            const arr = groups.get(state.projectFilter) || [];
-            if (arr.length === 0) {
-                const li = document.createElement('li');
-                li.className = 'empty';
-                li.textContent = 'Нет сессий в этом проекте';
-                $sidebar.appendChild(li);
-                return;
-            }
-            for (const sess of arr) {
-                $sidebar.appendChild(buildSessionItem(sess));
-            }
-            return;
-        }
-
-        // Режим '__all__': итерируем проекты в порядке state.projects, потом
-        // авто-группы по cwd (project_id вида '__path__:...'), затем orphan.
-        const renderedKeys = new Set();
-        for (const p of state.projects) {
-            const arr = groups.get(p.id);
-            if (!arr || arr.length === 0) continue;
-            const header = document.createElement('li');
-            header.className = 'session-group-header';
-            header.textContent = p.name;
-            $sidebar.appendChild(header);
-            for (const sess of arr) {
-                $sidebar.appendChild(buildSessionItem(sess));
-            }
-            renderedKeys.add(p.id);
-        }
-        // Авто-группы по cwd: project_id != null, но не в state.projects.
-        const autoKeys = [];
+        // Сортировка ключей по folder_label (case-insensitive), Orphan в конце.
+        const nonOrphanKeys = [];
         for (const key of groups.keys()) {
-            if (key === ORPHAN_KEY) continue;
-            if (renderedKeys.has(key)) continue;
-            autoKeys.push(key);
+            if (key !== ORPHAN_KEY) nonOrphanKeys.push(key);
         }
-        autoKeys.sort();
-        for (const key of autoKeys) {
+        nonOrphanKeys.sort((a, b) => {
+            const la = (groups.get(a)[0].folder_label || a).toLowerCase();
+            const lb = (groups.get(b)[0].folder_label || b).toLowerCase();
+            return la.localeCompare(lb);
+        });
+
+        for (const key of nonOrphanKeys) {
             const arr = groups.get(key);
             if (!arr || arr.length === 0) continue;
+            const keyDisplay = key.startsWith('__folder:') ? key.slice('__folder:'.length) : key;
             const header = document.createElement('li');
             header.className = 'session-group-header';
-            header.textContent = arr[0].project_name || key;
+            header.textContent = arr[0].folder_label || keyDisplay;
             $sidebar.appendChild(header);
             for (const sess of arr) {
                 $sidebar.appendChild(buildSessionItem(sess));
@@ -862,65 +854,51 @@
             return;
         }
 
-        // Phase 6 — внутри одного origin применяем такую же группировку, как
-        // legacy renderSidebar при projectFilter == '__all__':
-        // projects (в порядке state.projects/projectsForOrigin) → авто-группы → orphan.
-        //
-        // Двухуровневая фильтрация: если state.projectFilter !== '__all__' (выбран
-        // конкретный проект), и этот project_id присутствует в данном origin'е —
-        // показываем только сессии этого проекта, БЕЗ project-sub-header'а (как
-        // legacy в single-project режиме). Если проекта в origin'е нет — секция
-        // показывается пустой (но header origin'а остаётся видимым).
+        // Cross-folder sessions visibility (origin-aware ветка):
+        //   - projectFilter применяется ДО группировки (фильтр по project_id остаётся
+        //     корректным, openSession→switchActiveProject использует sess.project_id).
+        //   - Группируем отфильтрованные сессии origin'а по folder_id (orphan = null).
+        //   - Header группы = folder_label первой сессии или basename из __folder:<path>.
+        //   - Сортировка по folder_label (case-insensitive), Orphan в конце.
+        //   - Параметр `projects` остаётся в сигнатуре для backward-совместимости,
+        //     но больше не используется для header'ов (folder_id формата __folder:<path>
+        //     не матчится с p.id).
         const ORPHAN_KEY = '__orphan__';
-        const byProject = groupSessionsByProject(sessions, ORPHAN_KEY);
-
         const pf = state.projectFilter;
-        if (pf && pf !== '__all__') {
-            const arr = byProject.get(pf) || [];
-            if (arr.length === 0) {
-                const li = document.createElement('li');
-                li.className = 'empty';
-                li.textContent = 'Нет сессий в этом проекте';
-                $sidebar.appendChild(li);
-                return;
-            }
-            for (const sess of arr) {
-                const li = buildSessionItem(sess);
-                li.classList.add('in-origin');
-                $sidebar.appendChild(li);
-            }
+        const visible = (pf && pf !== '__all__')
+            ? sessions.filter((s) => s.project_id === pf)
+            : sessions;
+
+        if (visible.length === 0) {
+            const li = document.createElement('li');
+            li.className = 'empty';
+            li.textContent = (pf && pf !== '__all__')
+                ? 'Нет сессий в этом проекте'
+                : 'Нет активных сессий';
+            $sidebar.appendChild(li);
             return;
         }
 
-        // Режим '__all__' внутри origin'а: project-headers + auto-groups + orphan.
-        const renderedKeys = new Set();
-        for (const p of projects) {
-            const arr = byProject.get(p.id);
+        const byFolder = groupSessionsByFolder(visible, ORPHAN_KEY);
+
+        // Сортировка ключей по folder_label (case-insensitive), Orphan в конце.
+        const nonOrphanKeys = [];
+        for (const key of byFolder.keys()) {
+            if (key !== ORPHAN_KEY) nonOrphanKeys.push(key);
+        }
+        nonOrphanKeys.sort((a, b) => {
+            const la = (byFolder.get(a)[0].folder_label || a).toLowerCase();
+            const lb = (byFolder.get(b)[0].folder_label || b).toLowerCase();
+            return la.localeCompare(lb);
+        });
+
+        for (const key of nonOrphanKeys) {
+            const arr = byFolder.get(key);
             if (!arr || arr.length === 0) continue;
+            const keyDisplay = key.startsWith('__folder:') ? key.slice('__folder:'.length) : key;
             const ph = document.createElement('li');
             ph.className = 'project-sub-header';
-            ph.textContent = p.name;
-            $sidebar.appendChild(ph);
-            for (const sess of arr) {
-                const li = buildSessionItem(sess);
-                li.classList.add('in-origin');
-                $sidebar.appendChild(li);
-            }
-            renderedKeys.add(p.id);
-        }
-        // Авто-группы: project_id, которого нет в projects.
-        const autoKeys = [];
-        for (const key of byProject.keys()) {
-            if (key === ORPHAN_KEY) continue;
-            if (renderedKeys.has(key)) continue;
-            autoKeys.push(key);
-        }
-        autoKeys.sort();
-        for (const key of autoKeys) {
-            const arr = byProject.get(key);
-            const ph = document.createElement('li');
-            ph.className = 'project-sub-header';
-            ph.textContent = arr[0].project_name || key;
+            ph.textContent = arr[0].folder_label || keyDisplay;
             $sidebar.appendChild(ph);
             for (const sess of arr) {
                 const li = buildSessionItem(sess);
@@ -928,7 +906,7 @@
                 $sidebar.appendChild(li);
             }
         }
-        const orphans = byProject.get(ORPHAN_KEY);
+        const orphans = byFolder.get(ORPHAN_KEY);
         if (orphans && orphans.length > 0) {
             const ph = document.createElement('li');
             ph.className = 'project-sub-header';
@@ -943,26 +921,27 @@
     }
 
     /**
-     * Phase 6 — вспомогательная функция, выделенная из renderOriginSection
+     * Вспомогательная функция, выделенная из renderOriginSection
      * и переиспользуемая регресс-тестами. Группирует массив сессий по
-     * project_id (orphan = null/undefined → ORPHAN_KEY). Внутри каждой
+     * folder_id (orphan = null/undefined → ORPHAN_KEY). Внутри каждой
      * группы сортирует по name.localeCompare(). Возвращает Map<key, sessions[]>.
      *
-     * Контракт стабильный, используется тестами cca8.2 для проверки
-     * структуры {project: [sessions]} внутри origin'а.
+     * Контракт совместим с legacy renderSidebar: ключ группы — folder_id
+     * (формат __folder:<path>) или ORPHAN_KEY. Заголовок отображается через
+     * folder_label первой сессии.
      */
-    function groupSessionsByProject(sessions, orphanKey) {
+    function groupSessionsByFolder(sessions, orphanKey) {
         const ORPHAN_KEY = orphanKey || '__orphan__';
-        const byProject = new Map();
+        const byFolder = new Map();
         for (const sess of sessions) {
-            const key = sess.project_id == null ? ORPHAN_KEY : sess.project_id;
-            if (!byProject.has(key)) byProject.set(key, []);
-            byProject.get(key).push(sess);
+            const key = sess.folder_id == null ? ORPHAN_KEY : sess.folder_id;
+            if (!byFolder.has(key)) byFolder.set(key, []);
+            byFolder.get(key).push(sess);
         }
-        for (const arr of byProject.values()) {
+        for (const arr of byFolder.values()) {
             arr.sort((a, b) => a.name.localeCompare(b.name));
         }
-        return byProject;
+        return byFolder;
     }
 
     /**
@@ -1003,7 +982,7 @@
     // (cca8.2). В обычной работе они не используются глобально.
     if (typeof window !== 'undefined') {
         window.__forge = window.__forge || {};
-        window.__forge.groupSessionsByProject = groupSessionsByProject;
+        window.__forge.groupSessionsByFolder = groupSessionsByFolder;
         window.__forge.aggregateAllOrigins = aggregateAllOrigins;
     }
 

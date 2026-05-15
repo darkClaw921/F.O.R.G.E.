@@ -401,9 +401,9 @@
     "element": "main::SessionDto",
     "path": "",
     "type": "unknown",
-    "content": "DTO ответа GET /api/sessions (src/main.rs, добавлен в Phase 7 — Phase 2 wiring).\n\n#[derive(Debug, Serialize)]\nstruct SessionDto {\n    #[serde(flatten)]\n    info: SessionInfo,\n    needs_attention: bool,\n}\n\nНазначение: расширить ответ /api/sessions полем needs_attention без модификации tmux::SessionInfo (которая используется в других местах) и без поломки существующего фронтенд-контракта. #[serde(flatten)] раскладывает все поля SessionInfo на верхний уровень JSON, поэтому фронтенд видит прежний JSON + добавленное поле.\n\nСемантика поля needs_attention:\n- true → в панели сессии обнаружен Claude permission prompt (см. attention::detect_claude_prompt). Фронтенд должен подсветить вкладку оранжевым (Phase 3).\n- false → нормальное состояние; либо запись отсутствует в snapshot'е (что также трактуется как false через .copied().unwrap_or(false)).\n\nЗаполняется в get_sessions: snapshot из state.attention.snapshot().await, лукап по s.name. AttentionState обновляется фоновым attention::watcher_loop каждые 1.5с.",
+    "content": "DTO-структура для JSON-сериализации записи tmux-сессии в ответе GET /api/sessions (tmux-web/src/main.rs:756-787).\n\nDerive: #[derive(Debug, Serialize)].\n\nПоля:\n- info: SessionInfo — флаттенится через #[serde(flatten)], то есть поля SessionInfo (name, path, attached, windows, created, session_group и т.д.) выливаются в корень JSON-объекта на уровне с остальными полями DTO.\n- needs_attention: bool — индикатор наличия Claude permission prompt в панели сессии (см. attention::detect_claude_prompt). true → фронт подсвечивает вкладку оранжевым.\n- project_id: Option<String> — id зарегистрированного проекта (uuid) либо синтетический ключ '__path__:<cwd>' либо tmux_prefix-матч. Используется в switchActiveProject и фильтрах TODO/.beads. None для orphan-сессий с пустым path.\n- project_name: Option<String> — отображаемое имя проекта (basename последней папки project.path либо Project::name как fallback).\n- folder_id: Option<String> — (Phase 1 forge-fl3t) идентификатор папочно-ориентированной группы вида '__folder:<absolute_path>'. Заполняется helper'ом resolve_folder. Префикс '__folder:' исключает коллизии с project_id. None зеркалит резолв basename → пустая строка / отсутствует.\n- folder_label: Option<String> — (Phase 1 forge-fl3t) человекочитаемая метка папочной группы — basename последней папки session.path. Используется во фронте в group-header sidebar.\n- origin: String — (Phase 3) источник записи: всегда 'local' для локально-сгенерированных DTO. Прокси через ?server=<id> НЕ строит SessionDto на этой стороне — там прокидывается уже готовый JSON remote'а, обогащённый remote_proxy::enrich_with_origin. Поле сериализуется ВСЕГДА, чтобы фронт получал унифицированный формат.\n\nСериализация всех Option<String> полей идёт БЕЗ skip_serializing_if — ключи folder_id, folder_label, project_id, project_name присутствуют в JSON всегда (значение null при None). Это упрощает контракт для фронта.\n\nКонструируется только в одном месте — внутри замыкания .map() в get_sessions (main.rs ~807-822) после snapshot'а projects и attention. Поля заполняются по очереди:\n  let (project_id, project_name) = resolve_project(&s, &projects_snap);\n  let (folder_id, folder_label) = resolve_folder(&s);\n  SessionDto { needs_attention, project_id, project_name, folder_id, folder_label, info: s, origin: 'local'.to_string() }\n\nСвязи: SessionInfo (tmux.rs) — flatten-источник; resolve_project (main.rs) — заполняет project_*; resolve_folder (main.rs) — заполняет folder_*; attention::AttentionState — источник needs_attention.",
     "createdAt": "2026-05-10T09:17:54.504Z",
-    "updatedAt": "2026-05-10T09:17:54.504Z"
+    "updatedAt": "2026-05-14T17:23:03.713Z"
   },
   {
     "element": "tmux-web/src/todos.rs",
@@ -1306,9 +1306,9 @@
     "element": "app.js::renderOriginSection",
     "path": "",
     "type": "unknown",
-    "content": "Phase 5 — Рендерит одну origin-секцию: collapsible header с цветной точкой (online/offline/local/unknown), затем projects (project-sub-header) с группами сессий внутри. originKey: 'local' либо server_id. Использует isOriginCollapsed/toggleOriginCollapsed (localStorage 'forge.collapsedOrigins'). Внутри секции группирует sessions по project_id, с auto-группами по cwd, orphan секцией в конце (как в legacy renderSidebar).",
+    "content": "Рендерит одну origin-секцию в session-list (header origin'а + список сессий, сгруппированных по folder_id). Сигнатура: renderOriginSection(originKey, label, dotKind, projects, sessions, opts). Параметр projects сохранён для backward-совместимости, но больше не используется для построения header'ов (folder_id формата __folder:<path> не матчится с p.id). Группировка: visible = projectFilter !== '__all__' ? sessions.filter(s.project_id===pf) : sessions; затем groupSessionsByFolder(visible, ORPHAN_KEY). Header группы = arr[0].folder_label || basename(key.slice('__folder:'.length)). Сортировка ключей по folder_label (case-insensitive localeCompare), Orphan-группа в конце. opts.isOffline — рендерит badge 'offline' и плейсхолдер 'Сервер недоступен'. opts.remoteLoading — 'Loading…'. Пустой visible → empty placeholder ('Нет сессий в этом проекте' если projectFilter активен, иначе 'Нет активных сессий'). openSession→switchActiveProject продолжает работать через sess.project_id. Файл: tmux-web/static/app.js (~785–935). Phase 3: переписан с registered-projects header'ов на единый folder-based проход (синхронно с legacy renderSidebar).",
     "createdAt": "2026-05-14T10:15:57.058Z",
-    "updatedAt": "2026-05-14T10:15:57.058Z"
+    "updatedAt": "2026-05-14T17:27:26.739Z"
   },
   {
     "element": "app.js::openSettingsModal",
@@ -1517,5 +1517,45 @@
     "content": "Реестр remote-серверов devforge (tmux-web/src/remotes.rs).\n\n## Структуры\n- RemoteServer{id, label, url, token} — внутреннее представление. КАСТОМНЫЙ Debug — token заменяется на '[REDACTED]'.\n- RemoteServerView{id, label, url} — DTO для API (БЕЗ token).\n- RemoteServerStore{file_path, servers: Vec<RemoteServer>} — in-memory + JSON-файл.\n\n## Файл ~/.config/forge/remote_servers.json\nEnvelope: {servers: [RemoteServer...]}. Атомарный save через tmp + rename.\n\n## API\n- load(PathBuf) → Result<Self>. Отсутствующий файл → пустой store. Broken JSON → Err.\n- save() → Result<()>. Создаёт каталог при отсутствии.\n- list() / list_views() / get(id) — чтение.\n- add(label, url, token) → Result<RemoteServer>. Slug из label через projects::slugify + дедупликация (-2/-3/...).\n- remove(id) → bool. update(id, label?, token?) → Option<RemoteServer>.\n\n## Контракт (Phase 8 .8)\n- Slug collision: до 100+ дубликатов label → office, office-2, ..., office-100 (детерминированно).\n- Unicode-only label ('Офис') → Err (пустой slug после ASCII-фильтра).\n- Очень длинный label (500 chars) → принимается, slug может быть длинным, всё ASCII-safe.\n- Debug на RemoteServer и RemoteServerStore НЕ светит token — [REDACTED].\n- view_excludes_token — JSON-сериализация RemoteServerView не содержит token field.\n- Broken JSON в файле → Err с file path в message, без паники.\n- URL валидация (is_valid_remote_url): http://* / https://* OK, остальное — Err.\n- URL trimming: trailing slash снимается при add.\n\n## Тесты\n17 unit-тестов в remotes::tests (Phase 2 + Phase 8 .8).",
     "createdAt": "2026-05-14T12:07:12.460Z",
     "updatedAt": "2026-05-14T12:07:12.460Z"
+  },
+  {
+    "element": "main::resolve_folder",
+    "path": "",
+    "type": "unknown",
+    "content": "Helper в tmux-web/src/main.rs (примерно строки 1396-1407, рядом с resolve_project), резолвящий папочно-ориентированную группу для активной tmux-сессии.\n\nСигнатура: fn resolve_folder(s: &tmux::SessionInfo) -> (Option<String>, Option<String>) — приватная (НЕ pub).\n\nВозвращает кортеж (folder_id, folder_label):\n- folder_id — стабильный ключ группы вида '__folder:<absolute_path>'. Префикс '__folder:' гарантирует отсутствие коллизий с project_id (формы registered-uuid, '__path__:<cwd>', tmux-префикс), используемыми в switchActiveProject и фильтрах TODO/.beads.\n- folder_label — basename последней папки session.path для отображения в заголовке группы sidebar.\n\nEdge cases:\n- Пустой session.path или path = '/' → Path::file_name() даёт None → возвращается (None, None).\n- file_name есть, но to_str() возвращает None (не-UTF8) → (None, None).\n- Пустая строка basename → (None, None).\n- Orphan-сессии (None) фронт отрисует через ORPHAN_KEY-ветку sidebar.\n\nОтличие от resolve_project: не учитывает зарегистрированные проекты и tmux_prefix — чисто файловая группировка для UI, независимая от семантики project_id. Это позволяет иметь две различные классификации одной и той же сессии: проектную (для бизнес-логики переключения проекта и .beads-scoping) и папочную (для визуальной группировки в sidebar).\n\nВызывается: из get_sessions (main.rs, ~810) для каждой SessionInfo, результат кладётся в SessionDto.folder_id / SessionDto.folder_label.\n\nСериализация: фронт всегда видит ключи folder_id / folder_label в JSON ответа /api/sessions (без skip_serializing_if; null при None).\n\nДобавлен в Phase 1 epic forge-fl3t (P1.2 = forge-t3aw).",
+    "createdAt": "2026-05-14T17:22:49.571Z",
+    "updatedAt": "2026-05-14T17:22:49.571Z"
+  },
+  {
+    "element": "app.js::renderSidebar",
+    "path": "",
+    "type": "unknown",
+    "content": "Legacy local-mode рендер sidebar (tmux-web/static/app.js, ~446–542). После Phase 2 (forge-fd5d) группировка переключена на folder_id вместо project_id.\n\nПоведение:\n- Если isRemoteMode() === true — делегирует renderSidebarWithOrigin() и выходит (remote-ветка не затронута).\n- Если state.sessions пуст — рендерит li.empty 'Нет активных сессий'.\n- projectFilter применяется ДО группировки: visible = sessions.filter(s.project_id === filter) при filter !== '__all__'. Если visible пуст — 'Нет сессий в этом проекте' (или 'Нет активных сессий' в __all__).\n- Группирует visible по folder_id (orphan = null). Внутри каждой группы сессии сортируются по name.localeCompare().\n- Сортировка ключей групп: по folder_label (case-insensitive localeCompare), ORPHAN_KEY всегда в конце.\n- Header группы: arr[0].folder_label || keyDisplay, где keyDisplay = key.startsWith('__folder:') ? key.slice('__folder:'.length) : key.\n\nКлючевые контракты:\n- folder_id / folder_label берутся из SessionDto (Phase 1, форматы '__folder:<full_path>' и basename соответственно).\n- project_id остаётся в DTO и используется (а) фильтром project-bar (state.projectFilter), (б) openSession() → targetProjectId = sess.project_id → switchActiveProject. В sidebar group-header больше не зависит от state.projects.\n- Удалён старый блок 'for (const p of state.projects) { ... }' и авто-группа по project_id вида '__path__:...': теперь единый проход по Map<folder_id, Session[]>.\n\nЗависимости:\n- buildSessionItem(sess) для рендера каждого элемента.\n- isRemoteMode(), state.projectFilter, state.sessions.\n\nСвязанные задачи: forge-fd5d (P2.1), forge-a15o (Phase 2 epic). Phase 3 (forge-1log) переименует groupSessionsByProject → groupSessionsByFolder в remote-ветке (НЕ затронуто здесь).",
+    "createdAt": "2026-05-14T17:24:46.308Z",
+    "updatedAt": "2026-05-14T17:24:46.308Z"
+  },
+  {
+    "element": "app.js::groupSessionsByFolder",
+    "path": "",
+    "type": "unknown",
+    "content": "Хелпер группировки сессий по folder_id (формат __folder:<path>) или ORPHAN_KEY для null. Сигнатура: groupSessionsByFolder(sessions, orphanKey) → Map<key, Session[]>. Внутри каждой группы сессии сортируются по name.localeCompare(). Используется в legacy renderSidebar и origin-aware renderOriginSection для согласованной папочной группировки. Экспортируется в window.__forge.groupSessionsByFolder для регресс-тестов. Файл: tmux-web/static/app.js (~947–959). Заменил groupSessionsByProject (Phase 3) — ключ изменён с project_id на folder_id.",
+    "createdAt": "2026-05-14T17:27:20.072Z",
+    "updatedAt": "2026-05-14T17:27:20.072Z"
+  },
+  {
+    "element": "main::resolve_project",
+    "path": "",
+    "type": "unknown",
+    "content": "Возвращает только project_id и project_name для tasks/scope-linking. НЕ отвечает за sidebar-группировку — для этого есть отдельный helper resolve_folder. Логика: longest-prefix-match по зарегистрированным проектам в Snapshot (по polевой нормализации path) → tmux_prefix (если session.tmux_prefix совпадает с project.tmux_prefix) → fallback на синтетический ключ '__path__:<cwd>'. Если path пуст — (None, None) (orphan). Используется внутри замыкания .map() в get_sessions (main.rs ~807-822). Результат идёт в SessionDto.project_id / SessionDto.project_name, которые фронт затем потребляет в switchActiveProject (через openSession) и в фильтрах TODO/.beads. После Phase 2/3 группировка sidebar НЕ зависит от project_id — она построена на folder_id (см. resolve_folder).",
+    "createdAt": "2026-05-14T17:28:59.905Z",
+    "updatedAt": "2026-05-14T17:28:59.905Z"
+  },
+  {
+    "element": "sidebar-folder-grouping-fix",
+    "path": "",
+    "type": "page",
+    "content": "Фикс группировки tmux-сессий в sidebar по реальной leaf-папке cwd. До фикса — все сессии в подпапках стартового cwd форджа сливались под один project_id с именем стартовой папки. После — backend выдаёт folder_id/folder_label из basename(session.path), frontend (renderSidebar + renderOriginSection) группирует по folder_id. project_id оставлен для openSession→switchActiveProject и фильтров tasks/todos. План: ~/.claude/plans/resilient-seeking-cat.md. Затронуты файлы: tmux-web/src/main.rs (SessionDto, resolve_folder, get_sessions), tmux-web/static/app.js (renderSidebar, renderOriginSection, groupSessionsByFolder).",
+    "createdAt": "2026-05-14T17:29:03.682Z",
+    "updatedAt": "2026-05-14T17:29:03.682Z"
   }
 ]
