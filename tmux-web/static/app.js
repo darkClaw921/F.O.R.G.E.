@@ -602,10 +602,25 @@
     }
     // Hotkey Cmd+B / Ctrl+B — toggle. Перехватываем на window-capture-phase,
     // чтобы хоткей не съедался xterm/TUI-mouse-mode.
+    //
+    // ВАЖНО: на Windows/Linux mod=Ctrl, а Ctrl+B — дефолтный tmux prefix.
+    // Если фокус в xterm-терминале — НЕ перехватываем, чтобы control-команды
+    // tmux (prefix Ctrl+B и пр.) корректно уходили в PTY. На macOS используется
+    // Cmd+B (metaKey) — конфликта с tmux prefix нет.
     window.addEventListener('keydown', (ev) => {
         const isMac = navigator.platform.toUpperCase().includes('MAC');
         const mod = isMac ? ev.metaKey && !ev.ctrlKey : ev.ctrlKey && !ev.metaKey;
         if (mod && !ev.altKey && !ev.shiftKey && ev.key.toLowerCase() === 'b') {
+            // Не на macOS и фокус в терминале → отдаём Ctrl+B в PTY (tmux prefix).
+            if (!isMac) {
+                const tgt = ev.target;
+                if (tgt && tgt.classList && (
+                    tgt.classList.contains('xterm-helper-textarea') ||
+                    (tgt.closest && tgt.closest('.xterm'))
+                )) {
+                    return;
+                }
+            }
             ev.preventDefault();
             ev.stopPropagation();
             toggleSidebar();
