@@ -1,0 +1,54 @@
+/* ===== Phase 5 — origin-табы над session-list ===== */
+
+.origin-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-header-alt);
+}
+
+.origin-tab {
+    appearance: none;
+    background: transparent;
+    color: var(--fg-mute);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2px 9px;
+    font-size: 0.72rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    line-height: 1.4;
+}
+
+.origin-tab:hover {
+    color: var(--fg);
+    border-color: var(--fg-mute);
+}
+
+.origin-tab.active {
+    color: var(--fg);
+    background: var(--bg-pill);
+    border-color: var(--accent, var(--fg-mute));
+}
+
+.origin-tab .origin-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--status-neutral);
+    flex: 0 0 auto;
+}
+
+.origin-tab .origin-dot.online { background: var(--success); }
+.origin-tab .origin-dot.offline { background: var(--danger-soft); }
+.origin-tab .origin-dot.local { background: var(--success); }
+.origin-tab .origin-dot.unknown { background: var(--status-neutral); }
+
+.origin-tab.origin-tab-add {
+    color: var(--fg-mute);
+    font-weight: 600;
+}

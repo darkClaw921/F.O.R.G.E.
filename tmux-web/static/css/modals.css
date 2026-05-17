@@ -1,0 +1,277 @@
+/* ===== Modals (Phase 6.B) ===== */
+
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--overlay-modal);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-card {
+    background: var(--bg-elev);
+    border: 1px solid var(--border-input);
+    border-radius: 8px;
+    padding: 18px 18px 14px;
+    min-width: 360px;
+    max-width: 92vw;
+    max-height: 80vh;
+    overflow: auto;
+    box-shadow: 0 10px 30px var(--overlay-shadow);
+    color: var(--fg);
+}
+
+.modal-card h2 {
+    margin: 0 0 12px;
+    font-size: 0.95rem;
+    color: var(--fg-soft);
+    font-weight: 600;
+}
+
+.modal-card label {
+    display: block;
+    margin-bottom: 10px;
+    font-size: 0.78rem;
+    color: var(--fg-tab-inactive);
+}
+
+.modal-card input[type="text"] {
+    width: 100%;
+    margin-top: 4px;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-family: inherit;
+    font-size: 0.82rem;
+}
+
+.modal-card input[type="text"]:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.modal-card .modal-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 0.78rem;
+}
+
+.modal-card .modal-check input {
+    margin: 0;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.modal-actions button {
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 5px 12px;
+    font-family: inherit;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: background 100ms ease, border-color 100ms ease;
+}
+
+.modal-actions button:hover {
+    background: var(--bg-input-hover);
+    border-color: var(--border-input-hover);
+}
+
+.modal-actions button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--fg-on-accent);
+}
+
+.modal-actions button.primary:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+.modal-projects {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 50vh;
+    overflow-y: auto;
+}
+
+.modal-project-item {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 8px 6px;
+    border-bottom: 1px solid var(--border-input-soft);
+}
+
+.modal-project-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.modal-project-item:last-child {
+    border-bottom: 0;
+}
+
+.modal-project-item.active {
+    background: var(--accent-tint-strong);
+}
+
+.modal-project-meta {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.modal-project-name {
+    font-size: 0.85rem;
+    color: var(--fg-soft);
+}
+
+.modal-project-sub {
+    font-size: 0.7rem;
+    color: var(--fg-mute);
+    margin-top: 2px;
+    word-break: break-all;
+}
+
+.btn-remove {
+    background: transparent;
+    color: var(--fg-muted-2);
+    border: 1px solid var(--border-row);
+    border-radius: 3px;
+    padding: 3px 8px;
+    font-size: 0.72rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: color 100ms ease, border-color 100ms ease, background 100ms ease;
+}
+
+.btn-remove:hover:not(:disabled) {
+    color: var(--danger-soft);
+    border-color: var(--danger-soft);
+    background: var(--danger-bg);
+}
+
+.btn-remove:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* ===== Task modal (Phase 6.C) ===== */
+
+@keyframes modalFadeIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.modal-overlay {
+    animation: modalFadeIn 120ms ease-out;
+}
+
+.modal-card.task-modal {
+    min-width: 560px;
+    max-width: 900px;
+    width: 70vw;
+}
+
+.modal-card textarea {
+    width: 100%;
+    margin-top: 4px;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    line-height: 1.45;
+    min-height: 220px;
+    resize: vertical;
+}
+
+.modal-card textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.modal-card select {
+    width: 100%;
+    margin-top: 4px;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-family: inherit;
+    font-size: 0.82rem;
+    cursor: pointer;
+}
+
+.modal-card select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.modal-card .field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.modal-card .field-row label {
+    margin-bottom: 0;
+}
+
+.modal-card .modal-id {
+    color: var(--fg-placeholder);
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    font-size: 0.72rem;
+    margin-bottom: 8px;
+}
+
+.modal-actions button.warn {
+    background: var(--danger-btn-bg-1);
+    border-color: var(--danger-btn-border-1);
+    color: var(--danger-btn-fg-1);
+}
+
+.modal-actions button.warn:hover {
+    background: var(--danger-btn-bg-2);
+    border-color: var(--danger-btn-border-2);
+    color: var(--danger-btn-fg-2);
+}
+
+.modal-actions button.danger {
+    background: var(--danger-btn-bg-3);
+    border-color: var(--danger-btn-border-3);
+    color: var(--fg-on-accent);
+}
+
+.modal-actions button.danger:hover {
+    background: var(--danger-btn-bg-4);
+    border-color: var(--danger-btn-border-4);
+}
+
+.modal-actions .spacer {
+    flex: 1 1 auto;
+}
+

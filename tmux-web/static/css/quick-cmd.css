@@ -1,0 +1,222 @@
+/* =========================================================================
+ * ===== Quick-command bar (Phase B) ========================================
+ * =========================================================================
+ * Бар с топ-N часто используемых команд + spec-клавиш (Esc, Tab, ^C,
+ * стрелки) для mobile. Показывается JS только на mobile (matchMedia
+ * max-width: 768px); desktop — `hidden` атрибут не снимается.
+ *
+ * Бар позиционируется absolute в нижней части #terminal (и аналогично
+ * мог бы быть размещён в TUI-tabs в Phase C). Высота ~48px; учитывается
+ * в padding-bottom #terminal в mobile-секции выше.
+ */
+.quick-cmd-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    background: rgba(20, 22, 28, 0.96);
+    border-top: 1px solid #2a2f3a;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    box-sizing: border-box;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    /* Безопасная зона на устройствах с notch / home-indicator. */
+    padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+}
+.quick-cmd-bar[hidden] { display: none; }
+
+.quick-cmd-keys,
+.quick-cmd-cmds {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+.quick-cmd-keys { padding-right: 6px; border-right: 1px solid #2a2f3a; }
+
+.quick-cmd-key,
+.quick-cmd-cmd,
+.quick-cmd-edit {
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid #3a4356;
+    background: #1f2330;
+    color: #d8dee9;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.85rem;
+    line-height: 1;
+    padding: 8px 10px;
+    border-radius: 6px;
+    min-height: 36px;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color 80ms linear, border-color 80ms linear;
+}
+.quick-cmd-key:active,
+.quick-cmd-cmd:active,
+.quick-cmd-edit:active {
+    background: #2a3142;
+    border-color: #4a5570;
+}
+.quick-cmd-key {
+    min-width: 38px;
+    text-align: center;
+    color: #88c0d0;
+}
+.quick-cmd-cmd {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.quick-cmd-edit {
+    margin-left: auto;
+    flex-shrink: 0;
+    padding: 8px 12px;
+    color: #ebcb8b;
+}
+.quick-cmd-empty {
+    color: #6b7383;
+    font-size: 0.85rem;
+    padding: 0 4px;
+}
+
+/* ===== Quick-cmd Edit-UI (модалка) ===== */
+.quick-cmd-editor {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+.quick-cmd-editor[hidden] { display: none; }
+.quick-cmd-editor-card {
+    background: #161922;
+    border: 1px solid #2a2f3a;
+    border-radius: 10px;
+    width: min(520px, 100%);
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+.quick-cmd-editor-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid #2a2f3a;
+}
+.quick-cmd-editor-head h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: #eceff4;
+}
+.quick-cmd-editor-close {
+    appearance: none;
+    -webkit-appearance: none;
+    background: transparent;
+    color: #d8dee9;
+    border: none;
+    font-size: 1.6rem;
+    line-height: 1;
+    padding: 4px 8px;
+    cursor: pointer;
+    border-radius: 6px;
+}
+.quick-cmd-editor-close:active { background: #2a3142; }
+.quick-cmd-editor-add {
+    display: flex;
+    gap: 8px;
+    padding: 12px 16px;
+    border-bottom: 1px solid #2a2f3a;
+}
+.quick-cmd-editor-input {
+    flex: 1;
+    min-width: 0;
+    background: #1f2330;
+    border: 1px solid #3a4356;
+    color: #eceff4;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.9rem;
+}
+.quick-cmd-editor-addbtn {
+    appearance: none;
+    -webkit-appearance: none;
+    background: #5e81ac;
+    color: #eceff4;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+.quick-cmd-editor-addbtn:active { background: #4c6c8f; }
+.quick-cmd-editor-list {
+    list-style: none;
+    margin: 0;
+    padding: 8px 0;
+    overflow-y: auto;
+    flex: 1;
+}
+.quick-cmd-editor-empty {
+    padding: 16px;
+    color: #6b7383;
+    text-align: center;
+}
+.quick-cmd-editor-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 16px;
+    border-bottom: 1px solid #1f2330;
+}
+.quick-cmd-editor-item:last-child { border-bottom: none; }
+.quick-cmd-editor-cmd {
+    flex: 1;
+    min-width: 0;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    color: #d8dee9;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.quick-cmd-editor-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+.quick-cmd-editor-btn {
+    appearance: none;
+    -webkit-appearance: none;
+    background: #1f2330;
+    border: 1px solid #3a4356;
+    color: #d8dee9;
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.quick-cmd-editor-btn:active { background: #2a3142; }
+.quick-cmd-editor-del { color: #bf616a; }
+
+/* На desktop бар не показываем даже если кто-то снимет hidden программно. */
+@media (min-width: 769px) {
+    .quick-cmd-bar { display: none !important; }
+}
+

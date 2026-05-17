@@ -1,0 +1,3 @@
+# tmux-web/static/js/core/bootstrap.js
+
+Phase 1. bootstrap() — async entry: loadHealthz→restoreSidebarState→loadActiveThemeOrNull→initTerminal→applyTerminalFontSize→showPlaceholder/setStatus disconnected→wire listeners (newSession/createWindow/tab clicks/projectSelect/projectNew/projectSettings)→initTuiTabs→если remoteMode: fetchRemoteServers().then(loadActiveOriginFromStorage+renderSidebar)→fetchProjects().finally(fetchSessions+startPolling+connectTasksWs+fetchTodos+connectTodosWs). + beforeunload и visibilitychange handlers. + top-level side-effects: sidebar overlay/Esc/Cmd-B hotkey + mqlMobile change. + экспонирует window.__forge.{groupSessionsByFolder, aggregateAllOrigins} для регресс-тестов.

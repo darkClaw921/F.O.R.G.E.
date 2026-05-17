@@ -1,0 +1,59 @@
+/* ===== Project bar (Phase 6.B) ===== */
+
+#project-bar {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-header);
+    flex: 0 0 auto;
+}
+
+#project-select {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-family: inherit;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: border-color 100ms ease, background 100ms ease;
+}
+
+#project-select:hover {
+    border-color: var(--border-input-hover);
+    background: var(--bg-input-hover);
+}
+
+#project-select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+#project-bar button {
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-family: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+    flex: 0 0 auto;
+    line-height: 1;
+    transition: background 100ms ease, border-color 100ms ease;
+}
+
+#project-bar button:hover {
+    background: var(--bg-input-hover);
+    border-color: var(--border-input-hover);
+}
+
+#project-bar button:active {
+    background: var(--accent-active);
+    border-color: var(--accent);
+}

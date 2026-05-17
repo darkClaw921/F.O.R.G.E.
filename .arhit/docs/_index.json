@@ -11,25 +11,25 @@
     "element": "tmux-web/static/index.html",
     "path": "tmux-web/static/index.html",
     "type": "file",
-    "content": "HTML-шаблон tmux-web frontend. Содержит layout: левый sidebar (sessions/projects), top-bar с tab-кнопками, и панели-вкладки terminal/tasks/git/docker/telescope.\n\n## Tab-кнопки (top-bar)\n\n- #tab-terminal — Terminal (tmux attach).\n- #tab-tasks — Tasks (beads-board).\n- #tab-git — Git (lazygit TUI).\n- #tab-docker — Docker (lazydocker TUI, Phase 2).\n- #tab-telescope — Find (television fuzzy finder, Phase 2). Подпись 'Find' — semantically более понятна, чем 'Telescope'.\n\n## Панели вкладок\n\nPhase 4: git-pane — xterm.js терминал к /ws/lazygit.\nPhase 2 (forge-chjx): добавлены панели #docker и #telescope — зеркальные #git, но с другими ID-суффиксами.\n\n### Общая структура TUI-панелей (#git, #docker, #telescope)\n- {prefix}-placeholder — текст-заглушка ('Select a project to open <tui>'), виден когда нет активного проекта. Phase 2 заменён на класс .tui-placeholder.\n- {prefix}-error — banner-плашка с .tui-error-text, .tui-error-retry и .tui-error-close (×). hidden по умолчанию.\n- {prefix}-install-help — раскрывающийся блок с install-командами (виден при binary-not-found). Содержит .tui-install-title + ul.tui-install-list + a.tui-install-link.\n- {prefix}-term — контейнер xterm.js Terminal (.tui-term). Изолированная инстанция на каждую вкладку.\n\n### DOM ids\n\ngit-pane: #git-placeholder, #git-error, #git-error-text, #git-error-retry, #git-error-close, #git-install-help, #git-install-list, #git-term, #git-legacy.\n\ndocker-pane (Phase 2): #docker-placeholder, #docker-error, #docker-error-text, #docker-error-retry, #docker-error-close, #docker-install-help, #docker-install-list, #docker-term.\n\ntelescope-pane (Phase 2): #telescope-placeholder, #telescope-error, #telescope-error-text, #telescope-error-retry, #telescope-error-close, #telescope-install-help, #telescope-install-list, #telescope-term.\n\n### #git-legacy\n\nОбёртка над старой git-разметкой (toolbar/files/commit/graph), оставлена hidden до Phase 5 cleanup. Нужна чтобы legacy DOM-refs не были null при загрузке app.js.\n\n## Mobile-расширения (Phase A/B/C)\n\n### #sidebar-overlay\n\n`<div id=\"sidebar-overlay\" hidden>` добавлен сразу после `</aside>` (закрытия сайдбара). Это полупрозрачный fullscreen overlay, видимый только при открытом мобильном сайдбаре (`body.sidebar-open` + mobile viewport). Цель — затемнить фон контента и обеспечить click-to-close для off-canvas сайдбара. CSS-стили — в `style.css` (`#sidebar-overlay`). JS-handler (click + Esc) — в `app.js` (см. `setMobileSidebarOpen`).\n\n### #quick-cmd-bar (внутри #terminal)\n\n`<div id=\"quick-cmd-bar\">` добавлен внутри panel `#terminal`, после `<div id=\"terminal-term\">`. Структура:\n- `<div class=\"quick-cmd-keys\">` — slot для spec-клавиш (Esc, Tab, ^C, стрелки) — рендерится JS-модулем `quick-cmd.js`.\n- `<div class=\"quick-cmd-cmds\">` — slot для top-N команд (динамически из localStorage `forge.quickCmd.*`).\n- `<button class=\"quick-cmd-edit\">` — кнопка открытия редактора команд.\n\nВидимость: на desktop bar — обычная горизонтальная панель внизу `#terminal`. На mobile (max-width:768px) — `position:absolute; bottom:0` с `safe-area-inset-bottom`. Стили см. в `style.css` (`.quick-cmd-bar`, `.quick-cmd-key`, `.quick-cmd-cmd`, `.quick-cmd-edit`).\n\n### .tui-quick-bar (внутри #git / #docker / #telescope)\n\nВ каждой из трёх TUI-панелей добавлен `<div class=\"tui-quick-bar\" id=\"{git|docker|telescope}-quick-bar\">`. Это аналог `#quick-cmd-bar`, но с fixed-набором TUI-клавиш (`q, Esc, ?, :, /, h, j, k, l, Enter, ^C, Tab, ↑↓←→`). Рендеринг и обработка кликов — в `quick-cmd.js` (`refreshTuiBars`). Видимость управляется атрибутом `hidden` через MutationObserver + matchMedia (mobile-only).\n\n## Подключаемые скрипты\n\nxterm.js + addon-fit + addon-web-links (CDN/embedded). \n\n- `<script src=\"/app.js\">` — главный IIFE-modul (state, WS, TUI-tabs, hotkeys).\n- `<script src=\"/quick-cmd.js\">` — IIFE-modul quick-cmd-bar (подключён после `app.js`, так как зависит от `window.ForgeApp.sendToActivePty`). Phase B/C.\n\n## Связи\n\n- Tab-кнопки → switchTab() в app.js.\n- {prefix}-term → state.gitTerm/dockerTerm/telescopeTerm через initTuiTabs() (создаёт createTuiTab инстансы с DOM-refs).\n- {prefix}-install-help → install-help блок, показывается createTuiTab при binary-not-found.\n- #sidebar-overlay → click/Esc handlers в app.js (setMobileSidebarOpen / Esc-handler).\n- #quick-cmd-bar / #git-quick-bar / #docker-quick-bar / #telescope-quick-bar → JS-рендеринг и обработка в quick-cmd.js (`window.QuickCmd.refresh / refreshTuiBars`).\n- Гамбургер-кнопка сайдбара (на mobile) → `toggleSidebar()` в app.js (mobile-ветка через `isMobileViewport()`).",
+    "content": "Phase 1 update: <script src=/app.js> заменён на <script type=module src=/js/main.js>. quick-cmd.js и hotkeys.js остались классическими (поскольку они IIFE-консумеры window.ForgeApp/QuickCmd/Hotkeys). Порядок в HTML: main.js → quick-cmd.js → hotkeys.js.",
     "createdAt": "2026-05-09T18:11:53.178Z",
-    "updatedAt": "2026-05-16T15:36:44.858Z"
+    "updatedAt": "2026-05-17T12:24:46.479Z"
   },
   {
     "element": "tmux-web/static/app.js",
     "path": "tmux-web/static/app.js",
     "type": "file",
-    "content": "Frontend tmux-web (xterm + WS-attach + tasks/git/docker/telescope/projects/themes/remote).\n\n## Сборка\nОдин большой IIFE-module (~6000 строк) в tmux-web/static/app.js. Embedded в бинарь через rust-embed.\n\n## Ключевые блоки\n\n### state (объект)\nЦентральное хранилище в памяти. Поля:\n- ws, currentSession, sessions, term, fitAddon — основной /ws/attach + xterm.\n- attachWsBackoffStep / attachWsReconnectTimer / attachWsClosedByUs / attachWsOrigin (Phase 7) — backoff-reconnect /ws/attach.\n- activeTab ('terminal'|'tasks'|'git'|'docker'|'telescope'), tasksData, tasksWs (+backoff/timer/closedByUs), todosData/todosWs.\n- projects, activeProjectId, projectFilter — мульти-проекты.\n- remoteMode, serverVersion, healthzLoaded — /healthz bootstrap.\n- remoteServers (Array<RemoteServerView>), remoteOnline (Map<id, 'online'|'offline'|'unknown'>).\n- remoteSessions/remoteProjects (Map<server_id, ...>) — aggregated view.\n- activeOrigin ('all'|'local'|server_id) — origin-фильтр.\n- gitTerm, dockerTerm, telescopeTerm — TuiTab инстансы (см. createTuiTab/initTuiTabs ниже).\n- activeTheme — Phase 3 themes.\n\n### TUI-tabs framework (Phase 2, forge-chjx)\n\nGeneric factory createTuiTab({name, wsPath, activeTabName, refs, installHelp}) собирает изолированную xterm-инстанцию, говорящую по WebSocket с PTY на бэкенде. Контракт WS идентичен для всех TUI:\n- query: ?cwd=<path>&cols=<n>&rows=<n>[&server=<id>]\n- Binary frame в обе стороны = pty bytes.\n- Text frame от клиента: {type:'resize',cols,rows} / {type:'switch_cwd',cwd}.\n- Text frame от сервера: {type:'error',message:...} — показывается в .tui-error banner с install-help при binary-not-found.\n\ninitTuiTabs() в bootstrap создаёт три TuiTab. INSTALL_ENTRIES константы (LAZYGIT_INSTALL_ENTRIES/LAZYDOCKER_INSTALL_ENTRIES/TELESCOPE_INSTALL_ENTRIES) содержат per-OS команды установки.\n\n### Hotkeys\n\n- **Cmd+B (mac) / Ctrl+B (other)**: toggle sidebar. Window-capture-phase listener (app.js:605).\n  - **Fix forge-93l9**: на не-mac когда фокус в xterm (.xterm-helper-textarea / inside .xterm) хоткей пропускается, чтобы tmux prefix Ctrl+B корректно уходил в PTY.\n- **Cmd+C / Ctrl+Shift+C** (xterm.attachCustomKeyEventHandler в app.js:1646): copy выделения в clipboard. Остальные Ctrl-комбинации (Ctrl+C SIGINT, Ctrl+D EOF и т.п.) идут напрямую в PTY через xterm onData.\n\n### Ключевые функции\n- bootstrap() — loadHealthz, тема, initTerminal, sidebar, project bar, WS connect, initTuiTabs().\n- connectWs(sessionName, origin) — /ws/attach с ?server=<origin>. Backoff reconnect.\n- disconnectWs() — помечает attachWsClosedByUs.\n- scheduleAttachWsReconnect() — backoff [2s,4s,8s,16s,32s,60s] + jitter.\n- connectTasksWs / connectTodosWs — WS подписки.\n- switchTab(tabName) — переключение вкладок.\n- switchActiveProject(projectId) — смена проекта.\n- probeRemoteServer(serverId), renderSidebar / renderOriginSection, isRemoteMode(), fetchRemoteServers, openSettingsModal('remotes').\n\n## reconnect & health probe\n\n### Health probe per-server\nremoteProbeState: Map<server_id, {timer, step, inFlight}>.\nREMOTE_PROBE_BACKOFFS_MS = [2000, 4000, 8000, 16000, 32000, 60000]. STEADY_INDEX=1 (4s online).\n\n### WS reconnect\n- /ws/attach: ATTACH_WS_BACKOFFS_MS = [2s, 4s, 8s, 16s, 32s, 60s] + jitter.\n- /ws/tasks, /ws/todos: [1s, 2s, 5s, 10s] + polling fallback.\n- /ws/lazygit, /ws/lazydocker, /ws/telescope: manual retry через UI banner.\n\n## Mobile-расширения (Phase A/B/C)\n\n### isMobileViewport() и matchMedia\n\nВ IIFE-scope создан `_mqlMobile = window.matchMedia('(max-width: 768px)')`. Функция-хелпер `isMobileViewport()` возвращает `_mqlMobile.matches`. На событие `change` _mqlMobile подписан listener, который:\n- Перерисовывает sidebar (вызывает `applySidebarCollapsed()` / `restoreSidebarState()`).\n- Применяет `applyTerminalFontSize()`.\n- Прячет/показывает `.tui-quick-bar` через JS (на desktop — hidden=true).\n\nЭто позволяет реактивно переключать UI между mobile/desktop без перезагрузки страницы (например, при повороте экрана или resize окна DevTools).\n\n### applySidebarCollapsed / toggleSidebar / restoreSidebarState (mobile-ветка)\n\nНа desktop поведение прежнее (sidebar collapsible через класс `.collapsed` на body).\nНа mobile (через `isMobileViewport()`):\n- `toggleSidebar()` → вызывает `setMobileSidebarOpen(!body.classList.contains('sidebar-open'))`.\n- `restoreSidebarState()` на mobile всегда стартует с закрытым sidebar (не использует localStorage).\n\n### setMobileSidebarOpen(open: boolean)\n\nУправляет классом `body.sidebar-open` и видимостью `#sidebar-overlay`:\n- `open=true`: `body.classList.add('sidebar-open')`, `$sidebarOverlay.hidden = false`.\n- `open=false`: `body.classList.remove('sidebar-open')`, `$sidebarOverlay.hidden = true`.\n\n### #sidebar-overlay handlers\n\n- Click по overlay → `setMobileSidebarOpen(false)`.\n- Esc keydown (на body) — закрывает sidebar если открыт.\n\n### applyTerminalFontSize()\n\nПрименяет шрифт ко всем активным Terminal-инстансам (`state.term`, `state.gitTerm.term`, `state.dockerTerm.term`, `state.telescopeTerm.term`). Размер:\n- `TERM_FONT_SIZE_DESKTOP = 13` (px).\n- `TERM_FONT_SIZE_MOBILE = 11` (px).\n\nПосле изменения `term.options.fontSize` вызывается `fitAddon.fit()` чтобы пересчитать cols/rows.\n\nВызывается из bootstrap, при подключении нового TUI-tab, и при matchMedia change.\n\n### window.QuickCmd.onPtyInput хуки\n\nХуки добавлены в местах `term.onData(...)`:\n- Main xterm в bootstrap/initTerminal (~app.js:215-216):\n  ```js\n  term.onData(data => {\n    if (window.QuickCmd) window.QuickCmd.onPtyInput(data);\n    // ... отправка в WS\n  });\n  ```\n- В `createTuiTab` factory (~app.js:1827-1828) — аналогичный хук на каждый TUI-xterm.\n\nЭто значит, что quick-cmd.js видит ввод пользователя со всех PTY (main + git/docker/telescope) и автоматически трекает частоту команд.\n\n### sendToActivePty(text: string)\n\nPublic-функция (в конце IIFE), маршрутизирующая байты в активный PTY по `state.activeTab`:\n- `terminal` → `state.ws.send(text)` (если ws open).\n- `git` → `state.gitTerm?.ws?.send(text)`.\n- `docker` → `state.dockerTerm?.ws?.send(text)`.\n- `telescope` → `state.telescopeTerm?.ws?.send(text)`.\n- `tasks` или нет активной WS → no-op.\n\nWebSocket принимает text как binary через TextEncoder перед .send (так же, как обычные term.onData отправки).\n\n### window.ForgeApp\n\nВ самом конце IIFE экспорт: `window.ForgeApp = { sendToActivePty, state }`. Это контракт интеграции для внешних модулей (в первую очередь — `quick-cmd.js`). `state` экспортируется по reference чтобы quick-cmd.js мог читать `activeTab`.\n\n## Зависимости\n\n- xterm.js + addon-fit + addon-web-links — рендеринг терминала.\n- `quick-cmd.js` (Phase B/C) — потребитель `window.ForgeApp.sendToActivePty` и хуков `term.onData`. Подключается отдельно из `index.html`, после `app.js`.\n\n## Связанные файлы\n\n- [tmux-web/static/index.html](tmux-web/static/index.html) — DOM-структура (#sidebar-overlay, #quick-cmd-bar, #git/docker/telescope-quick-bar).\n- [tmux-web/static/style.css](tmux-web/static/style.css) — mobile @media-секции (off-canvas, scroll-snap, full-screen modals).\n- [tmux-web/static/quick-cmd.js](tmux-web/static/quick-cmd.js) — модуль quick-command bar (потребитель ForgeApp.sendToActivePty).",
+    "content": "DEPRECATED. Phase 1 ES Modules refactor: весь код перенесён в /js/*. Файл оставлен пустым (только комментарий) для cache-warmth — старые открытые вкладки могут продолжать дёргать /app.js до hard-reload, пусть отдают пустой скрипт, а не 404. Главная точка входа теперь /js/main.js (type=module). Маппинг функций → новые модули см. в arhit doc show refactor-ui-modules.",
     "createdAt": "2026-05-09T18:11:58.215Z",
-    "updatedAt": "2026-05-16T15:38:20.687Z"
+    "updatedAt": "2026-05-17T12:24:03.594Z"
   },
   {
     "element": "tmux-web/static/style.css",
     "path": "tmux-web/static/style.css",
     "type": "file",
-    "content": "CSS layout tmux-web. Содержит стили для основного layout (sidebar/top-bar/panels), tab-кнопок, terminal-обёртки, tasks-board, themes, modals, remote-panel и TUI-вкладок (lazygit/lazydocker/telescope) + mobile-адаптацию (Phase A/B/C).\n\n## Layout\n\nFlex-based: app=row (sidebar | main). main=column (top-bar | panels). Каждая panel (#terminal/#tasks/#git/#docker/#telescope) — flex column с заполнением высоты.\n\n## TUI-вкладки (Phase 2, forge-chjx)\n\n### Общие .tui-* классы\n\nВведены в Phase 2 для трёх вкладок (#git, #docker, #telescope). Заменяют дублирование старых .git-*.\n\n- .tui-term — контейнер xterm.js: flex:1, position:relative, фон #000, padding 6px. xterm-дети (.xterm, .xterm-viewport, .xterm-screen) форсятся 100%×100%. [hidden] → display:none !important.\n- .tui-placeholder — центрированный текст когда нет активного проекта (var(--fg-dim)). [hidden] → display:none !important.\n- .tui-error — красный banner (order:-1 в flex column — выше term), фон var(--danger), border, padding, flex-row gap 8.\n- .tui-error-text — gap-filling текстовый узел (flex:1).\n- .tui-error-retry / .tui-error-close — кнопки. .tui-error-close — × dismiss, .tui-error-retry — синяя ('Retry').\n- .tui-install-help — раскрывающийся блок с install-командами. Содержит .tui-install-title (header), ul.tui-install-list, .tui-install-link.\n- .tui-install-list li — flex-row: .os-label + .os-cmd (code) + .os-copy (button). .os-label.detected получает ::after маркер (например, ★) для подсветки текущей ОС.\n- .os-copy / .os-copy.copied — состояние кнопки Copy.\n\n### Контейнеры\n\n- #docker, #telescope — flex column (как #git), заполняются xterm-инстансами через .tui-term. [hidden] → display:none, иначе display:flex.\n\n### #git стили\n\nPhase 4 оригинальные .git-term/.git-placeholder/.git-error сохранены для backward compat.\n\n## Theming\n\nCSS-переменные (var(--bg-base), --fg, --fg-dim, --accent, --danger, --tab-active, ...).\n\n## Mobile-адаптация (Phase A/B/C)\n\nТри mobile-секции в конце файла (~ строки 2805-3015):\n1. `@media (max-width: 768px)` — основная mobile-сетка.\n2. `@media (max-width: 480px)` — узкие телефоны (мельче шрифты, компактнее padding).\n3. `@media (max-width: 768px) and (prefers-reduced-motion: reduce)` — отключение transition на off-canvas sidebar.\n\n### Off-canvas sidebar mechanism\n\nНа desktop sidebar — `position:relative; width:240px`. На mobile (max-width:768px):\n- `aside.sidebar` → `position:fixed; left:0; top:0; bottom:0; transform:translateX(-100%); transition: transform 0.25s ease`.\n- `body.sidebar-open aside.sidebar` → `transform:translateX(0)` (выезжает справа налево).\n- `#sidebar-overlay` (sibling после `</aside>`) — fullscreen полупрозрачный overlay (`position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index: just below sidebar`). По умолчанию `hidden`. При `body.sidebar-open` → `display:block`. Клик по нему → закрытие сайдбара (handler в app.js).\n- Класс `body.sidebar-open` ставится JS из `setMobileSidebarOpen(true)` в app.js.\n\n### .quick-cmd-bar (внутри #terminal)\n\nКонтейнер для top-N команд + spec-keys + Edit. На mobile фиксируется внизу `#terminal`:\n- `position:absolute; left:0; right:0; bottom:0`.\n- `padding-bottom: env(safe-area-inset-bottom)` — учёт home-bar iOS.\n- `backdrop-filter: blur(6px)` + полупрозрачный background для эффекта стеклянной панели поверх xterm.\n- `display:flex; flex-direction:row; gap:4px; overflow-x:auto; -webkit-overflow-scrolling:touch` — горизонтальный scroll если кнопок много.\n- `#terminal` и `.tui-term` получают `padding-bottom: 56px` чтобы bar не закрывал последние строки терминала.\n\n### .quick-cmd-key / .quick-cmd-cmd / .quick-cmd-edit\n\nВнутренние кнопки bar. Минимальный touch-target — 44×44px (рекомендация Apple HIG). Стилизация:\n- `min-width:44px; min-height:44px; padding:8px 12px`.\n- Border-radius 6px, фон var(--bg-elevated), цвет var(--fg).\n- `.quick-cmd-cmd` — text wrap отключен, `white-space:nowrap`.\n- `.quick-cmd-key` — моноширинный шрифт (для spec-keys типа Esc, ^C).\n- Active-состояние (`:active`) — затемнение фона для тактильного фидбэка.\n\n### .tui-quick-bar (внутри #git / #docker / #telescope)\n\nАналогично `.quick-cmd-bar`, но без `.quick-cmd-edit` (TUI-набор фиксирован). DOM-id: `#git-quick-bar`, `#docker-quick-bar`, `#telescope-quick-bar`. На desktop скрыты через `hidden` (управляется JS). На mobile показываются только когда соответствующая TUI-панель не hidden.\n\n`.tui-quick-key` — touch-target 44×44, отображает символ (`q`, `Esc`, `↑` и т.п.).\n\n### Kanban (Tasks) — горизонтальный scroll-snap\n\nНа mobile `#tasks-board` теряет grid-сетку и становится горизонтальной лентой:\n- `display:flex; flex-direction:row; overflow-x:auto; scroll-snap-type: x mandatory`.\n- Каждая колонка статуса (`.kanban-column`) — `flex:0 0 85vw; scroll-snap-align:start`.\n- Это даёт UX как в Trello/Linear mobile: палец листает колонки.\n\n### Full-screen модалки\n\nВсе модалки (settings, edit-task и т.п.) на mobile занимают полный экран:\n- `.modal-content` → `width:100vw; height:100vh; max-width:none; border-radius:0`.\n- Заголовок и кнопка закрытия — `position:sticky; top:0` чтобы оставались видимыми при скролле.\n\n### Touch-target минимумы\n\nВсе интерактивные элементы — `min-height:44px` (хоткеи top-bar, sidebar items, tab-кнопки).\n\n### prefers-reduced-motion\n\nТретья media-секция отключает `transition: transform` на sidebar чтобы пользователи с настройкой reduce-motion не страдали от анимации.\n\n## Зависимости\n\n- xterm.js (window.Terminal) — рендеринг.\n- Theme manifest из ThemeStore.\n\n## Связанные файлы\n\n- [tmux-web/static/index.html](tmux-web/static/index.html) — DOM-структура (содержит классы и id, на которые ссылаются стили).\n- [tmux-web/static/app.js](tmux-web/static/app.js) — JS-логика, ставит `body.sidebar-open`, управляет `hidden` на quick-bar-ах.\n- [tmux-web/static/quick-cmd.js](tmux-web/static/quick-cmd.js) — рендеринг содержимого `.quick-cmd-bar` / `.tui-quick-bar`.",
+    "content": "ТОНКИЙ @import-АГРЕГАТОР (Phase 2 рефакторинг). Был монолитом 3419 строк / 83KB, стал 67 строк / 2.7KB. Содержит только серию @import url('./css/<feature>.css') в порядке, соответствующем оригинальному каскаду style.css. Порядок импорта: base → layout → window-bar → project-bar → sidebar → origin-tabs → tab-bar → tasks → modals → notifications → settings-modal → theme-editor → git-tab → tui-tab → tui-channels → quick-cmd → mobile (последним!). index.html по-прежнему ссылается на /style.css через <link rel=stylesheet>, браузер сам тянет остальные css/*.css через @import. Все 17 файлов в tmux-web/static/css/ запакованы в бинарь через rust-embed (см. static_embed.rs).",
     "createdAt": "2026-05-09T18:12:01.556Z",
-    "updatedAt": "2026-05-16T15:37:29.430Z"
+    "updatedAt": "2026-05-17T12:35:10.040Z"
   },
   {
     "element": "tmux-web/src/main.rs",
@@ -1721,5 +1721,432 @@
     "content": "async function renameSession(oldName, origin) — UI-обработчик кнопки 'rename' в session-item. Промптит пользователя для нового имени (window.prompt с pre-fill oldName); если пусто/Cancel/совпадает со старым — выходит. Шлёт PATCH /api/sessions/:name с body { name: <new> } через apiFetch (origin-aware, поддерживает remote-серверы). Сервер возвращает финальное имя (с tmux_prefix), считывает его из ответа (fallback на trimmed input). Если переименована state.currentSession — дисконнектит WS, показывает placeholder, обновляет список и переоткрывает сессию по новому имени через openSession(newName, origin). Иначе просто fetchSessions(). Ошибки показывает через window.alert. Кнопка btn-rename размещена в session-actions рядом с btn-kill.",
     "createdAt": "2026-05-17T10:50:28.129Z",
     "updatedAt": "2026-05-17T10:50:28.129Z"
+  },
+  {
+    "element": "tmux-web/static/js/core/state.js",
+    "path": "tmux-web/static/js/core/state.js",
+    "type": "file",
+    "content": "Singleton state для tmux-web frontend (Phase 0 ES Modules refactor).\n\n## Назначение\n1:1 копия объекта `state` из IIFE `tmux-web/static/app.js` (строки ~89-171). Экспортируется как named export `state` и используется как shared-singleton всеми feature-модулями через `import { state } from '../core/state.js'`. Семантика IIFE-замыкания эмулируется shared ES-модулем — один импорт даёт один и тот же объект во всех модулях, обеспечивая прозрачную миграцию без правок логики.\n\n## Экспорты\n- `export const state` — объект со всеми runtime-полями приложения.\n\n## Зависимости\nНЕТ — нижний слой архитектуры. Не импортирует ни одного модуля.\n\n## Ключевые поля state\n### Phase 5 — Remote mode\n- `remoteMode: bool` — режим запуска бэкенда, из /healthz. Default false (legacy localhost).\n- `serverVersion: string|null` — версия из /healthz.version.\n- `healthzLoaded: bool` — true после первого /healthz.\n- `remoteServers: Array` — список RemoteServerView { id, label, url }.\n- `remoteProjects: Map<server_id, ProjectDto[]>` — lazy-load кэш.\n- `remoteSessions: Map<server_id, SessionDto[]>` — lazy-load кэш.\n- `activeOrigin: 'all'|'local'|server_id` — фильтр sidebar, в localStorage.\n\n### Терминал / WS-attach\n- `term, fitAddon, webLinksAddon, ws` — xterm.js handles.\n- `attachWsBackoffStep, attachWsReconnectTimer, attachWsClosedByUs, attachWsOrigin` — Phase 7 auto-reconnect.\n- `currentSession, sessions, currentWindows, windowsPollTimer, pollTimer` — sessions/windows.\n- `encoder: TextEncoder` — pre-allocated для PTY-input.\n- `lastResizeKey` — anti-loop защита от resize-петли.\n\n### Phase 6 — Tasks / TODO\n- `activeTab: 'terminal'|'tasks'|'git'` — активный таб.\n- `tasksPollTimer, tasksData, projects, activeProjectId, projectFilter`.\n- `tasksWs, tasksWsBackoffStep, tasksWsReconnectTimer, tasksWsClosedByUs` — Phase 6.D realtime.\n- `todosData, todosWs, todosWsBackoffStep, todosWsReconnectTimer, todosWsClosedByUs, todosPollTimer` — Phase 4 TODO kanban.\n\n### Phase 3 — Themes\n- `activeTheme: {id, name, kind, ui, term}|null` — последняя применённая тема.\n\n### TUI-tabs\n- `gitTerm, dockerTerm, telescopeTerm: TuiTab.state|null` — инстансы lazygit/lazydocker/telescope.\n\n## Ограничения / инварианты\n- Поля переименовывать нельзя — на них завязан весь legacy app.js и публичный контракт window.ForgeApp.state.\n- В Phase 0 модуль ещё не импортируется (index.html не меняется), но файл готов к импорту из main.js в Phase 1.\n- Поля изменяются in-place — мутации видны во всех потребителях немедленно.\n\n## Связи\n- Источник: `tmux-web/static/app.js` строки 89-171 (внутри IIFE).\n- Импортируется в: будущие модули core/*, ws/*, sessions/*, sidebar/*, tabs/*, tasks/*, projects/*, settings/*, themes/*, remote/* (Phase 1).",
+    "createdAt": "2026-05-17T11:53:34.181Z",
+    "updatedAt": "2026-05-17T11:53:34.181Z"
+  },
+  {
+    "element": "tmux-web/static/js/core/dom.js",
+    "path": "tmux-web/static/js/core/dom.js",
+    "type": "file",
+    "content": "DOM-references singletons для tmux-web frontend (Phase 0 ES Modules refactor).\n\n## Назначение\n1:1 копия блока top-level `const $... = document.getElementById(...)` из IIFE `tmux-web/static/app.js` (строки 173-233, 674). Каждый ref вычисляется один раз при первом импорте модуля и экспортируется как named export.\n\n## Контракт корректности\nDOM-refs валидны только если модуль импортируется ПОСЛЕ полной загрузки HTML. В Phase 1 main.js будет подключён как `<script type=\"module\">` — это даёт implicit defer, т.е. модуль выполнится после parse HTML (по HTML-спецификации). До этого ref'ы будут null.\n\n## Экспорты (по группам)\n\n### Layout / sidebar\n- $layout (#layout), $btnSidebarToggle (#btn-sidebar-toggle), $sidebar (#session-list), $btnNew (#btn-new), $sidebarOverlay (#sidebar-overlay).\n\n### Terminal / window-bar / status\n- $terminalEl (#terminal), $placeholder (#placeholder), $windowBar (#window-bar), $windowTabs (#window-tabs), $windowNewBtn (#window-new), $statusDot (#status-dot), $statusText (#status-text).\n\n### Tasks UI (Phase 6.A)\n- $tabTerminal (#tab-terminal), $tabTasks (#tab-tasks), $tasksStatus, $tasksEl (#tasks), $tasksReload, $tasksNew, $tasksMeta, $tasksBoard.\n\n### Git / lazygit tab\n- $tabGit (#tab-git), $gitEl (#git), $gitTermEl (#git-term), $gitPlaceholder, $gitError, $gitErrorText, $gitErrorRetry, $gitErrorClose, $gitInstallHelp, $gitInstallList.\n\n### Docker / lazydocker tab\n- $tabDocker (#tab-docker), $dockerEl (#docker), $dockerTermEl, $dockerPlaceholder, $dockerError, $dockerErrorText, $dockerErrorRetry, $dockerErrorClose, $dockerInstallHelp, $dockerInstallList.\n\n### Telescope / tv tab\n- $tabTelescope (#tab-telescope), $telescopeEl (#telescope), $telescopeTermEl, $telescopePlaceholder, $telescopeError, $telescopeErrorText, $telescopeErrorRetry, $telescopeErrorClose, $telescopeInstallHelp, $telescopeInstallList, $telescopeChannelBar.\n\n### Project bar (Phase 6.B)\n- $projectSelect (#project-select), $projectNew (#project-new), $projectSettings (#project-settings).\n\n### Origin-табы (Phase 5)\n- $originTabs (#origin-tabs) — скрыты при remote_mode=false.\n\n## Зависимости\nНЕТ — только браузерный DOM. Pure leaf-module.\n\n## Ограничения\n- Имена экспортов сохраняют исторические $-имена из app.js (один-в-один).\n- В Phase 0 модуль ещё не подключен; legacy app.js работает как раньше.\n- НЕ кэшировать элементы, которые создаются динамически (например $panel внутри settings modal — он остаётся локальной переменной в feature-модуле).",
+    "createdAt": "2026-05-17T11:54:28.458Z",
+    "updatedAt": "2026-05-17T11:54:28.458Z"
+  },
+  {
+    "element": "tmux-web/static/js/core/utils.js",
+    "path": "tmux-web/static/js/core/utils.js",
+    "type": "file",
+    "content": "Pure helpers — экранирование, modal-overlay, clipboard, detectClientOS.\n\n## Назначение\n1:1 копии utility-функций из IIFE `tmux-web/static/app.js`. Pure helpers — без side-effects (кроме clipboard, который ходит в DOM).\n\n## Экспорты\n### Экранирование строк\n- `escapeHtml(s): string` (app.js:4408) — экранирует & < > \" ' для безопасной вставки в innerHTML (полная версия). Null/undefined → пустая строка.\n- `escapeAttr(s): string` (app.js:5852) — облегчённое экранирование для attribute values (& \" <).\n- `escapeText(s): string` (app.js:5855) — экранирование text content (& < >).\n\n### Modal builder\n- `buildModalOverlay(): HTMLDivElement` (app.js:5582) — создаёт пустой `<div class=\"modal-overlay\">`. CSS — в `style.css` секция Modals.\n\n### Client detection\n- `detectClientOS(): 'mac'|'windows'|'linux'|null` (app.js:2019) — определение ОС по `navigator.platform` + `userAgent`. Используется для подсказок hotkey-ов (Cmd vs Ctrl).\n\n### Clipboard\n- `copyToClipboardSafe(text: string): Promise<boolean>` (app.js:2034) — копирует строку через Clipboard API с fallback на `document.execCommand('copy')`.\n- `fallbackCopy(text: string): boolean` (app.js:2041) — синхронный textarea + execCommand fallback. Возвращает true при успехе.\n\n## Зависимости\nНЕТ — pure helpers (только браузерные навигатор/clipboard/document).\n\n## Использование (Phase 1+)\nИмпортируется из feature-модулей `tasks/*`, `settings/*`, `sidebar/*`, `projects/*`, `themes/*` для рендера и UI.\n\n## Ограничения\n- escapeHtml/escapeAttr/escapeText имеют разные наборы заменяемых символов — намеренно (полная версия для HTML, облегчённая для attr/text). Не унифицировать без необходимости.\n- fallbackCopy зависит от deprecated `document.execCommand` — оставлен как fallback для старых браузеров.",
+    "createdAt": "2026-05-17T11:55:12.773Z",
+    "updatedAt": "2026-05-17T11:55:12.773Z"
+  },
+  {
+    "element": "tmux-web/static/js/core/auth.js",
+    "path": "tmux-web/static/js/core/auth.js",
+    "type": "file",
+    "content": "Auth bootstrap + fetch override (Phase 0 ES Modules refactor).\n\n## Назначение\n1:1 копия auth-логики из IIFE `tmux-web/static/app.js` (строки 15-87). Обеспечивает:\n1. Извлечение токена из URL (#token=...) и сохранение в localStorage (QR-flow).\n2. Подмена `window.fetch` — добавляет `Authorization: Bearer <token>` ко всем same-origin запросам.\n3. Хелпер `withWsToken(url)` для WebSocket (нельзя ставить headers на WS из JS).\n\n## ⚠️ Side-effect import\nМодуль выполняет на верхнем уровне при импорте:\n1. IIFE `bootstrapAuthToken()` — читает hash из location, кладёт token в localStorage, чистит hash.\n2. Подмена `window.fetch` — оборачивает оригинальный fetch.\n\n**Контракт:** в Phase 1 main.js должен импортировать `./core/auth.js` ПЕРВЫМ, ДО любого другого модуля, который может позвать fetch(). Иначе override произойдёт после первых запросов и они уйдут без токена.\n\n## Экспорты\n- `getAuthToken(): string` — getter из localStorage. Возвращает '' если токена нет или localStorage недоступен (privacy mode).\n- `withWsToken(wsUrl: string): string` — добавляет `?token=...` (или `&token=...` если уже есть query) к WS URL.\n\n## НЕ экспортируется\n- `AUTH_TOKEN_KEY` — внутренняя константа `'forge.authToken'`.\n- `bootstrapAuthToken` — выполняется как IIFE при импорте.\n- Fetch override — top-level statement.\n\n## Зависимости\nНЕТ — только браузерные globals (localStorage, location, history, window.fetch, Headers, URL).\n\n## Поведение fetch override\n- Если токена нет — pass-through к оригинальному fetch.\n- Если input — Request, читаем `.url`.\n- Если URL cross-origin — pass-through (не трогаем CDN типа xterm.js).\n- Не перезаписывает Authorization если он уже задан в headers.\n- Если Authorization уже стоит — оставляет.\n\n## withWsToken\n- Если token пустой — возвращает URL без изменений (legacy localhost).\n- Auto-detect `?` vs `&` separator.\n\n## Ограничения\n- В Phase 0 модуль не подключен; legacy app.js делает то же самое в IIFE.",
+    "createdAt": "2026-05-17T11:56:09.029Z",
+    "updatedAt": "2026-05-17T11:56:09.029Z"
+  },
+  {
+    "element": "tmux-web/static/js/core/api.js",
+    "path": "tmux-web/static/js/core/api.js",
+    "type": "file",
+    "content": "Phase 1 update. apiFetch теперь импортирует isRemoteMode из remote/healthz.js (вместо inline state.remoteMode===true). 1:1 функционально, но через явный публичный API healthz-модуля.",
+    "createdAt": "2026-05-17T11:57:12.452Z",
+    "updatedAt": "2026-05-17T12:24:46.217Z"
+  },
+  {
+    "element": "tmux-web/static/js/core/viewport.js",
+    "path": "tmux-web/static/js/core/viewport.js",
+    "type": "file",
+    "content": "Viewport / responsive helpers (Phase 0 ES Modules refactor).\n\n## Назначение\n1:1 копии viewport-helper'ов из IIFE `tmux-web/static/app.js` (строки 667-672, 769-792).\n\n## Экспорты\n- `_mqlMobile: MediaQueryList | null` — module-level matchMedia('(max-width: 768px)'). null если matchMedia недоступен (старые браузеры).\n- `isMobileViewport(): boolean` — true если viewport ≤ 768px. Используется как guard в `toggleSidebar`, `restoreSidebarState`, `applySidebarCollapsed`, terminal scaling.\n- `TERM_FONT_SIZE_DESKTOP: 13` — fontSize для xterm на десктопе.\n- `TERM_FONT_SIZE_MOBILE: 11` — fontSize для xterm на мобиле (чтобы 80 колонок влезали).\n- `applyTerminalFontSize(): void` — пробегается по `state.term` + `state.gitTerm` / `state.dockerTerm` / `state.telescopeTerm`, выставляет нужный fontSize и вызывает `fit()` (xterm auto-emit onResize → sendResize в PTY).\n\n## Зависимости\n- `import { state } from './state.js'` — для `state.term, state.fitAddon, state.gitTerm, state.dockerTerm, state.telescopeTerm`.\n\n## Использование (Phase 1)\n- `isMobileViewport()` — sidebar/mobile.js, settings/modal.js.\n- `_mqlMobile.addEventListener('change', ...)` — bootstrap.js для реакции на смену viewport.\n- `applyTerminalFontSize()` — bootstrap.js + reaction на mql change.\n\n## Ограничения\n- `applyTerminalFontSize` безопасен на любом этапе bootstrap — пропускает несуществующие/неmount-нутые терминалы (try/catch вокруг fit()).\n- В Phase 0 модуль ещё не подключен; legacy app.js содержит свои копии.",
+    "createdAt": "2026-05-17T11:57:59.195Z",
+    "updatedAt": "2026-05-17T12:01:10.540Z",
+    "aliases": [
+      "matchMedia mobile font terminal"
+    ]
+  },
+  {
+    "element": "tmux-web/static/js/main.js",
+    "path": "tmux-web/static/js/main.js",
+    "type": "file",
+    "content": "Phase 1 entry-point. Порядок: 1) import './core/auth.js' (side-effect: подмена window.fetch + token из location.hash) — ПЕРВЫМ. 2) import './public-api.js' (window.ForgeApp). 3) import { bootstrap } + вызов bootstrap() с проверкой document.readyState. Подключается из index.html как <script type=module src=/js/main.js>.",
+    "createdAt": "2026-05-17T11:58:39.766Z",
+    "updatedAt": "2026-05-17T12:24:03.077Z"
+  },
+  {
+    "element": "tmux-web/static/js/public-api.js",
+    "path": "tmux-web/static/js/public-api.js",
+    "type": "file",
+    "content": "Phase 1. Контракт window.ForgeApp = { sendToActivePty, state }. Импортирует sendToActivePty из tabs/tui-tabs.js и state из core/state.js. ВАЖНО: на этот контракт завязан quick-cmd.js (217-221, 585-591) — нельзя менять без обновления quick-cmd.js.",
+    "createdAt": "2026-05-17T11:58:46.064Z",
+    "updatedAt": "2026-05-17T12:24:03.332Z"
+  },
+  {
+    "element": "refactor-ui-modules",
+    "path": "",
+    "type": "page",
+    "content": "Phase 1: Полная миграция tmux-web/static/app.js (6743 строки IIFE) на нативные ES Modules.\n\n## Маппинг функций → новые модули\n\n### core/ (Phase 0)\n- state, AUTH_TOKEN_KEY → js/core/state.js\n- DOM refs ($layout, $sidebar, …) → js/core/dom.js\n- bootstrapAuthToken, getAuthToken, fetch override, withWsToken → js/core/auth.js\n- escapeHtml/escapeAttr/escapeText, buildModalOverlay, detectClientOS, copyToClipboardSafe, fallbackCopy → js/core/utils.js\n- apiFetch, withServerParam, parseGlobalId, formatGlobalId, dtoOrigin → js/core/api.js\n- _mqlMobile, isMobileViewport, TERM_FONT_SIZE_*, applyTerminalFontSize → js/core/viewport.js\n\n### terminal/\n- initTerminal, sendResize, scheduleResizeFromTerm, setStatus, showPlaceholder → js/terminal/xterm.js\n- mapTermTheme → js/terminal/theme-mapper.js\n\n### ws/\n- connectWs, disconnectWs, scheduleAttachWsReconnect, handleControlFromServer → js/ws/attach.js\n- connectTasksWs, disconnectTasksWs, scheduleTasksWsReconnect, handleTasksWsMessage, fetchTasks, startTasksPolling/stopTasksPolling, setTasksStatus → js/ws/tasks-ws.js\n- connectTodosWs, disconnectTodosWs, scheduleTodosWsReconnect, handleTodosWsMessage, fetchTodos, startTodosPolling/stopTodosPolling → js/ws/todos-ws.js\n\n### sessions/\n- fetchSessions, buildSessionItem, groupSessionsByFolder, startPolling/stopPolling, createSessionPrompt, renameSession, killSession, openSession, switchSession → js/sessions/sessions.js\n- fetchWindows, renderWindowBar, selectWindow, createWindow, killWindow, renameWindow, startWindowsPolling/stopWindowsPolling → js/sessions/windows.js\n\n### sidebar/\n- renderSidebar, renderSidebarWithOrigin, renderOriginSection → js/sidebar/sidebar.js\n- renderOriginTabs, getCollapsedOrigins/isOriginCollapsed/toggleOriginCollapsed/persistCollapsedOrigins, loadActiveOriginFromStorage/saveActiveOriginToStorage → js/sidebar/origin-tabs.js\n- applySidebarCollapsed, setMobileSidebarOpen, toggleSidebar, restoreSidebarState → js/sidebar/mobile.js\n\n### tabs/\n- switchTab → js/tabs/tabs.js\n- createTuiTab, initTuiTabs, INSTALL_ENTRIES (lazygit/lazydocker/telescope), getActiveProject, mountGitTerm/openLazygitForActiveProject/connectGitWs/closeGitWs/gitSwitchCwd/showGitBanner/hideGitBanner/retryGitConnection, sendToActivePty → js/tabs/tui-tabs.js\n\n### tasks/\n- TASK_COLUMNS, COLUMN_TITLES, CLOSED_LIMIT, renderTasks, compareIssues, renderColumn, renderTodoCard, renderCard, currentTodosProjectId → js/tasks/render.js\n- TASK_EDIT_STATUSES, TASK_TYPES, buildTaskFormHtml, openCreateModal, openEditModal, openTodoEditModal → js/tasks/modals.js\n- getIssueIndex, applyOptimisticPatch, rollbackIssue, createTask, updateTask, taskOriginById, closeTask, reopenTask, promoteTodo → js/tasks/crud.js\n\n### projects/\n- fetchProjects, renderProjectSelect, switchActiveProject → js/projects/projects.js\n- openNewProjectModal → js/projects/new-project.js\n\n### settings/\n- openSettingsModal → js/settings/modal.js\n- renderRemotesTable, openEditRemoteRow → js/settings/remotes-tab.js\n- buildNotificationsForm, saveProjectSettings → js/settings/notifications-tab.js\n\n### themes/\n- applyTheme, switchTheme, loadActiveThemeOrNull, THEME_UI_KEYS/THEME_TERM_BASE_KEYS/THEME_TERM_ANSI_KEYS/THEME_TERM_KEYS, HEX_COLOR_RE, normalizeHex, cloneThemeColors, validateDraft, buildThemePayload → js/themes/api.js\n- loadThemesIntoPanel, renderThemesPanel, buildThemeCard → js/themes/panel.js\n- openThemeEditor, buildColorPickerRow, buildLivePreviewContainer → js/themes/editor.js\n\n### remote/\n- loadHealthz, isRemoteMode → js/remote/healthz.js\n- state.remoteOnline (runtime init), REMOTE_PROBE_BACKOFFS_MS, fetchRemoteServers, loadRemoteProjects/Sessions, probeRemoteServer, startRemoteHealthPoll/stopRemoteHealthPoll, aggregateAllOrigins → js/remote/servers.js\n\n### Entry\n- bootstrap() + top-level keydown/mqlMobile listeners + window.__forge → js/core/bootstrap.js\n- window.ForgeApp = { sendToActivePty, state } → js/public-api.js\n- import './core/auth.js' → import './public-api.js' → bootstrap() → js/main.js\n\n## index.html\n`<script src=/app.js>` → `<script type=module src=/js/main.js>`. quick-cmd.js и hotkeys.js остаются классическими.\n\n## app.js\nОпустошён до одного комментария (cache-warmth для старых вкладок).\n\n## Smoke\nВсе 30+ модулей отдаются HTTP 200 (content-type text/javascript). node --check проходит везде. cargo build green. Контракт window.ForgeApp.{sendToActivePty,state} сохранён 1:1.\n\n## Известное legacy-поведение\nВ createTuiTab() (tabs/tui-tabs.js): mapTermTheme(state.activeTheme) — передаётся ВЕСЬ theme-объект (а не theme.term). Это копия legacy app.js:2103-2104 — bug сохранён 1:1 как требует pure refactor. Fallback fallbackTheme сработает (т.к. mapTermTheme(theme) вернёт объект с undefined полями).",
+    "createdAt": "2026-05-17T12:24:37.296Z",
+    "updatedAt": "2026-05-17T12:24:37.296Z"
+  },
+  {
+    "element": "tmux-web/static/js/terminal/xterm.js",
+    "path": "tmux-web/static/js/terminal/xterm.js",
+    "type": "file",
+    "content": "Phase 1 ES Modules. 1:1 копии initTerminal/sendResize/scheduleResizeFromTerm/setStatus/showPlaceholder из app.js. Импортирует state и DOM-refs ($terminalEl/$statusDot/$statusText/$placeholder). Подключает FitAddon + WebLinksAddon. Использует state.encoder для отправки PTY input через WebSocket. Сbрасывает lastResizeKey/triggers fit() при resize.",
+    "createdAt": "2026-05-17T12:22:35.193Z",
+    "updatedAt": "2026-05-17T12:22:35.193Z"
+  },
+  {
+    "element": "tmux-web/static/js/terminal/theme-mapper.js",
+    "path": "tmux-web/static/js/terminal/theme-mapper.js",
+    "type": "file",
+    "content": "Phase 1. Pure helper — mapTermTheme(t) маппит наш TermColors (camelCase) в xterm.js ITheme. Единственная переименовка: selection → selectionBackground. 1:1 копия из app.js:362.",
+    "createdAt": "2026-05-17T12:22:35.451Z",
+    "updatedAt": "2026-05-17T12:22:35.451Z"
+  },
+  {
+    "element": "tmux-web/static/js/ws/attach.js",
+    "path": "tmux-web/static/js/ws/attach.js",
+    "type": "file",
+    "content": "Phase 1. /ws/attach WebSocket: connectWs/disconnectWs/scheduleAttachWsReconnect/handleControlFromServer. Backoff [2s,4s,8s,16s,32s,60s] + jitter 1s. Перед connect делает fit() для корректных cols/rows. Закрытие через disconnectWs выставляет attachWsClosedByUs=true чтобы подавить reconnect. Бинарь PTY читается как Uint8Array в term.write.",
+    "createdAt": "2026-05-17T12:22:35.711Z",
+    "updatedAt": "2026-05-17T12:22:35.711Z"
+  },
+  {
+    "element": "tmux-web/static/js/ws/tasks-ws.js",
+    "path": "tmux-web/static/js/ws/tasks-ws.js",
+    "type": "file",
+    "content": "Phase 1. /ws/tasks WebSocket + fetchTasks fallback. Backoff [1s,2s,5s,10s], poll-interval 30s. Snapshot/upsert/removed/reload protocol. Origin-aware: при activeOrigin !== local/all добавляет ?server=. Управляет state.tasksData.",
+    "createdAt": "2026-05-17T12:22:35.969Z",
+    "updatedAt": "2026-05-17T12:22:35.969Z"
+  },
+  {
+    "element": "tmux-web/static/js/ws/todos-ws.js",
+    "path": "tmux-web/static/js/ws/todos-ws.js",
+    "type": "file",
+    "content": "Phase 1. /ws/todos WebSocket + fetchTodos fallback. Аналог tasks-ws.js. currentTodosProjectId() из render.js. project_id query из state.activeProjectId. Управляет state.todosData.",
+    "createdAt": "2026-05-17T12:22:36.226Z",
+    "updatedAt": "2026-05-17T12:22:36.226Z"
+  },
+  {
+    "element": "tmux-web/static/js/sessions/sessions.js",
+    "path": "tmux-web/static/js/sessions/sessions.js",
+    "type": "file",
+    "content": "Phase 1. Sessions REST/render: fetchSessions, buildSessionItem, groupSessionsByFolder, startPolling(3s), stopPolling, createSessionPrompt, renameSession, killSession, openSession (с auto switchActiveProject если local), switchSession. Origin-aware через apiFetch+dtoOrigin.",
+    "createdAt": "2026-05-17T12:22:59.143Z",
+    "updatedAt": "2026-05-17T12:22:59.143Z"
+  },
+  {
+    "element": "tmux-web/static/js/sessions/windows.js",
+    "path": "tmux-web/static/js/sessions/windows.js",
+    "type": "file",
+    "content": "Phase 1. Windows of active tmux session: fetchWindows, renderWindowBar, selectWindow, createWindow, killWindow, renameWindow, startWindowsPolling(2s)/stopWindowsPolling. 400/404 ответы очищают currentWindows. Все REST через apiFetch с state.attachWsOrigin.",
+    "createdAt": "2026-05-17T12:22:59.400Z",
+    "updatedAt": "2026-05-17T12:22:59.400Z"
+  },
+  {
+    "element": "tmux-web/static/js/sidebar/sidebar.js",
+    "path": "tmux-web/static/js/sidebar/sidebar.js",
+    "type": "file",
+    "content": "Phase 1. Render sidebar: renderSidebar (legacy folder-grouping), renderSidebarWithOrigin (origin-mode), renderOriginSection. Учитывает state.projectFilter, isRemoteMode(). Использует buildSessionItem + groupSessionsByFolder.",
+    "createdAt": "2026-05-17T12:22:59.660Z",
+    "updatedAt": "2026-05-17T12:22:59.660Z"
+  },
+  {
+    "element": "tmux-web/static/js/sidebar/origin-tabs.js",
+    "path": "tmux-web/static/js/sidebar/origin-tabs.js",
+    "type": "file",
+    "content": "Phase 1. Origin tabs + persistence: renderOriginTabs (All/Local/+remotes/+plus), loadActiveOriginFromStorage, saveActiveOriginToStorage, _collapsedOrigins Set + get/persist/is/toggle. localStorage keys: forge.activeOrigin, forge.collapsedOrigins. Клик по табу — lazy-load remoteSessions/Projects + переподключение tasks/todos WS.",
+    "createdAt": "2026-05-17T12:22:59.914Z",
+    "updatedAt": "2026-05-17T12:22:59.914Z"
+  },
+  {
+    "element": "tmux-web/static/js/sidebar/mobile.js",
+    "path": "tmux-web/static/js/sidebar/mobile.js",
+    "type": "file",
+    "content": "Phase 1. Sidebar collapse + mobile drawer: applySidebarCollapsed (desktop), setMobileSidebarOpen (drawer), toggleSidebar (диспетчер mobile/desktop), restoreSidebarState (read localStorage forge.sidebarCollapsed). После collapse — setTimeout 200ms для refit всех xterm/TUI.",
+    "createdAt": "2026-05-17T12:23:00.173Z",
+    "updatedAt": "2026-05-17T12:23:00.173Z"
+  },
+  {
+    "element": "tmux-web/static/js/tabs/tabs.js",
+    "path": "tmux-web/static/js/tabs/tabs.js",
+    "type": "file",
+    "content": "Phase 1. switchTab(name) — главный диспетчер: terminal/tasks/git/docker/telescope. Toggle hidden на контейнерах, .active на кнопках. При уходе с tabs/git/docker/telescope закрывает WS. При приходе на tasks — connectTasksWs+(fetchTasks if no data) или renderTasks.",
+    "createdAt": "2026-05-17T12:23:00.426Z",
+    "updatedAt": "2026-05-17T12:23:00.426Z"
+  },
+  {
+    "element": "tmux-web/static/js/tabs/tui-tabs.js",
+    "path": "tmux-web/static/js/tabs/tui-tabs.js",
+    "type": "file",
+    "content": "Phase 1. TUI tabs framework: createTuiTab factory (lazygit/lazydocker/telescope), initTuiTabs (создаёт 3 TuiTab и кладёт в state.gitTerm/dockerTerm/telescopeTerm), getActiveProject, мин-aliases mountGitTerm/openLazygitForActiveProject/connectGitWs/closeGitWs/gitSwitchCwd/showGitBanner/hideGitBanner/retryGitConnection. sendToActivePty(text) — диспетчер по state.activeTab для quick-cmd.js. LAZYGIT/LAZYDOCKER/TELESCOPE_INSTALL_ENTRIES — таблицы команд установки для banner help. Channel-bar для telescope (Files/Content/Dirs/GitLog).",
+    "createdAt": "2026-05-17T12:23:00.687Z",
+    "updatedAt": "2026-05-17T12:23:00.687Z"
+  },
+  {
+    "element": "tmux-web/static/js/tasks/render.js",
+    "path": "tmux-web/static/js/tasks/render.js",
+    "type": "file",
+    "content": "Phase 1. Tasks kanban render: TASK_COLUMNS=[todo,open,in_progress,blocked,deferred,draft,closed], COLUMN_TITLES, CLOSED_LIMIT=20. renderTasks (board), compareIssues (priority asc, updated_at desc), renderColumn (DnD-aware: TODO принимает только в open; bd-issue запрещён в todo), renderTodoCard (drag payload 'todo:<id>'), renderCard. currentTodosProjectId возвращает state.activeProjectId.",
+    "createdAt": "2026-05-17T12:23:26.545Z",
+    "updatedAt": "2026-05-17T12:23:26.545Z"
+  },
+  {
+    "element": "tmux-web/static/js/tasks/crud.js",
+    "path": "tmux-web/static/js/tasks/crud.js",
+    "type": "file",
+    "content": "Phase 1. Tasks CRUD + optimistic UI: getIssueIndex, applyOptimisticPatch (mutates+render), rollbackIssue, createTask (POST + temp-id placeholder), updateTask (PATCH с origin через taskOriginById), closeTask (DELETE с reason), reopenTask (POST), promoteTodo (POST /api/todos/:id/promote с auto-resolve session).",
+    "createdAt": "2026-05-17T12:23:26.800Z",
+    "updatedAt": "2026-05-17T12:23:26.800Z"
+  },
+  {
+    "element": "tmux-web/static/js/tasks/modals.js",
+    "path": "tmux-web/static/js/tasks/modals.js",
+    "type": "file",
+    "content": "Phase 1. Tasks modals: buildTaskFormHtml (общий шаблон HTML — title/desc/prio/type/labels/[status]), openCreateModal (с preset.status; TODO режим=POST /api/todos), openEditModal (PATCH через updateTask, Close/Reopen кнопки), openTodoEditModal (Save/Delete/Promote, plan_mode checkbox).",
+    "createdAt": "2026-05-17T12:23:27.054Z",
+    "updatedAt": "2026-05-17T12:23:27.054Z"
+  },
+  {
+    "element": "tmux-web/static/js/projects/projects.js",
+    "path": "tmux-web/static/js/projects/projects.js",
+    "type": "file",
+    "content": "Phase 1. Multi-project: fetchProjects (GET /api/projects + restore projectFilter из localStorage forge.projectFilter; для активного проекта — re-open active TUI tab WS), renderProjectSelect (опция All projects + список), switchActiveProject (POST /api/projects/active + disconnectWs+fetchSessions+disconnectTasksWs/TodosWs+TUI switchCwd по newPath).",
+    "createdAt": "2026-05-17T12:23:27.312Z",
+    "updatedAt": "2026-05-17T12:23:27.312Z"
+  },
+  {
+    "element": "tmux-web/static/js/projects/new-project.js",
+    "path": "tmux-web/static/js/projects/new-project.js",
+    "type": "file",
+    "content": "Phase 1. openNewProjectModal — модал создания проекта: name, path, чекбокс Initialize. POST /api/projects/init (mkdir+git init+br init+scaffold) или POST /api/projects (только регистрация).",
+    "createdAt": "2026-05-17T12:23:27.575Z",
+    "updatedAt": "2026-05-17T12:23:27.575Z"
+  },
+  {
+    "element": "tmux-web/static/js/settings/modal.js",
+    "path": "tmux-web/static/js/settings/modal.js",
+    "type": "file",
+    "content": "Phase 1. openSettingsModal (initialTab?). Tabs: Notifications/Themes/[Remote servers — только в remote mode]. Notifications-таб — список проектов с раскрывающейся формой buildNotificationsForm. Remotes-таб — таблица renderRemotesTable + форма Add (Label/URL/Token, Test connection через POST /api/remote-servers + GET /healthz, Save без preflight). themesState lazy-load через loadThemesIntoPanel.",
+    "createdAt": "2026-05-17T12:23:27.839Z",
+    "updatedAt": "2026-05-17T12:23:27.839Z"
+  },
+  {
+    "element": "tmux-web/static/js/settings/remotes-tab.js",
+    "path": "tmux-web/static/js/settings/remotes-tab.js",
+    "type": "file",
+    "content": "Phase 1. renderRemotesTable($tbody) — таблица remoteServers с edit/delete. openEditRemoteRow(tr, srv, $tbody) — inline form (Label + опциональный новый token). PATCH/DELETE /api/remote-servers/:id, после успеха — fetchRemoteServers + renderRemotesTable + renderSidebar.",
+    "createdAt": "2026-05-17T12:23:28.102Z",
+    "updatedAt": "2026-05-17T12:23:28.102Z"
+  },
+  {
+    "element": "tmux-web/static/js/settings/notifications-tab.js",
+    "path": "tmux-web/static/js/settings/notifications-tab.js",
+    "type": "file",
+    "content": "Phase 1. buildNotificationsForm(project, onSaved) — fieldset с template/delay_minutes/wait_previous/session_override. saveProjectSettings(id, payload) — PATCH /api/projects/:id/settings с optimistic apply на state.projects + rollback при ошибке. Возвращает {ok, project} либо {ok:false, error}.",
+    "createdAt": "2026-05-17T12:23:28.350Z",
+    "updatedAt": "2026-05-17T12:23:28.350Z"
+  },
+  {
+    "element": "tmux-web/static/js/themes/api.js",
+    "path": "tmux-web/static/js/themes/api.js",
+    "type": "file",
+    "content": "Phase 1. Themes runtime+API: applyTheme (CSS-vars на :root + state.term.options.theme через mapTermTheme + state.activeTheme), switchTheme (PATCH /api/themes/active + GET + applyTheme), loadActiveThemeOrNull. THEME_UI_KEYS (11) / THEME_TERM_BASE_KEYS (4) / THEME_TERM_ANSI_KEYS (16) / THEME_TERM_KEYS (combined). HEX_COLOR_RE, normalizeHex (fallback #000000), cloneThemeColors (deep clone+normalize), validateDraft, buildThemePayload (для POST/PUT custom).",
+    "createdAt": "2026-05-17T12:24:01.553Z",
+    "updatedAt": "2026-05-17T12:24:01.553Z"
+  },
+  {
+    "element": "tmux-web/static/js/themes/panel.js",
+    "path": "tmux-web/static/js/themes/panel.js",
+    "type": "file",
+    "content": "Phase 1. Themes Settings panel: loadThemesIntoPanel (GET /api/themes, заполняет themesState), renderThemesPanel (Presets + Custom секции, активная карточка с .active рамкой), buildThemeCard (preview из 10 swatches: bg+fg+8 ANSI). Custom — кнопки edit/delete + + New custom (→openThemeEditor).",
+    "createdAt": "2026-05-17T12:24:01.817Z",
+    "updatedAt": "2026-05-17T12:24:01.817Z"
+  },
+  {
+    "element": "tmux-web/static/js/themes/editor.js",
+    "path": "tmux-web/static/js/themes/editor.js",
+    "type": "file",
+    "content": "Phase 1. openThemeEditor(themeOrNull) — модал редактора кастомных тем. Поля: name, Duplicate from preset dropdown (lazy GET /api/themes), UI grid (11 пикеров) + Terminal base grid (4) + ANSI grid (16) через buildColorPickerRow. Live preview через buildLivePreviewContainer (мини-UI + 16 ANSI span'ов). Save → POST /api/themes/custom (create) или PUT /api/themes/custom/:id (edit) + перерисовка panel.",
+    "createdAt": "2026-05-17T12:24:02.069Z",
+    "updatedAt": "2026-05-17T12:24:02.069Z"
+  },
+  {
+    "element": "tmux-web/static/js/remote/healthz.js",
+    "path": "tmux-web/static/js/remote/healthz.js",
+    "type": "file",
+    "content": "Phase 1. loadHealthz() — GET /healthz (без auth), пишет state.remoteMode/serverVersion/healthzLoaded. isRemoteMode() — true iff state.remoteMode === true. Используется как feature-toggle во всех модулях (api/sidebar/ws/...). При сбое — remoteMode=false (legacy fallback).",
+    "createdAt": "2026-05-17T12:24:02.315Z",
+    "updatedAt": "2026-05-17T12:24:02.315Z"
+  },
+  {
+    "element": "tmux-web/static/js/remote/servers.js",
+    "path": "tmux-web/static/js/remote/servers.js",
+    "type": "file",
+    "content": "Phase 1. Remote-servers registry: state.remoteOnline (Map) — runtime инициализация. REMOTE_PROBE_BACKOFFS_MS=[2s..60s], STEADY_INDEX=1 (4s online), JITTER=1s. fetchRemoteServers (GET /api/remote-servers + startRemoteHealthPoll), loadRemoteProjects/Sessions (lazy с кэшем state.remoteProjects/Sessions), probeRemoteServer (GET /api/remote-servers/:id/healthz + schedule next по backoff/steady), startRemoteHealthPoll (синхронизирует probeState с remoteServers), stopRemoteHealthPoll, aggregateAllOrigins (для регресс-тестов: Map<originKey, {label,online,projects,sessions}>).",
+    "createdAt": "2026-05-17T12:24:02.565Z",
+    "updatedAt": "2026-05-17T12:24:02.565Z"
+  },
+  {
+    "element": "tmux-web/static/js/core/bootstrap.js",
+    "path": "tmux-web/static/js/core/bootstrap.js",
+    "type": "file",
+    "content": "Phase 1. bootstrap() — async entry: loadHealthz→restoreSidebarState→loadActiveThemeOrNull→initTerminal→applyTerminalFontSize→showPlaceholder/setStatus disconnected→wire listeners (newSession/createWindow/tab clicks/projectSelect/projectNew/projectSettings)→initTuiTabs→если remoteMode: fetchRemoteServers().then(loadActiveOriginFromStorage+renderSidebar)→fetchProjects().finally(fetchSessions+startPolling+connectTasksWs+fetchTodos+connectTodosWs). + beforeunload и visibilitychange handlers. + top-level side-effects: sidebar overlay/Esc/Cmd-B hotkey + mqlMobile change. + экспонирует window.__forge.{groupSessionsByFolder, aggregateAllOrigins} для регресс-тестов.",
+    "createdAt": "2026-05-17T12:24:02.817Z",
+    "updatedAt": "2026-05-17T12:24:02.817Z"
+  },
+  {
+    "element": "tmux-web/static/css/base.css",
+    "path": "tmux-web/static/css/base.css",
+    "type": "file",
+    "content": "Базовые стили tmux-web: CSS-переменные тёмной темы (--bg, --fg, --accent, --border, и т.д.), правила :root, reset (html/body, * box-sizing), глобальные fallback-шрифты. Исходник: первые 128 строк бывшего монолитного style.css. Должен импортироваться ПЕРВЫМ через @import — все остальные css-файлы полагаются на var(--*) и базовый reset.",
+    "createdAt": "2026-05-17T12:33:48.735Z",
+    "updatedAt": "2026-05-17T12:33:48.735Z"
+  },
+  {
+    "element": "tmux-web/static/css/layout.css",
+    "path": "tmux-web/static/css/layout.css",
+    "type": "file",
+    "content": "Основной grid-layout приложения: #layout (CSS grid: sidebar + main), #main (flex column контейнер для tab-bar/контента/window-bar), #placeholder (заглушка когда нет активной сессии), .layout-collapsed (сжатый сайдбар), .sidebar-toggle-btn (кнопка-гамбургер в tab-bar). 80 строк. Импортируется ВТОРЫМ после base.css — задаёт высокоуровневую геометрию страницы.",
+    "createdAt": "2026-05-17T12:33:52.471Z",
+    "updatedAt": "2026-05-17T12:33:52.471Z"
+  },
+  {
+    "element": "tmux-web/static/css/window-bar.css",
+    "path": "tmux-web/static/css/window-bar.css",
+    "type": "file",
+    "content": "Стили нижнего бара с tmux window tabs внутри активной сессии: #window-bar (контейнер 0 0 28px), .window-tab (вкладка окна с pseudo-classes :hover/.active/.dirty/.zoomed), кнопки add/close/rename, индикатор unread. 98 строк. Соответствует логике renderWindowBar() из tmux-web/static/js/sessions/windows.js.",
+    "createdAt": "2026-05-17T12:33:56.156Z",
+    "updatedAt": "2026-05-17T12:33:56.156Z"
+  },
+  {
+    "element": "tmux-web/static/css/project-bar.css",
+    "path": "tmux-web/static/css/project-bar.css",
+    "type": "file",
+    "content": "#project-bar — горизонтальная панель над основным контентом для выбора активного проекта. Содержит .project-pill (кнопка с именем проекта), активное состояние подсвечивается accent-цветом, hover увеличивает фон. 59 строк. Логика рендера — projects/render.js (если есть) или main.js.",
+    "createdAt": "2026-05-17T12:33:59.519Z",
+    "updatedAt": "2026-05-17T12:33:59.519Z"
+  },
+  {
+    "element": "tmux-web/static/css/sidebar.css",
+    "path": "tmux-web/static/css/sidebar.css",
+    "type": "file",
+    "content": "Левый сайдбар: .sidebar-header (заголовок + кнопки settings/refresh), .session-list (список сессий, ul), .session-item (li с :hover/.active/.keyboard-focus), .origin-group-header (заголовки origin/project групп при показе всех сессий), .sidebar-footer (статус-строка снизу), webkit-scrollbar стилизация. 301 строка (объединены два диапазона: 369-516 + 572-724 оригинала, между ними вклинивался origin-tabs.css).",
+    "createdAt": "2026-05-17T12:34:03.595Z",
+    "updatedAt": "2026-05-17T12:34:03.595Z"
+  },
+  {
+    "element": "tmux-web/static/css/origin-tabs.css",
+    "path": "tmux-web/static/css/origin-tabs.css",
+    "type": "file",
+    "content": "Phase 5 origin-табы над session-list (выбор между local / remote origin'ами). .origin-tabs (flex-wrap контейнер), .origin-tab (pill-кнопка с .origin-dot статус-индикатором: .online/.offline/.local/.unknown), .origin-tab.active (подсветка accent), .origin-tab-add (кнопка добавления). 54 строки. Импортируется ПОСЛЕ sidebar.css для корректного каскада фона/бордера.",
+    "createdAt": "2026-05-17T12:34:07.414Z",
+    "updatedAt": "2026-05-17T12:34:07.414Z"
+  },
+  {
+    "element": "tmux-web/static/css/tab-bar.css",
+    "path": "tmux-web/static/css/tab-bar.css",
+    "type": "file",
+    "content": "Верхний #tab-bar — переключатель главных вкладок Terminal/Tasks/Git/Docker/Find. .tab-btn (кнопка, transparent background, hover -> bg-input, .active -> accent), .tab-meta (счётчик/индикатор справа auto-margin). 38 строк. Связан с switchTab() из tmux-web/static/js/tabs/tabs.js.",
+    "createdAt": "2026-05-17T12:34:09.988Z",
+    "updatedAt": "2026-05-17T12:34:09.988Z"
+  },
+  {
+    "element": "tmux-web/static/css/tasks.css",
+    "path": "tmux-web/static/css/tasks.css",
+    "type": "file",
+    "content": "Вкладка Tasks (kanban-доска): #tasks контейнер, .kanban-col (колонки TODO/IN_PROGRESS/DONE и пользовательские), .kanban-col-header с .col-add (+) и .col-meta, .kanban-card (карточка задачи, .grab/.grabbing курсоры для DnD), drag-and-drop visual states (.dragging-source, .drag-over-target), .session-group-header (заголовки групп сессий — наследие из tasks-секции), Phase 4 TODO column (фиолетовый акцент, p-pill, promote-btn ▲, description-preview). 350 строк (объединены 765-963 и 1241-1391 оригинала; промежуток 964-1240 ушёл в modals.css).",
+    "createdAt": "2026-05-17T12:34:15.301Z",
+    "updatedAt": "2026-05-17T12:34:15.301Z"
+  },
+  {
+    "element": "tmux-web/static/css/notifications.css",
+    "path": "tmux-web/static/css/notifications.css",
+    "type": "file",
+    "content": "Notifications form в Settings modal (Phase 5): .btn-settings (мелкие кнопки внутри settings), .notify-* классы (формы per-project настроек уведомлений: enable/disable, ringtone select, hooks textarea), .notify-actions (кнопки save/cancel/test, :disabled = opacity 0.5). 124 строки. Используется на 'Notifications' вкладке settings-модала.",
+    "createdAt": "2026-05-17T12:34:17.958Z",
+    "updatedAt": "2026-05-17T12:34:17.958Z"
+  },
+  {
+    "element": "tmux-web/static/css/modals.css",
+    "path": "tmux-web/static/css/modals.css",
+    "type": "file",
+    "content": "Универсальные стили модальных окон: .modal-overlay (position fixed inset 0, dim background, z-index 1000), .modal-card (центрированный card с border-radius, scrollable body), .modal-header/.modal-body/.modal-footer, .modal-actions (flex-end кнопок), .modal-actions .spacer (растягиватель). Также включает Task Modal (Phase 6.C) — формы создания/редактирования карточек kanban: .task-modal form-rows, label+input wrappers, textarea для description. 277 строк (964-1240 оригинала). НЕ включает kanban-карточные стили (1241+) — те в tasks.css.",
+    "createdAt": "2026-05-17T12:34:23.836Z",
+    "updatedAt": "2026-05-17T12:34:23.836Z"
+  },
+  {
+    "element": "tmux-web/static/css/settings-modal.css",
+    "path": "tmux-web/static/css/settings-modal.css",
+    "type": "file",
+    "content": "Settings modal (Phase wk7.4 + Phase 5): tab-bar внутри settings-модала (Notifications / Themes / Remote servers — более тонкие чем глобальный #tab-bar), Themes-вкладка с пресетами и .theme-card/.theme-card-tool, и Remote servers tab — .remotes-table, .remote-server-form, .remote-row :hover/.active. 457 строк (объединены 1518-1769 — settings tab-bar и themes panel — и 2709-2913 — Remote servers tab; они логически принадлежат одному модалу).",
+    "createdAt": "2026-05-17T12:34:27.526Z",
+    "updatedAt": "2026-05-17T12:34:27.526Z"
+  },
+  {
+    "element": "tmux-web/static/css/theme-editor.css",
+    "path": "tmux-web/static/css/theme-editor.css",
+    "type": "file",
+    "content": "Custom theme editor модал — расширенная форма создания пользовательской темы: .modal-card.theme-editor-modal (фиксированная ширина 720px, max-width 92vw), grid из color-picker'ов для каждой CSS-переменной (--bg, --fg, ANSI палитра и т.д.), background+foreground шире (доминирующие), live preview блок с примером терминала. 376 строк. Используется при создании/редактировании пользовательских тем (Phase wk7).",
+    "createdAt": "2026-05-17T12:34:31.474Z",
+    "updatedAt": "2026-05-17T12:34:31.474Z"
+  },
+  {
+    "element": "tmux-web/static/css/git-tab.css",
+    "path": "tmux-web/static/css/git-tab.css",
+    "type": "file",
+    "content": "Вкладка Git (#git) — pane для встроенного lazygit-xterm. #git { display: none; flex 1 1 auto } — переключается JS на 'flex' при активации таба. .git-* стили для xterm-контейнера: full-width/full-height с !important, фиксированные размеры через JS resize. .git-placeholder когда нет проекта. 204 строки (2147-2350). Связан с tabs/git.js и xterm-инстансом.",
+    "createdAt": "2026-05-17T12:34:35.515Z",
+    "updatedAt": "2026-05-17T12:34:35.515Z"
+  },
+  {
+    "element": "tmux-web/static/css/tui-tab.css",
+    "path": "tmux-web/static/css/tui-tab.css",
+    "type": "file",
+    "content": "Generic TUI tab — обобщение .git-* для повторного использования через createTuiTab() factory: #docker (lazydocker), #telescope (find), и других TUI-приложений. .tui-pane, .tui-* классы аналогичны .git-*. Включает также Channel-switcher bar (.tui-channel-bar) для Find-вкладки: переключатель Files/Content/Dirs/Git log — .tui-channel-btn с :hover/.active. 221 строка (2352-2572 оригинала).",
+    "createdAt": "2026-05-17T12:34:38.738Z",
+    "updatedAt": "2026-05-17T12:34:38.738Z"
+  },
+  {
+    "element": "tmux-web/static/css/tui-channels.css",
+    "path": "tmux-web/static/css/tui-channels.css",
+    "type": "file",
+    "content": "ВНИМАНИЕ: имя файла misnomer — на самом деле содержит горячие клавиши и связанные оверлеи (наследие неточной нумерации строк в плане). Содержимое: #hotkey-hints-layer (position fixed inset 0, pointer-events none — слой Cmd-hold подсказок), .hotkey-hint (отдельная всплывающая подсказка) с .hotkey-hint-partial и .hotkey-hint-dim, #hotkey-help overlay с .show/.hidden состояниями, .hotkey-help-card и сетка <kbd> элементов, .hotkey-help-hint, keyboard-focus подсветка для session-item при vim-навигации, TODO plan-mode badge (фиолетовый pill на карточках kanban + чекбокс в модалках). 133 строки (2574-2706 оригинала). Channel-bar (реальный telescope channel-switcher) находится в tui-tab.css.",
+    "createdAt": "2026-05-17T12:34:45.026Z",
+    "updatedAt": "2026-05-17T12:34:45.026Z"
+  },
+  {
+    "element": "tmux-web/static/css/quick-cmd.css",
+    "path": "tmux-web/static/css/quick-cmd.css",
+    "type": "file",
+    "content": "Quick-command bar (Phase B mobile): #quick-cmd-bar + #tui-quick-bar — горизонтальный бар с топ-N команд + spec-клавиш (Esc, Tab, ^C, стрелки), absolute-позиционирование внизу #terminal. Показывается JS только на mobile (matchMedia max-width:768px). Также Quick-cmd Edit-UI модалка (.quick-cmd-edit-*) для управления списком команд. @media (min-width: 769px) { display: none } — гарантия что бар не появится на desktop. 222 строки (3198-3419). Связан с tmux-web/static/quick-cmd.js.",
+    "createdAt": "2026-05-17T12:34:50.587Z",
+    "updatedAt": "2026-05-17T12:34:50.587Z"
+  },
+  {
+    "element": "tmux-web/static/css/mobile.css",
+    "path": "tmux-web/static/css/mobile.css",
+    "type": "file",
+    "content": "Mobile layout (Phase A): @media (max-width: 768px) — off-canvas сайдбар (transform translateX), увеличенные touch-targets (min-height 44px), горизонтальный kanban (flex-direction row + overflow-x auto), full-screen модалки (inset 0). @media (max-width: 480px) — дополнительное сжатие padding/font-size для узких экранов. @media (max-width: 768px) and (prefers-reduced-motion: reduce) — отключение transitions. 284 строки (2914-3197). Импортируется ПОСЛЕДНИМ в style.css — критично для каскада, чтобы перекрывать desktop-правила.",
+    "createdAt": "2026-05-17T12:34:53.960Z",
+    "updatedAt": "2026-05-17T12:34:53.960Z"
+  },
+  {
+    "element": "refactor-css-split",
+    "path": "",
+    "type": "page",
+    "content": "Phase 2: Разнос монолитного tmux-web/static/style.css (3419 строк / 83KB) на 17 фича-файлов в tmux-web/static/css/.\n\n## Маппинг секций style.css → файлы\n\n| Файл | Содержимое | Строки оригинала | Размер |\n|------|-----------|------------------|--------|\n| css/base.css | CSS-переменные тёмной темы + reset html/body/* | 1-128 | 6KB |\n| css/layout.css | #layout grid, #main, #placeholder, .layout-collapsed, sidebar-toggle | 129-208 | 1.9KB |\n| css/window-bar.css | tmux window tabs (внутри активной сессии) | 210-307 | 2.3KB |\n| css/project-bar.css | #project-bar + .project-pill | 309-367 | 1.3KB |\n| css/sidebar.css | .sidebar-header, .session-list, .session-item, .origin-group-header, .sidebar-footer, scrollbar | 369-516 + 572-724 | 6.3KB |\n| css/origin-tabs.css | Phase 5 origin-табы над session-list | 517-570 | 1.2KB |\n| css/tab-bar.css | Верхний #tab-bar (Terminal/Tasks/Git/Docker/Find) | 726-763 | 0.7KB |\n| css/tasks.css | #tasks контейнер, .kanban-col/-card, DnD visual states, session-group-headers, TODO column | 765-963 + 1241-1391 | 8.8KB |\n| css/modals.css | .modal-overlay, .modal-card, .modal-actions, Task modal (Phase 6.C) | 964-1240 | 5.5KB |\n| css/notifications.css | Phase 5 Notifications form в settings (.notify-*) | 1393-1516 | 2.6KB |\n| css/settings-modal.css | Settings tab-bar + Themes panel + Remote servers tab | 1518-1769 + 2709-2913 | 10.1KB |\n| css/theme-editor.css | Custom theme editor modal (color-pickers + live preview) | 1770-2145 | 7.6KB |\n| css/git-tab.css | #git pane + lazygit xterm | 2147-2350 | 4.8KB |\n| css/tui-tab.css | Generic TUI containers (docker/telescope) + .tui-channel-bar | 2352-2572 | 5.0KB |\n| css/tui-channels.css | (MISNOMER) — hotkey hints overlay, keyboard-focus, TODO plan-mode badge | 2574-2706 | 3.2KB |\n| css/quick-cmd.css | Quick-cmd bar (mobile) + tui-quick-bar + edit UI modal + desktop fallback @media | 3198-3419 | 5.9KB |\n| css/mobile.css | @media (max-width:768px) + @media (max-width:480px) + prefers-reduced-motion | 2914-3197 | 9.8KB |\n\n## style.css теперь @import-агрегатор\n\n3419 строк / 83KB → 67 строк / 2.7KB. Содержит только серию @import url('./css/...') в порядке оригинального каскада.\n\nПорядок импорта (КРИТИЧЕН для каскада):\n1. base — переменные и reset, ОБЯЗАТЕЛЬНО первым\n2. layout\n3. window-bar\n4. project-bar\n5. sidebar\n6. origin-tabs (после sidebar, как в оригинале)\n7. tab-bar\n8. tasks\n9. modals\n10. notifications\n11. settings-modal\n12. theme-editor\n13. git-tab\n14. tui-tab\n15. tui-channels\n16. quick-cmd\n17. mobile — ОБЯЗАТЕЛЬНО последним (перекрывает desktop через @media)\n\n## Загрузка в браузере\n\nindex.html не менялся: <link rel=stylesheet href=/style.css>. Браузер тянет /style.css (67 строк), затем по @import — все 17 css/*.css. Все они embedded в бинарь через rust-embed (static_embed.rs), поэтому отдаются через axum-fallback без диска.\n\n## Smoke OK\n\n- cargo build green (warnings unrelated).\n- devforge run --port 18765: все 17 /css/*.css endpoints → 200 + content-type: text/css. /style.css тоже 200 + text/css.\n- Brace-count (открывающих {) идентичен: 470 = 470. Diff в строках = 13 (только пустые строки-разделители секций).\n\n## Известные неточности плана (preserved 1:1)\n\n- tui-channels.css по плану 2574-2706 называется 'telescope channel-bar', но реально в этих строках hotkey hints overlay + keyboard-focus + TODO plan-mode badge. Channel-bar на самом деле живёт в tui-tab.css (строки 2382-2572). Имя файла оставлено как в плане — refactor 1:1.\n- settings-modal.css объединяет два разных диапазона (1518-1769 и 2709-2913) — оба логически принадлежат settings-модалу.\n- tasks.css и modals.css имеют пересекающиеся диапазоны в плане; разделение по семантике: tasks = kanban-стили, modals = модалки.",
+    "createdAt": "2026-05-17T12:35:42.147Z",
+    "updatedAt": "2026-05-17T12:35:42.147Z"
   }
 ]

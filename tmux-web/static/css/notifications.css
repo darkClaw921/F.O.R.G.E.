@@ -1,0 +1,124 @@
+/* ===== Phase 5 — Notifications form в Settings modal ===== */
+
+.btn-settings {
+    background: transparent;
+    color: var(--fg-muted-2);
+    border: 1px solid var(--border-row);
+    border-radius: 3px;
+    padding: 3px 8px;
+    font-size: 0.72rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: color 100ms ease, border-color 100ms ease, background 100ms ease;
+}
+
+.btn-settings:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--accent-tint-strong);
+}
+
+.notify-fieldset {
+    border: 1px solid var(--border-input);
+    border-radius: 5px;
+    padding: 10px 12px 12px;
+    margin: 4px 0 0;
+    background: var(--bg-header);
+}
+
+.notify-fieldset legend {
+    font-size: 0.78rem;
+    color: var(--fg-tab-inactive);
+    padding: 0 6px;
+    font-weight: 600;
+}
+
+.notify-hint {
+    font-size: 0.7rem;
+    color: var(--fg-mute);
+    line-height: 1.4;
+    margin-bottom: 10px;
+}
+
+.notify-field {
+    display: block;
+    font-size: 0.72rem;
+    color: var(--fg-tab-inactive);
+    margin-bottom: 8px;
+}
+
+.notify-field textarea,
+.notify-field input[type="text"],
+.notify-field input[type="number"] {
+    width: 100%;
+    margin-top: 3px;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 5px 8px;
+    font-family: inherit;
+    font-size: 0.8rem;
+    box-sizing: border-box;
+}
+
+.notify-field textarea {
+    resize: vertical;
+    min-height: 48px;
+    line-height: 1.35;
+}
+
+.notify-field textarea:focus,
+.notify-field input[type="text"]:focus,
+.notify-field input[type="number"]:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.notify-check {
+    margin: 4px 0 8px;
+    font-size: 0.74rem;
+    color: var(--fg);
+}
+
+.notify-error {
+    color: var(--danger-soft);
+    font-size: 0.72rem;
+    margin: 6px 0;
+    word-break: break-word;
+}
+
+.notify-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.notify-actions button {
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 4px 12px;
+    font-family: inherit;
+    font-size: 0.76rem;
+    cursor: pointer;
+    transition: background 100ms ease, border-color 100ms ease;
+}
+
+.notify-actions button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--fg-on-accent);
+}
+
+.notify-actions button.primary:hover:not(:disabled) {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+.notify-actions button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

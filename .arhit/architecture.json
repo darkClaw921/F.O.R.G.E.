@@ -1,6 +1,6 @@
 {
   "root": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E.",
-  "generatedAt": "2026-05-17T11:01:56.887Z",
+  "generatedAt": "2026-05-17T12:33:40.650Z",
   "nodes": [
     {
       "id": "tmux-web/static/app.js",
@@ -25,6 +25,2738 @@
       "path": "tmux-web/static/quick-cmd.js",
       "exports": [],
       "children": []
+    },
+    {
+      "id": "tmux-web/static/js/main.js",
+      "name": "main.js",
+      "type": "file",
+      "path": "tmux-web/static/js/main.js",
+      "exports": [],
+      "children": []
+    },
+    {
+      "id": "tmux-web/static/js/public-api.js",
+      "name": "public-api.js",
+      "type": "file",
+      "path": "tmux-web/static/js/public-api.js",
+      "exports": [],
+      "children": []
+    },
+    {
+      "id": "tmux-web/static/js/core/api.js",
+      "name": "api.js",
+      "type": "file",
+      "path": "tmux-web/static/js/core/api.js",
+      "exports": [
+        "parseGlobalId",
+        "formatGlobalId",
+        "dtoOrigin",
+        "withServerParam",
+        "apiFetch"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/core/api.js:parseGlobalId",
+          "name": "parseGlobalId",
+          "type": "function",
+          "path": "tmux-web/static/js/core/api.js",
+          "line": 36,
+          "exports": [
+            "parseGlobalId"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/api.js:formatGlobalId",
+          "name": "formatGlobalId",
+          "type": "function",
+          "path": "tmux-web/static/js/core/api.js",
+          "line": 48,
+          "exports": [
+            "formatGlobalId"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/api.js:dtoOrigin",
+          "name": "dtoOrigin",
+          "type": "function",
+          "path": "tmux-web/static/js/core/api.js",
+          "line": 58,
+          "exports": [
+            "dtoOrigin"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/api.js:withServerParam",
+          "name": "withServerParam",
+          "type": "function",
+          "path": "tmux-web/static/js/core/api.js",
+          "line": 70,
+          "exports": [
+            "withServerParam"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/api.js:apiFetch",
+          "name": "apiFetch",
+          "type": "function",
+          "path": "tmux-web/static/js/core/api.js",
+          "line": 87,
+          "exports": [
+            "apiFetch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/core/auth.js",
+      "name": "auth.js",
+      "type": "file",
+      "path": "tmux-web/static/js/core/auth.js",
+      "exports": [
+        "getAuthToken",
+        "withWsToken"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/core/auth.js:getAuthToken",
+          "name": "getAuthToken",
+          "type": "function",
+          "path": "tmux-web/static/js/core/auth.js",
+          "line": 58,
+          "exports": [
+            "getAuthToken"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/auth.js:withWsToken",
+          "name": "withWsToken",
+          "type": "function",
+          "path": "tmux-web/static/js/core/auth.js",
+          "line": 91,
+          "exports": [
+            "withWsToken"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/auth.js:AUTH_TOKEN_KEY",
+          "name": "AUTH_TOKEN_KEY",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/auth.js",
+          "line": 31,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/core/auth.js:_origFetch",
+          "name": "_origFetch",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/auth.js",
+          "line": 65,
+          "exports": []
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/core/bootstrap.js",
+      "name": "bootstrap.js",
+      "type": "file",
+      "path": "tmux-web/static/js/core/bootstrap.js",
+      "exports": [
+        "bootstrap"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/core/bootstrap.js:bootstrap",
+          "name": "bootstrap",
+          "type": "function",
+          "path": "tmux-web/static/js/core/bootstrap.js",
+          "line": 112,
+          "exports": [
+            "bootstrap"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/core/dom.js",
+      "name": "dom.js",
+      "type": "file",
+      "path": "tmux-web/static/js/core/dom.js",
+      "exports": [
+        "$layout",
+        "$btnSidebarToggle",
+        "$sidebar",
+        "$btnNew",
+        "$sidebarOverlay",
+        "$terminalEl",
+        "$placeholder",
+        "$windowBar",
+        "$windowTabs",
+        "$windowNewBtn",
+        "$statusDot",
+        "$statusText",
+        "$tabTerminal",
+        "$tabTasks",
+        "$tasksStatus",
+        "$tasksEl",
+        "$tasksReload",
+        "$tasksNew",
+        "$tasksMeta",
+        "$tasksBoard",
+        "$tabGit",
+        "$gitEl",
+        "$gitTermEl",
+        "$gitPlaceholder",
+        "$gitError",
+        "$gitErrorText",
+        "$gitErrorRetry",
+        "$gitErrorClose",
+        "$gitInstallHelp",
+        "$gitInstallList",
+        "$tabDocker",
+        "$dockerEl",
+        "$dockerTermEl",
+        "$dockerPlaceholder",
+        "$dockerError",
+        "$dockerErrorText",
+        "$dockerErrorRetry",
+        "$dockerErrorClose",
+        "$dockerInstallHelp",
+        "$dockerInstallList",
+        "$tabTelescope",
+        "$telescopeEl",
+        "$telescopeTermEl",
+        "$telescopePlaceholder",
+        "$telescopeError",
+        "$telescopeErrorText",
+        "$telescopeErrorRetry",
+        "$telescopeErrorClose",
+        "$telescopeInstallHelp",
+        "$telescopeInstallList",
+        "$telescopeChannelBar",
+        "$projectSelect",
+        "$projectNew",
+        "$projectSettings",
+        "$originTabs"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/core/dom.js:$layout",
+          "name": "$layout",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 18,
+          "exports": [
+            "$layout"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$btnSidebarToggle",
+          "name": "$btnSidebarToggle",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 19,
+          "exports": [
+            "$btnSidebarToggle"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$sidebar",
+          "name": "$sidebar",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 20,
+          "exports": [
+            "$sidebar"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$btnNew",
+          "name": "$btnNew",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 21,
+          "exports": [
+            "$btnNew"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$sidebarOverlay",
+          "name": "$sidebarOverlay",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 22,
+          "exports": [
+            "$sidebarOverlay"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$terminalEl",
+          "name": "$terminalEl",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 25,
+          "exports": [
+            "$terminalEl"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$placeholder",
+          "name": "$placeholder",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 26,
+          "exports": [
+            "$placeholder"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$windowBar",
+          "name": "$windowBar",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 27,
+          "exports": [
+            "$windowBar"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$windowTabs",
+          "name": "$windowTabs",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 28,
+          "exports": [
+            "$windowTabs"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$windowNewBtn",
+          "name": "$windowNewBtn",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 29,
+          "exports": [
+            "$windowNewBtn"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$statusDot",
+          "name": "$statusDot",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 30,
+          "exports": [
+            "$statusDot"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$statusText",
+          "name": "$statusText",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 31,
+          "exports": [
+            "$statusText"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$tabTerminal",
+          "name": "$tabTerminal",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 34,
+          "exports": [
+            "$tabTerminal"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$tabTasks",
+          "name": "$tabTasks",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 35,
+          "exports": [
+            "$tabTasks"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$tasksStatus",
+          "name": "$tasksStatus",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 36,
+          "exports": [
+            "$tasksStatus"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$tasksEl",
+          "name": "$tasksEl",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 37,
+          "exports": [
+            "$tasksEl"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$tasksReload",
+          "name": "$tasksReload",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 38,
+          "exports": [
+            "$tasksReload"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$tasksNew",
+          "name": "$tasksNew",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 39,
+          "exports": [
+            "$tasksNew"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$tasksMeta",
+          "name": "$tasksMeta",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 40,
+          "exports": [
+            "$tasksMeta"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$tasksBoard",
+          "name": "$tasksBoard",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 41,
+          "exports": [
+            "$tasksBoard"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$tabGit",
+          "name": "$tabGit",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 44,
+          "exports": [
+            "$tabGit"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$gitEl",
+          "name": "$gitEl",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 45,
+          "exports": [
+            "$gitEl"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$gitTermEl",
+          "name": "$gitTermEl",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 46,
+          "exports": [
+            "$gitTermEl"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$gitPlaceholder",
+          "name": "$gitPlaceholder",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 47,
+          "exports": [
+            "$gitPlaceholder"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$gitError",
+          "name": "$gitError",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 48,
+          "exports": [
+            "$gitError"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$gitErrorText",
+          "name": "$gitErrorText",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 49,
+          "exports": [
+            "$gitErrorText"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$gitErrorRetry",
+          "name": "$gitErrorRetry",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 50,
+          "exports": [
+            "$gitErrorRetry"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$gitErrorClose",
+          "name": "$gitErrorClose",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 51,
+          "exports": [
+            "$gitErrorClose"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$gitInstallHelp",
+          "name": "$gitInstallHelp",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 52,
+          "exports": [
+            "$gitInstallHelp"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$gitInstallList",
+          "name": "$gitInstallList",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 53,
+          "exports": [
+            "$gitInstallList"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$tabDocker",
+          "name": "$tabDocker",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 56,
+          "exports": [
+            "$tabDocker"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$dockerEl",
+          "name": "$dockerEl",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 57,
+          "exports": [
+            "$dockerEl"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$dockerTermEl",
+          "name": "$dockerTermEl",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 58,
+          "exports": [
+            "$dockerTermEl"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$dockerPlaceholder",
+          "name": "$dockerPlaceholder",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 59,
+          "exports": [
+            "$dockerPlaceholder"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$dockerError",
+          "name": "$dockerError",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 60,
+          "exports": [
+            "$dockerError"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$dockerErrorText",
+          "name": "$dockerErrorText",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 61,
+          "exports": [
+            "$dockerErrorText"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$dockerErrorRetry",
+          "name": "$dockerErrorRetry",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 62,
+          "exports": [
+            "$dockerErrorRetry"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$dockerErrorClose",
+          "name": "$dockerErrorClose",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 63,
+          "exports": [
+            "$dockerErrorClose"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$dockerInstallHelp",
+          "name": "$dockerInstallHelp",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 64,
+          "exports": [
+            "$dockerInstallHelp"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$dockerInstallList",
+          "name": "$dockerInstallList",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 65,
+          "exports": [
+            "$dockerInstallList"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$tabTelescope",
+          "name": "$tabTelescope",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 68,
+          "exports": [
+            "$tabTelescope"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$telescopeEl",
+          "name": "$telescopeEl",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 69,
+          "exports": [
+            "$telescopeEl"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$telescopeTermEl",
+          "name": "$telescopeTermEl",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 70,
+          "exports": [
+            "$telescopeTermEl"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$telescopePlaceholder",
+          "name": "$telescopePlaceholder",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 71,
+          "exports": [
+            "$telescopePlaceholder"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$telescopeError",
+          "name": "$telescopeError",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 72,
+          "exports": [
+            "$telescopeError"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$telescopeErrorText",
+          "name": "$telescopeErrorText",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 73,
+          "exports": [
+            "$telescopeErrorText"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$telescopeErrorRetry",
+          "name": "$telescopeErrorRetry",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 74,
+          "exports": [
+            "$telescopeErrorRetry"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$telescopeErrorClose",
+          "name": "$telescopeErrorClose",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 75,
+          "exports": [
+            "$telescopeErrorClose"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$telescopeInstallHelp",
+          "name": "$telescopeInstallHelp",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 76,
+          "exports": [
+            "$telescopeInstallHelp"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$telescopeInstallList",
+          "name": "$telescopeInstallList",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 77,
+          "exports": [
+            "$telescopeInstallList"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$telescopeChannelBar",
+          "name": "$telescopeChannelBar",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 78,
+          "exports": [
+            "$telescopeChannelBar"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$projectSelect",
+          "name": "$projectSelect",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 81,
+          "exports": [
+            "$projectSelect"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$projectNew",
+          "name": "$projectNew",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 82,
+          "exports": [
+            "$projectNew"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$projectSettings",
+          "name": "$projectSettings",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 83,
+          "exports": [
+            "$projectSettings"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$originTabs",
+          "name": "$originTabs",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 86,
+          "exports": [
+            "$originTabs"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/core/state.js",
+      "name": "state.js",
+      "type": "file",
+      "path": "tmux-web/static/js/core/state.js",
+      "exports": [
+        "state"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/core/state.js:state",
+          "name": "state",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/state.js",
+          "line": 17,
+          "exports": [
+            "state"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/core/utils.js",
+      "name": "utils.js",
+      "type": "file",
+      "path": "tmux-web/static/js/core/utils.js",
+      "exports": [
+        "escapeHtml",
+        "escapeAttr",
+        "escapeText",
+        "buildModalOverlay",
+        "detectClientOS",
+        "copyToClipboardSafe",
+        "fallbackCopy"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/core/utils.js:escapeHtml",
+          "name": "escapeHtml",
+          "type": "function",
+          "path": "tmux-web/static/js/core/utils.js",
+          "line": 19,
+          "exports": [
+            "escapeHtml"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/utils.js:escapeAttr",
+          "name": "escapeAttr",
+          "type": "function",
+          "path": "tmux-web/static/js/core/utils.js",
+          "line": 28,
+          "exports": [
+            "escapeAttr"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/utils.js:escapeText",
+          "name": "escapeText",
+          "type": "function",
+          "path": "tmux-web/static/js/core/utils.js",
+          "line": 32,
+          "exports": [
+            "escapeText"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/utils.js:buildModalOverlay",
+          "name": "buildModalOverlay",
+          "type": "function",
+          "path": "tmux-web/static/js/core/utils.js",
+          "line": 39,
+          "exports": [
+            "buildModalOverlay"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/utils.js:detectClientOS",
+          "name": "detectClientOS",
+          "type": "function",
+          "path": "tmux-web/static/js/core/utils.js",
+          "line": 49,
+          "exports": [
+            "detectClientOS"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/utils.js:copyToClipboardSafe",
+          "name": "copyToClipboardSafe",
+          "type": "function",
+          "path": "tmux-web/static/js/core/utils.js",
+          "line": 64,
+          "exports": [
+            "copyToClipboardSafe"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/utils.js:fallbackCopy",
+          "name": "fallbackCopy",
+          "type": "function",
+          "path": "tmux-web/static/js/core/utils.js",
+          "line": 71,
+          "exports": [
+            "fallbackCopy"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/core/viewport.js",
+      "name": "viewport.js",
+      "type": "file",
+      "path": "tmux-web/static/js/core/viewport.js",
+      "exports": [
+        "isMobileViewport",
+        "applyTerminalFontSize",
+        "_mqlMobile",
+        "TERM_FONT_SIZE_DESKTOP",
+        "TERM_FONT_SIZE_MOBILE"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/core/viewport.js:isMobileViewport",
+          "name": "isMobileViewport",
+          "type": "function",
+          "path": "tmux-web/static/js/core/viewport.js",
+          "line": 26,
+          "exports": [
+            "isMobileViewport"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/viewport.js:applyTerminalFontSize",
+          "name": "applyTerminalFontSize",
+          "type": "function",
+          "path": "tmux-web/static/js/core/viewport.js",
+          "line": 46,
+          "exports": [
+            "applyTerminalFontSize"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/viewport.js:_mqlMobile",
+          "name": "_mqlMobile",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/viewport.js",
+          "line": 22,
+          "exports": [
+            "_mqlMobile"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/viewport.js:TERM_FONT_SIZE_DESKTOP",
+          "name": "TERM_FONT_SIZE_DESKTOP",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/viewport.js",
+          "line": 38,
+          "exports": [
+            "TERM_FONT_SIZE_DESKTOP"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/viewport.js:TERM_FONT_SIZE_MOBILE",
+          "name": "TERM_FONT_SIZE_MOBILE",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/viewport.js",
+          "line": 39,
+          "exports": [
+            "TERM_FONT_SIZE_MOBILE"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/projects/new-project.js",
+      "name": "new-project.js",
+      "type": "file",
+      "path": "tmux-web/static/js/projects/new-project.js",
+      "exports": [
+        "openNewProjectModal"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/projects/new-project.js:openNewProjectModal",
+          "name": "openNewProjectModal",
+          "type": "function",
+          "path": "tmux-web/static/js/projects/new-project.js",
+          "line": 8,
+          "exports": [
+            "openNewProjectModal"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/projects/projects.js",
+      "name": "projects.js",
+      "type": "file",
+      "path": "tmux-web/static/js/projects/projects.js",
+      "exports": [
+        "fetchProjects",
+        "renderProjectSelect",
+        "switchActiveProject"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/projects/projects.js:fetchProjects",
+          "name": "fetchProjects",
+          "type": "function",
+          "path": "tmux-web/static/js/projects/projects.js",
+          "line": 22,
+          "exports": [
+            "fetchProjects"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/projects/projects.js:renderProjectSelect",
+          "name": "renderProjectSelect",
+          "type": "function",
+          "path": "tmux-web/static/js/projects/projects.js",
+          "line": 60,
+          "exports": [
+            "renderProjectSelect"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/projects/projects.js:switchActiveProject",
+          "name": "switchActiveProject",
+          "type": "function",
+          "path": "tmux-web/static/js/projects/projects.js",
+          "line": 81,
+          "exports": [
+            "switchActiveProject"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/remote/healthz.js",
+      "name": "healthz.js",
+      "type": "file",
+      "path": "tmux-web/static/js/remote/healthz.js",
+      "exports": [
+        "loadHealthz",
+        "isRemoteMode"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/remote/healthz.js:loadHealthz",
+          "name": "loadHealthz",
+          "type": "function",
+          "path": "tmux-web/static/js/remote/healthz.js",
+          "line": 21,
+          "exports": [
+            "loadHealthz"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/remote/healthz.js:isRemoteMode",
+          "name": "isRemoteMode",
+          "type": "function",
+          "path": "tmux-web/static/js/remote/healthz.js",
+          "line": 47,
+          "exports": [
+            "isRemoteMode"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/remote/servers.js",
+      "name": "servers.js",
+      "type": "file",
+      "path": "tmux-web/static/js/remote/servers.js",
+      "exports": [
+        "fetchRemoteServers",
+        "loadRemoteProjects",
+        "loadRemoteSessions",
+        "probeRemoteServer",
+        "startRemoteHealthPoll",
+        "stopRemoteHealthPoll",
+        "aggregateAllOrigins"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/remote/servers.js:fetchRemoteServers",
+          "name": "fetchRemoteServers",
+          "type": "function",
+          "path": "tmux-web/static/js/remote/servers.js",
+          "line": 30,
+          "exports": [
+            "fetchRemoteServers"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/remote/servers.js:loadRemoteProjects",
+          "name": "loadRemoteProjects",
+          "type": "function",
+          "path": "tmux-web/static/js/remote/servers.js",
+          "line": 50,
+          "exports": [
+            "loadRemoteProjects"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/remote/servers.js:loadRemoteSessions",
+          "name": "loadRemoteSessions",
+          "type": "function",
+          "path": "tmux-web/static/js/remote/servers.js",
+          "line": 71,
+          "exports": [
+            "loadRemoteSessions"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/remote/servers.js:probeRemoteServer",
+          "name": "probeRemoteServer",
+          "type": "function",
+          "path": "tmux-web/static/js/remote/servers.js",
+          "line": 92,
+          "exports": [
+            "probeRemoteServer"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/remote/servers.js:startRemoteHealthPoll",
+          "name": "startRemoteHealthPoll",
+          "type": "function",
+          "path": "tmux-web/static/js/remote/servers.js",
+          "line": 145,
+          "exports": [
+            "startRemoteHealthPoll"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/remote/servers.js:stopRemoteHealthPoll",
+          "name": "stopRemoteHealthPoll",
+          "type": "function",
+          "path": "tmux-web/static/js/remote/servers.js",
+          "line": 164,
+          "exports": [
+            "stopRemoteHealthPoll"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/remote/servers.js:aggregateAllOrigins",
+          "name": "aggregateAllOrigins",
+          "type": "function",
+          "path": "tmux-web/static/js/remote/servers.js",
+          "line": 171,
+          "exports": [
+            "aggregateAllOrigins"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/remote/servers.js:REMOTE_PROBE_BACKOFFS_MS",
+          "name": "REMOTE_PROBE_BACKOFFS_MS",
+          "type": "variable",
+          "path": "tmux-web/static/js/remote/servers.js",
+          "line": 23,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/remote/servers.js:REMOTE_PROBE_STEADY_INDEX",
+          "name": "REMOTE_PROBE_STEADY_INDEX",
+          "type": "variable",
+          "path": "tmux-web/static/js/remote/servers.js",
+          "line": 24,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/remote/servers.js:REMOTE_PROBE_JITTER_MAX_MS",
+          "name": "REMOTE_PROBE_JITTER_MAX_MS",
+          "type": "variable",
+          "path": "tmux-web/static/js/remote/servers.js",
+          "line": 25,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/remote/servers.js:remoteProbeState",
+          "name": "remoteProbeState",
+          "type": "variable",
+          "path": "tmux-web/static/js/remote/servers.js",
+          "line": 28,
+          "exports": []
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/sessions/sessions.js",
+      "name": "sessions.js",
+      "type": "file",
+      "path": "tmux-web/static/js/sessions/sessions.js",
+      "exports": [
+        "fetchSessions",
+        "buildSessionItem",
+        "groupSessionsByFolder",
+        "startPolling",
+        "stopPolling",
+        "createSessionPrompt",
+        "renameSession",
+        "killSession",
+        "openSession",
+        "switchSession"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/sessions/sessions.js:fetchSessions",
+          "name": "fetchSessions",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/sessions.js",
+          "line": 21,
+          "exports": [
+            "fetchSessions"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sessions/sessions.js:buildSessionItem",
+          "name": "buildSessionItem",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/sessions.js",
+          "line": 35,
+          "exports": [
+            "buildSessionItem"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sessions/sessions.js:groupSessionsByFolder",
+          "name": "groupSessionsByFolder",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/sessions.js",
+          "line": 100,
+          "exports": [
+            "groupSessionsByFolder"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sessions/sessions.js:startPolling",
+          "name": "startPolling",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/sessions.js",
+          "line": 114,
+          "exports": [
+            "startPolling"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sessions/sessions.js:stopPolling",
+          "name": "stopPolling",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/sessions.js",
+          "line": 119,
+          "exports": [
+            "stopPolling"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sessions/sessions.js:createSessionPrompt",
+          "name": "createSessionPrompt",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/sessions.js",
+          "line": 126,
+          "exports": [
+            "createSessionPrompt"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sessions/sessions.js:renameSession",
+          "name": "renameSession",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/sessions.js",
+          "line": 149,
+          "exports": [
+            "renameSession"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sessions/sessions.js:killSession",
+          "name": "killSession",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/sessions.js",
+          "line": 185,
+          "exports": [
+            "killSession"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sessions/sessions.js:openSession",
+          "name": "openSession",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/sessions.js",
+          "line": 207,
+          "exports": [
+            "openSession"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sessions/sessions.js:switchSession",
+          "name": "switchSession",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/sessions.js",
+          "line": 232,
+          "exports": [
+            "switchSession"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/sessions/windows.js",
+      "name": "windows.js",
+      "type": "file",
+      "path": "tmux-web/static/js/sessions/windows.js",
+      "exports": [
+        "fetchWindows",
+        "renderWindowBar",
+        "selectWindow",
+        "createWindow",
+        "killWindow",
+        "renameWindow",
+        "startWindowsPolling",
+        "stopWindowsPolling"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/sessions/windows.js:fetchWindows",
+          "name": "fetchWindows",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/windows.js",
+          "line": 16,
+          "exports": [
+            "fetchWindows"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sessions/windows.js:renderWindowBar",
+          "name": "renderWindowBar",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/windows.js",
+          "line": 44,
+          "exports": [
+            "renderWindowBar"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sessions/windows.js:selectWindow",
+          "name": "selectWindow",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/windows.js",
+          "line": 97,
+          "exports": [
+            "selectWindow"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sessions/windows.js:createWindow",
+          "name": "createWindow",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/windows.js",
+          "line": 118,
+          "exports": [
+            "createWindow"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sessions/windows.js:killWindow",
+          "name": "killWindow",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/windows.js",
+          "line": 147,
+          "exports": [
+            "killWindow"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sessions/windows.js:renameWindow",
+          "name": "renameWindow",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/windows.js",
+          "line": 169,
+          "exports": [
+            "renameWindow"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sessions/windows.js:startWindowsPolling",
+          "name": "startWindowsPolling",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/windows.js",
+          "line": 198,
+          "exports": [
+            "startWindowsPolling"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sessions/windows.js:stopWindowsPolling",
+          "name": "stopWindowsPolling",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/windows.js",
+          "line": 204,
+          "exports": [
+            "stopWindowsPolling"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/settings/modal.js",
+      "name": "modal.js",
+      "type": "file",
+      "path": "tmux-web/static/js/settings/modal.js",
+      "exports": [
+        "openSettingsModal"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/settings/modal.js:openSettingsModal",
+          "name": "openSettingsModal",
+          "type": "function",
+          "path": "tmux-web/static/js/settings/modal.js",
+          "line": 17,
+          "exports": [
+            "openSettingsModal"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/settings/notifications-tab.js",
+      "name": "notifications-tab.js",
+      "type": "file",
+      "path": "tmux-web/static/js/settings/notifications-tab.js",
+      "exports": [
+        "buildNotificationsForm",
+        "saveProjectSettings"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/settings/notifications-tab.js:buildNotificationsForm",
+          "name": "buildNotificationsForm",
+          "type": "function",
+          "path": "tmux-web/static/js/settings/notifications-tab.js",
+          "line": 10,
+          "exports": [
+            "buildNotificationsForm"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/settings/notifications-tab.js:saveProjectSettings",
+          "name": "saveProjectSettings",
+          "type": "function",
+          "path": "tmux-web/static/js/settings/notifications-tab.js",
+          "line": 123,
+          "exports": [
+            "saveProjectSettings"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/settings/remotes-tab.js",
+      "name": "remotes-tab.js",
+      "type": "file",
+      "path": "tmux-web/static/js/settings/remotes-tab.js",
+      "exports": [
+        "renderRemotesTable",
+        "openEditRemoteRow"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/settings/remotes-tab.js:renderRemotesTable",
+          "name": "renderRemotesTable",
+          "type": "function",
+          "path": "tmux-web/static/js/settings/remotes-tab.js",
+          "line": 16,
+          "exports": [
+            "renderRemotesTable"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/settings/remotes-tab.js:openEditRemoteRow",
+          "name": "openEditRemoteRow",
+          "type": "function",
+          "path": "tmux-web/static/js/settings/remotes-tab.js",
+          "line": 95,
+          "exports": [
+            "openEditRemoteRow"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/sidebar/mobile.js",
+      "name": "mobile.js",
+      "type": "file",
+      "path": "tmux-web/static/js/sidebar/mobile.js",
+      "exports": [
+        "applySidebarCollapsed",
+        "setMobileSidebarOpen",
+        "toggleSidebar",
+        "restoreSidebarState"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/sidebar/mobile.js:applySidebarCollapsed",
+          "name": "applySidebarCollapsed",
+          "type": "function",
+          "path": "tmux-web/static/js/sidebar/mobile.js",
+          "line": 14,
+          "exports": [
+            "applySidebarCollapsed"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sidebar/mobile.js:setMobileSidebarOpen",
+          "name": "setMobileSidebarOpen",
+          "type": "function",
+          "path": "tmux-web/static/js/sidebar/mobile.js",
+          "line": 35,
+          "exports": [
+            "setMobileSidebarOpen"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sidebar/mobile.js:toggleSidebar",
+          "name": "toggleSidebar",
+          "type": "function",
+          "path": "tmux-web/static/js/sidebar/mobile.js",
+          "line": 44,
+          "exports": [
+            "toggleSidebar"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sidebar/mobile.js:restoreSidebarState",
+          "name": "restoreSidebarState",
+          "type": "function",
+          "path": "tmux-web/static/js/sidebar/mobile.js",
+          "line": 56,
+          "exports": [
+            "restoreSidebarState"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/sidebar/origin-tabs.js",
+      "name": "origin-tabs.js",
+      "type": "file",
+      "path": "tmux-web/static/js/sidebar/origin-tabs.js",
+      "exports": [
+        "loadActiveOriginFromStorage",
+        "saveActiveOriginToStorage",
+        "getCollapsedOrigins",
+        "persistCollapsedOrigins",
+        "isOriginCollapsed",
+        "toggleOriginCollapsed",
+        "renderOriginTabs"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/sidebar/origin-tabs.js:loadActiveOriginFromStorage",
+          "name": "loadActiveOriginFromStorage",
+          "type": "function",
+          "path": "tmux-web/static/js/sidebar/origin-tabs.js",
+          "line": 20,
+          "exports": [
+            "loadActiveOriginFromStorage"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sidebar/origin-tabs.js:saveActiveOriginToStorage",
+          "name": "saveActiveOriginToStorage",
+          "type": "function",
+          "path": "tmux-web/static/js/sidebar/origin-tabs.js",
+          "line": 35,
+          "exports": [
+            "saveActiveOriginToStorage"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sidebar/origin-tabs.js:getCollapsedOrigins",
+          "name": "getCollapsedOrigins",
+          "type": "function",
+          "path": "tmux-web/static/js/sidebar/origin-tabs.js",
+          "line": 42,
+          "exports": [
+            "getCollapsedOrigins"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sidebar/origin-tabs.js:persistCollapsedOrigins",
+          "name": "persistCollapsedOrigins",
+          "type": "function",
+          "path": "tmux-web/static/js/sidebar/origin-tabs.js",
+          "line": 56,
+          "exports": [
+            "persistCollapsedOrigins"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sidebar/origin-tabs.js:isOriginCollapsed",
+          "name": "isOriginCollapsed",
+          "type": "function",
+          "path": "tmux-web/static/js/sidebar/origin-tabs.js",
+          "line": 64,
+          "exports": [
+            "isOriginCollapsed"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sidebar/origin-tabs.js:toggleOriginCollapsed",
+          "name": "toggleOriginCollapsed",
+          "type": "function",
+          "path": "tmux-web/static/js/sidebar/origin-tabs.js",
+          "line": 67,
+          "exports": [
+            "toggleOriginCollapsed"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sidebar/origin-tabs.js:renderOriginTabs",
+          "name": "renderOriginTabs",
+          "type": "function",
+          "path": "tmux-web/static/js/sidebar/origin-tabs.js",
+          "line": 77,
+          "exports": [
+            "renderOriginTabs"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sidebar/origin-tabs.js:_collapsedOrigins",
+          "name": "_collapsedOrigins",
+          "type": "variable",
+          "path": "tmux-web/static/js/sidebar/origin-tabs.js",
+          "line": 41,
+          "exports": []
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/sidebar/sidebar.js",
+      "name": "sidebar.js",
+      "type": "file",
+      "path": "tmux-web/static/js/sidebar/sidebar.js",
+      "exports": [
+        "renderSidebar",
+        "renderSidebarWithOrigin",
+        "renderOriginSection"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/sidebar/sidebar.js:renderSidebar",
+          "name": "renderSidebar",
+          "type": "function",
+          "path": "tmux-web/static/js/sidebar/sidebar.js",
+          "line": 15,
+          "exports": [
+            "renderSidebar"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sidebar/sidebar.js:renderSidebarWithOrigin",
+          "name": "renderSidebarWithOrigin",
+          "type": "function",
+          "path": "tmux-web/static/js/sidebar/sidebar.js",
+          "line": 96,
+          "exports": [
+            "renderSidebarWithOrigin"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sidebar/sidebar.js:renderOriginSection",
+          "name": "renderOriginSection",
+          "type": "function",
+          "path": "tmux-web/static/js/sidebar/sidebar.js",
+          "line": 154,
+          "exports": [
+            "renderOriginSection"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/tabs/tabs.js",
+      "name": "tabs.js",
+      "type": "file",
+      "path": "tmux-web/static/js/tabs/tabs.js",
+      "exports": [
+        "switchTab"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/tabs/tabs.js:switchTab",
+          "name": "switchTab",
+          "type": "function",
+          "path": "tmux-web/static/js/tabs/tabs.js",
+          "line": 17,
+          "exports": [
+            "switchTab"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/tabs/tui-tabs.js",
+      "name": "tui-tabs.js",
+      "type": "file",
+      "path": "tmux-web/static/js/tabs/tui-tabs.js",
+      "exports": [
+        "createTuiTab",
+        "initTuiTabs",
+        "getActiveProject",
+        "mountGitTerm",
+        "openLazygitForActiveProject",
+        "connectGitWs",
+        "closeGitWs",
+        "gitSwitchCwd",
+        "showGitBanner",
+        "hideGitBanner",
+        "retryGitConnection",
+        "sendToActivePty"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/tabs/tui-tabs.js:createTuiTab",
+          "name": "createTuiTab",
+          "type": "function",
+          "path": "tmux-web/static/js/tabs/tui-tabs.js",
+          "line": 30,
+          "exports": [
+            "createTuiTab"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tabs/tui-tabs.js:initTuiTabs",
+          "name": "initTuiTabs",
+          "type": "function",
+          "path": "tmux-web/static/js/tabs/tui-tabs.js",
+          "line": 469,
+          "exports": [
+            "initTuiTabs"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tabs/tui-tabs.js:getActiveProject",
+          "name": "getActiveProject",
+          "type": "function",
+          "path": "tmux-web/static/js/tabs/tui-tabs.js",
+          "line": 561,
+          "exports": [
+            "getActiveProject"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tabs/tui-tabs.js:_git",
+          "name": "_git",
+          "type": "function",
+          "path": "tmux-web/static/js/tabs/tui-tabs.js",
+          "line": 574,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/tabs/tui-tabs.js:mountGitTerm",
+          "name": "mountGitTerm",
+          "type": "function",
+          "path": "tmux-web/static/js/tabs/tui-tabs.js",
+          "line": 578,
+          "exports": [
+            "mountGitTerm"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tabs/tui-tabs.js:openLazygitForActiveProject",
+          "name": "openLazygitForActiveProject",
+          "type": "function",
+          "path": "tmux-web/static/js/tabs/tui-tabs.js",
+          "line": 583,
+          "exports": [
+            "openLazygitForActiveProject"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tabs/tui-tabs.js:connectGitWs",
+          "name": "connectGitWs",
+          "type": "function",
+          "path": "tmux-web/static/js/tabs/tui-tabs.js",
+          "line": 588,
+          "exports": [
+            "connectGitWs"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tabs/tui-tabs.js:closeGitWs",
+          "name": "closeGitWs",
+          "type": "function",
+          "path": "tmux-web/static/js/tabs/tui-tabs.js",
+          "line": 593,
+          "exports": [
+            "closeGitWs"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tabs/tui-tabs.js:gitSwitchCwd",
+          "name": "gitSwitchCwd",
+          "type": "function",
+          "path": "tmux-web/static/js/tabs/tui-tabs.js",
+          "line": 598,
+          "exports": [
+            "gitSwitchCwd"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tabs/tui-tabs.js:showGitBanner",
+          "name": "showGitBanner",
+          "type": "function",
+          "path": "tmux-web/static/js/tabs/tui-tabs.js",
+          "line": 603,
+          "exports": [
+            "showGitBanner"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tabs/tui-tabs.js:hideGitBanner",
+          "name": "hideGitBanner",
+          "type": "function",
+          "path": "tmux-web/static/js/tabs/tui-tabs.js",
+          "line": 608,
+          "exports": [
+            "hideGitBanner"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tabs/tui-tabs.js:retryGitConnection",
+          "name": "retryGitConnection",
+          "type": "function",
+          "path": "tmux-web/static/js/tabs/tui-tabs.js",
+          "line": 613,
+          "exports": [
+            "retryGitConnection"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tabs/tui-tabs.js:sendToActivePty",
+          "name": "sendToActivePty",
+          "type": "function",
+          "path": "tmux-web/static/js/tabs/tui-tabs.js",
+          "line": 623,
+          "exports": [
+            "sendToActivePty"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tabs/tui-tabs.js:LAZYGIT_INSTALL_ENTRIES",
+          "name": "LAZYGIT_INSTALL_ENTRIES",
+          "type": "variable",
+          "path": "tmux-web/static/js/tabs/tui-tabs.js",
+          "line": 442,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/tabs/tui-tabs.js:LAZYDOCKER_INSTALL_ENTRIES",
+          "name": "LAZYDOCKER_INSTALL_ENTRIES",
+          "type": "variable",
+          "path": "tmux-web/static/js/tabs/tui-tabs.js",
+          "line": 453,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/tabs/tui-tabs.js:TELESCOPE_INSTALL_ENTRIES",
+          "name": "TELESCOPE_INSTALL_ENTRIES",
+          "type": "variable",
+          "path": "tmux-web/static/js/tabs/tui-tabs.js",
+          "line": 461,
+          "exports": []
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/tasks/crud.js",
+      "name": "crud.js",
+      "type": "file",
+      "path": "tmux-web/static/js/tasks/crud.js",
+      "exports": [
+        "getIssueIndex",
+        "applyOptimisticPatch",
+        "rollbackIssue",
+        "createTask",
+        "updateTask",
+        "taskOriginById",
+        "closeTask",
+        "reopenTask",
+        "promoteTodo"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/tasks/crud.js:getIssueIndex",
+          "name": "getIssueIndex",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/crud.js",
+          "line": 17,
+          "exports": [
+            "getIssueIndex"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tasks/crud.js:applyOptimisticPatch",
+          "name": "applyOptimisticPatch",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/crud.js",
+          "line": 22,
+          "exports": [
+            "applyOptimisticPatch"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tasks/crud.js:rollbackIssue",
+          "name": "rollbackIssue",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/crud.js",
+          "line": 32,
+          "exports": [
+            "rollbackIssue"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tasks/crud.js:createTask",
+          "name": "createTask",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/crud.js",
+          "line": 43,
+          "exports": [
+            "createTask"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tasks/crud.js:updateTask",
+          "name": "updateTask",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/crud.js",
+          "line": 99,
+          "exports": [
+            "updateTask"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tasks/crud.js:taskOriginById",
+          "name": "taskOriginById",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/crud.js",
+          "line": 140,
+          "exports": [
+            "taskOriginById"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tasks/crud.js:closeTask",
+          "name": "closeTask",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/crud.js",
+          "line": 146,
+          "exports": [
+            "closeTask"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tasks/crud.js:reopenTask",
+          "name": "reopenTask",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/crud.js",
+          "line": 167,
+          "exports": [
+            "reopenTask"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tasks/crud.js:promoteTodo",
+          "name": "promoteTodo",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/crud.js",
+          "line": 188,
+          "exports": [
+            "promoteTodo"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/tasks/modals.js",
+      "name": "modals.js",
+      "type": "file",
+      "path": "tmux-web/static/js/tasks/modals.js",
+      "exports": [
+        "buildTaskFormHtml",
+        "openCreateModal",
+        "openEditModal",
+        "openTodoEditModal"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/tasks/modals.js:buildTaskFormHtml",
+          "name": "buildTaskFormHtml",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/modals.js",
+          "line": 24,
+          "exports": [
+            "buildTaskFormHtml"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tasks/modals.js:openCreateModal",
+          "name": "openCreateModal",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/modals.js",
+          "line": 53,
+          "exports": [
+            "openCreateModal"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tasks/modals.js:openEditModal",
+          "name": "openEditModal",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/modals.js",
+          "line": 148,
+          "exports": [
+            "openEditModal"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tasks/modals.js:openTodoEditModal",
+          "name": "openTodoEditModal",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/modals.js",
+          "line": 233,
+          "exports": [
+            "openTodoEditModal"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tasks/modals.js:TASK_EDIT_STATUSES",
+          "name": "TASK_EDIT_STATUSES",
+          "type": "variable",
+          "path": "tmux-web/static/js/tasks/modals.js",
+          "line": 21,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/tasks/modals.js:TASK_TYPES",
+          "name": "TASK_TYPES",
+          "type": "variable",
+          "path": "tmux-web/static/js/tasks/modals.js",
+          "line": 22,
+          "exports": []
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/tasks/render.js",
+      "name": "render.js",
+      "type": "file",
+      "path": "tmux-web/static/js/tasks/render.js",
+      "exports": [
+        "currentTodosProjectId",
+        "renderTasks",
+        "compareIssues",
+        "renderColumn",
+        "renderTodoCard",
+        "renderCard",
+        "TASK_COLUMNS",
+        "COLUMN_TITLES",
+        "CLOSED_LIMIT"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/tasks/render.js:currentTodosProjectId",
+          "name": "currentTodosProjectId",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/render.js",
+          "line": 32,
+          "exports": [
+            "currentTodosProjectId"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tasks/render.js:renderTasks",
+          "name": "renderTasks",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/render.js",
+          "line": 36,
+          "exports": [
+            "renderTasks"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tasks/render.js:compareIssues",
+          "name": "compareIssues",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/render.js",
+          "line": 74,
+          "exports": [
+            "compareIssues"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tasks/render.js:renderColumn",
+          "name": "renderColumn",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/render.js",
+          "line": 84,
+          "exports": [
+            "renderColumn"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tasks/render.js:renderTodoCard",
+          "name": "renderTodoCard",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/render.js",
+          "line": 197,
+          "exports": [
+            "renderTodoCard"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tasks/render.js:renderCard",
+          "name": "renderCard",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/render.js",
+          "line": 303,
+          "exports": [
+            "renderCard"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tasks/render.js:TASK_COLUMNS",
+          "name": "TASK_COLUMNS",
+          "type": "variable",
+          "path": "tmux-web/static/js/tasks/render.js",
+          "line": 18,
+          "exports": [
+            "TASK_COLUMNS"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tasks/render.js:COLUMN_TITLES",
+          "name": "COLUMN_TITLES",
+          "type": "variable",
+          "path": "tmux-web/static/js/tasks/render.js",
+          "line": 20,
+          "exports": [
+            "COLUMN_TITLES"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tasks/render.js:CLOSED_LIMIT",
+          "name": "CLOSED_LIMIT",
+          "type": "variable",
+          "path": "tmux-web/static/js/tasks/render.js",
+          "line": 30,
+          "exports": [
+            "CLOSED_LIMIT"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/terminal/theme-mapper.js",
+      "name": "theme-mapper.js",
+      "type": "file",
+      "path": "tmux-web/static/js/terminal/theme-mapper.js",
+      "exports": [
+        "mapTermTheme"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/terminal/theme-mapper.js:mapTermTheme",
+          "name": "mapTermTheme",
+          "type": "function",
+          "path": "tmux-web/static/js/terminal/theme-mapper.js",
+          "line": 16,
+          "exports": [
+            "mapTermTheme"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/terminal/xterm.js",
+      "name": "xterm.js",
+      "type": "file",
+      "path": "tmux-web/static/js/terminal/xterm.js",
+      "exports": [
+        "initTerminal",
+        "sendResize",
+        "scheduleResizeFromTerm",
+        "setStatus",
+        "showPlaceholder"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/terminal/xterm.js:initTerminal",
+          "name": "initTerminal",
+          "type": "function",
+          "path": "tmux-web/static/js/terminal/xterm.js",
+          "line": 33,
+          "exports": [
+            "initTerminal"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/terminal/xterm.js:sendResize",
+          "name": "sendResize",
+          "type": "function",
+          "path": "tmux-web/static/js/terminal/xterm.js",
+          "line": 113,
+          "exports": [
+            "sendResize"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/terminal/xterm.js:scheduleResizeFromTerm",
+          "name": "scheduleResizeFromTerm",
+          "type": "function",
+          "path": "tmux-web/static/js/terminal/xterm.js",
+          "line": 125,
+          "exports": [
+            "scheduleResizeFromTerm"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/terminal/xterm.js:setStatus",
+          "name": "setStatus",
+          "type": "function",
+          "path": "tmux-web/static/js/terminal/xterm.js",
+          "line": 134,
+          "exports": [
+            "setStatus"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/terminal/xterm.js:showPlaceholder",
+          "name": "showPlaceholder",
+          "type": "function",
+          "path": "tmux-web/static/js/terminal/xterm.js",
+          "line": 143,
+          "exports": [
+            "showPlaceholder"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/themes/api.js",
+      "name": "api.js",
+      "type": "file",
+      "path": "tmux-web/static/js/themes/api.js",
+      "exports": [
+        "applyTheme",
+        "switchTheme",
+        "loadActiveThemeOrNull",
+        "normalizeHex",
+        "cloneThemeColors",
+        "validateDraft",
+        "buildThemePayload",
+        "THEME_UI_KEYS",
+        "THEME_TERM_BASE_KEYS",
+        "THEME_TERM_ANSI_KEYS",
+        "THEME_TERM_KEYS",
+        "HEX_COLOR_RE"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/themes/api.js:applyTheme",
+          "name": "applyTheme",
+          "type": "function",
+          "path": "tmux-web/static/js/themes/api.js",
+          "line": 17,
+          "exports": [
+            "applyTheme"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/themes/api.js:switchTheme",
+          "name": "switchTheme",
+          "type": "function",
+          "path": "tmux-web/static/js/themes/api.js",
+          "line": 50,
+          "exports": [
+            "switchTheme"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/themes/api.js:loadActiveThemeOrNull",
+          "name": "loadActiveThemeOrNull",
+          "type": "function",
+          "path": "tmux-web/static/js/themes/api.js",
+          "line": 74,
+          "exports": [
+            "loadActiveThemeOrNull"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/themes/api.js:normalizeHex",
+          "name": "normalizeHex",
+          "type": "function",
+          "path": "tmux-web/static/js/themes/api.js",
+          "line": 134,
+          "exports": [
+            "normalizeHex"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/themes/api.js:cloneThemeColors",
+          "name": "cloneThemeColors",
+          "type": "function",
+          "path": "tmux-web/static/js/themes/api.js",
+          "line": 141,
+          "exports": [
+            "cloneThemeColors"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/themes/api.js:validateDraft",
+          "name": "validateDraft",
+          "type": "function",
+          "path": "tmux-web/static/js/themes/api.js",
+          "line": 155,
+          "exports": [
+            "validateDraft"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/themes/api.js:buildThemePayload",
+          "name": "buildThemePayload",
+          "type": "function",
+          "path": "tmux-web/static/js/themes/api.js",
+          "line": 173,
+          "exports": [
+            "buildThemePayload"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/themes/api.js:THEME_UI_KEYS",
+          "name": "THEME_UI_KEYS",
+          "type": "variable",
+          "path": "tmux-web/static/js/themes/api.js",
+          "line": 90,
+          "exports": [
+            "THEME_UI_KEYS"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/themes/api.js:THEME_TERM_BASE_KEYS",
+          "name": "THEME_TERM_BASE_KEYS",
+          "type": "variable",
+          "path": "tmux-web/static/js/themes/api.js",
+          "line": 104,
+          "exports": [
+            "THEME_TERM_BASE_KEYS"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/themes/api.js:THEME_TERM_ANSI_KEYS",
+          "name": "THEME_TERM_ANSI_KEYS",
+          "type": "variable",
+          "path": "tmux-web/static/js/themes/api.js",
+          "line": 111,
+          "exports": [
+            "THEME_TERM_ANSI_KEYS"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/themes/api.js:THEME_TERM_KEYS",
+          "name": "THEME_TERM_KEYS",
+          "type": "variable",
+          "path": "tmux-web/static/js/themes/api.js",
+          "line": 130,
+          "exports": [
+            "THEME_TERM_KEYS"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/themes/api.js:HEX_COLOR_RE",
+          "name": "HEX_COLOR_RE",
+          "type": "variable",
+          "path": "tmux-web/static/js/themes/api.js",
+          "line": 132,
+          "exports": [
+            "HEX_COLOR_RE"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/themes/editor.js",
+      "name": "editor.js",
+      "type": "file",
+      "path": "tmux-web/static/js/themes/editor.js",
+      "exports": [
+        "openThemeEditor",
+        "buildColorPickerRow",
+        "buildLivePreviewContainer"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/themes/editor.js:openThemeEditor",
+          "name": "openThemeEditor",
+          "type": "function",
+          "path": "tmux-web/static/js/themes/editor.js",
+          "line": 17,
+          "exports": [
+            "openThemeEditor"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/themes/editor.js:buildColorPickerRow",
+          "name": "buildColorPickerRow",
+          "type": "function",
+          "path": "tmux-web/static/js/themes/editor.js",
+          "line": 273,
+          "exports": [
+            "buildColorPickerRow"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/themes/editor.js:buildLivePreviewContainer",
+          "name": "buildLivePreviewContainer",
+          "type": "function",
+          "path": "tmux-web/static/js/themes/editor.js",
+          "line": 337,
+          "exports": [
+            "buildLivePreviewContainer"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/themes/panel.js",
+      "name": "panel.js",
+      "type": "file",
+      "path": "tmux-web/static/js/themes/panel.js",
+      "exports": [
+        "loadThemesIntoPanel",
+        "renderThemesPanel",
+        "buildThemeCard"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/themes/panel.js:loadThemesIntoPanel",
+          "name": "loadThemesIntoPanel",
+          "type": "function",
+          "path": "tmux-web/static/js/themes/panel.js",
+          "line": 12,
+          "exports": [
+            "loadThemesIntoPanel"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/themes/panel.js:renderThemesPanel",
+          "name": "renderThemesPanel",
+          "type": "function",
+          "path": "tmux-web/static/js/themes/panel.js",
+          "line": 44,
+          "exports": [
+            "renderThemesPanel"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/themes/panel.js:buildThemeCard",
+          "name": "buildThemeCard",
+          "type": "function",
+          "path": "tmux-web/static/js/themes/panel.js",
+          "line": 167,
+          "exports": [
+            "buildThemeCard"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/ws/attach.js",
+      "name": "attach.js",
+      "type": "file",
+      "path": "tmux-web/static/js/ws/attach.js",
+      "exports": [
+        "connectWs",
+        "scheduleAttachWsReconnect",
+        "handleControlFromServer",
+        "disconnectWs"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/ws/attach.js:connectWs",
+          "name": "connectWs",
+          "type": "function",
+          "path": "tmux-web/static/js/ws/attach.js",
+          "line": 17,
+          "exports": [
+            "connectWs"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/ws/attach.js:scheduleAttachWsReconnect",
+          "name": "scheduleAttachWsReconnect",
+          "type": "function",
+          "path": "tmux-web/static/js/ws/attach.js",
+          "line": 106,
+          "exports": [
+            "scheduleAttachWsReconnect"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/ws/attach.js:handleControlFromServer",
+          "name": "handleControlFromServer",
+          "type": "function",
+          "path": "tmux-web/static/js/ws/attach.js",
+          "line": 127,
+          "exports": [
+            "handleControlFromServer"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/ws/attach.js:disconnectWs",
+          "name": "disconnectWs",
+          "type": "function",
+          "path": "tmux-web/static/js/ws/attach.js",
+          "line": 134,
+          "exports": [
+            "disconnectWs"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/ws/attach.js:ATTACH_WS_BACKOFFS_MS",
+          "name": "ATTACH_WS_BACKOFFS_MS",
+          "type": "variable",
+          "path": "tmux-web/static/js/ws/attach.js",
+          "line": 103,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/ws/attach.js:ATTACH_WS_JITTER_MAX_MS",
+          "name": "ATTACH_WS_JITTER_MAX_MS",
+          "type": "variable",
+          "path": "tmux-web/static/js/ws/attach.js",
+          "line": 104,
+          "exports": []
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/ws/tasks-ws.js",
+      "name": "tasks-ws.js",
+      "type": "file",
+      "path": "tmux-web/static/js/ws/tasks-ws.js",
+      "exports": [
+        "startTasksPolling",
+        "stopTasksPolling",
+        "connectTasksWs",
+        "disconnectTasksWs",
+        "scheduleTasksWsReconnect",
+        "handleTasksWsMessage",
+        "fetchTasks",
+        "setTasksStatus"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/ws/tasks-ws.js:startTasksPolling",
+          "name": "startTasksPolling",
+          "type": "function",
+          "path": "tmux-web/static/js/ws/tasks-ws.js",
+          "line": 22,
+          "exports": [
+            "startTasksPolling"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/ws/tasks-ws.js:stopTasksPolling",
+          "name": "stopTasksPolling",
+          "type": "function",
+          "path": "tmux-web/static/js/ws/tasks-ws.js",
+          "line": 27,
+          "exports": [
+            "stopTasksPolling"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/ws/tasks-ws.js:connectTasksWs",
+          "name": "connectTasksWs",
+          "type": "function",
+          "path": "tmux-web/static/js/ws/tasks-ws.js",
+          "line": 34,
+          "exports": [
+            "connectTasksWs"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/ws/tasks-ws.js:disconnectTasksWs",
+          "name": "disconnectTasksWs",
+          "type": "function",
+          "path": "tmux-web/static/js/ws/tasks-ws.js",
+          "line": 98,
+          "exports": [
+            "disconnectTasksWs"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/ws/tasks-ws.js:scheduleTasksWsReconnect",
+          "name": "scheduleTasksWsReconnect",
+          "type": "function",
+          "path": "tmux-web/static/js/ws/tasks-ws.js",
+          "line": 110,
+          "exports": [
+            "scheduleTasksWsReconnect"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/ws/tasks-ws.js:handleTasksWsMessage",
+          "name": "handleTasksWsMessage",
+          "type": "function",
+          "path": "tmux-web/static/js/ws/tasks-ws.js",
+          "line": 122,
+          "exports": [
+            "handleTasksWsMessage"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/ws/tasks-ws.js:fetchTasks",
+          "name": "fetchTasks",
+          "type": "function",
+          "path": "tmux-web/static/js/ws/tasks-ws.js",
+          "line": 186,
+          "exports": [
+            "fetchTasks"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/ws/tasks-ws.js:setTasksStatus",
+          "name": "setTasksStatus",
+          "type": "function",
+          "path": "tmux-web/static/js/ws/tasks-ws.js",
+          "line": 207,
+          "exports": [
+            "setTasksStatus"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/ws/tasks-ws.js:TASKS_POLL_INTERVAL_MS",
+          "name": "TASKS_POLL_INTERVAL_MS",
+          "type": "variable",
+          "path": "tmux-web/static/js/ws/tasks-ws.js",
+          "line": 19,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/ws/tasks-ws.js:TASKS_WS_BACKOFFS_MS",
+          "name": "TASKS_WS_BACKOFFS_MS",
+          "type": "variable",
+          "path": "tmux-web/static/js/ws/tasks-ws.js",
+          "line": 20,
+          "exports": []
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/ws/todos-ws.js",
+      "name": "todos-ws.js",
+      "type": "file",
+      "path": "tmux-web/static/js/ws/todos-ws.js",
+      "exports": [
+        "fetchTodos",
+        "startTodosPolling",
+        "stopTodosPolling",
+        "connectTodosWs",
+        "disconnectTodosWs",
+        "scheduleTodosWsReconnect",
+        "handleTodosWsMessage"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/ws/todos-ws.js:fetchTodos",
+          "name": "fetchTodos",
+          "type": "function",
+          "path": "tmux-web/static/js/ws/todos-ws.js",
+          "line": 21,
+          "exports": [
+            "fetchTodos"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/ws/todos-ws.js:startTodosPolling",
+          "name": "startTodosPolling",
+          "type": "function",
+          "path": "tmux-web/static/js/ws/todos-ws.js",
+          "line": 42,
+          "exports": [
+            "startTodosPolling"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/ws/todos-ws.js:stopTodosPolling",
+          "name": "stopTodosPolling",
+          "type": "function",
+          "path": "tmux-web/static/js/ws/todos-ws.js",
+          "line": 47,
+          "exports": [
+            "stopTodosPolling"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/ws/todos-ws.js:connectTodosWs",
+          "name": "connectTodosWs",
+          "type": "function",
+          "path": "tmux-web/static/js/ws/todos-ws.js",
+          "line": 54,
+          "exports": [
+            "connectTodosWs"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/ws/todos-ws.js:disconnectTodosWs",
+          "name": "disconnectTodosWs",
+          "type": "function",
+          "path": "tmux-web/static/js/ws/todos-ws.js",
+          "line": 112,
+          "exports": [
+            "disconnectTodosWs"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/ws/todos-ws.js:scheduleTodosWsReconnect",
+          "name": "scheduleTodosWsReconnect",
+          "type": "function",
+          "path": "tmux-web/static/js/ws/todos-ws.js",
+          "line": 124,
+          "exports": [
+            "scheduleTodosWsReconnect"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/ws/todos-ws.js:handleTodosWsMessage",
+          "name": "handleTodosWsMessage",
+          "type": "function",
+          "path": "tmux-web/static/js/ws/todos-ws.js",
+          "line": 139,
+          "exports": [
+            "handleTodosWsMessage"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/ws/todos-ws.js:TODOS_WS_BACKOFFS_MS",
+          "name": "TODOS_WS_BACKOFFS_MS",
+          "type": "variable",
+          "path": "tmux-web/static/js/ws/todos-ws.js",
+          "line": 18,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/ws/todos-ws.js:TODOS_POLL_INTERVAL_MS",
+          "name": "TODOS_POLL_INTERVAL_MS",
+          "type": "variable",
+          "path": "tmux-web/static/js/ws/todos-ws.js",
+          "line": 19,
+          "exports": []
+        }
+      ]
     }
   ]
 }

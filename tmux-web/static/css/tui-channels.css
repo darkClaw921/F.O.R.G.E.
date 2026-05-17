@@ -1,0 +1,133 @@
+/* ============================================================ */
+/* Горячие клавиши: Cmd-hold подсказки + ?-help оверлей          */
+/* ============================================================ */
+#hotkey-hints-layer {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 99999;
+    display: none;
+}
+.hotkey-hint {
+    position: absolute;
+    transform: translate(-4px, -4px);
+    background: #ffd54f;
+    color: #1a1a1a;
+    font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    padding: 2px 5px;
+    border-radius: 3px;
+    border: 1px solid #c9a227;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    pointer-events: none;
+    white-space: nowrap;
+    user-select: none;
+}
+.hotkey-hint-partial {
+    background: #fff176;
+    border-color: #fbc02d;
+}
+.hotkey-hint-dim {
+    opacity: 0.25;
+}
+
+#hotkey-help {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 100000;
+}
+#hotkey-help.show {
+    display: flex;
+}
+.hotkey-help-card {
+    background: #1f1f1f;
+    color: #e6e6e6;
+    padding: 22px 26px;
+    border-radius: 8px;
+    border: 1px solid #3a3a3a;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+    min-width: 360px;
+    max-width: 520px;
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.hotkey-help-card h3 {
+    margin: 0 0 12px;
+    font-size: 15px;
+    color: #ffd54f;
+}
+.hotkey-help-card ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.hotkey-help-card li {
+    padding: 4px 0;
+    border-bottom: 1px solid #2a2a2a;
+}
+.hotkey-help-card li:last-child {
+    border-bottom: none;
+}
+.hotkey-help-card kbd {
+    display: inline-block;
+    background: #2a2a2a;
+    border: 1px solid #444;
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin: 0 2px;
+    font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #fff;
+}
+.hotkey-help-hint {
+    margin-top: 12px;
+    font-size: 11px;
+    color: #888;
+    text-align: right;
+}
+
+/* keyboard-focus подсветка для session-item при vim-навигации */
+.session-item:focus {
+    outline: 2px solid #ffd54f;
+    outline-offset: -2px;
+}
+
+/* ============================================================ */
+/* TODO plan-mode: чекбокс в модалках + badge на карточке        */
+/* ============================================================ */
+.modal-card .checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 0;
+    font-size: 13px;
+    color: #d0d0d0;
+    cursor: pointer;
+    user-select: none;
+}
+.modal-card .checkbox-row input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    cursor: pointer;
+}
+.modal-card .checkbox-row .hint {
+    color: #888;
+    font-size: 11px;
+    margin-left: 2px;
+}
+.plan-mode-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: #6a4bb0;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    margin-left: 4px;
+}

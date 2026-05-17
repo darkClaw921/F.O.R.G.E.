@@ -1,0 +1,86 @@
+// tmux-web — DOM references (Phase 0 ES Modules refactor)
+//
+// 1:1 копия блока `const $... = document.getElementById(...)` из IIFE
+// `tmux-web/static/app.js` (строки 173-233, 674). Все ref'ы вычисляются один
+// раз при первом импорте модуля.
+//
+// КОРРЕКТНО ТОЛЬКО при импорте после полной загрузки DOM. В Phase 1 main.js
+// будет подключён через `<script type="module">` — это гарантирует implicit
+// `defer`, т.е. модуль выполнится после parse HTML. Документированное
+// поведение HTML-спецификации.
+//
+// В Phase 0 модуль ещё НЕ подключен к index.html — legacy app.js работает
+// как раньше; модуль готов к импорту из main.js в Phase 1.
+//
+// НЕ импортирует ничего, кроме браузерного DOM. Pure leaf-module.
+
+// ---- Layout / sidebar ----
+export const $layout = document.getElementById('layout');
+export const $btnSidebarToggle = document.getElementById('btn-sidebar-toggle');
+export const $sidebar = document.getElementById('session-list');
+export const $btnNew = document.getElementById('btn-new');
+export const $sidebarOverlay = document.getElementById('sidebar-overlay');
+
+// ---- Terminal / window-bar / status ----
+export const $terminalEl = document.getElementById('terminal');
+export const $placeholder = document.getElementById('placeholder');
+export const $windowBar = document.getElementById('window-bar');
+export const $windowTabs = document.getElementById('window-tabs');
+export const $windowNewBtn = document.getElementById('window-new');
+export const $statusDot = document.getElementById('status-dot');
+export const $statusText = document.getElementById('status-text');
+
+// ---- Phase 6.A: tab-bar + Tasks UI ----
+export const $tabTerminal = document.getElementById('tab-terminal');
+export const $tabTasks = document.getElementById('tab-tasks');
+export const $tasksStatus = document.getElementById('tasks-status');
+export const $tasksEl = document.getElementById('tasks');
+export const $tasksReload = document.getElementById('tasks-reload');
+export const $tasksNew = document.getElementById('tasks-new');
+export const $tasksMeta = document.getElementById('tasks-meta');
+export const $tasksBoard = document.getElementById('tasks-board');
+
+// ---- Git tab (lazygit) ----
+export const $tabGit = document.getElementById('tab-git');
+export const $gitEl = document.getElementById('git');
+export const $gitTermEl = document.getElementById('git-term');
+export const $gitPlaceholder = document.getElementById('git-placeholder');
+export const $gitError = document.getElementById('git-error');
+export const $gitErrorText = document.getElementById('git-error-text');
+export const $gitErrorRetry = document.getElementById('git-error-retry');
+export const $gitErrorClose = document.getElementById('git-error-close');
+export const $gitInstallHelp = document.getElementById('git-install-help');
+export const $gitInstallList = document.getElementById('git-install-list');
+
+// ---- Docker tab (lazydocker) ----
+export const $tabDocker = document.getElementById('tab-docker');
+export const $dockerEl = document.getElementById('docker');
+export const $dockerTermEl = document.getElementById('docker-term');
+export const $dockerPlaceholder = document.getElementById('docker-placeholder');
+export const $dockerError = document.getElementById('docker-error');
+export const $dockerErrorText = document.getElementById('docker-error-text');
+export const $dockerErrorRetry = document.getElementById('docker-error-retry');
+export const $dockerErrorClose = document.getElementById('docker-error-close');
+export const $dockerInstallHelp = document.getElementById('docker-install-help');
+export const $dockerInstallList = document.getElementById('docker-install-list');
+
+// ---- Telescope tab (tv) ----
+export const $tabTelescope = document.getElementById('tab-telescope');
+export const $telescopeEl = document.getElementById('telescope');
+export const $telescopeTermEl = document.getElementById('telescope-term');
+export const $telescopePlaceholder = document.getElementById('telescope-placeholder');
+export const $telescopeError = document.getElementById('telescope-error');
+export const $telescopeErrorText = document.getElementById('telescope-error-text');
+export const $telescopeErrorRetry = document.getElementById('telescope-error-retry');
+export const $telescopeErrorClose = document.getElementById('telescope-error-close');
+export const $telescopeInstallHelp = document.getElementById('telescope-install-help');
+export const $telescopeInstallList = document.getElementById('telescope-install-list');
+export const $telescopeChannelBar = document.getElementById('telescope-channel-bar');
+
+// ---- Phase 6.B: Project bar ----
+export const $projectSelect = document.getElementById('project-select');
+export const $projectNew = document.getElementById('project-new');
+export const $projectSettings = document.getElementById('project-settings');
+
+// ---- Phase 5: origin-табы (скрыты при remote_mode=false) ----
+export const $originTabs = document.getElementById('origin-tabs');

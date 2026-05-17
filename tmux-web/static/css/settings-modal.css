@@ -1,0 +1,457 @@
+/* ===== Settings modal: tab-bar (Phase wk7.4) =====
+ *
+ * Tab-bar внутри settings-модала переключает между «Notifications»
+ * (исторический контент: список проектов + per-project notify-форма)
+ * и «Themes» (Phase wk7 — пресеты + custom темы).
+ *
+ * Стилистика тоньше, чем у глобального #tab-bar / .tab-btn (project-bar) —
+ * это вкладки внутри модала, поэтому padding и font-size меньше, и они
+ * рисуются на фоне modal-card (var(--bg-elev)), а не страницы.
+ * Используем те же CSS-переменные, что и Phase 2 (--accent, --border,
+ * --fg, --fg-dim, --bg-elev) — переключение тем мгновенно перерисовывает
+ * tab-bar тоже.
+ */
+
+.modal-card.settings-modal {
+    min-width: 520px;
+    max-width: 800px;
+    width: 60vw;
+}
+
+.modal-tabs {
+    display: flex;
+    flex-direction: row;
+    gap: 2px;
+    margin: -4px -4px 12px;
+    padding: 4px;
+    border-bottom: 1px solid var(--border);
+    background: transparent;
+}
+
+.modal-tab-btn {
+    background: transparent;
+    border: 0;
+    color: var(--fg-dim, var(--fg-tab-inactive));
+    padding: 6px 14px;
+    cursor: pointer;
+    border-radius: 4px 4px 0 0;
+    font-family: inherit;
+    font-size: 0.82rem;
+    transition: background 100ms ease, color 100ms ease;
+    margin-bottom: -1px;
+    border-bottom: 2px solid transparent;
+}
+
+.modal-tab-btn:hover {
+    background: var(--bg-input, var(--bg));
+    color: var(--fg);
+}
+
+.modal-tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    background: transparent;
+}
+
+.modal-tab-panel {
+    /* Контейнер активной вкладки. Скрытие — через `hidden` атрибут. */
+    display: block;
+}
+
+.modal-tab-panel[hidden] {
+    display: none;
+}
+
+/* ===== Themes-вкладка: пресеты + custom (Phase wk7.4) ===== */
+
+.themes-content {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    min-height: 100px;
+}
+
+.themes-loading,
+.themes-empty {
+    color: var(--fg-dim, var(--fg-mute));
+    font-size: 0.78rem;
+    padding: 8px 0;
+}
+
+.themes-error {
+    color: var(--danger, #ff6b6b);
+    font-size: 0.78rem;
+    padding: 6px 8px;
+    border: 1px solid var(--danger, #ff6b6b);
+    border-radius: 4px;
+    margin-bottom: 8px;
+}
+
+.themes-retry {
+    background: var(--bg-input, var(--bg));
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.78rem;
+}
+
+.themes-retry:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.themes-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.themes-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.themes-section-title {
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--fg-dim, var(--fg-mute));
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.theme-new-btn {
+    background: transparent;
+    color: var(--accent);
+    border: 1px dashed var(--accent);
+    border-radius: 4px;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.74rem;
+    transition: background 100ms ease, color 100ms ease;
+}
+
+.theme-new-btn:hover {
+    background: var(--accent);
+    color: var(--fg-on-accent, #fff);
+}
+
+.theme-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 10px;
+}
+
+.theme-card {
+    position: relative;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px;
+    background: var(--bg, transparent);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: border-color 100ms ease, transform 80ms ease;
+    user-select: none;
+}
+
+.theme-card:hover {
+    border-color: var(--accent);
+}
+
+.theme-card.active {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+.theme-card-name {
+    color: var(--fg);
+    font-size: 0.82rem;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.theme-card-preview {
+    display: flex;
+    flex-direction: row;
+    height: 22px;
+    border-radius: 3px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+}
+
+.theme-card-swatch {
+    flex: 1 1 0;
+    min-width: 0;
+    background: transparent;
+    display: block;
+}
+
+/* background и foreground делаем шире, чтобы они визуально доминировали
+ * (это «лицо» темы) — ANSI-цвета остаются равными. */
+.theme-card-swatch.theme-card-swatch-background,
+.theme-card-swatch.theme-card-swatch-foreground {
+    flex: 1.4 1 0;
+}
+
+.theme-card-badge {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    font-size: 0.62rem;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    pointer-events: none;
+}
+
+.theme-card-tools {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    display: flex;
+    gap: 4px;
+}
+
+.theme-card.active .theme-card-tools {
+    /* Активная карточка показывает badge — двигаем tools левее, чтобы не
+     * пересекались. */
+    right: 50px;
+}
+
+.theme-card-tool {
+    background: transparent;
+    color: var(--fg-dim, var(--fg-mute));
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-size: 0.62rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: color 100ms ease, border-color 100ms ease, background 100ms ease;
+}
+
+.theme-card-tool:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+.theme-card-tool.theme-card-tool-danger:hover {
+    color: var(--danger, #ff6b6b);
+    border-color: var(--danger, #ff6b6b);
+}
+
+/* Phase 5 — Settings → Remote servers tab                      */
+/* ============================================================ */
+
+.remotes-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 14px;
+    font-size: 0.85rem;
+}
+
+.remotes-table th,
+.remotes-table td {
+    text-align: left;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+    color: var(--fg);
+    vertical-align: middle;
+}
+
+.remotes-table th {
+    color: var(--fg-mute);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 0.7rem;
+}
+
+.remotes-table .remotes-url {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.78rem;
+    color: var(--fg-mute);
+    word-break: break-all;
+}
+
+.remotes-table .remotes-empty {
+    color: var(--fg-mute);
+    font-style: italic;
+    text-align: center;
+    padding: 14px;
+}
+
+.remotes-table .remotes-actions {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.remotes-table .btn-edit-remote {
+    appearance: none;
+    background: transparent;
+    color: var(--fg-mute);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    margin-right: 6px;
+}
+
+.remotes-table .btn-edit-remote:hover {
+    color: var(--fg);
+    border-color: var(--fg-mute);
+}
+
+.remotes-edit-row td {
+    background: var(--bg-header-alt);
+    padding: 10px 8px;
+}
+
+.remotes-edit-row label {
+    margin-right: 10px;
+    font-size: 0.75rem;
+    color: var(--fg-mute);
+}
+
+.remotes-edit-row input[type="text"],
+.remotes-edit-row input[type="password"] {
+    margin-left: 6px;
+    padding: 3px 6px;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+}
+
+.remotes-add {
+    border-top: 1px solid var(--border);
+    padding-top: 14px;
+}
+
+.remotes-add h3 {
+    margin: 0 0 10px 0;
+    font-size: 0.9rem;
+    color: var(--fg);
+}
+
+.remotes-add label {
+    display: block;
+    margin-bottom: 10px;
+    font-size: 0.78rem;
+    color: var(--fg-mute);
+}
+
+.remotes-add input[type="text"],
+.remotes-add input[type="password"] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 5px 8px;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 0.82rem;
+}
+
+.rs-token-wrap {
+    display: flex;
+    gap: 6px;
+    align-items: stretch;
+}
+
+.rs-token-wrap input {
+    flex: 1;
+}
+
+.rs-token-toggle {
+    appearance: none;
+    background: transparent;
+    color: var(--fg-mute);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    cursor: pointer;
+}
+
+.rs-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+.rs-actions button {
+    appearance: none;
+    padding: 5px 12px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--fg);
+    cursor: pointer;
+    font-size: 0.82rem;
+}
+
+.rs-actions button.primary {
+    background: var(--accent, #4f87d4);
+    color: #fff;
+    border-color: var(--accent, #4f87d4);
+}
+
+.rs-actions button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.rs-test-status {
+    font-size: 0.75rem;
+    color: var(--fg-mute);
+}
+
+.rs-test-status.ok { color: var(--success, #6cc070); }
+.rs-test-status.error { color: var(--danger-soft, #d96868); }
+.rs-test-status.warn { color: var(--warn-icon-bg, #d4a04f); }
+.rs-test-status.pending { color: var(--fg-mute); font-style: italic; }
+
+.rs-help {
+    margin-top: 8px;
+    font-size: 0.78rem;
+}
+
+.rs-help summary {
+    cursor: pointer;
+    color: var(--fg-mute);
+    user-select: none;
+}
+
+.rs-help summary:hover {
+    color: var(--fg);
+}
+
+.rs-help-body {
+    padding: 8px 0;
+    color: var(--fg);
+}
+
+.rs-help pre {
+    background: var(--bg-header-alt);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px 8px;
+    margin: 6px 0;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.78rem;
+    color: var(--fg);
+}
+

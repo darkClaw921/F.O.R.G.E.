@@ -1,0 +1,80 @@
+/* ===== Layout ===== */
+
+#layout {
+    display: flex;
+    height: 100vh;
+    height: 100dvh;
+    width: 100vw;
+    width: 100dvw;
+}
+
+#sidebar {
+    width: 240px;
+    flex: 0 0 240px;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-elev);
+    border-right: 1px solid var(--border);
+    overflow: hidden;
+    transition: width 0.18s ease, flex-basis 0.18s ease, opacity 0.12s ease;
+}
+
+/* Collapsed-state — ставится класс на #layout (см. app.js toggleSidebar).
+ * Используем width:0 + opacity, чтобы анимировать. После transition
+ * setTimeout вызывает refit xterm. */
+#layout.sidebar-collapsed #sidebar {
+    width: 0;
+    flex: 0 0 0;
+    opacity: 0;
+    border-right-width: 0;
+    pointer-events: none;
+}
+
+/* Toggle-кнопка в #tab-bar: иконка-гамбургер слева от табов. */
+.sidebar-toggle-btn {
+    appearance: none;
+    background: transparent;
+    color: var(--fg-dim, #aab1bc);
+    border: none;
+    padding: 0 10px;
+    margin-right: 6px;
+    font: 16px / 1 ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    cursor: pointer;
+    align-self: stretch;
+    transition: color 0.12s, background 0.12s;
+    border-radius: 4px;
+}
+.sidebar-toggle-btn:hover {
+    color: var(--fg, #e3e7ee);
+    background: var(--bg-soft, #1a1d23);
+}
+.sidebar-toggle-btn:focus-visible {
+    outline: 2px solid var(--accent, #2a7fff);
+    outline-offset: -2px;
+}
+
+#main {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-deep);
+    overflow: hidden;
+}
+
+#terminal {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+}
+
+.placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--fg-dim);
+    font-size: 0.9rem;
+    pointer-events: none;
+}

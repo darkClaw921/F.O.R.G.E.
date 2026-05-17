@@ -1,0 +1,204 @@
+/* ===== Git tab =====
+ *
+ * Контейнер #git — flex column, заполняется lazygit-xterm.
+ * Видимость управляется атрибутом [hidden] (consistent с #tasks).
+ */
+
+#git {
+    display: none;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+}
+
+#git[hidden] { display: none; }
+#git:not([hidden]) { display: flex; }
+
+/*
+ * xterm.js lazygit-tab.
+ *
+ * #git становится flex column. Внутри:
+ *  - .git-placeholder: центрированный текст когда нет активного проекта.
+ *  - .git-error: красный banner поверх термина (sticky сверху pane).
+ *  - .git-term: контейнер xterm — занимает оставшееся пространство,
+ *    background чёрный (совпадает с term-theme fallback из app.js).
+ */
+.git-term {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    background: #000000;
+    overflow: hidden;
+}
+
+.git-term[hidden] { display: none !important; }
+
+/* Placeholder заполняет pane когда нет активного проекта. */
+.git-placeholder {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--fg-dim);
+    font-size: 0.95rem;
+    padding: 24px;
+    text-align: center;
+}
+
+.git-placeholder[hidden] { display: none !important; }
+
+/*
+ * Banner-плашка с ошибкой WebSocket / backend. Располагается над
+ * терминалом (order:-1 в flex), но не перекрывает его — занимает
+ * собственное место в layout. С кнопками Retry и × (dismiss).
+ */
+.git-error {
+    order: -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    background: var(--danger);
+    color: #fff;
+    font-family: monospace;
+    font-size: 13px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.3);
+}
+
+.git-install-help {
+    flex: 1 1 100%;
+    margin-top: 6px;
+    padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.28);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.git-install-help[hidden] { display: none !important; }
+
+.git-install-title {
+    font-weight: 600;
+    margin-bottom: 6px;
+    opacity: 0.9;
+}
+
+.git-install-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.git-install-list li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.git-install-list .os-label {
+    flex: 0 0 auto;
+    min-width: 90px;
+    opacity: 0.85;
+    font-weight: 600;
+}
+
+.git-install-list .os-label.detected::after {
+    content: " (detected)";
+    font-weight: 400;
+    opacity: 0.75;
+    font-size: 11px;
+}
+
+.git-install-list .os-cmd {
+    flex: 1 1 auto;
+    background: rgba(0, 0, 0, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #fff;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    user-select: text;
+}
+
+.git-install-list .os-copy {
+    flex: 0 0 auto;
+    background: rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+}
+
+.git-install-list .os-copy:hover {
+    background: rgba(255, 255, 255, 0.32);
+}
+
+.git-install-list .os-copy.copied {
+    background: rgba(80, 200, 120, 0.4);
+    border-color: rgba(80, 200, 120, 0.7);
+}
+
+.git-install-link {
+    display: inline-block;
+    margin-top: 8px;
+    color: #fff;
+    text-decoration: underline;
+    opacity: 0.85;
+    font-size: 11px;
+}
+
+.git-install-link:hover { opacity: 1; }
+
+.git-error[hidden] { display: none !important; }
+
+.git-error-text {
+    flex: 1 1 auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.git-error-retry,
+.git-error-close {
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    color: #fff;
+    padding: 4px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+}
+
+.git-error-close {
+    padding: 2px 8px;
+    font-size: 16px;
+    line-height: 1;
+}
+
+.git-error-retry:hover,
+.git-error-close:hover {
+    background: rgba(255, 255, 255, 0.28);
+}
+
+/*
+ * xterm inside .git-term должен растягиваться. xterm рисует .xterm-screen
+ * абсолютно — поэтому .git-term: position:relative выше.
+ */
+.git-term .xterm,
+.git-term .xterm-viewport,
+.git-term .xterm-screen {
+    width: 100% !important;
+    height: 100% !important;
+}

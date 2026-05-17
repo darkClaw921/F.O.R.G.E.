@@ -1,0 +1,3 @@
+# tmux-web/static/js/remote/servers.js
+
+Phase 1. Remote-servers registry: state.remoteOnline (Map) — runtime инициализация. REMOTE_PROBE_BACKOFFS_MS=[2s..60s], STEADY_INDEX=1 (4s online), JITTER=1s. fetchRemoteServers (GET /api/remote-servers + startRemoteHealthPoll), loadRemoteProjects/Sessions (lazy с кэшем state.remoteProjects/Sessions), probeRemoteServer (GET /api/remote-servers/:id/healthz + schedule next по backoff/steady), startRemoteHealthPoll (синхронизирует probeState с remoteServers), stopRemoteHealthPoll, aggregateAllOrigins (для регресс-тестов: Map<originKey, {label,online,projects,sessions}>).

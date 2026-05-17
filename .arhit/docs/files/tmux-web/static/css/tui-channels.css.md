@@ -1,0 +1,3 @@
+# tmux-web/static/css/tui-channels.css
+
+ВНИМАНИЕ: имя файла misnomer — на самом деле содержит горячие клавиши и связанные оверлеи (наследие неточной нумерации строк в плане). Содержимое: #hotkey-hints-layer (position fixed inset 0, pointer-events none — слой Cmd-hold подсказок), .hotkey-hint (отдельная всплывающая подсказка) с .hotkey-hint-partial и .hotkey-hint-dim, #hotkey-help overlay с .show/.hidden состояниями, .hotkey-help-card и сетка <kbd> элементов, .hotkey-help-hint, keyboard-focus подсветка для session-item при vim-навигации, TODO plan-mode badge (фиолетовый pill на карточках kanban + чекбокс в модалках). 133 строки (2574-2706 оригинала). Channel-bar (реальный telescope channel-switcher) находится в tui-tab.css.

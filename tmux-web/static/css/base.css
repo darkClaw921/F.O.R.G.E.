@@ -1,0 +1,128 @@
+/* tmux-web — dark theme + layout (Phase 4) */
+
+/*
+ * ===== Theme variables =====
+ *
+ * Семантические CSS-переменные темы. Значения 11 themable-переменных
+ * (--bg, --bg-elev, --fg, --fg-dim, --border, --accent, --warn, --danger,
+ * --p0, --p1, --p2) соответствуют пресету "Default" из tmux-web/src/themes.rs
+ * (built_in_presets) — это backend-источник истины.
+ *
+ * Дополнительные переменные (--bg-*, --hover-*, --success, --info, --agent-*)
+ * описывают вторичные оттенки UI (hover-state, success/info-цвета, акцент
+ * agent-режима) и подбираются под значения themable-палитры.
+ *
+ * В Phase 3 applyTheme() будет менять themable-переменные через
+ * document.documentElement.style.setProperty одной операцией.
+ */
+:root {
+    /* themable palette (1:1 с themes.rs preset id="default") */
+    --bg: #0e1116;
+    --bg-elev: #161b22;
+    --fg: #d8dee9;
+    --fg-dim: #8b949e;
+    --border: #30363d;
+    --accent: #2a7fff;
+    --warn: #d29922;
+    --danger: #f85149;
+    --p0: #f85149;
+    --p1: #d29922;
+    --p2: #2a7fff;
+
+    /* Производные переменные: выражены через color-mix() от 11 themable
+       выше, чтобы applyTheme() (только 11 setProperty) перекрашивал ВЕСЬ UI,
+       а не только основные плоскости. */
+
+    /* secondary surfaces (вторичные оттенки фона) */
+    --bg-deep: color-mix(in srgb, var(--bg) 80%, #000 20%);
+    --bg-input: color-mix(in srgb, var(--bg-elev) 85%, var(--fg) 5%);
+    --bg-input-hover: color-mix(in srgb, var(--bg-elev) 70%, var(--fg) 12%);
+    --bg-header: color-mix(in srgb, var(--bg) 90%, #000 10%);
+    --bg-header-alt: color-mix(in srgb, var(--bg-elev) 90%, var(--fg) 4%);
+    --bg-toolbar: color-mix(in srgb, var(--bg-elev) 92%, var(--fg) 4%);
+    --bg-modal-shade: color-mix(in srgb, var(--bg-elev) 75%, var(--fg) 8%);
+    --bg-pill: color-mix(in srgb, var(--bg-elev) 70%, var(--fg) 10%);
+    --bg-pill-hover: color-mix(in srgb, var(--bg-elev) 55%, var(--fg) 18%);
+    --status-neutral: var(--fg-dim);
+
+    /* accent shades (производные от --accent для hover/active) */
+    --accent-hover: color-mix(in srgb, var(--accent) 85%, #000 15%);
+    --accent-active: color-mix(in srgb, var(--accent) 70%, #000 30%);
+
+    /* borders & dividers */
+    --border-input: color-mix(in srgb, var(--border) 80%, var(--fg) 6%);
+    --border-input-hover: color-mix(in srgb, var(--border) 55%, var(--fg) 25%);
+    --border-soft: color-mix(in srgb, var(--border) 60%, var(--bg) 40%);
+    --border-soft-2: color-mix(in srgb, var(--border) 55%, var(--bg) 45%);
+    --border-input-soft: color-mix(in srgb, var(--border) 40%, var(--bg) 60%);
+    --border-row: color-mix(in srgb, var(--border) 75%, var(--fg) 8%);
+
+    /* foreground variants */
+    --fg-soft: color-mix(in srgb, var(--fg) 90%, #fff 10%);
+    --fg-mute: color-mix(in srgb, var(--fg) 55%, var(--fg-dim) 45%);
+    --fg-muted-2: var(--fg-dim);
+    --fg-mute-3: color-mix(in srgb, var(--fg) 40%, var(--fg-dim) 60%);
+    --fg-mute-4: color-mix(in srgb, var(--fg-dim) 70%, var(--bg) 30%);
+    --fg-tab-inactive: color-mix(in srgb, var(--fg) 60%, var(--fg-dim) 40%);
+    --fg-placeholder: color-mix(in srgb, var(--fg-dim) 70%, var(--bg) 30%);
+    --fg-checkbox: color-mix(in srgb, var(--fg-dim) 75%, var(--accent) 25%);
+    --fg-on-accent: #fff;
+
+    /* status / semantic */
+    --success: #5acf90;
+    --info: var(--accent);
+    --warn-soft: color-mix(in srgb, var(--warn) 80%, #fff 20%);
+    --warn-bg: color-mix(in srgb, var(--warn) 18%, var(--bg) 82%);
+    --warn-bg-hover: color-mix(in srgb, var(--warn) 28%, var(--bg) 72%);
+    --warn-icon-bg: color-mix(in srgb, var(--warn) 90%, #fff 10%);
+    --danger-soft: color-mix(in srgb, var(--danger) 80%, #fff 20%);
+    --danger-bg: color-mix(in srgb, var(--danger) 8%, transparent 92%);
+    --p0-card: var(--p0);
+    --p1-card: var(--p1);
+    --p3-card: var(--fg-dim);
+
+    /* danger button gradient (delete confirm) — derived from --danger */
+    --danger-btn-bg-1: color-mix(in srgb, var(--danger) 22%, var(--bg-elev) 78%);
+    --danger-btn-border-1: color-mix(in srgb, var(--danger) 35%, var(--bg-elev) 65%);
+    --danger-btn-fg-1: color-mix(in srgb, var(--danger) 60%, #fff 40%);
+    --danger-btn-bg-2: color-mix(in srgb, var(--danger) 32%, var(--bg-elev) 68%);
+    --danger-btn-border-2: color-mix(in srgb, var(--danger) 50%, var(--bg-elev) 50%);
+    --danger-btn-fg-2: color-mix(in srgb, var(--danger) 40%, #fff 60%);
+    --danger-btn-bg-3: color-mix(in srgb, var(--danger) 50%, var(--bg-elev) 50%);
+    --danger-btn-border-3: color-mix(in srgb, var(--danger) 70%, var(--bg-elev) 30%);
+    --danger-btn-bg-4: color-mix(in srgb, var(--danger) 65%, var(--bg-elev) 35%);
+    --danger-btn-border-4: color-mix(in srgb, var(--danger) 85%, var(--bg-elev) 15%);
+
+    /* agent mode (фиолетовая палитра — semantic, не theme-driven; bg-* подмешан под текущий --bg) */
+    --agent-accent: #7c3aed;
+    --agent-accent-soft: #c4b5fd;
+    --agent-border: #4c1d95;
+    --agent-bg-1: color-mix(in srgb, #7c3aed 12%, var(--bg) 88%);
+    --agent-bg-2: color-mix(in srgb, #7c3aed 22%, var(--bg) 78%);
+    --agent-glow: rgba(124, 58, 237, 0.6);
+
+    /* overlays / focus rings */
+    --overlay-modal: rgba(0, 0, 0, 0.55);
+    --overlay-shadow: rgba(0, 0, 0, 0.45);
+    --shadow-pill: rgba(0, 0, 0, 0.25);
+    --accent-tint-strong: color-mix(in srgb, var(--accent) 8%, transparent 92%);
+    --accent-tint-soft: color-mix(in srgb, var(--accent) 5%, transparent 95%);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    background: var(--bg);
+    color: var(--fg);
+    overflow: hidden;
+}
+

@@ -1,0 +1,38 @@
+/* ===== Tab bar (Phase 6.A) ===== */
+
+#tab-bar {
+    flex: 0 0 36px;
+    display: flex;
+    gap: 4px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border-soft);
+    align-items: center;
+    background: var(--bg);
+}
+
+.tab-btn {
+    background: transparent;
+    border: 0;
+    color: var(--fg-tab-inactive);
+    padding: 6px 12px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 0.82rem;
+    transition: background 100ms ease, color 100ms ease;
+}
+
+.tab-btn:hover {
+    background: var(--bg-input);
+}
+
+.tab-btn.active {
+    background: var(--accent);
+    color: var(--fg-on-accent);
+}
+
+.tab-meta {
+    margin-left: auto;
+    color: var(--fg-placeholder);
+    font-size: 12px;
+}

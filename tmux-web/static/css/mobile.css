@@ -1,0 +1,284 @@
+/* =========================================================================
+ * ===== Mobile layout (Phase A) ============================================
+ * =========================================================================
+ * Off-canvas сайдбар, увеличенные touch-targets, горизонтальный kanban,
+ * full-screen модалки. Все правила изолированы внутри @media (max-width: 768px),
+ * поэтому десктоп (>=769px) не регрессирует.
+ *
+ * Управляющий класс: body.sidebar-open  — выезд сайдбара + видимость overlay.
+ * Без класса — сайдбар скрыт (translateX(-100%)), overlay свёрнут.
+ *
+ * Идёт в самом конце файла, чтобы перекрывать все предыдущие правила
+ * без необходимости в !important. */
+
+@media (max-width: 768px) {
+    /* Базовый layout: вертикальная компоновка, скролл сетки полностью
+     * управляется внутренними элементами (#terminal, .tui-term и т.п.). */
+    #layout {
+        position: relative;
+    }
+
+    /* Off-canvas сайдбар: фиксирован, выезжает по transform. */
+    #sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        z-index: 1100;
+        width: 82vw;
+        max-width: 320px;
+        flex: 0 0 auto;
+        transform: translateX(-100%);
+        transition: transform 0.25s ease;
+        box-shadow: 0 0 24px rgba(0, 0, 0, 0.45);
+        background: var(--bg-elev);
+        border-right: 1px solid var(--border);
+    }
+
+    /* Открытое состояние drawer'а. */
+    body.sidebar-open #sidebar {
+        transform: translateX(0);
+    }
+
+    /* Десктопный collapsed-state не должен прятать мобильный drawer:
+     * на мобиле управление идёт через body.sidebar-open, поэтому
+     * сбрасываем width:0/opacity, унаследованные от .sidebar-collapsed. */
+    #layout.sidebar-collapsed #sidebar {
+        width: 82vw;
+        flex: 0 0 auto;
+        opacity: 1;
+        border-right-width: 1px;
+        pointer-events: auto;
+    }
+
+    /* Затемняющий overlay. По умолчанию скрыт через hidden-attr (см. index.html),
+     * показывается, когда body.sidebar-open. */
+    #sidebar-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1090; /* ниже #sidebar (1100) */
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.25s ease;
+    }
+
+    body.sidebar-open #sidebar-overlay {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    /* HTML-атрибут hidden обычно даёт display:none, что отключает transition.
+     * На мобиле снимаем это поведение, чтобы overlay участвовал в анимации,
+     * фактическое скрытие достигается opacity:0 + pointer-events:none. */
+    #sidebar-overlay[hidden] {
+        display: block;
+    }
+
+    /* Main занимает всю ширину — сайдбар выезжает поверх контента. */
+    #main {
+        width: 100vw;
+        width: 100dvw;
+    }
+
+    /* ===== Touch-targets: tab-bar / кнопки ===== */
+    .tab-btn,
+    .sidebar-toggle-btn,
+    #btn-new,
+    #project-bar button,
+    .tasks-toolbar button,
+    #tasks-toolbar button {
+        min-height: 44px;
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+
+    .tab-btn {
+        font-size: 0.85rem;
+    }
+
+    /* Tab-bar может переполняться при многих вкладках — даём горизонтальный
+     * скролл вместо переноса, чтобы не ломать высоту строки. */
+    #tab-bar {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        scrollbar-width: thin;
+    }
+    #tab-bar::-webkit-scrollbar { height: 4px; }
+
+    /* Sidebar-header / project-bar чуть просторнее под палец. */
+    .sidebar-header { padding: 14px 14px; }
+    #project-bar { padding: 10px 12px; }
+
+    /* Session-list пункт побольше под тач. */
+    .session-item { padding: 12px 14px; min-height: 44px; }
+
+    /* ===== Kanban: горизонтальный скролл с snap ===== */
+    #tasks-board {
+        display: flex;
+        grid-template-columns: none;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        gap: 10px;
+        padding-bottom: 8px;
+        scroll-snap-type: x mandatory;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .kanban-col {
+        flex: 0 0 84vw;
+        max-width: 320px;
+        scroll-snap-align: start;
+    }
+
+    /* ===== Full-screen модалки ===== */
+    .modal-overlay {
+        align-items: stretch;
+        justify-content: stretch;
+    }
+
+    .modal-card {
+        width: 100vw;
+        width: 100dvw;
+        max-width: 100vw;
+        max-width: 100dvw;
+        height: 100vh;
+        height: 100dvh;
+        max-height: 100vh;
+        max-height: 100dvh;
+        min-width: 0;
+        border-radius: 0;
+        border-left: 0;
+        border-right: 0;
+        border-top: 0;
+        border-bottom: 0;
+        padding: 16px;
+        overflow: auto;
+    }
+
+    .modal-projects {
+        max-height: none;
+    }
+
+    /* Терминалы (xterm + TUI-вкладки) оставляют место под quick-cmd-bar /
+     * tui-quick-bar внизу (Phase B/C). Падинг сохраняется даже если бара
+     * нет — это не ломает раскладку, только даёт безопасную зону. */
+    #terminal,
+    .tui-term,
+    #git-term,
+    #docker-term,
+    #telescope-term {
+        padding-bottom: 56px;
+    }
+
+    /* TUI quick-keys bar для git/docker/telescope: нужен относительный
+     * контейнер, чтобы position:absolute бара цеплялся за tab-pane,
+     * а не за внешний #main / #layout. */
+    #git,
+    #docker,
+    #telescope {
+        position: relative;
+    }
+
+    /* TUI quick-keys bar показывается на mobile внутри активной TUI-вкладки.
+     * Видимость управляется JS (атрибут hidden) — см. quick-cmd.js
+     * (renderTuiBars / refreshTuiBars). */
+    .tui-quick-bar {
+        display: flex;
+    }
+}
+
+/* =========================================================================
+ * ===== TUI quick-keys bar (Phase C) =======================================
+ * =========================================================================
+ * Горизонтальная панель с базовыми TUI-клавишами (q, Esc, ?, :, /, h, j, k, l,
+ * Enter, Ctrl+C, Tab, стрелки) для git/docker/telescope-вкладок. На desktop
+ * атрибут hidden не снимается (display:none через [hidden]). На mobile
+ * раскрывается JS-ом только когда соответствующая TUI-вкладка активна.
+ *
+ * Стили унаследованы из .quick-cmd-bar / .quick-cmd-key (Phase B), чтобы
+ * не плодить дубли — переопределяем только то, что специфично для TUI-баров.
+ */
+.tui-quick-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    background: rgba(20, 22, 28, 0.96);
+    border-top: 1px solid #2a2f3a;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    box-sizing: border-box;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+}
+.tui-quick-bar[hidden] { display: none; }
+
+.tui-quick-key {
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid #3a4356;
+    background: #1f2330;
+    color: #88c0d0;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.85rem;
+    line-height: 1;
+    padding: 8px 10px;
+    border-radius: 6px;
+    min-height: 44px;
+    min-width: 44px;
+    text-align: center;
+    white-space: nowrap;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background-color 80ms linear, border-color 80ms linear;
+}
+.tui-quick-key:active {
+    background: #2a3142;
+    border-color: #4a5570;
+}
+
+/* ===== Узкие экраны (<=480px): дополнительное сжатие ===== */
+@media (max-width: 480px) {
+    #sidebar {
+        width: 88vw;
+    }
+
+    /* Уменьшаем горизонтальные отступы в основных контейнерах. */
+    .sidebar-header { padding: 12px; }
+    #project-bar { padding: 8px 10px; }
+    .session-item { padding: 10px 12px; }
+
+    /* Tab-btn чуть компактнее, но >=44px по высоте сохраняем. */
+    .tab-btn {
+        padding-left: 10px;
+        padding-right: 10px;
+        font-size: 0.8rem;
+    }
+
+    /* Карточки колонок занимают почти всю ширину viewport'а. */
+    .kanban-col {
+        flex-basis: 90vw;
+    }
+
+    .modal-card {
+        padding: 12px;
+    }
+}
+
+/* ===== Уважаем prefers-reduced-motion ===== */
+@media (max-width: 768px) and (prefers-reduced-motion: reduce) {
+    #sidebar,
+    #sidebar-overlay {
+        transition: none;
+    }
+}
+
