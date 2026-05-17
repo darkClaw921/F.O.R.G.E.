@@ -164,6 +164,90 @@ export async function closeTask(id, reason) {
     }
 }
 
+export async function purgeTask(id) {
+    const idx = getIssueIndex(id);
+    const prev = (idx >= 0) ? state.tasksData.issues[idx] : null;
+    if (idx >= 0) {
+        state.tasksData.issues.splice(idx, 1);
+        renderTasks();
+    }
+    try {
+        const origin = taskOriginById(id);
+        const r = await apiFetch('/api/tasks/' + encodeURIComponent(id) + '/purge', {
+            method: 'POST',
+        }, origin);
+        if (!r.ok && r.status !== 204) {
+            const text = await r.text();
+            window.alert('Purge не удался: ' + (text || r.status));
+            if (prev && state.tasksData) {
+                state.tasksData.issues.splice(idx >= 0 ? idx : 0, 0, prev);
+                renderTasks();
+            }
+            return false;
+        }
+        return true;
+    } catch (e) {
+        window.alert('Ошибка запроса: ' + e.message);
+        if (prev && state.tasksData) {
+            state.tasksData.issues.splice(idx >= 0 ? idx : 0, 0, prev);
+            renderTasks();
+        }
+        return false;
+    }
+}
+
+export async function deleteTodoLocal(id) {
+    const idx = Array.isArray(state.todosData)
+        ? state.todosData.findIndex((t) => t && t.id === id)
+        : -1;
+    const prev = (idx >= 0) ? state.todosData[idx] : null;
+    if (idx >= 0) {
+        state.todosData.splice(idx, 1);
+        renderTasks();
+    }
+    try {
+        const origin = dtoOrigin(prev) || 'local';
+        const r = await apiFetch('/api/todos/' + encodeURIComponent(id), {
+            method: 'DELETE',
+        }, origin);
+        if (!r.ok && r.status !== 204) {
+            const text = await r.text();
+            window.alert('Delete TODO не удался: ' + (text || r.status));
+            if (prev) {
+                state.todosData.splice(idx >= 0 ? idx : 0, 0, prev);
+                renderTasks();
+            }
+            return false;
+        }
+        return true;
+    } catch (e) {
+        window.alert('Ошибка запроса: ' + e.message);
+        if (prev) {
+            state.todosData.splice(idx >= 0 ? idx : 0, 0, prev);
+            renderTasks();
+        }
+        return false;
+    }
+}
+
+export async function cleanColumn(status, ids) {
+    if (!Array.isArray(ids) || ids.length === 0) return { ok: 0, fail: 0 };
+    let ok = 0;
+    let fail = 0;
+    for (const id of ids) {
+        let success = false;
+        if (status === 'closed') {
+            success = await purgeTask(id);
+        } else if (status === 'todo') {
+            success = await deleteTodoLocal(id);
+        } else {
+            success = await closeTask(id, 'clean-column');
+        }
+        if (success) ok += 1; else fail += 1;
+    }
+    return { ok, fail };
+}
+
 export async function reopenTask(id) {
     const prev = applyOptimisticPatch(id, { status: 'open' });
     try {

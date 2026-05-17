@@ -563,5 +563,29 @@
     "content": "UI-таб-бар окон tmux над терминалом (#window-bar в index.html, между #tab-bar и #terminal).\\n\\nDOM:  (.window-bar),  (.window-tabs scroll-flex контейнер),  (+).\\n\\nState:\\n- state.currentWindows: WindowInfo[] — последний snapshot окон активной сессии.\\n- state.windowsPollTimer: setInterval handle для poll каждые 2 секунды.\\n\\nЖизненный цикл:\\n- ws.onopen → startWindowsPolling() — первый fetch + setInterval 2000ms.\\n- disconnectWs() → stopWindowsPolling() — clearInterval + currentWindows=[] + render.\\n- switchTab() обновляет hidden у .\\n\\nФункции:\\n- fetchWindows() — GET /api/sessions/:name/windows через apiFetch (origin-aware). При 400/404 → очищает state.currentWindows (сессии уже нет).\\n- renderWindowBar() — рендерит таб для каждого WindowInfo. Активный получает .active. Содержимое: span.window-tab-idx (индекс), span.window-tab-name (имя), button.window-tab-close (×). Клик → selectWindow, double-click → renameWindow, клик по × → killWindow с confirm.\\n- createWindow() — prompt имени (пусто → дефолт tmux) → POST /api/sessions/:name/windows.\\n- selectWindow(index) — POST /api/sessions/:name/windows/:index/select.\\n- killWindow(index, name) — confirm + DELETE.\\n- renameWindow(index, oldName) — prompt + PATCH.\\n\\nКнопка  привязана к createWindow в bootstrap.",
     "createdAt": "2026-05-17T11:01:42.011Z",
     "updatedAt": "2026-05-17T11:01:42.011Z"
+  },
+  {
+    "element": "tmux-web/static/js/tasks/render.js",
+    "path": "tmux-web/static/js/tasks/render.js",
+    "type": "file",
+    "content": "Phase 1. Tasks kanban render: TASK_COLUMNS=[todo,open,in_progress,blocked,deferred,draft,closed], COLUMN_TITLES. renderTasks (board), compareIssues (priority asc, updated_at desc), renderColumn, renderTodoCard, renderCard. currentTodosProjectId возвращает state.activeProjectId. ИЗМЕНЕНИЕ (forge-ja22): убран CLOSED_LIMIT — closed колонка показывает все задачи. ИЗМЕНЕНИЕ (forge-caz3): renderColumn рендерит .col-clean кнопку в header каждой колонки если items.length>0. Поведение: confirm-диалог с количеством задач, далее cleanColumn(status, ids). Для status=closed → bulk purge через POST /api/tasks/:id/purge. Для status=todo → bulk DELETE /api/todos/:id. Для остальных → bulk closeTask с reason='clean-column'. Во время операции btn.disabled=true. При частичном fail — alert со счётчиками ok/fail.",
+    "createdAt": "2026-05-17T13:01:05.133Z",
+    "updatedAt": "2026-05-17T13:01:05.133Z"
+  },
+  {
+    "element": "tmux-web/static/js/tasks/crud.js",
+    "path": "tmux-web/static/js/tasks/crud.js",
+    "type": "file",
+    "content": "Tasks CRUD + optimistic UI. Экспорты: getIssueIndex, applyOptimisticPatch, rollbackIssue, createTask (POST /api/tasks), updateTask (PATCH /api/tasks/:id), taskOriginById, closeTask (DELETE /api/tasks/:id?reason — закрывает issue, не удаляет), reopenTask (POST /api/tasks/:id/reopen), promoteTodo (POST /api/todos/:id/promote). НОВОЕ (forge-caz3): purgeTask(id) — POST /api/tasks/:id/purge для физического удаления (br delete --hard --force). deleteTodoLocal(id) — DELETE /api/todos/:id для bulk-clean колонки TODO. cleanColumn(status, ids) — batch-операция: для closed вызывает purgeTask, для todo — deleteTodoLocal, для остальных — closeTask(id,'clean-column'). Возвращает {ok, fail}. Все три новые функции с optimistic remove + rollback при ошибке.",
+    "createdAt": "2026-05-17T13:01:10.527Z",
+    "updatedAt": "2026-05-17T13:01:10.527Z"
+  },
+  {
+    "element": "purge_task",
+    "path": "",
+    "type": "unknown",
+    "content": "Backend handler tmux-web/src/main.rs. POST /api/tasks/:id/purge — физически удаляет issue через 'br delete --hard --force --json --reason clean-column <id>'. Маршрут зарегистрирован в .route(\"/api/tasks/:id/purge\", post(purge_task)). Поддерживает remote-proxy через try_proxy_to_remote. cwd берётся из активного проекта. Успех → 204 No Content; ошибка br → 400. Использован bulk-clean кнопкой frontend (forge-caz3) для очистки колонки Closed. Флаг --force даёт удалить даже если есть зависимые issues (избегаем сбоев при массовой очистке).",
+    "createdAt": "2026-05-17T13:01:14.041Z",
+    "updatedAt": "2026-05-17T13:01:14.041Z"
   }
 ]

@@ -1,7 +1,7 @@
 // tmux-web — Tasks kanban render (Phase 1 ES Modules refactor)
 //
 // 1:1 копии из IIFE `tmux-web/static/app.js`:
-//   - TASK_COLUMNS / COLUMN_TITLES / CLOSED_LIMIT (app.js:1859-1877)
+//   - TASK_COLUMNS / COLUMN_TITLES (app.js:1859-1877)
 //   - renderTasks       (app.js:3175)
 //   - compareIssues     (app.js:3225)
 //   - renderColumn      (app.js:3235)
@@ -13,7 +13,7 @@
 import { state } from '../core/state.js';
 import { $tasksBoard, $tasksMeta } from '../core/dom.js';
 import { openCreateModal, openEditModal, openTodoEditModal } from './modals.js';
-import { updateTask, promoteTodo } from './crud.js';
+import { updateTask, promoteTodo, cleanColumn } from './crud.js';
 
 export const TASK_COLUMNS = ['todo', 'open', 'in_progress', 'blocked', 'deferred', 'draft', 'closed'];
 
@@ -26,8 +26,6 @@ export const COLUMN_TITLES = {
     draft: 'Draft',
     closed: 'Closed',
 };
-
-export const CLOSED_LIMIT = 20;
 
 export function currentTodosProjectId() {
     return state.activeProjectId || null;
@@ -55,9 +53,6 @@ export function renderTasks() {
     for (const col of TASK_COLUMNS) {
         if (col === 'todo') continue;
         byStatus[col].sort(compareIssues);
-    }
-    if (byStatus.closed.length > CLOSED_LIMIT) {
-        byStatus.closed = byStatus.closed.slice(0, CLOSED_LIMIT);
     }
 
     $tasksBoard.innerHTML = '';
@@ -111,6 +106,36 @@ export function renderColumn(status, items) {
         });
         right.appendChild(addBtn);
     }
+
+    if (items.length > 0) {
+        const cleanBtn = document.createElement('button');
+        cleanBtn.type = 'button';
+        cleanBtn.className = 'col-clean';
+        cleanBtn.textContent = 'clean';
+        const verb = (status === 'closed')
+            ? 'удалить'
+            : (status === 'todo' ? 'удалить TODO' : 'закрыть');
+        cleanBtn.title = `Массово ${verb} все задачи колонки ${COLUMN_TITLES[status] || status}`;
+        cleanBtn.addEventListener('click', async (ev) => {
+            ev.stopPropagation();
+            const colTitle = COLUMN_TITLES[status] || status;
+            const action = (status === 'closed')
+                ? `физически удалить ${items.length} задач(и) из «${colTitle}»`
+                : (status === 'todo'
+                    ? `удалить ${items.length} TODO из «${colTitle}»`
+                    : `закрыть ${items.length} задач(и) в «${colTitle}»`);
+            if (!window.confirm(`Точно ${action}? Действие необратимо.`)) return;
+            cleanBtn.disabled = true;
+            const ids = items.map((it) => it && it.id).filter(Boolean);
+            const res = await cleanColumn(status, ids);
+            cleanBtn.disabled = false;
+            if (res && res.fail > 0) {
+                window.alert(`Очистка завершена с ошибками: ok=${res.ok}, fail=${res.fail}`);
+            }
+        });
+        right.appendChild(cleanBtn);
+    }
+
     header.appendChild(title);
     header.appendChild(right);
 

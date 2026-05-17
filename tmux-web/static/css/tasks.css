@@ -218,6 +218,34 @@
     background: var(--bg-input-hover);
 }
 
+/* Bulk-clean кнопка в kanban-col-header (forge-caz3) */
+.kanban-col-header .col-clean {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--fg-mute);
+    font-family: inherit;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-left: 4px;
+    transition: color 100ms ease, border-color 100ms ease, background 100ms ease;
+}
+
+.kanban-col-header .col-clean:hover {
+    color: #e84d4d;
+    border-color: #e84d4d;
+    background: var(--bg-input-hover);
+}
+
+.kanban-col-header .col-clean:disabled {
+    opacity: 0.5;
+    cursor: progress;
+}
+
 .kanban-col-header .col-meta {
     display: flex;
     align-items: center;

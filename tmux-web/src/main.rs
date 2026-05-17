@@ -379,6 +379,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/tasks", get(get_tasks).post(create_task))
         .route("/api/tasks/:id", patch(patch_task).delete(close_task))
         .route("/api/tasks/:id/reopen", post(reopen_task))
+        .route("/api/tasks/:id/purge", post(purge_task))
         // Projects API (Phase 6.B).
         .route("/api/projects", get(get_projects).post(create_project))
         .route("/api/projects/:id", delete(delete_project))
@@ -1603,6 +1604,54 @@ async fn reopen_task(
         }
         Err(e) => {
             tracing::warn!(%id, error = ?e, "br reopen failed");
+            Err((StatusCode::BAD_REQUEST, format!("{e:#}")))
+        }
+    }
+}
+
+/// `POST /api/tasks/:id/purge` — физически удаляет issue через
+/// `br delete --hard --force --json` (используется bulk-clean кнопкой
+/// фронта для колонки Closed). 204 No Content при успехе; ошибка `br`
+/// маппится в 400.
+async fn purge_task(
+    State(state): State<AppState>,
+    AxumPath(id): AxumPath<String>,
+    Query(q): Query<HashMap<String, String>>,
+) -> Result<Response, (StatusCode, String)> {
+    if let Some(result) = try_proxy_to_remote(
+        &state,
+        &q,
+        reqwest::Method::POST,
+        &format!("/api/tasks/{}/purge", urlencode_minimal(&id)),
+        None,
+        None,
+        false,
+    )
+    .await
+    {
+        return result;
+    }
+
+    let cwd = {
+        let store = state.projects.read().await;
+        store.active().path.clone()
+    };
+    let args = [
+        "delete",
+        "--hard",
+        "--force",
+        "--json",
+        "--reason",
+        "clean-column",
+        id.as_str(),
+    ];
+    match tasks::run_br(&args, &cwd).await {
+        Ok(_) => {
+            tracing::info!(%id, "task purged");
+            Ok(StatusCode::NO_CONTENT.into_response())
+        }
+        Err(e) => {
+            tracing::warn!(%id, error = ?e, "br delete failed");
             Err((StatusCode::BAD_REQUEST, format!("{e:#}")))
         }
     }

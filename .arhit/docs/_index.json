@@ -1897,9 +1897,9 @@
     "element": "tmux-web/static/js/tasks/render.js",
     "path": "tmux-web/static/js/tasks/render.js",
     "type": "file",
-    "content": "Phase 1. Tasks kanban render: TASK_COLUMNS=[todo,open,in_progress,blocked,deferred,draft,closed], COLUMN_TITLES, CLOSED_LIMIT=20. renderTasks (board), compareIssues (priority asc, updated_at desc), renderColumn (DnD-aware: TODO принимает только в open; bd-issue запрещён в todo), renderTodoCard (drag payload 'todo:<id>'), renderCard. currentTodosProjectId возвращает state.activeProjectId.",
+    "content": "Phase 1. Tasks kanban render: TASK_COLUMNS=[todo,open,in_progress,blocked,deferred,draft,closed], COLUMN_TITLES. renderTasks (board), compareIssues (priority asc, updated_at desc), renderColumn (DnD-aware: TODO принимает только в open; bd-issue запрещён в todo), renderTodoCard (drag payload 'todo:<id>'), renderCard. currentTodosProjectId возвращает state.activeProjectId. ИЗМЕНЕНИЕ (forge-ja22): убран CLOSED_LIMIT=20 — колонка closed теперь показывает все закрытые задачи (backend tasks.rs уже отдаёт --limit 0, ограничение было только на UI).",
     "createdAt": "2026-05-17T12:23:26.545Z",
-    "updatedAt": "2026-05-17T12:23:26.545Z"
+    "updatedAt": "2026-05-17T12:55:46.431Z"
   },
   {
     "element": "tmux-web/static/js/tasks/crud.js",
