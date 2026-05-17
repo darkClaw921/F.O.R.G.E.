@@ -66,3 +66,15 @@ coverage/
 *.lcov
 .nyc_output/
 beads_rust
+
+# Playwright / E2E artifacts
+**/playwright-report/
+**/test-results/
+**/blob-report/
+**/playwright/.cache/
+e2e/.playwright/
+
+# JS lockfiles (опционально — снимай, если хочешь зафиксировать версии)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml

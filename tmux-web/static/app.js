@@ -119,6 +119,8 @@
         attachWsOrigin: null,    // 'local' | server_id | null — last origin
         currentSession: null,    // имя активной сессии (или null)
         sessions: [],             // последний список сессий (для рендера)
+        currentWindows: [],       // окна активной сессии (для window-bar)
+        windowsPollTimer: null,   // setInterval для poll окон активной сессии
         pollTimer: null,
         encoder: new TextEncoder(),
         // anti-loop: при resize PTY эхом не порождает onResize-петлю,
@@ -175,6 +177,9 @@
     const $btnNew = document.getElementById('btn-new');
     const $terminalEl = document.getElementById('terminal');
     const $placeholder = document.getElementById('placeholder');
+    const $windowBar = document.getElementById('window-bar');
+    const $windowTabs = document.getElementById('window-tabs');
+    const $windowNewBtn = document.getElementById('window-new');
     const $statusDot = document.getElementById('status-dot');
     const $statusText = document.getElementById('status-text');
     // Phase 6.A: tab-bar и Tasks UI.
@@ -520,6 +525,21 @@
         li.appendChild(meta);
 
         const sessOrigin = dtoOrigin(s);
+
+        const actions = document.createElement('div');
+        actions.className = 'session-actions';
+
+        const btnRename = document.createElement('button');
+        btnRename.type = 'button';
+        btnRename.className = 'btn-rename';
+        btnRename.textContent = 'rename';
+        btnRename.title = `Переименовать сессию ${s.name}`;
+        btnRename.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            renameSession(s.name, sessOrigin);
+        });
+        actions.appendChild(btnRename);
+
         const btnKill = document.createElement('button');
         btnKill.type = 'button';
         btnKill.className = 'btn-kill';
@@ -529,7 +549,9 @@
             ev.stopPropagation();
             killSession(s.name, sessOrigin);
         });
-        li.appendChild(btnKill);
+        actions.appendChild(btnKill);
+
+        li.appendChild(actions);
 
         // Click по элементу (но не по кнопке) — open / switch (cx2.6).
         // Phase 5: передаём origin (берётся из DTO.origin).
@@ -1320,6 +1342,247 @@
         }
     }
 
+    // =========================================================================
+    // tmux windows (внутри активной сессии)
+    // =========================================================================
+
+    async function fetchWindows() {
+        const session = state.currentSession;
+        if (!session) {
+            state.currentWindows = [];
+            renderWindowBar();
+            return;
+        }
+        try {
+            const resp = await apiFetch(
+                '/api/sessions/' + encodeURIComponent(session) + '/windows',
+                { headers: { 'Accept': 'application/json' } },
+                state.attachWsOrigin,
+            );
+            if (!resp.ok) {
+                // 400 (сессии уже нет) — очищаем UI, остановим polling.
+                if (resp.status === 400 || resp.status === 404) {
+                    state.currentWindows = [];
+                    renderWindowBar();
+                }
+                return;
+            }
+            const data = await resp.json();
+            state.currentWindows = Array.isArray(data) ? data : [];
+            renderWindowBar();
+        } catch (e) {
+            console.warn('fetchWindows failed', e);
+        }
+    }
+
+    function renderWindowBar() {
+        if (!$windowBar || !$windowTabs) return;
+        const onTerminal = state.activeTab === 'terminal' || !state.activeTab;
+        const hasSession = !!state.currentSession;
+        const visible = onTerminal && hasSession;
+        $windowBar.hidden = !visible;
+        if (!visible) {
+            $windowTabs.innerHTML = '';
+            return;
+        }
+
+        $windowTabs.innerHTML = '';
+        for (const w of state.currentWindows) {
+            const tab = document.createElement('button');
+            tab.type = 'button';
+            tab.className = 'window-tab' + (w.active ? ' active' : '');
+            tab.dataset.index = String(w.index);
+            tab.title = `Окно ${w.index}: ${w.name} (${w.panes} pane${w.panes === 1 ? '' : 's'})`;
+
+            const idx = document.createElement('span');
+            idx.className = 'window-tab-idx';
+            idx.textContent = String(w.index);
+            tab.appendChild(idx);
+
+            const label = document.createElement('span');
+            label.className = 'window-tab-name';
+            label.textContent = w.name;
+            tab.appendChild(label);
+
+            tab.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                selectWindow(w.index);
+            });
+            tab.addEventListener('dblclick', (ev) => {
+                ev.stopPropagation();
+                renameWindow(w.index, w.name);
+            });
+
+            const close = document.createElement('button');
+            close.type = 'button';
+            close.className = 'window-tab-close';
+            close.textContent = '×';
+            close.title = `Убить окно ${w.index}`;
+            close.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                killWindow(w.index, w.name);
+            });
+            tab.appendChild(close);
+
+            $windowTabs.appendChild(tab);
+        }
+    }
+
+    async function selectWindow(index) {
+        const session = state.currentSession;
+        if (!session) return;
+        try {
+            const resp = await apiFetch(
+                '/api/sessions/' + encodeURIComponent(session)
+                    + '/windows/' + encodeURIComponent(index) + '/select',
+                { method: 'POST' },
+                state.attachWsOrigin,
+            );
+            if (!resp.ok && resp.status !== 204) {
+                const text = await resp.text();
+                window.alert('Не удалось переключить окно: ' + (text || resp.status));
+                return;
+            }
+            await fetchWindows();
+        } catch (e) {
+            window.alert('Ошибка запроса: ' + e.message);
+        }
+    }
+
+    async function createWindow() {
+        const session = state.currentSession;
+        if (!session) return;
+        // Имя опционально: пустое → tmux назначит дефолтное (имя текущей команды).
+        const input = window.prompt('Имя нового окна (пусто = по умолчанию):', '');
+        if (input === null) return;
+        const trimmed = input.trim();
+        const body = trimmed ? JSON.stringify({ name: trimmed }) : '';
+        try {
+            const init = {
+                method: 'POST',
+                headers: trimmed ? { 'Content-Type': 'application/json' } : {},
+            };
+            if (body) init.body = body;
+            const resp = await apiFetch(
+                '/api/sessions/' + encodeURIComponent(session) + '/windows',
+                init,
+                state.attachWsOrigin,
+            );
+            if (!resp.ok && resp.status !== 201) {
+                const text = await resp.text();
+                window.alert('Не удалось создать окно: ' + (text || resp.status));
+                return;
+            }
+            await fetchWindows();
+        } catch (e) {
+            window.alert('Ошибка запроса: ' + e.message);
+        }
+    }
+
+    async function killWindow(index, name) {
+        const session = state.currentSession;
+        if (!session) return;
+        if (!window.confirm(`Убить окно ${index} "${name}"?`)) return;
+        try {
+            const resp = await apiFetch(
+                '/api/sessions/' + encodeURIComponent(session)
+                    + '/windows/' + encodeURIComponent(index),
+                { method: 'DELETE' },
+                state.attachWsOrigin,
+            );
+            if (!resp.ok && resp.status !== 204) {
+                const text = await resp.text();
+                window.alert('Не удалось убить окно: ' + (text || resp.status));
+                return;
+            }
+            await fetchWindows();
+        } catch (e) {
+            window.alert('Ошибка запроса: ' + e.message);
+        }
+    }
+
+    async function renameWindow(index, oldName) {
+        const session = state.currentSession;
+        if (!session) return;
+        const input = window.prompt(`Новое имя окна ${index}:`, oldName);
+        if (input === null) return;
+        const trimmed = input.trim();
+        if (!trimmed || trimmed === oldName) return;
+        try {
+            const resp = await apiFetch(
+                '/api/sessions/' + encodeURIComponent(session)
+                    + '/windows/' + encodeURIComponent(index),
+                {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: trimmed }),
+                },
+                state.attachWsOrigin,
+            );
+            if (!resp.ok) {
+                const text = await resp.text();
+                window.alert('Не удалось переименовать окно: ' + (text || resp.status));
+                return;
+            }
+            await fetchWindows();
+        } catch (e) {
+            window.alert('Ошибка запроса: ' + e.message);
+        }
+    }
+
+    function startWindowsPolling() {
+        stopWindowsPolling();
+        // Сразу первый fetch, потом каждые 2 секунды.
+        fetchWindows();
+        state.windowsPollTimer = setInterval(fetchWindows, 2000);
+    }
+
+    function stopWindowsPolling() {
+        if (state.windowsPollTimer) {
+            clearInterval(state.windowsPollTimer);
+            state.windowsPollTimer = null;
+        }
+        state.currentWindows = [];
+        renderWindowBar();
+    }
+
+    async function renameSession(oldName, origin) {
+        const input = window.prompt(`Новое имя сессии "${oldName}":`, oldName);
+        if (input === null) return;
+        const trimmed = input.trim();
+        if (!trimmed || trimmed === oldName) return;
+        try {
+            const resp = await apiFetch('/api/sessions/' + encodeURIComponent(oldName), {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: trimmed }),
+            }, origin);
+            if (!resp.ok) {
+                const text = await resp.text();
+                window.alert('Не удалось переименовать сессию: ' + (text || resp.status));
+                return;
+            }
+            let newName = trimmed;
+            try {
+                const data = await resp.json();
+                if (data && typeof data.name === 'string') newName = data.name;
+            } catch (_) { /* сервер мог не вернуть тело — fallback на trimmed */ }
+
+            // Если переименована текущая открытая сессия — переключаем WS на новое имя.
+            if (state.currentSession === oldName) {
+                disconnectWs();
+                state.currentSession = null;
+                showPlaceholder(true);
+                await fetchSessions();
+                openSession(newName, origin);
+            } else {
+                await fetchSessions();
+            }
+        } catch (e) {
+            window.alert('Ошибка запроса: ' + e.message);
+        }
+    }
+
     async function killSession(name, origin) {
         if (!window.confirm(`Убить сессию "${name}"?`)) return;
         try {
@@ -1478,6 +1741,8 @@
                 state.term.reset();
                 state.term.focus();
             }
+            // Window-bar: запускаем polling окон сессии.
+            startWindowsPolling();
         };
 
         ws.onmessage = (ev) => {
@@ -1568,6 +1833,7 @@
             clearTimeout(state.attachWsReconnectTimer);
             state.attachWsReconnectTimer = null;
         }
+        stopWindowsPolling();
         if (state.ws) {
             try {
                 state.ws.onmessage = null;
@@ -1659,6 +1925,7 @@
         // Видимость контейнеров.
         $terminalEl.hidden = !onTerminal;
         if ($placeholder) $placeholder.hidden = !onTerminal;
+        if ($windowBar) $windowBar.hidden = !onTerminal || !state.currentSession;
         $tasksEl.hidden = !onTasks;
         if ($gitEl) $gitEl.hidden = !onGit;
         if ($dockerEl) $dockerEl.hidden = !onDocker;
@@ -6304,6 +6571,7 @@
         setStatus('disconnected', 'disconnected');
 
         $btnNew.addEventListener('click', createSessionPrompt);
+        if ($windowNewBtn) $windowNewBtn.addEventListener('click', createWindow);
 
         // Phase 6.A: Tab-bar listeners.
         if ($tabTerminal) $tabTerminal.addEventListener('click', () => switchTab('terminal'));

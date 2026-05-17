@@ -362,7 +362,19 @@ async fn main() -> anyhow::Result<()> {
         .route("/healthz", get(healthz))
         // Sessions API.
         .route("/api/sessions", get(get_sessions).post(create_session))
-        .route("/api/sessions/:name", delete(delete_session))
+        .route("/api/sessions/:name", delete(delete_session).patch(rename_session))
+        .route(
+            "/api/sessions/:name/windows",
+            get(list_windows).post(create_window),
+        )
+        .route(
+            "/api/sessions/:name/windows/:index",
+            delete(delete_window).patch(patch_window),
+        )
+        .route(
+            "/api/sessions/:name/windows/:index/select",
+            post(select_window),
+        )
         // Tasks API.
         .route("/api/tasks", get(get_tasks).post(create_task))
         .route("/api/tasks/:id", patch(patch_task).delete(close_task))
@@ -935,6 +947,274 @@ async fn delete_session(
         }
         Err(e) => {
             tracing::warn!(%name, error = ?e, "kill_session failed");
+            Err((StatusCode::BAD_REQUEST, format!("{e:#}")))
+        }
+    }
+}
+
+/// Тело запроса `PATCH /api/sessions/:name`.
+#[derive(Debug, Deserialize)]
+struct RenameSessionReq {
+    name: String,
+}
+
+/// `PATCH /api/sessions/:name` — переименовывает существующую сессию.
+/// Новое имя автопрефиксуется через `active.tmux_prefix` (если ещё не префиксовано),
+/// как и при `POST /api/sessions`.
+///
+/// - 200 OK + `{ "name": "<new>" }` при успехе.
+/// - 400 Bad Request при невалидном теле/имени, если сессии нет или новое имя занято.
+async fn rename_session(
+    State(state): State<AppState>,
+    AxumPath(name): AxumPath<String>,
+    Query(q): Query<HashMap<String, String>>,
+    body: Bytes,
+) -> Result<Response, (StatusCode, String)> {
+    let path = format!("/api/sessions/{}", urlencode_minimal(&name));
+    if let Some(result) = try_proxy_to_remote(
+        &state,
+        &q,
+        reqwest::Method::PATCH,
+        &path,
+        Some("application/json"),
+        Some(body.clone()),
+        false,
+    )
+    .await
+    {
+        return result;
+    }
+
+    let req: RenameSessionReq = serde_json::from_slice(&body)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid body: {e}")))?;
+
+    let new_name = {
+        let store = state.projects.read().await;
+        let active = store.active();
+        ensure_prefixed(&active.tmux_prefix, req.name.trim())
+    };
+
+    match tmux::rename_session(&name, &new_name).await {
+        Ok(()) => {
+            tracing::info!(old = %name, new = %new_name, "tmux session renamed");
+            Ok(Json(serde_json::json!({ "name": new_name })).into_response())
+        }
+        Err(e) => {
+            tracing::warn!(%name, new = %new_name, error = ?e, "rename_session failed");
+            Err((StatusCode::BAD_REQUEST, format!("{e:#}")))
+        }
+    }
+}
+
+// =============================================================================
+// Windows endpoints (внутри сессии)
+// =============================================================================
+
+/// `GET /api/sessions/:name/windows` — JSON-массив всех окон сессии.
+async fn list_windows(
+    State(state): State<AppState>,
+    AxumPath(name): AxumPath<String>,
+    Query(q): Query<HashMap<String, String>>,
+) -> Result<Response, (StatusCode, String)> {
+    let path = format!("/api/sessions/{}/windows", urlencode_minimal(&name));
+    if let Some(result) = try_proxy_to_remote(
+        &state,
+        &q,
+        reqwest::Method::GET,
+        &path,
+        None,
+        None,
+        false,
+    )
+    .await
+    {
+        return result;
+    }
+
+    match tmux::list_windows(&name).await {
+        Ok(wins) => Ok(Json(wins).into_response()),
+        Err(e) => {
+            tracing::warn!(%name, error = ?e, "list_windows failed");
+            Err((StatusCode::BAD_REQUEST, format!("{e:#}")))
+        }
+    }
+}
+
+/// Тело запроса `POST /api/sessions/:name/windows` (опциональное имя нового окна).
+#[derive(Debug, Deserialize, Default)]
+struct CreateWindowReq {
+    #[serde(default)]
+    name: Option<String>,
+}
+
+/// `POST /api/sessions/:name/windows` — создаёт новое окно в сессии.
+/// Body опционален: `{ "name": "..." }`.
+async fn create_window(
+    State(state): State<AppState>,
+    AxumPath(name): AxumPath<String>,
+    Query(q): Query<HashMap<String, String>>,
+    body: Bytes,
+) -> Result<Response, (StatusCode, String)> {
+    let path = format!("/api/sessions/{}/windows", urlencode_minimal(&name));
+    if let Some(result) = try_proxy_to_remote(
+        &state,
+        &q,
+        reqwest::Method::POST,
+        &path,
+        Some("application/json"),
+        Some(body.clone()),
+        false,
+    )
+    .await
+    {
+        return result;
+    }
+
+    let req: CreateWindowReq = if body.is_empty() {
+        CreateWindowReq::default()
+    } else {
+        serde_json::from_slice(&body)
+            .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid body: {e}")))?
+    };
+
+    let win_name = req
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+
+    match tmux::new_window(&name, win_name).await {
+        Ok(()) => {
+            tracing::info!(session = %name, win = ?win_name, "tmux window created");
+            Ok(StatusCode::CREATED.into_response())
+        }
+        Err(e) => {
+            tracing::warn!(session = %name, error = ?e, "new_window failed");
+            Err((StatusCode::BAD_REQUEST, format!("{e:#}")))
+        }
+    }
+}
+
+/// `POST /api/sessions/:name/windows/:index/select` — делает окно активным.
+async fn select_window(
+    State(state): State<AppState>,
+    AxumPath((name, index)): AxumPath<(String, u32)>,
+    Query(q): Query<HashMap<String, String>>,
+) -> Result<Response, (StatusCode, String)> {
+    let path = format!(
+        "/api/sessions/{}/windows/{}/select",
+        urlencode_minimal(&name),
+        index
+    );
+    if let Some(result) = try_proxy_to_remote(
+        &state,
+        &q,
+        reqwest::Method::POST,
+        &path,
+        None,
+        None,
+        false,
+    )
+    .await
+    {
+        return result;
+    }
+
+    match tmux::select_window(&name, index).await {
+        Ok(()) => {
+            tracing::info!(session = %name, %index, "tmux window selected");
+            Ok(StatusCode::NO_CONTENT.into_response())
+        }
+        Err(e) => {
+            tracing::warn!(session = %name, %index, error = ?e, "select_window failed");
+            Err((StatusCode::BAD_REQUEST, format!("{e:#}")))
+        }
+    }
+}
+
+/// `DELETE /api/sessions/:name/windows/:index` — убивает окно.
+async fn delete_window(
+    State(state): State<AppState>,
+    AxumPath((name, index)): AxumPath<(String, u32)>,
+    Query(q): Query<HashMap<String, String>>,
+) -> Result<Response, (StatusCode, String)> {
+    let path = format!(
+        "/api/sessions/{}/windows/{}",
+        urlencode_minimal(&name),
+        index
+    );
+    if let Some(result) = try_proxy_to_remote(
+        &state,
+        &q,
+        reqwest::Method::DELETE,
+        &path,
+        None,
+        None,
+        false,
+    )
+    .await
+    {
+        return result;
+    }
+
+    match tmux::kill_window(&name, index).await {
+        Ok(()) => {
+            tracing::info!(session = %name, %index, "tmux window killed");
+            Ok(StatusCode::NO_CONTENT.into_response())
+        }
+        Err(e) => {
+            tracing::warn!(session = %name, %index, error = ?e, "kill_window failed");
+            Err((StatusCode::BAD_REQUEST, format!("{e:#}")))
+        }
+    }
+}
+
+/// Тело запроса `PATCH /api/sessions/:name/windows/:index` — переименование.
+#[derive(Debug, Deserialize)]
+struct RenameWindowReq {
+    name: String,
+}
+
+/// `PATCH /api/sessions/:name/windows/:index` — переименовывает окно.
+async fn patch_window(
+    State(state): State<AppState>,
+    AxumPath((name, index)): AxumPath<(String, u32)>,
+    Query(q): Query<HashMap<String, String>>,
+    body: Bytes,
+) -> Result<Response, (StatusCode, String)> {
+    let path = format!(
+        "/api/sessions/{}/windows/{}",
+        urlencode_minimal(&name),
+        index
+    );
+    if let Some(result) = try_proxy_to_remote(
+        &state,
+        &q,
+        reqwest::Method::PATCH,
+        &path,
+        Some("application/json"),
+        Some(body.clone()),
+        false,
+    )
+    .await
+    {
+        return result;
+    }
+
+    let req: RenameWindowReq = serde_json::from_slice(&body)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid body: {e}")))?;
+    let new_name = req.name.trim().to_string();
+    if new_name.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "name must not be empty".to_string()));
+    }
+
+    match tmux::rename_window(&name, index, &new_name).await {
+        Ok(()) => {
+            tracing::info!(session = %name, %index, new = %new_name, "tmux window renamed");
+            Ok(Json(serde_json::json!({ "name": new_name })).into_response())
+        }
+        Err(e) => {
+            tracing::warn!(session = %name, %index, error = ?e, "rename_window failed");
             Err((StatusCode::BAD_REQUEST, format!("{e:#}")))
         }
     }

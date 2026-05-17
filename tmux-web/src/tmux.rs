@@ -313,6 +313,237 @@ pub async fn kill_session(name: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Переименовывает существующую сессию (`tmux rename-session -t <old> <new>`).
+///
+/// Оба имени валидируются через [`is_valid_session_name`]. Если сессии с
+/// именем `old` нет, либо `new` уже занято — tmux вернёт ненулевой exit,
+/// который мапится в `Err`.
+pub async fn rename_session(old: &str, new: &str) -> anyhow::Result<()> {
+    if !is_valid_session_name(old) {
+        bail!(
+            "invalid session name `{}` (allowed: [A-Za-z0-9_-]+, non-empty)",
+            old
+        );
+    }
+    if !is_valid_session_name(new) {
+        bail!(
+            "invalid session name `{}` (allowed: [A-Za-z0-9_-]+, non-empty)",
+            new
+        );
+    }
+    if old == new {
+        return Ok(());
+    }
+
+    let output = Command::new("tmux")
+        .args(["rename-session", "-t", old, new])
+        .output()
+        .await
+        .context("failed to spawn `tmux rename-session`")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!(
+            "tmux rename-session failed (exit {:?}): {}",
+            output.status.code(),
+            stderr.trim()
+        ));
+    }
+    Ok(())
+}
+
+/// Метаданные одного окна tmux внутри сессии.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WindowInfo {
+    /// Индекс окна в сессии (`#{window_index}`). tmux нумерует с base-index
+    /// (по умолчанию 0). Используется как target после `:`.
+    pub index: u32,
+    /// Имя окна (`#{window_name}`).
+    pub name: String,
+    /// `true` если это активное окно сессии (`#{window_active}` = `1`).
+    pub active: bool,
+    /// Количество панелей в окне (`#{window_panes}`).
+    pub panes: u32,
+}
+
+const LW_FORMAT: &str = "#{window_index}|#{window_name}|#{window_active}|#{window_panes}";
+
+/// Перечисляет окна одной tmux-сессии (`tmux list-windows -t <session> -F ...`).
+///
+/// Возвращает `Err`, если сессии нет или tmux-сервер не запущен — это
+/// сознательное решение: вызывающая сторона запрашивает окна конкретной
+/// сессии, и отсутствие сессии — это ошибка, а не «пустой список».
+pub async fn list_windows(session: &str) -> anyhow::Result<Vec<WindowInfo>> {
+    if !is_valid_session_name(session) {
+        bail!(
+            "invalid session name `{}` (allowed: [A-Za-z0-9_-]+, non-empty)",
+            session
+        );
+    }
+
+    let output = Command::new("tmux")
+        .args(["list-windows", "-t", session, "-F", LW_FORMAT])
+        .output()
+        .await
+        .context("failed to spawn `tmux list-windows`")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!(
+            "tmux list-windows failed (exit {:?}): {}",
+            output.status.code(),
+            stderr.trim()
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut wins = Vec::new();
+    for line in stdout.lines() {
+        if line.is_empty() {
+            continue;
+        }
+        match parse_window_line(line) {
+            Some(w) => wins.push(w),
+            None => tracing::warn!(line = %line, "skipping malformed tmux list-windows line"),
+        }
+    }
+    Ok(wins)
+}
+
+/// Парсит одну строку формата `index|name|active|panes`.
+fn parse_window_line(line: &str) -> Option<WindowInfo> {
+    let mut parts = line.splitn(4, '|');
+    let index = parts.next()?.parse().ok()?;
+    let name = parts.next()?.to_string();
+    let active = matches!(parts.next()?, "1");
+    let panes = parts.next()?.parse().ok()?;
+    Some(WindowInfo { index, name, active, panes })
+}
+
+/// Создаёт новое окно в существующей сессии (`tmux new-window -t <session>`).
+///
+/// По умолчанию tmux назначает следующий свободный индекс и сразу делает
+/// окно активным. Если передано непустое `name` — окно создаётся с `-n <name>`.
+pub async fn new_window(session: &str, name: Option<&str>) -> anyhow::Result<()> {
+    if !is_valid_session_name(session) {
+        bail!(
+            "invalid session name `{}` (allowed: [A-Za-z0-9_-]+, non-empty)",
+            session
+        );
+    }
+
+    let mut args: Vec<&str> = vec!["new-window", "-t", session];
+    if let Some(n) = name {
+        if !n.is_empty() {
+            args.push("-n");
+            args.push(n);
+        }
+    }
+
+    let output = Command::new("tmux")
+        .args(&args)
+        .output()
+        .await
+        .context("failed to spawn `tmux new-window`")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!(
+            "tmux new-window failed (exit {:?}): {}",
+            output.status.code(),
+            stderr.trim()
+        ));
+    }
+    Ok(())
+}
+
+/// Делает указанное окно активным (`tmux select-window -t <session>:<index>`).
+///
+/// Все прикреплённые клиенты автоматически переключатся — в том числе наш
+/// WS-attach (он использует `tmux attach -t <session>` и следует за активным
+/// окном сессии).
+pub async fn select_window(session: &str, index: u32) -> anyhow::Result<()> {
+    if !is_valid_session_name(session) {
+        bail!(
+            "invalid session name `{}` (allowed: [A-Za-z0-9_-]+, non-empty)",
+            session
+        );
+    }
+    let target = format!("{session}:{index}");
+    let output = Command::new("tmux")
+        .args(["select-window", "-t", &target])
+        .output()
+        .await
+        .context("failed to spawn `tmux select-window`")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!(
+            "tmux select-window failed (exit {:?}): {}",
+            output.status.code(),
+            stderr.trim()
+        ));
+    }
+    Ok(())
+}
+
+/// Убивает указанное окно (`tmux kill-window -t <session>:<index>`).
+///
+/// Если это было последнее окно сессии — tmux убьёт и саму сессию.
+pub async fn kill_window(session: &str, index: u32) -> anyhow::Result<()> {
+    if !is_valid_session_name(session) {
+        bail!(
+            "invalid session name `{}` (allowed: [A-Za-z0-9_-]+, non-empty)",
+            session
+        );
+    }
+    let target = format!("{session}:{index}");
+    let output = Command::new("tmux")
+        .args(["kill-window", "-t", &target])
+        .output()
+        .await
+        .context("failed to spawn `tmux kill-window`")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!(
+            "tmux kill-window failed (exit {:?}): {}",
+            output.status.code(),
+            stderr.trim()
+        ));
+    }
+    Ok(())
+}
+
+/// Переименовывает указанное окно (`tmux rename-window -t <session>:<index> <name>`).
+pub async fn rename_window(session: &str, index: u32, name: &str) -> anyhow::Result<()> {
+    if !is_valid_session_name(session) {
+        bail!(
+            "invalid session name `{}` (allowed: [A-Za-z0-9_-]+, non-empty)",
+            session
+        );
+    }
+    if name.is_empty() {
+        bail!("window name must not be empty");
+    }
+    let target = format!("{session}:{index}");
+    let output = Command::new("tmux")
+        .args(["rename-window", "-t", &target, name])
+        .output()
+        .await
+        .context("failed to spawn `tmux rename-window`")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!(
+            "tmux rename-window failed (exit {:?}): {}",
+            output.status.code(),
+            stderr.trim()
+        ));
+    }
+    Ok(())
+}
+
 /// Проверяет имя сессии: только `[A-Za-z0-9_-]+`, непустое.
 ///
 /// tmux семантически плохо переваривает имена с `:` (target syntax) и `.`

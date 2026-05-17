@@ -539,5 +539,29 @@
     "content": "Загрузка/сохранение ~/.config/forge/server_config.json и резолвинг эффективной конфигурации сервера для devforge.\n\n## ServerConfig\nФайл JSON: { auth_token: Option<String>, bind: Option<String>, port: Option<u16> }. Все поля опциональны.\n\n## resolve(cli_opts, file_cfg) -> EffectiveConfig\n\nИсточники в порядке приоритета: CLI > server_config.json > env > default.\n\n**Изменено (Phase 'mobile UX'):** remote_mode определяется ТОЛЬКО CLI флагом --remote. Раньше файл мог авто-включать remote_mode если в нём были auth_token/bind — это сбивало с толку: после одного --remote запуска следующий 'cargo run' без флагов автоматически поднимался на 0.0.0.0 + bearer auth. Сейчас:\n- cargo run (без флагов) → 127.0.0.1, remote_mode=false, auth=false.\n- cargo run --remote → 0.0.0.0, remote_mode=true, токен из файла (или auto-gen).\n\nМетод ServerConfig::implies_remote() удалён (был только для auto-remote).\n\n## Финальные значения\n- port: cli > file > DEFAULT_PORT (7331).\n- bind: CLI > file (только при remote_mode); в legacy localhost-mode ВСЕГДА 127.0.0.1.\n- auth_token: CLI > file (только при remote_mode); legacy → None.\n\n## EffectiveConfig\n{ bind: String, port: u16, auth_token: Option<String>, remote_mode: bool }.\n\n## Зависимости\n- anyhow, serde, serde_json для load/save.\n- cli::state_dir для пути к файлу.",
     "createdAt": "2026-05-16T18:00:37.842Z",
     "updatedAt": "2026-05-16T18:00:37.842Z"
+  },
+  {
+    "element": "tmux-web/src/tmux.rs::windows",
+    "path": "",
+    "type": "unknown",
+    "content": "Окно tmux (window) внутри сессии — функции listing/CRUD.\\n\\n- pub struct WindowInfo { index: u32, name: String, active: bool, panes: u32 } — DTO одного окна. active=true для текущего активного окна сессии (#{window_active}=1). panes — кол-во панелей внутри окна.\\n- const LW_FORMAT — формат для tmux list-windows: '#{window_index}|#{window_name}|#{window_active}|#{window_panes}'.\\n- pub async fn list_windows(session) → Vec<WindowInfo>. В отличие от list_sessions ошибка 'no server running' / 'can't find session' возвращается как Err (вызывающий специально запрашивал окна конкретной сессии).\\n- fn parse_window_line(line) → Option<WindowInfo> — парсит одну строку, splitn(4, '|'). active=matches!(_, '1').\\n- pub async fn new_window(session, name: Option<&str>) — 'tmux new-window -t <session>' (+ '-n <name>' если задано). tmux назначает следующий свободный index и сразу делает окно активным.\\n- pub async fn select_window(session, index) — 'tmux select-window -t <session>:<index>'. Все прикреплённые WS-клиенты автоматически переключаются.\\n- pub async fn kill_window(session, index) — 'tmux kill-window -t <session>:<index>'. Если это последнее окно — сессия тоже умирает.\\n- pub async fn rename_window(session, index, name) — 'tmux rename-window -t <session>:<index> <name>'. Пустое имя → Err.\\n\\nВсе функции валидируют session через is_valid_session_name. index типизирован как u32 (axum-extractor парсит автоматически).",
+    "createdAt": "2026-05-17T11:01:24.126Z",
+    "updatedAt": "2026-05-17T11:01:24.126Z"
+  },
+  {
+    "element": "tmux-web/src/main.rs::windows_api",
+    "path": "",
+    "type": "unknown",
+    "content": "REST-эндпоинты управления окнами tmux внутри сессии. Все поддерживают origin-проксирование через try_proxy_to_remote(?server=<id>).\\n\\n- GET /api/sessions/:name/windows → JSON [WindowInfo]. Хендлер list_windows. 400 если сессии нет.\\n- POST /api/sessions/:name/windows → 201 Created. Body опционален: { name?: string }. Пустое тело → дефолтное имя tmux. Хендлер create_window.\\n- POST /api/sessions/:name/windows/:index/select → 204 No Content. Делает указанное окно активным; прикреплённые WS-клиенты следуют автоматически. Хендлер select_window.\\n- DELETE /api/sessions/:name/windows/:index → 204 No Content. Хендлер delete_window.\\n- PATCH /api/sessions/:name/windows/:index → 200 + { name } — переименовывает окно. Body: { name: string }. Хендлер patch_window.\\n\\nAxumPath<(String, u32)> используется для парсинга составного пути с index. Все ошибки → 400 Bad Request с stderr-сообщением tmux.",
+    "createdAt": "2026-05-17T11:01:30.758Z",
+    "updatedAt": "2026-05-17T11:01:30.758Z"
+  },
+  {
+    "element": "tmux-web/static/app.js::windowBar",
+    "path": "",
+    "type": "unknown",
+    "content": "UI-таб-бар окон tmux над терминалом (#window-bar в index.html, между #tab-bar и #terminal).\\n\\nDOM:  (.window-bar),  (.window-tabs scroll-flex контейнер),  (+).\\n\\nState:\\n- state.currentWindows: WindowInfo[] — последний snapshot окон активной сессии.\\n- state.windowsPollTimer: setInterval handle для poll каждые 2 секунды.\\n\\nЖизненный цикл:\\n- ws.onopen → startWindowsPolling() — первый fetch + setInterval 2000ms.\\n- disconnectWs() → stopWindowsPolling() — clearInterval + currentWindows=[] + render.\\n- switchTab() обновляет hidden у .\\n\\nФункции:\\n- fetchWindows() — GET /api/sessions/:name/windows через apiFetch (origin-aware). При 400/404 → очищает state.currentWindows (сессии уже нет).\\n- renderWindowBar() — рендерит таб для каждого WindowInfo. Активный получает .active. Содержимое: span.window-tab-idx (индекс), span.window-tab-name (имя), button.window-tab-close (×). Клик → selectWindow, double-click → renameWindow, клик по × → killWindow с confirm.\\n- createWindow() — prompt имени (пусто → дефолт tmux) → POST /api/sessions/:name/windows.\\n- selectWindow(index) — POST /api/sessions/:name/windows/:index/select.\\n- killWindow(index, name) — confirm + DELETE.\\n- renameWindow(index, oldName) — prompt + PATCH.\\n\\nКнопка  привязана к createWindow в bootstrap.",
+    "createdAt": "2026-05-17T11:01:42.011Z",
+    "updatedAt": "2026-05-17T11:01:42.011Z"
   }
 ]

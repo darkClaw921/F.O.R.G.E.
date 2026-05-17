@@ -1,0 +1,17 @@
+{
+  "name": "forge-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "npx playwright test",
+    "test:api": "npx playwright test tests/api/",
+    "test:ui": "npx playwright test tests/ui/",
+    "test:headed": "npx playwright test --headed",
+    "report": "npx playwright show-report playwright-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.44.0",
+    "@types/node": "^25.8.0",
+    "typescript": "^6.0.3"
+  }
+}

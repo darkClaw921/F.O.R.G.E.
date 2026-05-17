@@ -1,0 +1,3 @@
+# tmux-web/src/main.rs::rename_session
+
+axum-handler 'PATCH /api/sessions/:name' — переименовывает tmux-сессию. Body: RenameSessionReq { name: String }. Поведение: 1) Если в query есть ?server=<id> и включён remote-mode — проксирует через try_proxy_to_remote. 2) Иначе локально: применяет ensure_prefixed(active.tmux_prefix, body.name.trim()) — то же поведение, что у POST /api/sessions (если пользователь ввёл short-name, к нему допрефиксуется tmux_prefix активного проекта). 3) Вызывает tmux::rename_session(old, new). Ответы: 200 OK + JSON { name: '<новое-имя>' } при успехе; 400 Bad Request при невалидном body/имени, если сессии нет или новое имя занято. Зарегистрирован в роутере как .route('/api/sessions/:name', delete(delete_session).patch(rename_session)).

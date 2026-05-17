@@ -1697,5 +1697,29 @@
       "mobile layout",
       "off-canvas sidebar"
     ]
+  },
+  {
+    "element": "tmux-web/src/tmux.rs::rename_session",
+    "path": "",
+    "type": "unknown",
+    "content": "pub async fn rename_session(old: &str, new: &str) -> anyhow::Result<()> — переименовывает существующую tmux-сессию через 'tmux rename-session -t <old> <new>'. Валидирует оба имени через is_valid_session_name. Если old == new → Ok(()) без вызова tmux. Любой ненулевой exit tmux маппится в Err с stderr-сообщением (включая случаи: сессии нет, имя занято). Используется backend-эндпоинтом PATCH /api/sessions/:name.",
+    "createdAt": "2026-05-17T10:50:15.500Z",
+    "updatedAt": "2026-05-17T10:50:15.500Z"
+  },
+  {
+    "element": "tmux-web/src/main.rs::rename_session",
+    "path": "",
+    "type": "unknown",
+    "content": "axum-handler 'PATCH /api/sessions/:name' — переименовывает tmux-сессию. Body: RenameSessionReq { name: String }. Поведение: 1) Если в query есть ?server=<id> и включён remote-mode — проксирует через try_proxy_to_remote. 2) Иначе локально: применяет ensure_prefixed(active.tmux_prefix, body.name.trim()) — то же поведение, что у POST /api/sessions (если пользователь ввёл short-name, к нему допрефиксуется tmux_prefix активного проекта). 3) Вызывает tmux::rename_session(old, new). Ответы: 200 OK + JSON { name: '<новое-имя>' } при успехе; 400 Bad Request при невалидном body/имени, если сессии нет или новое имя занято. Зарегистрирован в роутере как .route('/api/sessions/:name', delete(delete_session).patch(rename_session)).",
+    "createdAt": "2026-05-17T10:50:22.119Z",
+    "updatedAt": "2026-05-17T10:50:22.119Z"
+  },
+  {
+    "element": "tmux-web/static/app.js::renameSession",
+    "path": "",
+    "type": "unknown",
+    "content": "async function renameSession(oldName, origin) — UI-обработчик кнопки 'rename' в session-item. Промптит пользователя для нового имени (window.prompt с pre-fill oldName); если пусто/Cancel/совпадает со старым — выходит. Шлёт PATCH /api/sessions/:name с body { name: <new> } через apiFetch (origin-aware, поддерживает remote-серверы). Сервер возвращает финальное имя (с tmux_prefix), считывает его из ответа (fallback на trimmed input). Если переименована state.currentSession — дисконнектит WS, показывает placeholder, обновляет список и переоткрывает сессию по новому имени через openSession(newName, origin). Иначе просто fetchSessions(). Ошибки показывает через window.alert. Кнопка btn-rename размещена в session-actions рядом с btn-kill.",
+    "createdAt": "2026-05-17T10:50:28.129Z",
+    "updatedAt": "2026-05-17T10:50:28.129Z"
   }
 ]

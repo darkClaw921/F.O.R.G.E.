@@ -207,6 +207,101 @@ body {
     pointer-events: none;
 }
 
+/* ===== tmux window tabs (внутри активной сессии) ===== */
+
+.window-bar {
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+    padding: 4px 8px;
+    background: var(--bg-elev, #1b1e25);
+    border-bottom: 1px solid var(--border-row, #2a2f3a);
+    min-height: 30px;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.window-bar[hidden] { display: none; }
+
+.window-tabs {
+    display: flex;
+    flex: 1 1 auto;
+    gap: 2px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+}
+
+.window-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border: 1px solid var(--border-row, #2a2f3a);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--fg-muted-2, #9aa3b2);
+    font-size: 0.75rem;
+    font-family: inherit;
+    cursor: pointer;
+    flex: 0 0 auto;
+    transition: color 100ms ease, border-color 100ms ease, background 100ms ease;
+    white-space: nowrap;
+}
+
+.window-tab:hover {
+    color: var(--fg, #e8eaf0);
+    border-color: var(--accent, #7aa2f7);
+}
+
+.window-tab.active {
+    color: var(--fg, #e8eaf0);
+    border-color: var(--accent, #7aa2f7);
+    background: var(--bg-input-hover, rgba(122, 162, 247, 0.08));
+}
+
+.window-tab .window-tab-idx {
+    color: var(--fg-dim, #5e6470);
+    font-variant-numeric: tabular-nums;
+}
+
+.window-tab.active .window-tab-idx { color: var(--accent, #7aa2f7); }
+
+.window-tab .window-tab-close {
+    background: transparent;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    font-size: 0.85rem;
+    line-height: 1;
+    padding: 0 2px;
+    opacity: 0.55;
+}
+
+.window-tab .window-tab-close:hover {
+    opacity: 1;
+    color: var(--danger-soft, #f0796a);
+}
+
+.window-new-btn {
+    flex: 0 0 auto;
+    background: transparent;
+    color: var(--fg-muted-2, #9aa3b2);
+    border: 1px solid var(--border-row, #2a2f3a);
+    border-radius: 3px;
+    padding: 0 10px;
+    font-size: 0.85rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: color 100ms ease, border-color 100ms ease, background 100ms ease;
+}
+
+.window-new-btn:hover {
+    color: var(--accent, #7aa2f7);
+    border-color: var(--accent, #7aa2f7);
+    background: var(--bg-input-hover, rgba(122, 162, 247, 0.08));
+}
+
 .placeholder.hidden {
     display: none;
 }
@@ -379,7 +474,15 @@ body {
     color: var(--success);
 }
 
-.session-item .btn-kill {
+.session-item .session-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+}
+
+.session-item .btn-kill,
+.session-item .btn-rename {
     background: transparent;
     color: var(--fg-muted-2);
     border: 1px solid var(--border-row);
@@ -396,6 +499,12 @@ body {
     color: var(--danger-soft);
     border-color: var(--danger-soft);
     background: var(--danger-bg);
+}
+
+.session-item .btn-rename:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--bg-input-hover);
 }
 
 .session-list .empty {
