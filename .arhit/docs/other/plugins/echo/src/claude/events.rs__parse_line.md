@@ -1,0 +1,3 @@
+# plugins/echo/src/claude/events.rs::parse_line
+
+NDJSON-парсер строки от 'claude -p --output-format stream-json'. Возвращает Option<ClaudeEvent>: None для невалидного JSON, пустых строк, неизвестных типов, известных но игнорируемых (system/message_start/content_block_stop/message_delta/message_stop). Распознаваемые: content_block_delta (text_delta → TextDelta, thinking_delta → Thinking), content_block_start с tool_use → ToolUse, result → Result, error → Error. Толерантен к отсутствию cache_creation_input_tokens/cache_read_input_tokens через #[serde(default)] на Usage. Покрыт 12 unit-тестами включая ndjson_stream_round_trip.

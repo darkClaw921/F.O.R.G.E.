@@ -8,15 +8,19 @@ import {
     $tasksEl, $tabTerminal, $tabTasks,
     $gitEl, $dockerEl, $telescopeEl,
     $tabGit, $tabDocker, $tabTelescope,
+    $tabEcho, $echoEl,
 } from '../core/dom.js';
 import { scheduleResizeFromTerm } from '../terminal/xterm.js';
 import { connectTasksWs, fetchTasks, stopTasksPolling } from '../ws/tasks-ws.js';
 import { renderTasks } from '../tasks/render.js';
 import { closeGitWs, openLazygitForActiveProject } from './tui-tabs.js';
+import {
+    initEcho, connectEchoWs, disconnectEchoWs, _debugState as echoDebug,
+} from '../echo/main.js';
 
 export function switchTab(name) {
     if (name !== 'terminal' && name !== 'tasks' && name !== 'git'
-        && name !== 'docker' && name !== 'telescope') return;
+        && name !== 'docker' && name !== 'telescope' && name !== 'echo') return;
     if (state.activeTab === name) return;
     const prev = state.activeTab;
     state.activeTab = name;
@@ -26,6 +30,7 @@ export function switchTab(name) {
     const onGit = name === 'git';
     const onDocker = name === 'docker';
     const onTelescope = name === 'telescope';
+    const onEcho = name === 'echo';
     $terminalEl.hidden = !onTerminal;
     if ($placeholder) $placeholder.hidden = !onTerminal;
     if ($windowBar) $windowBar.hidden = !onTerminal || !state.currentSession;
@@ -33,12 +38,14 @@ export function switchTab(name) {
     if ($gitEl) $gitEl.hidden = !onGit;
     if ($dockerEl) $dockerEl.hidden = !onDocker;
     if ($telescopeEl) $telescopeEl.hidden = !onTelescope;
+    if ($echoEl) $echoEl.hidden = !onEcho;
 
     $tabTerminal.classList.toggle('active', onTerminal);
     $tabTasks.classList.toggle('active', onTasks);
     if ($tabGit) $tabGit.classList.toggle('active', onGit);
     if ($tabDocker) $tabDocker.classList.toggle('active', onDocker);
     if ($tabTelescope) $tabTelescope.classList.toggle('active', onTelescope);
+    if ($tabEcho) $tabEcho.classList.toggle('active', onEcho);
 
     if (prev === 'git' && !onGit) {
         closeGitWs('tab switched away');
@@ -51,6 +58,9 @@ export function switchTab(name) {
     }
     if (prev === 'tasks' && !onTasks) {
         stopTasksPolling();
+    }
+    if (prev === 'echo' && !onEcho) {
+        disconnectEchoWs();
     }
 
     if (onTerminal) {
@@ -74,5 +84,11 @@ export function switchTab(name) {
         if (state.dockerTerm) state.dockerTerm.openForActiveProject();
     } else if (onTelescope) {
         if (state.telescopeTerm) state.telescopeTerm.openForActiveProject();
+    } else if (onEcho) {
+        initEcho();
+        const dbg = echoDebug();
+        if (dbg && dbg.activeConversationId) {
+            connectEchoWs(dbg.activeConversationId);
+        }
     }
 }

@@ -28,6 +28,12 @@
 //!     подтверждение при удалении TODO (UI-флаг, backend-side просто хранит).
 //!   - `todo_confirm_promote_on_drag` (bool, default false) — спрашивать
 //!     ли подтверждение при promote через drag-and-drop.
+//!   - `echo_default_model` (Option<String>, default None) — модель Claude
+//!     по умолчанию для новых Echo-conversation'ов. `None` → fallback на
+//!     `EchoConfig.default_model` в плагине.
+//!   - `echo_notifications_enabled` (bool, default true) — показывать ли
+//!     toast-нотификации от Echo (autonomous task events / action results).
+//!     Пользователь может отключить, если шум мешает.
 //!
 //! ### Persistence
 //!
@@ -64,6 +70,12 @@ fn default_confirm_delete() -> bool {
     true
 }
 
+/// Default-функция для `echo_notifications_enabled` — true (нотификации
+/// видны по умолчанию; пользователь сам решает приглушать ли их).
+fn default_echo_notifications_enabled() -> bool {
+    true
+}
+
 /// Максимально допустимое значение приоритета (4 = backlog).
 const MAX_PRIORITY: u8 = 4;
 
@@ -86,6 +98,15 @@ pub struct UserSettings {
     pub todo_confirm_delete: bool,
     #[serde(default)]
     pub todo_confirm_promote_on_drag: bool,
+    /// Phase 6 (Echo) — модель Claude по умолчанию для новых
+    /// Echo-conversation'ов. `None` (или пропущенное поле) → fallback на
+    /// `EchoConfig.default_model` в плагине.
+    #[serde(default)]
+    pub echo_default_model: Option<String>,
+    /// Phase 6 (Echo) — показывать ли toast-нотификации от Echo. По
+    /// умолчанию включено. Пользователь может приглушить через UI.
+    #[serde(default = "default_echo_notifications_enabled")]
+    pub echo_notifications_enabled: bool,
 }
 
 impl Default for UserSettings {
@@ -97,6 +118,8 @@ impl Default for UserSettings {
             todo_plan_mode_suffix: String::new(),
             todo_confirm_delete: default_confirm_delete(),
             todo_confirm_promote_on_drag: false,
+            echo_default_model: None,
+            echo_notifications_enabled: default_echo_notifications_enabled(),
         }
     }
 }
@@ -118,6 +141,14 @@ pub struct PatchUserSettingsReq {
     pub todo_confirm_delete: Option<bool>,
     #[serde(default)]
     pub todo_confirm_promote_on_drag: Option<bool>,
+    /// Phase 6 (Echo) — модель Claude по умолчанию для новых
+    /// Echo-conversation'ов. Sentinel: пустая строка / `null` → сбросить
+    /// в `None` (fallback на дефолт плагина).
+    #[serde(default)]
+    pub echo_default_model: Option<String>,
+    /// Phase 6 (Echo) — включить/выключить toast-нотификации Echo.
+    #[serde(default)]
+    pub echo_notifications_enabled: Option<bool>,
 }
 
 #[derive(Debug)]
@@ -217,6 +248,18 @@ impl UserSettingsStore {
         }
         if let Some(v) = payload.todo_confirm_promote_on_drag {
             inner.settings.todo_confirm_promote_on_drag = v;
+        }
+        if let Some(v) = payload.echo_default_model {
+            // Пустая строка = сброс в None (используется фронтендом для
+            // выбора «use plugin default» — отдельная sentinel-кнопка лишняя).
+            inner.settings.echo_default_model = if v.trim().is_empty() {
+                None
+            } else {
+                Some(v)
+            };
+        }
+        if let Some(v) = payload.echo_notifications_enabled {
+            inner.settings.echo_notifications_enabled = v;
         }
 
         save_locked(&inner)?;
@@ -328,6 +371,79 @@ mod tests {
         let store2 = UserSettingsStore::new(path.clone());
         assert_eq!(store2.get().todo_default_priority, 4);
 
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_echo_defaults_present() {
+        let path = tmp_path("echo_defaults");
+        let store = UserSettingsStore::new(path.clone());
+        let s = store.get();
+        // По дефолту модель не задана (использовать дефолт плагина) и
+        // notifications включены.
+        assert_eq!(s.echo_default_model, None);
+        assert!(s.echo_notifications_enabled);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_echo_patch_set_and_clear_model() {
+        let path = tmp_path("echo_patch_model");
+        let store = UserSettingsStore::new(path.clone());
+
+        let res = store
+            .patch(PatchUserSettingsReq {
+                echo_default_model: Some("claude-opus-x".into()),
+                echo_notifications_enabled: Some(false),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(res.echo_default_model.as_deref(), Some("claude-opus-x"));
+        assert!(!res.echo_notifications_enabled);
+
+        // Empty string → сброс в None.
+        let res2 = store
+            .patch(PatchUserSettingsReq {
+                echo_default_model: Some("".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(res2.echo_default_model, None);
+
+        // Persistence.
+        let store2 = UserSettingsStore::new(path.clone());
+        let s2 = store2.get();
+        assert_eq!(s2.echo_default_model, None);
+        assert!(!s2.echo_notifications_enabled);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_legacy_settings_file_loads_with_echo_defaults() {
+        // Эмулируем «старый» settings.json без echo_* полей.
+        let path = tmp_path("legacy_load");
+        let body = r#"{
+            "todo_default_plan_mode": true,
+            "todo_default_priority": 1,
+            "todo_default_issue_type": "bug",
+            "todo_plan_mode_suffix": "",
+            "todo_confirm_delete": false,
+            "todo_confirm_promote_on_drag": true
+        }"#;
+        std::fs::write(&path, body).unwrap();
+
+        let store = UserSettingsStore::new(path.clone());
+        let s = store.get();
+        // Старые поля прочитаны.
+        assert!(s.todo_default_plan_mode);
+        assert_eq!(s.todo_default_priority, 1);
+        assert_eq!(s.todo_default_issue_type, "bug");
+        assert!(!s.todo_confirm_delete);
+        assert!(s.todo_confirm_promote_on_drag);
+        // Новые echo-поля — дефолтные.
+        assert_eq!(s.echo_default_model, None);
+        assert!(s.echo_notifications_enabled);
         let _ = std::fs::remove_file(&path);
     }
 

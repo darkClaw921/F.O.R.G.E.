@@ -1,0 +1,3 @@
+# plugins/echo/src/db/repo/stats.rs
+
+Aggregation для token_stats. Минутные bucket'ы (bucket_minute = ts_unix/60) — основа sparkline и autonomous-cap. add_tokens: атомарный UPSERT через ON CONFLICT(bucket_minute) DO UPDATE SET tokens_X = tokens_X + excluded.tokens_X — конкурентные вызовы корректно складываются. range(from,to) — sparse (пустые минуты НЕ возвращаются, UI дополняет нулями — сознательное упрощение чтобы не растить таблицу). sum_last_minutes(n) — UI sparkline. sum_for_day(day_start, day_end) — для Phase 6 autonomous_max_tokens_per_day. Structs: TokenStatBucket, TokenStatSum (Serialize). 3 unit-теста.

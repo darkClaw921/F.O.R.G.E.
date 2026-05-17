@@ -1,0 +1,88 @@
+/* tmux-web — Echo action buttons + confirmation modal (Phase 5c)
+ *
+ * Кнопки рендерятся под assistant-message внутри .echo-action-buttons.
+ * Prompt-actions — обычные акцентные кнопки; system-actions — warning-стиль
+ * с ⚠ иконкой. Confirmation modal переиспользует .echo-modal-overlay /
+ * .echo-modal из echo.css.
+ */
+
+.echo-action-buttons {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--border-soft);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.echo-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 5px 10px;
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+.echo-action-btn:hover {
+    background: var(--bg-input-hover);
+    border-color: var(--accent);
+}
+
+.echo-action-btn-system {
+    background: var(--warn-bg);
+    border-color: color-mix(in srgb, var(--warn) 45%, var(--border) 55%);
+    color: var(--fg);
+}
+.echo-action-btn-system:hover {
+    background: var(--warn-bg-hover);
+    border-color: var(--warn);
+}
+
+.echo-action-warn {
+    color: var(--warn);
+    font-size: 14px;
+    line-height: 1;
+}
+
+.echo-action-label {
+    line-height: 1.2;
+}
+
+/* ----- Confirmation modal (extends .echo-modal) ----- */
+
+.echo-confirm-modal {
+    max-width: 480px;
+}
+
+.echo-confirm-label {
+    margin: 0;
+    font-size: 14px;
+    color: var(--fg);
+}
+
+.echo-confirm-meta {
+    font-size: 11px;
+    color: var(--fg-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.echo-confirm-params {
+    background: var(--bg-deep);
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin: 0;
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
+    color: var(--fg);
+    overflow-x: auto;
+    max-height: 240px;
+    overflow-y: auto;
+}

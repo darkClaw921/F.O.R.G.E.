@@ -1,3 +1,3 @@
 # tmux-web/static/js/tabs/tabs.js
 
-Phase 1. switchTab(name) — главный диспетчер: terminal/tasks/git/docker/telescope. Toggle hidden на контейнерах, .active на кнопках. При уходе с tabs/git/docker/telescope закрывает WS. При приходе на tasks — connectTasksWs+(fetchTasks if no data) или renderTasks.
+Tab dispatcher. switchTab(name) переключает active tab между terminal/tasks/git/docker/telescope/echo. Управляет .hidden и .active классами, лайфциклом WS соединений: tasks→connectTasksWs/stopTasksPolling, git/docker/telescope→TUI terms, echo→initEcho+connectEchoWs/disconnectEchoWs. Phase 5c добавлен 'echo' и lifecycle import из echo/main.js.

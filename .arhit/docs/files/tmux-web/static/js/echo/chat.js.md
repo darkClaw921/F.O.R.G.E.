@@ -1,0 +1,3 @@
+# tmux-web/static/js/echo/chat.js
+
+Echo chat renderer. Pure DOM без зависимостей. renderConversation(messages) — полный re-render истории чата с очисткой messageEls/streamBuffers map. appendChunk(runId, kind, delta) — streaming append: создаёт streaming-карточку при первом chunk, группирует по kind (text/thinking/tool_use) в подэлементы. finalizeMessage(runId, messageId, usage) — финализирует streaming, перерендерит text с markdown, добавляет usage footer. showThinking(runId) — dots-indicator до первого chunk. bindInput(sendCb) — Enter→send, Shift+Enter→newline, auto-resize. Минималистичный markdown: code fences, headings 2-4, bullet lists, inline **bold**/*italic*/code/[link](url). XSS-safe — строит DOM, не innerHTML.

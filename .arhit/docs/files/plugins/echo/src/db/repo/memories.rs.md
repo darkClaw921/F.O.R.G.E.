@@ -1,0 +1,3 @@
+# plugins/echo/src/db/repo/memories.rs
+
+CRUD для таблицы memories. MemoryScope enum: GlobalDay (project_id=NULL, day=YYYY-MM-DD), Project (project_id=Some, day=NULL), ProjectDay (оба заданы), serde rename_all=snake_case под SQL CHECK литералы. Memory struct: id (UUIDv4), scope, project_id (Option soft-FK), day (Option), content, source, created_at, updated_at. API: upsert (id стабилен между вызовами с тем же ключом — select-then-insert-or-update, не использует SQL UPSERT т.к. SQLite UNIQUE на NULL не работает как ожидается); list(scope?, project_id?, day?) — dynamic WHERE через '?N IS NULL OR col=?N'; get; delete и patch возвращают usize (0 → 404 на уровне HTTP). 3 unit-теста.

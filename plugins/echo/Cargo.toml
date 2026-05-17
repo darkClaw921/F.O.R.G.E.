@@ -1,0 +1,47 @@
+[package]
+name = "forge-echo"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Echo plugin для F.O.R.G.E. — встроенный чат-ассистент на Claude CLI"
+
+[dependencies]
+# Axum 0.7 совпадает с tmux-web, чтобы Router/State были одного типа.
+axum = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+futures-util = { workspace = true }
+async-trait = { workspace = true }
+
+# SQLite: bundled-feature собирает libsqlite3 из исходников — не зависим
+# от системного sqlite на target-машине. backup нужен для атомарных
+# snapshot'ов БД (используется в Phase 6 hardening). tokio-rusqlite даёт
+# async API поверх blocking rusqlite через worker-thread.
+rusqlite = { version = "0.31", features = ["bundled", "backup"] }
+tokio-rusqlite = "0.5"
+
+# Embed миграций (plugins/echo/migrations/V*.sql) в бинарь — миграции
+# поедут вместе с devforge и применятся идемпотентно на старте.
+rust-embed = { version = "8", features = ["interpolate-folder-path"] }
+
+# UUID v4 для генерации id записей в SQLite.
+uuid = { version = "1.23", features = ["v4"] }
+
+# Plugin boundary
+echo-host-api = { path = "../echo-host-api" }
+
+# Phase 6 — конфиг плагина (`~/.config/forge/echo.toml`). 0.8.x — последняя
+# стабильная линия toml-rs на момент написания.
+toml = "0.8"
+
+# Phase 6 hardening — CancellationToken для graceful shutdown (cancel
+# scheduler/memory loop'ов + WS-reader'ов одним сигналом).
+tokio-util = { version = "0.7", default-features = false }
+
+[dev-dependencies]
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }

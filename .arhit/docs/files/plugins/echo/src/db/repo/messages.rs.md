@@ -1,0 +1,3 @@
+# plugins/echo/src/db/repo/messages.rs
+
+CRUD для таблицы messages. Message{id (UUIDv4), session_id (FK ON DELETE CASCADE), role (user/assistant/system/tool), content (рендеренный текст), content_json (Option, сырой tool_use/tool_result для replay), parent_id (Option), created_at, tokens_in/tokens_out/cache_creation/cache_read}. API: insert (10 параметров — тип контента, опц json/parent, токены); list_by_session(session_id, limit, before_ts: Option<i64>) — ORDER BY created_at ASC, использует составной index idx_messages_session_created для O(log n); delete_by_session — массовая чистка. Cascade-удаление при chats::delete срабатывает автоматически благодаря foreign_keys=ON. 3 unit-теста.

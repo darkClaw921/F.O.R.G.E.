@@ -34,7 +34,11 @@ sed -i '' "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" tmux-web/Cargo.tom
 sed -i '' "s|archive/refs/tags/v[^\"]*\.tar\.gz|archive/refs/tags/${TAG}.tar.gz|" "Formula/${FORMULA_NAME}"
 
 echo "==> Building release binary (smoke test)..."
-(cd tmux-web && cargo build --release)
+# Phase 1 (Echo): проект теперь Cargo workspace, собираем только бинарь
+# devforge через -p. Команда запускается из корня workspace, чтобы cargo
+# правильно резолвил workspace-root Cargo.toml и path-deps (forge-echo,
+# echo-host-api в plugins/).
+cargo build -p devforge --release
 
 echo "==> Committing version bump (if any changes)..."
 git add tmux-web/Cargo.toml tmux-web/Cargo.lock "Formula/${FORMULA_NAME}"

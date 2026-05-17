@@ -37,6 +37,13 @@
  *        (765-963 + 1241-1391) === */
 @import url('./css/tasks.css');
 
+/* === 8a. Echo plugin (Phase 5c): chat + notifications + action buttons.
+ *        Должны идти после tasks.css и до mobile.css, чтобы media-queries
+ *        перекрывали desktop Echo-стили. === */
+@import url('./css/echo.css');
+@import url('./css/echo-notifications.css');
+@import url('./css/echo-actions.css');
+
 /* === 9. Modals: generic overlay + task modal (964-1240) === */
 @import url('./css/modals.css');
 

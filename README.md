@@ -262,19 +262,46 @@ devforge --help                # полный список опций
 
 ### Сборка и запуск
 
+С Phase 1 Echo проект организован как **Cargo workspace** (root: `/`),
+members: `tmux-web`, `plugins/echo`, `plugins/echo-host-api`. Все
+команды запускаются из корня репозитория и адресуют бинарь через `-p`.
+
 ```bash
 git clone https://github.com/darkClaw921/F.O.R.G.E.
-cd F.O.R.G.E./tmux-web
-cargo run --release
+cd F.O.R.G.E.
+cargo run -p devforge --release
 ```
 
 Открыть: **http://127.0.0.1:7331**
 
+Сборка отдельных крейтов:
+
+```bash
+cargo build -p devforge           # основной бинарь
+cargo build -p forge-echo         # плагин Echo (чат)
+cargo build -p echo-host-api      # plugin boundary trait
+cargo build --workspace           # всё сразу
+```
+
 ### Логирование
 
 ```bash
-RUST_LOG=tmux_web=trace,tower_http=debug cargo run --release
+RUST_LOG=tmux_web=trace,tower_http=debug cargo run -p devforge --release
 ```
+
+### Echo плагин (`plugins/echo`)
+
+Phase 1 — skeleton с health-check'ом:
+
+```bash
+curl http://127.0.0.1:7331/api/echo/healthz   # → 200 "ok"
+```
+
+Архитектурно Echo изолирован через trait `HostApi`
+(`plugins/echo-host-api/src/lib.rs`): плагин не зависит от `AppState`
+напрямую, реальная реализация — `tmux-web/src/echo_host.rs`
+(`EchoHostAdapter`). См. план `plugins/echo/README.md` (появится в
+последующих фазах) и комментарии в `forge_echo::register_routes`.
 
 ### Инициализация нового проекта в UI
 

@@ -84,3 +84,36 @@ export const $projectSettings = document.getElementById('project-settings');
 
 // ---- Phase 5: origin-табы (скрыты при remote_mode=false) ----
 export const $originTabs = document.getElementById('origin-tabs');
+
+// ---- Echo plugin (Phase 5c) ----
+//
+// Селекторы для DOM-узлов Echo-вкладки. Совпадают с id из index.html.
+// Все ref'ы вычисляются один раз при импорте; если узел отсутствует в DOM
+// (например, fallback на старый шаблон) — переменная будет null. Frontend
+// должен проверять truthy перед обращением.
+export const $tabEcho = document.getElementById('tab-echo');
+export const $echoEl = document.getElementById('echo');
+export const $echoSidebar = document.getElementById('echo-sidebar');
+export const $echoSidebarTabChats = document.getElementById('echo-sidebar-tab-chats');
+export const $echoSidebarTabAuto = document.getElementById('echo-sidebar-tab-auto');
+export const $echoSidebarTabMemory = document.getElementById('echo-sidebar-tab-memory');
+export const $echoConversations = document.getElementById('echo-conversations');
+export const $echoConversationsList = document.getElementById('echo-conversations-list');
+export const $echoNewChat = document.getElementById('echo-new-chat');
+export const $echoAutonomous = document.getElementById('echo-autonomous');
+export const $echoAutonomousList = document.getElementById('echo-autonomous-list');
+export const $echoNewAuto = document.getElementById('echo-new-auto');
+export const $echoMemory = document.getElementById('echo-memory');
+export const $echoMemoryList = document.getElementById('echo-memory-list');
+export const $echoMemoryRegen = document.getElementById('echo-memory-regen');
+export const $echoMain = document.getElementById('echo-main');
+export const $echoHeader = document.getElementById('echo-header');
+export const $echoModelPicker = document.getElementById('echo-model-picker');
+export const $echoStatus = document.getElementById('echo-status');
+export const $echoStatsCanvas = document.getElementById('echo-stats-canvas');
+export const $echoStatsText = document.getElementById('echo-stats-text');
+export const $echoMessages = document.getElementById('echo-messages');
+export const $echoInputWrap = document.getElementById('echo-input-wrap');
+export const $echoInput = document.getElementById('echo-input');
+export const $echoSend = document.getElementById('echo-send');
+export const $echoToasts = document.getElementById('echo-toasts');

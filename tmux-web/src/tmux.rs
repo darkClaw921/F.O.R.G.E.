@@ -218,6 +218,64 @@ pub async fn capture_pane(session: &str) -> anyhow::Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
+/// Захватывает содержимое панели с включённым scrollback (`-S -<lines>`).
+///
+/// Эквивалент `tmux capture-pane -p -t <session> -S -<lines>`. Используется
+/// Echo плагином (`prompt_builder`) для подмешивания контекста tmux-сессий в
+/// prompt к Claude — там нужен расширенный буфер, в отличие от watcher'а
+/// (см. [`capture_pane`]), которому достаточно «что видно на экране».
+///
+/// ### Поведение
+///
+/// - `lines < 0` — ошибка (отрицательное окно неосмысленно).
+/// - `lines > 10000` — clamp до 10_000 (защита от случайного OOM на больших
+///   историях).
+/// - `lines == 0` — равнозначно «только видимая часть» (флаг `-S 0`).
+/// - При отсутствующей сессии или non-running tmux-сервере — `Ok("")`,
+///   как и в [`capture_pane`]; calling-сторона (prompt-builder) пропускает
+///   эту сессию и продолжает с остальными.
+pub async fn capture_pane_full(session: &str, lines: i32) -> anyhow::Result<String> {
+    if lines < 0 {
+        bail!("capture_pane_full: lines must be >= 0, got {lines}");
+    }
+    let clamped: i32 = lines.min(10_000);
+    // tmux хочет `-S -N` где N — отступ от конца назад. `-N` строго отрицательное
+    // число, иначе синтаксис не подходит. Формируем строку явно.
+    let start_arg = format!("-{clamped}");
+
+    let output = Command::new("tmux")
+        .args([
+            "capture-pane",
+            "-p",
+            "-t",
+            session,
+            "-S",
+            &start_arg,
+        ])
+        .output()
+        .await
+        .context("failed to spawn `tmux capture-pane -S` (is tmux installed?)")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("no server running") || stderr.contains("can't find session") {
+            tracing::debug!(
+                session = %session,
+                lines = clamped,
+                "tmux capture-pane -S: session/server absent, returning empty pane"
+            );
+            return Ok(String::new());
+        }
+        return Err(anyhow!(
+            "tmux capture-pane -S failed (exit {:?}): {}",
+            output.status.code(),
+            stderr.trim()
+        ));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
 /// Отправляет текст в активное окно tmux-сессии и нажимает Enter.
 ///
 /// Используется фоновым notifier'ом для доставки текста промоутнутого
@@ -655,5 +713,45 @@ mod tests {
         assert!(!is_valid_session_name("foo/bar"));
         assert!(!is_valid_session_name("foo$"));
         assert!(!is_valid_session_name("привет"));
+    }
+
+    #[tokio::test]
+    async fn capture_pane_full_rejects_negative_lines() {
+        let err = capture_pane_full("any", -1).await.unwrap_err();
+        assert!(err.to_string().contains("lines must be >= 0"));
+    }
+
+    #[tokio::test]
+    async fn capture_pane_full_missing_session_returns_empty() {
+        // Нет сессии или нет tmux-сервера → Ok("") — это контракт для
+        // prompt-builder'а (см. doc-комментарий функции).
+        let out = capture_pane_full("__definitely_missing_echo_test__", 50).await;
+        match out {
+            Ok(s) => assert!(s.is_empty(), "expected empty pane, got {s:?}"),
+            // tmux может полностью отсутствовать в test-окружении CI —
+            // допускаем оба варианта, лишь бы не паниковали.
+            Err(e) => {
+                let msg = e.to_string();
+                assert!(
+                    msg.contains("failed to spawn") || msg.contains("tmux"),
+                    "unexpected error: {msg}"
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn capture_pane_full_clamps_large_lines() {
+        // Просто проверяем что функция не паникует и не виснет на огромном
+        // запросе — clamp защищает от OOM. Сессии нет → должно вернуть "" /
+        // понятный Err про отсутствующую сессию или отсутствующий tmux.
+        let out = capture_pane_full("__missing_clamp_test__", 1_000_000).await;
+        match out {
+            Ok(s) => assert!(s.is_empty()),
+            Err(e) => {
+                let msg = e.to_string();
+                assert!(msg.contains("failed to spawn") || msg.contains("tmux"));
+            }
+        }
     }
 }

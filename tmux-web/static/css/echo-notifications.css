@@ -1,0 +1,86 @@
+/* tmux-web — Echo toast уведомления (Phase 5c)
+ *
+ * Контейнер #echo-toasts позиционируется fixed справа сверху. Toast'ы
+ * добавляются вертикально (column). Анимация — slide-in справа + fade-out
+ * через CSS transitions; классы echo-toast-show / echo-toast-hide
+ * управляются из notifications.js.
+ *
+ * Цвета — CSS-переменные (--bg-elev, --accent, --warn, --danger, --fg).
+ */
+
+.echo-toasts {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+    width: min(360px, calc(100vw - 32px));
+}
+
+.echo-toast {
+    pointer-events: auto;
+    background: var(--bg-elev);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    padding: 10px 36px 10px 12px;
+    box-shadow: 0 6px 16px var(--overlay-shadow);
+    font-size: 13px;
+    position: relative;
+    opacity: 0;
+    transform: translateX(120%);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.echo-toast-show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.echo-toast-hide {
+    opacity: 0;
+    transform: translateX(40%);
+}
+
+.echo-toast-info { border-left-color: var(--accent); }
+.echo-toast-warn { border-left-color: var(--warn); }
+.echo-toast-error { border-left-color: var(--danger); }
+
+.echo-toast-title {
+    font-weight: 600;
+    margin-bottom: 3px;
+    color: var(--fg);
+}
+
+.echo-toast-body {
+    color: var(--fg-mute);
+    font-size: 12px;
+    line-height: 1.4;
+    word-wrap: break-word;
+}
+
+.echo-toast-close {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 22px;
+    height: 22px;
+    background: transparent;
+    color: var(--fg-dim);
+    border: 0;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 0;
+    font-family: inherit;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+.echo-toast-close:hover {
+    background: var(--bg-pill);
+    color: var(--fg);
+}

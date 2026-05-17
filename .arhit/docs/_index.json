@@ -1734,9 +1734,9 @@
     "element": "tmux-web/static/js/core/dom.js",
     "path": "tmux-web/static/js/core/dom.js",
     "type": "file",
-    "content": "DOM-references singletons для tmux-web frontend (Phase 0 ES Modules refactor).\n\n## Назначение\n1:1 копия блока top-level `const $... = document.getElementById(...)` из IIFE `tmux-web/static/app.js` (строки 173-233, 674). Каждый ref вычисляется один раз при первом импорте модуля и экспортируется как named export.\n\n## Контракт корректности\nDOM-refs валидны только если модуль импортируется ПОСЛЕ полной загрузки HTML. В Phase 1 main.js будет подключён как `<script type=\"module\">` — это даёт implicit defer, т.е. модуль выполнится после parse HTML (по HTML-спецификации). До этого ref'ы будут null.\n\n## Экспорты (по группам)\n\n### Layout / sidebar\n- $layout (#layout), $btnSidebarToggle (#btn-sidebar-toggle), $sidebar (#session-list), $btnNew (#btn-new), $sidebarOverlay (#sidebar-overlay).\n\n### Terminal / window-bar / status\n- $terminalEl (#terminal), $placeholder (#placeholder), $windowBar (#window-bar), $windowTabs (#window-tabs), $windowNewBtn (#window-new), $statusDot (#status-dot), $statusText (#status-text).\n\n### Tasks UI (Phase 6.A)\n- $tabTerminal (#tab-terminal), $tabTasks (#tab-tasks), $tasksStatus, $tasksEl (#tasks), $tasksReload, $tasksNew, $tasksMeta, $tasksBoard.\n\n### Git / lazygit tab\n- $tabGit (#tab-git), $gitEl (#git), $gitTermEl (#git-term), $gitPlaceholder, $gitError, $gitErrorText, $gitErrorRetry, $gitErrorClose, $gitInstallHelp, $gitInstallList.\n\n### Docker / lazydocker tab\n- $tabDocker (#tab-docker), $dockerEl (#docker), $dockerTermEl, $dockerPlaceholder, $dockerError, $dockerErrorText, $dockerErrorRetry, $dockerErrorClose, $dockerInstallHelp, $dockerInstallList.\n\n### Telescope / tv tab\n- $tabTelescope (#tab-telescope), $telescopeEl (#telescope), $telescopeTermEl, $telescopePlaceholder, $telescopeError, $telescopeErrorText, $telescopeErrorRetry, $telescopeErrorClose, $telescopeInstallHelp, $telescopeInstallList, $telescopeChannelBar.\n\n### Project bar (Phase 6.B)\n- $projectSelect (#project-select), $projectNew (#project-new), $projectSettings (#project-settings).\n\n### Origin-табы (Phase 5)\n- $originTabs (#origin-tabs) — скрыты при remote_mode=false.\n\n## Зависимости\nНЕТ — только браузерный DOM. Pure leaf-module.\n\n## Ограничения\n- Имена экспортов сохраняют исторические $-имена из app.js (один-в-один).\n- В Phase 0 модуль ещё не подключен; legacy app.js работает как раньше.\n- НЕ кэшировать элементы, которые создаются динамически (например $panel внутри settings modal — он остаётся локальной переменной в feature-модуле).",
+    "content": "DOM references для tmux-web. Все document.getElementById вызовы происходят один раз при импорте модуля. Содержит селекторы для: layout/sidebar, terminal/window-bar/status, tabs (terminal/tasks/git/docker/telescope/echo), project bar, origin tabs, Echo plugin (Phase 5c — , , *, *+List+New, *+List, *+List+Regen, , , , , /Text, , *+Send, ).",
     "createdAt": "2026-05-17T11:54:28.458Z",
-    "updatedAt": "2026-05-17T11:54:28.458Z"
+    "updatedAt": "2026-05-17T16:11:47.438Z"
   },
   {
     "element": "tmux-web/static/js/core/utils.js",
@@ -1881,9 +1881,9 @@
     "element": "tmux-web/static/js/tabs/tabs.js",
     "path": "tmux-web/static/js/tabs/tabs.js",
     "type": "file",
-    "content": "Phase 1. switchTab(name) — главный диспетчер: terminal/tasks/git/docker/telescope. Toggle hidden на контейнерах, .active на кнопках. При уходе с tabs/git/docker/telescope закрывает WS. При приходе на tasks — connectTasksWs+(fetchTasks if no data) или renderTasks.",
+    "content": "Tab dispatcher. switchTab(name) переключает active tab между terminal/tasks/git/docker/telescope/echo. Управляет .hidden и .active классами, лайфциклом WS соединений: tasks→connectTasksWs/stopTasksPolling, git/docker/telescope→TUI terms, echo→initEcho+connectEchoWs/disconnectEchoWs. Phase 5c добавлен 'echo' и lifecycle import из echo/main.js.",
     "createdAt": "2026-05-17T12:23:00.426Z",
-    "updatedAt": "2026-05-17T12:23:00.426Z"
+    "updatedAt": "2026-05-17T16:20:27.072Z"
   },
   {
     "element": "tmux-web/static/js/tabs/tui-tabs.js",
@@ -2001,9 +2001,9 @@
     "element": "tmux-web/static/js/core/bootstrap.js",
     "path": "tmux-web/static/js/core/bootstrap.js",
     "type": "file",
-    "content": "Phase 1. bootstrap() — async entry: loadHealthz→restoreSidebarState→loadActiveThemeOrNull→initTerminal→applyTerminalFontSize→showPlaceholder/setStatus disconnected→wire listeners (newSession/createWindow/tab clicks/projectSelect/projectNew/projectSettings)→initTuiTabs→если remoteMode: fetchRemoteServers().then(loadActiveOriginFromStorage+renderSidebar)→fetchProjects().finally(fetchSessions+startPolling+connectTasksWs+fetchTodos+connectTodosWs). + beforeunload и visibilitychange handlers. + top-level side-effects: sidebar overlay/Esc/Cmd-B hotkey + mqlMobile change. + экспонирует window.__forge.{groupSessionsByFolder, aggregateAllOrigins} для регресс-тестов.",
+    "content": "Bootstrap entry. Импортирует все feature-модули, монтирует click-handlers на tabs (terminal/tasks/git/docker/telescope/echo), стартует polling/WS соединений, обрабатывает beforeunload (cleanup all) и visibilitychange (pause/resume). Phase 5c добавлен Echo: import initEcho/connectEchoWs/disconnectEchoWs/teardownEcho из echo/main.js, eager initEcho() для preload chats, teardownEcho в beforeunload, disconnect/reconnect Echo в visibilitychange.",
     "createdAt": "2026-05-17T12:24:02.817Z",
-    "updatedAt": "2026-05-17T12:24:02.817Z"
+    "updatedAt": "2026-05-17T16:21:18.156Z"
   },
   {
     "element": "tmux-web/static/css/base.css",
@@ -2148,5 +2148,522 @@
     "content": "Phase 2: Разнос монолитного tmux-web/static/style.css (3419 строк / 83KB) на 17 фича-файлов в tmux-web/static/css/.\n\n## Маппинг секций style.css → файлы\n\n| Файл | Содержимое | Строки оригинала | Размер |\n|------|-----------|------------------|--------|\n| css/base.css | CSS-переменные тёмной темы + reset html/body/* | 1-128 | 6KB |\n| css/layout.css | #layout grid, #main, #placeholder, .layout-collapsed, sidebar-toggle | 129-208 | 1.9KB |\n| css/window-bar.css | tmux window tabs (внутри активной сессии) | 210-307 | 2.3KB |\n| css/project-bar.css | #project-bar + .project-pill | 309-367 | 1.3KB |\n| css/sidebar.css | .sidebar-header, .session-list, .session-item, .origin-group-header, .sidebar-footer, scrollbar | 369-516 + 572-724 | 6.3KB |\n| css/origin-tabs.css | Phase 5 origin-табы над session-list | 517-570 | 1.2KB |\n| css/tab-bar.css | Верхний #tab-bar (Terminal/Tasks/Git/Docker/Find) | 726-763 | 0.7KB |\n| css/tasks.css | #tasks контейнер, .kanban-col/-card, DnD visual states, session-group-headers, TODO column | 765-963 + 1241-1391 | 8.8KB |\n| css/modals.css | .modal-overlay, .modal-card, .modal-actions, Task modal (Phase 6.C) | 964-1240 | 5.5KB |\n| css/notifications.css | Phase 5 Notifications form в settings (.notify-*) | 1393-1516 | 2.6KB |\n| css/settings-modal.css | Settings tab-bar + Themes panel + Remote servers tab | 1518-1769 + 2709-2913 | 10.1KB |\n| css/theme-editor.css | Custom theme editor modal (color-pickers + live preview) | 1770-2145 | 7.6KB |\n| css/git-tab.css | #git pane + lazygit xterm | 2147-2350 | 4.8KB |\n| css/tui-tab.css | Generic TUI containers (docker/telescope) + .tui-channel-bar | 2352-2572 | 5.0KB |\n| css/tui-channels.css | (MISNOMER) — hotkey hints overlay, keyboard-focus, TODO plan-mode badge | 2574-2706 | 3.2KB |\n| css/quick-cmd.css | Quick-cmd bar (mobile) + tui-quick-bar + edit UI modal + desktop fallback @media | 3198-3419 | 5.9KB |\n| css/mobile.css | @media (max-width:768px) + @media (max-width:480px) + prefers-reduced-motion | 2914-3197 | 9.8KB |\n\n## style.css теперь @import-агрегатор\n\n3419 строк / 83KB → 67 строк / 2.7KB. Содержит только серию @import url('./css/...') в порядке оригинального каскада.\n\nПорядок импорта (КРИТИЧЕН для каскада):\n1. base — переменные и reset, ОБЯЗАТЕЛЬНО первым\n2. layout\n3. window-bar\n4. project-bar\n5. sidebar\n6. origin-tabs (после sidebar, как в оригинале)\n7. tab-bar\n8. tasks\n9. modals\n10. notifications\n11. settings-modal\n12. theme-editor\n13. git-tab\n14. tui-tab\n15. tui-channels\n16. quick-cmd\n17. mobile — ОБЯЗАТЕЛЬНО последним (перекрывает desktop через @media)\n\n## Загрузка в браузере\n\nindex.html не менялся: <link rel=stylesheet href=/style.css>. Браузер тянет /style.css (67 строк), затем по @import — все 17 css/*.css. Все они embedded в бинарь через rust-embed (static_embed.rs), поэтому отдаются через axum-fallback без диска.\n\n## Smoke OK\n\n- cargo build green (warnings unrelated).\n- devforge run --port 18765: все 17 /css/*.css endpoints → 200 + content-type: text/css. /style.css тоже 200 + text/css.\n- Brace-count (открывающих {) идентичен: 470 = 470. Diff в строках = 13 (только пустые строки-разделители секций).\n\n## Известные неточности плана (preserved 1:1)\n\n- tui-channels.css по плану 2574-2706 называется 'telescope channel-bar', но реально в этих строках hotkey hints overlay + keyboard-focus + TODO plan-mode badge. Channel-bar на самом деле живёт в tui-tab.css (строки 2382-2572). Имя файла оставлено как в плане — refactor 1:1.\n- settings-modal.css объединяет два разных диапазона (1518-1769 и 2709-2913) — оба логически принадлежат settings-модалу.\n- tasks.css и modals.css имеют пересекающиеся диапазоны в плане; разделение по семантике: tasks = kanban-стили, modals = модалки.",
     "createdAt": "2026-05-17T12:35:42.147Z",
     "updatedAt": "2026-05-17T12:35:42.147Z"
+  },
+  {
+    "element": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E./Cargo.toml",
+    "path": "",
+    "type": "unknown",
+    "content": "Cargo workspace root для F.O.R.G.E. Определяет три члена workspace: tmux-web (основной axum-бинарь devforge), plugins/echo (плагин Echo чат на Claude CLI), plugins/echo-host-api (мини-крейт с trait HostApi и DTO для plugin boundary). Исключает beads_rust (не должен конфликтовать с workspace). Содержит [workspace.dependencies] для версионирования общих deps: tokio, serde, serde_json, anyhow, tracing, axum, chrono, futures-util, async-trait. resolver=2 обязательно для axum 0.7 и rusqlite bundled.",
+    "createdAt": "2026-05-17T14:48:20.391Z",
+    "updatedAt": "2026-05-17T14:48:20.391Z"
+  },
+  {
+    "element": "forge-echo",
+    "path": "",
+    "type": "page",
+    "content": "# forge-echo plugin\n\nEcho плагин (Э.Х.О) — встроенный чат-ассистент F.O.R.G.E. на базе Claude CLI.\nОформлен как отдельный крейт в Cargo workspace (path: plugins/echo).\n\n## Архитектура\n\n- **Crate**: plugins/echo (forge-echo)\n- **Public API** (lib.rs):\n  - fn init(EchoConfigStub) -> Arc<EchoState>\n  - fn register_routes(Router, Arc<EchoState>, Arc<dyn HostApi>) -> Router\n  - fn spawn_workers(&Arc<EchoState>, Arc<dyn HostApi>) — no-op в Phase 1\n- **State** (state.rs):\n  - EchoState { host: Arc<OnceCell<Arc<dyn HostApi>>>, broadcast: broadcast::Sender<ServerEvent> }\n  - EchoConfigStub — placeholder, заменится на EchoConfig в Phase 6\n  - ServerEvent enum — placeholder, варианты появятся в Phase 3\n- **Routes** (routes.rs):\n  - GET /api/echo/healthz → 200 'ok'\n\n## Plugin boundary\n\nПлагин зависит ТОЛЬКО от echo-host-api (trait HostApi + DTO). Не знает про\ntmux-web::AppState, projects::ProjectStore, tmux::* напрямую — это обеспечивает\nизоляцию и тестируемость с мок-хостом.\n\n## Registration в tmux-web\n\nВ main.rs ~line 487, ДО .layer(auth_middleware) и .fallback:\n\n    let echo_cfg = forge_echo::EchoConfigStub::default();\n    let echo_state = forge_echo::init(echo_cfg)?;\n    let echo_host: Arc<dyn HostApi> = Arc::new(EchoHostAdapter { state: app_state.clone() });\n    let app = forge_echo::register_routes(app, echo_state.clone(), echo_host);\n\nПорядок критичен: register_routes ДО layer, чтобы Bearer-auth покрывал\n/api/echo/* и (в будущем) /ws/echo автоматически в remote-mode.\n\n## Будущие фазы\n\n- Phase 2: SQLite + migrations + memories/conversations CRUD\n- Phase 3: Claude CLI integration + WS streaming\n- Phase 4: Autonomous tasks scheduler\n- Phase 5: Frontend (Echo UI) + memory automation + action buttons\n- Phase 6: Settings/config + hardening + tests",
+    "createdAt": "2026-05-17T14:56:28.301Z",
+    "updatedAt": "2026-05-17T14:56:55.570Z",
+    "aliases": [
+      "echo plugin",
+      "ЭХО",
+      "Echo plugin"
+    ]
+  },
+  {
+    "element": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E./tmux-web/src/echo_host.rs",
+    "path": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E./tmux-web/src/echo_host.rs",
+    "type": "file",
+    "content": "EchoHostAdapter — реализация echo_host_api::HostApi для tmux-web. Оборачивает AppState и проксирует доступ к ProjectStore, tmux, auth_token. Phase 1: list_sessions возвращает пустой vec, capture_pane_full возвращает error 'not implemented in P1', list_projects и active_project_id реально читают AppState.projects (RwLock read), auth_token клонирует Arc<Option<String>>. Phase 3 (forge-fa3.2) реализует list_sessions через crate::tmux::list_sessions и capture_pane_full через новую crate::tmux::capture_pane_full(session, lines). Используется в main.rs: Arc::new(EchoHostAdapter { state: app_state.clone() }) → передаётся в forge_echo::register_routes как Arc<dyn HostApi>.",
+    "createdAt": "2026-05-17T14:56:32.950Z",
+    "updatedAt": "2026-05-17T14:56:32.950Z"
+  },
+  {
+    "element": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E./plugins/echo-host-api/src/lib.rs",
+    "path": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E./plugins/echo-host-api/src/lib.rs",
+    "type": "file",
+    "content": "echo-host-api — мини-крейт plugin boundary для Echo. Содержит trait HostApi (#[async_trait], Send + Sync) с методами: list_sessions, capture_pane_full, list_projects, active_project_id, auth_token. DTO: SessionInfo { name, windows, panes }, ProjectInfo { id, name, path }. Без зависимостей на tmux-web/axum/db — это даёт echo плагину компилироваться независимо и тестироваться с мок-хостом. Конкретная реализация HostApi живёт в tmux-web/src/echo_host.rs (EchoHostAdapter).",
+    "createdAt": "2026-05-17T14:56:37.179Z",
+    "updatedAt": "2026-05-17T14:56:37.179Z"
+  },
+  {
+    "element": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E./plugins/echo/src/lib.rs",
+    "path": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E./plugins/echo/src/lib.rs",
+    "type": "file",
+    "content": "forge-echo lib.rs — точка входа плагина Echo. Публичный API: init(EchoConfigStub) -> anyhow::Result<Arc<EchoState>>, register_routes(Router, Arc<EchoState>, Arc<dyn HostApi>) -> Router, spawn_workers(&Arc<EchoState>, Arc<dyn HostApi>) (Phase 4+). Re-exports: HostApi, EchoConfigStub, EchoState, ServerEvent. Phase 1: init создаёт EchoState с broadcast(256), register_routes привязывает host в OnceCell и мерджит routes::build_router(state) с переданным app. spawn_workers — no-op.",
+    "createdAt": "2026-05-17T14:56:41.384Z",
+    "updatedAt": "2026-05-17T14:56:41.384Z"
+  },
+  {
+    "element": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E./plugins/echo/src/state.rs",
+    "path": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E./plugins/echo/src/state.rs",
+    "type": "file",
+    "content": "EchoState — глобальное состояние плагина Echo. Cheap-clonable (внутри Arc и broadcast::Sender). Поля: host: Arc<OnceCell<Arc<dyn HostApi>>> (устанавливается register_routes), broadcast: broadcast::Sender<ServerEvent> (capacity 256, для WS-подписчиков). EchoConfigStub — placeholder под полную EchoConfig из Phase 6. ServerEvent enum (Phase 1: только _Placeholder вариант; в Phase 3 появятся AssistantChunk, AssistantDone, ActionButtons, Notification, StatsUpdate, AutonomousTaskEvent, Error).",
+    "createdAt": "2026-05-17T14:56:44.994Z",
+    "updatedAt": "2026-05-17T14:56:44.994Z"
+  },
+  {
+    "element": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E./plugins/echo/src/routes.rs",
+    "path": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E./plugins/echo/src/routes.rs",
+    "type": "file",
+    "content": "routes.rs — HTTP-роуты плагина Echo. Phase 1: только GET /api/echo/healthz → 200 'ok'. Функция build_router(Arc<EchoState>) -> Router создаёт Router::new().route(...).with_state(state). Префикс /api/echo/* гарантирует отсутствие коллизий с хост-routes. В Phase 2-5 будут добавлены /api/echo/conversations, /api/echo/memories, /api/echo/stats, /api/echo/autonomous-tasks и /ws/echo.",
+    "createdAt": "2026-05-17T14:56:48.106Z",
+    "updatedAt": "2026-05-17T14:56:48.106Z"
+  },
+  {
+    "element": "plugins/echo/migrations/V001_init.sql",
+    "path": "",
+    "type": "unknown",
+    "content": "Initial migration для Echo plugin SQLite-БД. Создаёт 6 таблиц: chat_sessions (чаты), messages (сообщения с FK cascade на сессию + idx по session_id+created_at), autonomous_tasks (планировщик + idx по enabled+next_run_at), task_runs (лог запусков с FK cascade), memories (UNIQUE по scope+project_id+day, scope CHECK ('global_day','project','project_day')), token_stats (минутные bucket'ы для sparkline). project_id — soft-FK без REFERENCES (хост валидирует через HostApi). Timestamps — unix epoch INTEGER, кроме memories.day (TEXT YYYY-MM-DD UTC).",
+    "createdAt": "2026-05-17T15:00:35.623Z",
+    "updatedAt": "2026-05-17T15:00:35.623Z"
+  },
+  {
+    "element": "plugins/echo/src/db/mod.rs",
+    "path": "plugins/echo/src/db/mod.rs",
+    "type": "file",
+    "content": "Tokio-rusqlite async wrapper над SQLite-БД Echo. Db::open(path) создаёт parent dir + открывает соединение; Db::open_memory() — для тестов. Db::migrate() включает WAL+foreign_keys, создаёт служебную schema_migrations, применяет миграции из embedded folder (rust_embed) в лекс. порядке имени файла в одной транзакции, идемпотентно. RustEmbed Migrations подключает plugins/echo/migrations/V*.sql на build time. Tracing logs на pragma errors и каждой применённой миграции. Тесты в #[cfg(test)] mod tests покрывают: создание всех 7 таблиц (включая schema_migrations), идемпотентность повторного migrate(), включенность foreign_keys.",
+    "createdAt": "2026-05-17T15:02:25.542Z",
+    "updatedAt": "2026-05-17T15:02:25.542Z"
+  },
+  {
+    "element": "plugins/echo/src/db/repo/chats.rs",
+    "path": "plugins/echo/src/db/repo/chats.rs",
+    "type": "file",
+    "content": "CRUD-репозиторий для таблицы chat_sessions. ChatSession{id (UUIDv4), title, project_id (Option, soft-FK на хост-projects), model, created_at, updated_at}, Serialize. API: create(db,title,project_id?,model)→ChatSession; list(db,project_id?,limit)→ORDER BY updated_at DESC; get(db,id)→Option; delete(db,id)→cascade удаляет messages благодаря FK; touch_updated(db,id) обновляет updated_at на текущий ts (зовётся при инсерте message). Все вызовы через tokio_rusqlite Connection::call (blocking thread). 3 unit-теста.",
+    "createdAt": "2026-05-17T15:03:48.358Z",
+    "updatedAt": "2026-05-17T15:03:48.358Z"
+  },
+  {
+    "element": "plugins/echo/src/db/repo/messages.rs",
+    "path": "plugins/echo/src/db/repo/messages.rs",
+    "type": "file",
+    "content": "CRUD для таблицы messages. Message{id (UUIDv4), session_id (FK ON DELETE CASCADE), role (user/assistant/system/tool), content (рендеренный текст), content_json (Option, сырой tool_use/tool_result для replay), parent_id (Option), created_at, tokens_in/tokens_out/cache_creation/cache_read}. API: insert (10 параметров — тип контента, опц json/parent, токены); list_by_session(session_id, limit, before_ts: Option<i64>) — ORDER BY created_at ASC, использует составной index idx_messages_session_created для O(log n); delete_by_session — массовая чистка. Cascade-удаление при chats::delete срабатывает автоматически благодаря foreign_keys=ON. 3 unit-теста.",
+    "createdAt": "2026-05-17T15:04:43.744Z",
+    "updatedAt": "2026-05-17T15:04:43.744Z"
+  },
+  {
+    "element": "plugins/echo/src/db/repo/memories.rs",
+    "path": "plugins/echo/src/db/repo/memories.rs",
+    "type": "file",
+    "content": "CRUD для таблицы memories. MemoryScope enum: GlobalDay (project_id=NULL, day=YYYY-MM-DD), Project (project_id=Some, day=NULL), ProjectDay (оба заданы), serde rename_all=snake_case под SQL CHECK литералы. Memory struct: id (UUIDv4), scope, project_id (Option soft-FK), day (Option), content, source, created_at, updated_at. API: upsert (id стабилен между вызовами с тем же ключом — select-then-insert-or-update, не использует SQL UPSERT т.к. SQLite UNIQUE на NULL не работает как ожидается); list(scope?, project_id?, day?) — dynamic WHERE через '?N IS NULL OR col=?N'; get; delete и patch возвращают usize (0 → 404 на уровне HTTP). 3 unit-теста.",
+    "createdAt": "2026-05-17T15:05:51.812Z",
+    "updatedAt": "2026-05-17T15:05:51.812Z"
+  },
+  {
+    "element": "plugins/echo/src/db/repo/autonomous.rs",
+    "path": "plugins/echo/src/db/repo/autonomous.rs",
+    "type": "file",
+    "content": "CRUD для autonomous_tasks и task_runs. AutonomousTask{id (UUIDv4), name, prompt_template, interval_seconds, model, enabled: bool, project_id (Option soft-FK), last_run_at, next_run_at, created_at}. TaskRun{id, task_id (FK cascade), started_at, finished_at: Option, status (running/success/error/cancelled), result_message_id, tokens_in/out, error}. TaskPatch — partial update через COALESCE(?, col). API: create_task (next_run_at = now+interval), list_tasks (enabled_only), get_task, update_task, delete_task, set_next_run, find_due(now) — для scheduler Phase 4, использует idx_autonomous_enabled_next; insert_run (зеркалит started_at в task.last_run_at), finish_run, list_runs. 4 unit-теста: CRUD, find_due+disable, run lifecycle, cascade delete.",
+    "createdAt": "2026-05-17T15:07:13.179Z",
+    "updatedAt": "2026-05-17T15:07:13.179Z"
+  },
+  {
+    "element": "plugins/echo/src/db/repo/stats.rs",
+    "path": "plugins/echo/src/db/repo/stats.rs",
+    "type": "file",
+    "content": "Aggregation для token_stats. Минутные bucket'ы (bucket_minute = ts_unix/60) — основа sparkline и autonomous-cap. add_tokens: атомарный UPSERT через ON CONFLICT(bucket_minute) DO UPDATE SET tokens_X = tokens_X + excluded.tokens_X — конкурентные вызовы корректно складываются. range(from,to) — sparse (пустые минуты НЕ возвращаются, UI дополняет нулями — сознательное упрощение чтобы не растить таблицу). sum_last_minutes(n) — UI sparkline. sum_for_day(day_start, day_end) — для Phase 6 autonomous_max_tokens_per_day. Structs: TokenStatBucket, TokenStatSum (Serialize). 3 unit-теста.",
+    "createdAt": "2026-05-17T15:08:13.174Z",
+    "updatedAt": "2026-05-17T15:08:13.174Z"
+  },
+  {
+    "element": "plugins/echo/src/routes/memories.rs",
+    "path": "plugins/echo/src/routes/memories.rs",
+    "type": "file",
+    "content": "REST API для memories: GET /api/echo/memories?scope&project_id&day (валидирует scope enum), POST /api/echo/memories {scope, project_id?, day?, content, source?=manual} → upsert (всегда 200), PATCH /api/echo/memories/:id {content} → 204 либо 404, DELETE /api/echo/memories/:id → 204 либо 404, GET /api/echo/memories/by-id/:id, и legacy POST :id/patch, DELETE :id/delete. ApiError(StatusCode, String) сериализует JSON {error: ...}. router() мерджится в routes/mod.rs::build_router и проходит через bearer-auth middleware хоста.",
+    "createdAt": "2026-05-17T15:10:44.092Z",
+    "updatedAt": "2026-05-17T15:10:44.092Z"
+  },
+  {
+    "element": "plugins/echo/src/routes/conversations.rs",
+    "path": "plugins/echo/src/routes/conversations.rs",
+    "type": "file",
+    "content": "REST API для chat_sessions+messages. GET /api/echo/conversations?project_id&limit=50 → список. POST /api/echo/conversations {title, project_id?, model?='sonnet-4'} → create; если project_id не найден через HostApi::list_projects — лог warning но не блокирует (soft-FK). DELETE /api/echo/conversations/:id → 204 (идемпотентно, cascade messages). GET /api/echo/conversations/:id/messages?limit=200&before — 404 если нет сессии (UX лучше), иначе list_by_session ASC. POST /api/echo/conversations/:id/delete — legacy. ApiError JSON {error}.",
+    "createdAt": "2026-05-17T15:11:36.753Z",
+    "updatedAt": "2026-05-17T15:11:36.753Z"
+  },
+  {
+    "element": "plugins/echo/src/state.rs",
+    "path": "plugins/echo/src/state.rs",
+    "type": "file",
+    "content": "Echo plugin state. Phase 5b добавлены поля action_registry (Mutex<HashMap<message_id, ActionRegistryEntry>>) с TTL=30min для хранения Action descriptors, register_actions(message_id, actions) — evicts стейл записи и возвращает Vec<ActionDescriptor> для broadcast, find_action(action_id) — линейный поиск по всем записям с lazy-eviction. ACTION_REGISTRY_TTL_SECS=1800.",
+    "createdAt": "2026-05-17T15:12:43.732Z",
+    "updatedAt": "2026-05-17T16:08:29.257Z"
+  },
+  {
+    "element": "plugins/echo/src/lib.rs",
+    "path": "plugins/echo/src/lib.rs",
+    "type": "file",
+    "content": "Точка входа forge-echo crate. pub mod db, routes, state. Re-exports: HostApi, EchoConfigStub, EchoState, ServerEvent. init(cfg) async — резолвит path (cfg.db_path или ~/.config/forge/echo.db через HOME env), Db::open + migrate, возвращает Arc<EchoState>. default_db_path() — fallback ./echo.db если нет HOME. register_routes(app, state, host) привязывает host adapter к OnceCell + мерджит routes/build_router() в хост-Router. Вызывать ДО .layer(auth) чтобы /api/echo/* покрывался bearer-auth. spawn_workers — no-op до Phase 4.",
+    "createdAt": "2026-05-17T15:12:48.201Z",
+    "updatedAt": "2026-05-17T15:12:48.201Z"
+  },
+  {
+    "element": "tmux-web/src/tmux.rs::capture_pane_full",
+    "path": "",
+    "type": "unknown",
+    "content": "Async-функция захвата pane сессии tmux с расширенным scrollback. Эквивалент 'tmux capture-pane -p -t <session> -S -<lines>'. Используется Echo плагином (prompt_builder) для подмешивания контекста tmux-сессий в Claude-prompt. Параметры: session: &str — имя tmux-сессии; lines: i32 — сколько строк истории добавить (>=0, clamp до 10_000). Возвращает Ok('') при отсутствующей сессии или non-running сервере (как и capture_pane), Err при невалидном lines или ошибке tmux. Покрыто юнит-тестами в tmux::tests (capture_pane_full_rejects_negative_lines, capture_pane_full_missing_session_returns_empty, capture_pane_full_clamps_large_lines).",
+    "createdAt": "2026-05-17T15:19:33.414Z",
+    "updatedAt": "2026-05-17T15:19:33.414Z"
+  },
+  {
+    "element": "tmux-web/src/echo_host.rs::EchoHostAdapter::list_sessions",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 3 реальная имплементация HostApi::list_sessions. Делегирует в crate::tmux::list_sessions, маппит расширенную хостовую SessionInfo (id/attached/created/path/group) в упрощённую echo_host_api::SessionInfo (name/windows/panes). Field panes возвращается как 0 — tmux list-sessions не отдаёт суммарный pane-count, для prompt-builder'а это не критично. При non-running tmux-server возвращает пустой вектор.",
+    "createdAt": "2026-05-17T15:20:26.190Z",
+    "updatedAt": "2026-05-17T15:20:26.190Z"
+  },
+  {
+    "element": "tmux-web/src/echo_host.rs::EchoHostAdapter::capture_pane_full",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 3 реальная имплементация HostApi::capture_pane_full. Делегирует напрямую в crate::tmux::capture_pane_full(session, lines), сохраняя контракт: Ok('') если сессия исчезла, Err при невалидном lines, текстовый дамп при успехе.",
+    "createdAt": "2026-05-17T15:20:26.453Z",
+    "updatedAt": "2026-05-17T15:20:26.453Z"
+  },
+  {
+    "element": "plugins/echo/src/claude/events.rs::parse_line",
+    "path": "",
+    "type": "unknown",
+    "content": "NDJSON-парсер строки от 'claude -p --output-format stream-json'. Возвращает Option<ClaudeEvent>: None для невалидного JSON, пустых строк, неизвестных типов, известных но игнорируемых (system/message_start/content_block_stop/message_delta/message_stop). Распознаваемые: content_block_delta (text_delta → TextDelta, thinking_delta → Thinking), content_block_start с tool_use → ToolUse, result → Result, error → Error. Толерантен к отсутствию cache_creation_input_tokens/cache_read_input_tokens через #[serde(default)] на Usage. Покрыт 12 unit-тестами включая ndjson_stream_round_trip.",
+    "createdAt": "2026-05-17T15:23:26.213Z",
+    "updatedAt": "2026-05-17T15:23:26.213Z"
+  },
+  {
+    "element": "plugins/echo/src/claude/events.rs::ClaudeEvent",
+    "path": "",
+    "type": "unknown",
+    "content": "Высокоуровневое событие assistant-стрима. Варианты: TextDelta{text} — приращение текстового блока; Thinking{text} — приращение thinking-блока (reasoning models); ToolUse{name, input} — вызов tool с инпутом; Result{usage, raw_json} — финал run'а с usage и сырым JSON для аудита; Error{message} — ошибка от CLI. Поглощается WS-loop'ом (ws/mod.rs) и autonomous-runner'ом.",
+    "createdAt": "2026-05-17T15:23:26.469Z",
+    "updatedAt": "2026-05-17T15:23:26.469Z"
+  },
+  {
+    "element": "plugins/echo/src/claude/events.rs::Usage",
+    "path": "",
+    "type": "unknown",
+    "content": "Usage-объект Claude API. Поля input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens — все u64 с #[serde(default)]=0. Толерантность к отсутствию cache-полей: старые модели/режимы их не возвращают, для нас default=0 эквивалентно 'caching не использовался'.",
+    "createdAt": "2026-05-17T15:23:26.725Z",
+    "updatedAt": "2026-05-17T15:23:26.725Z"
+  },
+  {
+    "element": "plugins/echo/src/ws/protocol.rs::ClientMsg",
+    "path": "",
+    "type": "unknown",
+    "content": "Сериализуется как serde-tagged enum (tag='type', snake_case). Варианты: user_message{text, conversation_id, model?, ctx_opts?} — юзер послал сообщение; cancel{run_id} — прервать run; action_invoke{action_id, params?} — Phase 5 stub; pong — ответ на heartbeat. Round-trip протестировано.",
+    "createdAt": "2026-05-17T15:23:26.982Z",
+    "updatedAt": "2026-05-17T15:23:26.982Z"
+  },
+  {
+    "element": "plugins/echo/src/ws/protocol.rs::ServerMsg",
+    "path": "",
+    "type": "unknown",
+    "content": "Сериализуется как serde-tagged enum (tag='type', snake_case). Варианты: assistant_chunk{run_id, kind, delta} — стрим-чанк; assistant_done{run_id, usage, message_id} — финал ответа; action_buttons{message_id, actions} — Phase 5 stub; notification{level, title, body} — Phase 5 stub; stats_update{tokens_in_per_min, tokens_out_per_min} — sparkline; autonomous_task_event{task_id, run_id, status, message_preview?} — Phase 4 stub; error{code, message}; ping — heartbeat. Поля ChunkKind=text/thinking/tool_use, NotificationLevel=info/warn/error.",
+    "createdAt": "2026-05-17T15:23:27.238Z",
+    "updatedAt": "2026-05-17T15:23:27.238Z"
+  },
+  {
+    "element": "plugins/echo/src/claude/mod.rs::ClaudeRunner",
+    "path": "",
+    "type": "unknown",
+    "content": "Фасад над Claude CLI с поддержкой stream/one_shot/cancel. Поля: cli_path (PathBuf), semaphore (Arc<Semaphore> с N permits), running (Arc<Mutex<HashMap<RunId, AbortHandle>>>). new(cli_path, max_parallel) — НЕ падает если cli не существует, только warn-log (важно для тестов и dev-машин без Claude CLI). stream(req) → mpsc::Receiver<ClaudeEvent>: спавнит claude -p --output-format stream-json --include-partial-messages --verbose [--model] [--append-system-prompt] <prompt>, читает stdout построчно через BufReader::lines, парсит через events::parse_line, шлёт в канал; stderr идёт в tracing::debug. one_shot(req) → RunResult: собирает все TextDelta в text + финальный usage из Result-event. cancel(run_id) → bool: aborts spawned task; kill_on_drop=true автоматически убьёт child процесс.",
+    "createdAt": "2026-05-17T15:25:54.694Z",
+    "updatedAt": "2026-05-17T15:25:54.694Z"
+  },
+  {
+    "element": "plugins/echo/src/claude/mod.rs::RunRequest",
+    "path": "",
+    "type": "unknown",
+    "content": "Запрос на запуск Claude. Поля: prompt (полный, уже собранный prompt_builder'ом), model (Option<String> для --model), system (Option<String> для --append-system-prompt), run_id (RunId=String для cancel). RunRequest::new(prompt) — конструктор для тестов с авто-UUID.",
+    "createdAt": "2026-05-17T15:25:54.952Z",
+    "updatedAt": "2026-05-17T15:25:54.952Z"
+  },
+  {
+    "element": "plugins/echo/src/claude/mod.rs::RunResult",
+    "path": "",
+    "type": "unknown",
+    "content": "Результат one_shot: text (агрегированный assistant-output), usage (Usage из последнего Result-event), raw (raw_json для аудита).",
+    "createdAt": "2026-05-17T15:25:55.203Z",
+    "updatedAt": "2026-05-17T15:25:55.203Z"
+  },
+  {
+    "element": "plugins/echo/src/claude/prompt_builder.rs::build",
+    "path": "",
+    "type": "unknown",
+    "content": "Собирает финальный prompt для Claude CLI из нескольких источников. Аргументы: user_text, opts:&CtxOpts, host:&dyn HostApi, db:&Db. Возвращает строку с секциями (опускаются если данных нет): [system_context] — статичная преамбула; [tmux_sessions] — capture_pane_full для каждой релевантной сессии (фильтр по session_filter); [memories] — global_day за вчера + project memories для project_id; [projects] — список проектов; [user_message] — собственно user_text. Толерантна: capture_pane_full Err для одной сессии не валит весь prompt (warn-log + skip), memories.list Err опускает блок, пустой pane пропускается. Покрыт 10 unit-тестами с MockHost.",
+    "createdAt": "2026-05-17T15:27:28.918Z",
+    "updatedAt": "2026-05-17T15:27:28.918Z"
+  },
+  {
+    "element": "plugins/echo/src/claude/prompt_builder.rs::CtxOpts",
+    "path": "",
+    "type": "unknown",
+    "content": "Опции построения контекста: include_pane_capture (bool), project_id (Option<String>) — фильтр для memories и (потенциально) сессий, include_memories (bool), capture_lines (i32, default 200), session_filter (Option<Vec<String>>) — whitelist имён сессий. Default: pane+memory включены, capture_lines=200.",
+    "createdAt": "2026-05-17T15:27:29.178Z",
+    "updatedAt": "2026-05-17T15:27:29.178Z"
+  },
+  {
+    "element": "plugins/echo/src/ws/mod.rs::echo_ws",
+    "path": "",
+    "type": "unknown",
+    "content": "Axum handler GET /ws/echo?conversation_id=&token=. Upgrade'ит HTTP в WebSocket и передаёт управление в handle_socket. Auth уже выполнен bearer-auth middleware'ом host'а; token-query — только для удобства browser-WS клиента.",
+    "createdAt": "2026-05-17T15:32:59.108Z",
+    "updatedAt": "2026-05-17T15:32:59.108Z"
+  },
+  {
+    "element": "plugins/echo/src/ws/mod.rs::handle_socket",
+    "path": "",
+    "type": "unknown",
+    "content": "Главный обработчик одного WS-соединения. Запускает tokio::select! с: idle timeout (60s); heartbeat ping каждые 15s; broadcast subscribe (форвардит ServerEvent в socket если conversation_id совпадает или broadcast); inbound ClientMsg parsing. При закрытии — Close+close socket. last_activity обновляется на любом входящем фрейме.",
+    "createdAt": "2026-05-17T15:32:59.369Z",
+    "updatedAt": "2026-05-17T15:32:59.369Z"
+  },
+  {
+    "element": "plugins/echo/src/ws/mod.rs::run_user_message",
+    "path": "",
+    "type": "unknown",
+    "content": "Полный цикл UserMessage: проверка существования conversation (no_conversation error если нет) → insert user-msg → prompt_builder::build → ClaudeRunner::stream → broadcast AssistantChunk для каждого ClaudeEvent → insert assistant-msg с usage из Result-event → stats::add_tokens для текущей минуты → broadcast StatsUpdate + AssistantDone. Все события идут через state.broadcast как ServerEvent::to_conversation. Запускается через tokio::spawn чтобы не блокировать WS select-loop.",
+    "createdAt": "2026-05-17T15:32:59.624Z",
+    "updatedAt": "2026-05-17T15:32:59.624Z"
+  },
+  {
+    "element": "plugins/echo/src/routes/stats.rs::get_stats",
+    "path": "",
+    "type": "unknown",
+    "content": "GET /api/echo/stats?range=hour|day. range=hour: 60 минутных bucket'ов от now-59 до now (заполнение нулями для пустых минут). range=day: 24 часовых bucket'а, каждый = сумма 60 минутных. Response: {range, buckets: [{ts, tokens_in, tokens_out, cache_creation, cache_read}]}. Bad range → 400.",
+    "createdAt": "2026-05-17T15:35:22.375Z",
+    "updatedAt": "2026-05-17T15:35:22.375Z"
+  },
+  {
+    "element": "plugins/echo/src/routes/stats.rs::cancel_run",
+    "path": "",
+    "type": "unknown",
+    "content": "POST /api/echo/run/:id/cancel — отменяет активный run через ClaudeRunner::cancel. 200 если run найден и aborted, 404 если такого run нет (уже завершён или невалидный id). Резервный путь cancel — основной канал через WebSocket ClientMsg::Cancel.",
+    "createdAt": "2026-05-17T15:35:22.631Z",
+    "updatedAt": "2026-05-17T15:35:22.631Z"
+  },
+  {
+    "element": "plugins/echo/src/routes/mod.rs::build_router",
+    "path": "",
+    "type": "unknown",
+    "content": "Сборщик Router плагина. Регистрирует: /api/echo/healthz, memories router, conversations router, stats router (Phase 3), /ws/echo handler (Phase 3). Использует with_state(Arc<EchoState>). Routes регистрируются ДО bearer-auth middleware host'а — auth покрывает /api/echo/* и /ws/echo автоматически.",
+    "createdAt": "2026-05-17T15:35:22.892Z",
+    "updatedAt": "2026-05-17T15:35:22.892Z"
+  },
+  {
+    "element": "phase-3-claude-ws",
+    "path": "",
+    "type": "page",
+    "content": "# Phase 3: Claude CLI integration + chat WS streaming (Echo)\n\n## Завершено\n\nДобавлены следующие компоненты:\n\n### Claude CLI integration\n- plugins/echo/src/claude/events.rs — NDJSON-парсер с tolerantным Usage (12 unit-тестов)\n- plugins/echo/src/claude/mod.rs — ClaudeRunner с stream/one_shot/cancel, Semaphore(N), kill_on_drop, AbortHandle map (5 unit-тестов с mock-CLI)\n- plugins/echo/src/claude/prompt_builder.rs — build() собирает [system_context]+[tmux_sessions]+[memories]+[projects]+[user_message] с skip-on-error semantics (10 unit-тестов с MockHost)\n\n### WebSocket\n- plugins/echo/src/ws/mod.rs — echo_ws handler с biased select-loop (heartbeat 15s, idle timeout 60s, broadcast subscribe с conversation_id filter)\n- plugins/echo/src/ws/protocol.rs — ClientMsg/ServerMsg tagged enums (13 round-trip тестов)\n- ws::run_user_message — полный pipeline: insert user → prompt → ClaudeRunner.stream → broadcast AssistantChunk → insert assistant + stats::add_tokens → StatsUpdate + AssistantDone\n\n### REST routes\n- plugins/echo/src/routes/stats.rs — GET /api/echo/stats?range=hour|day (60 минут/24 часа bucket'ов, fill empties), POST /api/echo/run/:id/cancel (5 unit-тестов)\n\n### Хост-интеграция\n- tmux-web/src/tmux.rs — pub async fn capture_pane_full(session, lines): clamp 10000, reject negative, missing-session → Ok('') (3 unit-теста)\n- tmux-web/src/echo_host.rs — реальные impl HostApi::list_sessions (через tmux::list_sessions+map) и capture_pane_full (delegate)\n\n### State + Init\n- plugins/echo/src/state.rs — EchoState получил поле runner: Arc<ClaudeRunner>; ServerEvent теперь содержит {conversation_id, msg: ServerMsg}\n- plugins/echo/src/lib.rs — init() создаёт ClaudeRunner с cli_path (default ~/.local/bin/claude) и max_parallel_runs (default 4); register_routes регистрирует /ws/echo + stats router\n\n## Verify результаты\n- cargo build -p devforge — clean (только pre-existing warning про server_config::save)\n- cargo test -p forge-echo — 69 lib + 2 db_init + 1 e2e = 72 проходят\n- Integration test plugins/echo/tests/run_user_message_e2e.rs — full pipeline с mock-CLI: user msg в DB → CLI spawn → assistant msg с usage → token_stats bucket\n\n## Заблокированные манульные шаги\nШаги 3-7 из P3.10 (wscat + sqlite3 проверки) требуют интерактивного запуска devforge и реального Claude CLI. Автоматизированы через integration test e2e + unit tests; manual smoke оставлен для пользователя.",
+    "createdAt": "2026-05-17T15:37:46.233Z",
+    "updatedAt": "2026-05-17T15:37:46.233Z"
+  },
+  {
+    "element": "plugins/echo/src/scheduler/mod.rs",
+    "path": "plugins/echo/src/scheduler/mod.rs",
+    "type": "file",
+    "content": "Echo autonomous scheduler — фоновый loop, опрашивающий autonomous_tasks каждые TICK_INTERVAL (5 секунд) и запускающий due-задачи через runner::run_task.\n\n# Публичный API\n\n- spawn(state: Arc<EchoState>, host: Arc<dyn HostApi>) -> JoinHandle<()> — запускает scheduler-task; возвращает handle для graceful shutdown (вызывается из forge_echo::spawn_workers и сохраняется в state.workers).\n- TICK_INTERVAL: Duration — константа 5 секунд.\n- RunningSet — type alias Arc<Mutex<HashSet<String>>> для in-memory защиты от двойного запуска задачи (если interval_seconds меньше длительности run'а).\n\n# Внутреннее устройство\n\nrun_loop читает now → autonomous::find_due(db, now) → для каждой due-задачи проверяет, нет ли её id в RunningSet, если нет — добавляет, спавнит tokio::spawn(runner::run_task), по завершении удаляет id из set.\n\ntick_once вынесен как pub(crate) для unit-тестов без 5-секундной задержки.\n\n# Tolerance к ошибкам\n\n- find_due Err → warn + продолжаем (следующий tick попробует снова).\n- panic в run_task ловится tokio::spawn'ом, scheduler-loop не останавливается.\n\n# Unit-тесты\n\n- tick_picks_up_due_task_and_runs_it — due-задача исполняется, status=success, next_run_at сдвинут.\n- tick_does_not_double_spawn_running_task — два tick'а подряд для медленной задачи дают один task_run.\n- empty_due_tick_is_noop — нет due-задач → tick молча проходит.",
+    "createdAt": "2026-05-17T15:51:00.095Z",
+    "updatedAt": "2026-05-17T15:51:00.095Z"
+  },
+  {
+    "element": "plugins/echo/src/scheduler/runner.rs",
+    "path": "plugins/echo/src/scheduler/runner.rs",
+    "type": "file",
+    "content": "Исполнитель одного autonomous-run'а — async-функция run_task(state, host, task) -> anyhow::Result<()>.\n\n# Жизненный цикл одного run'а\n\n1. autonomous::insert_run(db, task.id, now) → создаёт TaskRun со status='running'.\n2. autonomous::set_next_run(task.id, now + interval) — сдвигает заранее, чтобы следующий tick не счёл эту задачу due пока она исполняется (даже при interval < длительности run'а). При ошибке внутри run этот next_run_at сохраняется — защита от hot-loop.\n3. broadcast ServerMsg::AutonomousTaskEvent { status: 'running' }.\n4. ensure_autonomous_conversation — get_or_create chat_session с детерминированным id '__autonomous__/<task_id>' (через chats::create_with_id).\n5. prompt_builder::build(task.prompt_template, CtxOpts, host, db) — собирает финальный prompt с capture-pane сессий и memories. project_id из task передаётся в CtxOpts.\n6. ClaudeRunner::one_shot(RunRequest { prompt, model: Some(task.model), run_id: 'autonomous:<run_id>' }).\n7. messages::insert(conv_id, 'assistant', text, ..., usage) — записывает ответ в служебную conversation.\n8. autonomous::finish_run(run_id, 'success', message_id, tokens_in, tokens_out, None).\n9. stats::add_tokens(now, tokens_in, tokens_out, cache_creation, cache_read) — minute-bucket агрегация.\n10. broadcast ServerMsg::AutonomousTaskEvent { status: 'success', message_preview: first 200 chars }.\n\n# Error path\n\nfinish_with_error: любая ошибка на шагах 4-7 → finish_run(status='error', error=Some(msg)), broadcast event со status='error' и preview ошибки. next_run_at УЖЕ сдвинут в шаге 2, поэтому задача не залипает.\n\n# Хелперы\n\n- autonomous_conversation_id(task_id) -> 'autonomous/<task_id>' — детерминированный id служебной conversation.\n- ensure_autonomous_conversation — get-or-create через chats::get + chats::create_with_id.\n- preview_text(s, n) — обрезает текст по UTF-8 границам с многоточием.\n\n# Unit-тесты\n\n- run_task_success_writes_assistant_msg_and_finishes_run — happy path; проверяет TaskRun.status=success, messages в conversation, token_stats bucket, broadcast running+success events.\n- run_task_advances_next_run_at_on_success — next_run_at сдвигается на interval.\n- run_task_records_error_when_cli_missing — missing CLI → finish_run(error), next_run_at всё равно сдвинут.\n- autonomous_conversation_is_reused_across_runs — два run'а пишут в одну conversation.",
+    "createdAt": "2026-05-17T15:51:15.564Z",
+    "updatedAt": "2026-05-17T15:51:15.564Z"
+  },
+  {
+    "element": "plugins/echo/src/routes/autonomous.rs",
+    "path": "plugins/echo/src/routes/autonomous.rs",
+    "type": "file",
+    "content": "REST API для управления автономными задачами Echo.\n\n# Endpoints (все под /api/echo/)\n\n- GET /autonomous-tasks — возвращает { items: [AutonomousTask] }. list_tasks(enabled_only=false).\n- POST /autonomous-tasks { name, prompt_template, interval_seconds, model, project_id? } → 201 Created с заполненной AutonomousTask. Валидация: interval >= 1, name не пустой. next_run_at = now + interval_seconds устанавливается в db::repo::autonomous::create_task.\n- PATCH /autonomous-tasks/:id { name?, prompt_template?, interval_seconds?, model?, enabled? } → 200 с обновлённой задачей. 404 если id не найден. Валидация interval >= 1. Спецсемантика: при enabled=true и next_run_at=NULL ставит next_run_at=now (чтобы scheduler сразу подобрал).\n- DELETE /autonomous-tasks/:id → 204 No Content (идемпотентно даже для отсутствующих задач). Cascade FK сносит связанные task_runs.\n- POST /autonomous-tasks/:id/run-now → 200 { ok, task_id, spawned }. Спавнит tokio::task(runner::run_task) — немедленный запуск без ожидания tick'а scheduler'а. 404 если задача не найдена, 503 если HostApi adapter не зарегистрирован.\n- GET /autonomous-tasks/:id/runs?limit=50 → { items: [TaskRun] } в порядке started_at DESC. 404 для unknown task.\n\n# Error type\n\nApiError(StatusCode, String) → JSON { error: msg }. internal(anyhow::Error) логирует и возвращает 500.\n\n# Тесты\n\n10 unit-тестов покрывают: create (success/bad_request), list, patch (success, enable с NULL next_run, 404), delete (idempotent), list_runs (404, items), run_now (200 + spawn видно в БД, 404 для unknown).",
+    "createdAt": "2026-05-17T15:51:25.818Z",
+    "updatedAt": "2026-05-17T15:51:25.818Z"
+  },
+  {
+    "element": "forge-echo::scheduler",
+    "path": "",
+    "type": "page",
+    "content": "Phase 4 — Autonomous tasks scheduler для плагина forge-echo.\n\n# Архитектура\n\nДва модуля внутри plugins/echo/src/scheduler/:\n\n- mod.rs — фоновый loop с tick=5s. Поднимается из forge_echo::spawn_workers, возвращает JoinHandle сохраняемый в EchoState.workers.\n- runner.rs — исполнитель одного task'а (insert_run → prompt → one_shot → finish_run → broadcast).\n\n# Поток данных\n\n1. main.rs::main → forge_echo::register_routes → forge_echo::spawn_workers(state, host).\n2. spawn_workers вызывает scheduler::spawn(state, host) и регистрирует handle через state.register_worker.\n3. scheduler::spawn запускает tokio::task → run_loop → каждые 5s: tick_once.\n4. tick_once → autonomous::find_due(db, now) → для каждой due-задачи (с in-memory dedup) tokio::spawn(runner::run_task).\n5. runner::run_task → insert_run → ensure conversation '__autonomous__/<task_id>' → prompt_builder::build → ClaudeRunner::one_shot → messages::insert(assistant) → finish_run(success) → stats::add_tokens → broadcast AutonomousTaskEvent.\n\n# Защита от двойного запуска\n\n- Уровень scheduler: RunningSet = Arc<Mutex<HashSet<task_id>>> — отбрасывает повторный spawn пока id в множестве.\n- Уровень БД: runner.set_next_run сдвигает next_run_at СРАЗУ при insert_run (до выполнения). Следующий tick не увидит задачу как due пока run не финиширует.\n\n# REST API\n\nroutes/autonomous.rs регистрирует /api/echo/autonomous-tasks* (GET list, POST create, PATCH update, DELETE, POST run-now, GET runs).\n\n# WS broadcast\n\nServerMsg::AutonomousTaskEvent { task_id, run_id, status, message_preview } шлётся:\n- running — перед началом one_shot.\n- success — после успешного finish_run.\n- error — после finish_with_error.\n\nЭто broadcast-event (ServerEvent::broadcast(...)) — рассылается всем WS-клиентам /ws/echo (а не на конкретную conversation).\n\n# State changes\n\n- state.rs: EchoState получил workers: Arc<Mutex<Vec<JoinHandle<()>>>>, register_worker, shutdown_workers (для Phase 6 graceful shutdown).\n- chats.rs: добавлен create_with_id (нужен для детерминированных id служебных conversation).\n\n# Verify status\n\n- cargo build -p devforge: OK (без warning'ов от Phase 4 кода).\n- cargo test -p forge-echo: 89 lib tests + 1 e2e integration test (autonomous_scheduler_e2e) — все зелёные.\n- E2e test (autonomous_scheduler_e2e): scheduler с реальным spawn + мок CLI + task interval=2s → success TaskRun + broadcast event + token_stats bucket за 8 секунд.",
+    "createdAt": "2026-05-17T15:51:45.910Z",
+    "updatedAt": "2026-05-17T15:51:45.910Z"
+  },
+  {
+    "element": "plugins/echo/src/memory/mod.rs",
+    "path": "plugins/echo/src/memory/mod.rs",
+    "type": "file",
+    "content": "Memory automation module for Echo plugin. Provides summarize_day(state, host, day, project_id) — собирает messages за день UTC + capture-pane, отправляет в ClaudeRunner с мета-prompt'ом 'Summarize key facts and decisions from this day. Output concise markdown (≤ 1500 tokens). Focus on what changed.', upsert'ит в memories под scope global_day (project_id=None) или project_day (project_id=Some). При отсутствии данных за день пишет content='No activity', source='auto'. summarize_project(state, host, project_id) — собирает N=20 последних project_day memories + 200 messages за неделю + capture-pane проекта, мета-prompt 'Build/update a stable project memory: architecture, decisions, current focus.', upsert'ит под scope='project'. Constants: MAX_DAY_MESSAGES=200, MAX_PROJECT_DAY_MEMORIES=20, MESSAGE_SNIPPET_CAP=800. Helpers: day_bounds_utc, snippet, collect_day_messages, collect_week_messages, collect_pane_snapshot.",
+    "createdAt": "2026-05-17T16:00:13.862Z",
+    "updatedAt": "2026-05-17T16:00:13.862Z"
+  },
+  {
+    "element": "plugins/echo/src/routes/memory.rs",
+    "path": "plugins/echo/src/routes/memory.rs",
+    "type": "file",
+    "content": "POST /api/echo/memories/regenerate endpoint. Принимает { scope: 'global_day'|'project_day'|'project', project_id?, day? }, валидирует обязательные поля, диспатчит на memory::summarize_day или memory::summarize_project. Синхронный с таймаутом 90с (REGENERATE_TIMEOUT). Ошибки: 400 на invalid scope/missing field/invalid date, 504 на таймаут, 500 на ClaudeRunner/DB error, 200 + {memory_id, scope, day?, project_id?} на успех. Зарегистрирован через routes::build_router → .merge(memory::router()).",
+    "createdAt": "2026-05-17T16:02:07.215Z",
+    "updatedAt": "2026-05-17T16:02:07.215Z"
+  },
+  {
+    "element": "plugins/echo/src/actions/mod.rs",
+    "path": "plugins/echo/src/actions/mod.rs",
+    "type": "file",
+    "content": "Echo plugin actions module. Action enum (Prompt{id,label,text}|System{id,label,name,params}) — wire-format с tag='kind' для парсера forge-actions blocks. SystemActionKind whitelist enum: open_session, restart_session, create_task, open_project. ActionDescriptor (через to_descriptor()) — упрощённое представление для ServerMsg::ActionButtons. Подмодули: parser (extract из markdown), executor (invoke с autonomous-hard-reject).",
+    "createdAt": "2026-05-17T16:05:15.745Z",
+    "updatedAt": "2026-05-17T16:05:15.745Z"
+  },
+  {
+    "element": "plugins/echo/src/actions/parser.rs",
+    "path": "plugins/echo/src/actions/parser.rs",
+    "type": "file",
+    "content": "Парсер forge-actions blocks из ответа Claude. extract(text) ищет fenced code blocks с языком 'forge-actions', парсит body как JSON-array или single Action, возвращает Vec<Action>. iter_fenced_blocks реализует простую state-machine без зависимостей. Толерантен: невалидный JSON → warn + skip; неизвестный SystemActionKind → warn + skip (через serde Err); несколько блоков конкатенирует; whitespace вокруг body триммируется.",
+    "createdAt": "2026-05-17T16:05:16.000Z",
+    "updatedAt": "2026-05-17T16:05:16.000Z"
+  },
+  {
+    "element": "plugins/echo/src/actions/executor.rs",
+    "path": "plugins/echo/src/actions/executor.rs",
+    "type": "file",
+    "content": "Executor для Action. invoke(action, host, autonomous_context) — основной API. Hard-reject: System action + autonomous_context=true → anyhow::Err (защита от автономного выполнения system-actions без подтверждения пользователя). InvokeResult: Prompt{text} (фронт отправит как user_message)|Ok|Error{msg}. execute_system dispatch: OpenSession валидирует через host.list_sessions; OpenProject через list_projects; RestartSession/CreateTask — stub-Ok с tracing-логом, ожидают расширения HostApi в Phase 6.",
+    "createdAt": "2026-05-17T16:05:16.253Z",
+    "updatedAt": "2026-05-17T16:05:16.253Z"
+  },
+  {
+    "element": "plugins/echo/src/ws/mod.rs",
+    "path": "plugins/echo/src/ws/mod.rs",
+    "type": "file",
+    "content": "WebSocket /ws/echo handler. Phase 5b изменения: после assistant_done парсит forge-actions из текста через actions::parser::extract, регистрирует в state.action_registry, бродкастит ServerMsg::ActionButtons. Новая функция handle_action_invoke обрабатывает ClientMsg::ActionInvoke: find_action в registry → actions::executor::invoke с autonomous_context=false → результат Prompt вызывает run_user_message с текстом, Ok/Error/Reject шлёт ServerMsg::Notification.",
+    "createdAt": "2026-05-17T16:08:28.998Z",
+    "updatedAt": "2026-05-17T16:08:28.998Z"
+  },
+  {
+    "element": "tmux-web/static/js/echo/api.js",
+    "path": "tmux-web/static/js/echo/api.js",
+    "type": "file",
+    "content": "Echo plugin REST API client. Тонкие async wrappers вокруг apiFetch из core/api.js для /api/echo/*: conversations CRUD (list/create/delete/messages), memories CRUD (list/create/patch/delete) + regenerate (POST /api/echo/memories/regenerate с scope/project_id/day), autonomous-tasks (list/create/patch/delete/run-now/runs), stats, cancelRun. Helper call() парсит JSON и бросает Error со status+message при !res.ok.",
+    "createdAt": "2026-05-17T16:09:33.776Z",
+    "updatedAt": "2026-05-17T16:09:33.776Z"
+  },
+  {
+    "element": "tmux-web/static/js/echo/ws.js",
+    "path": "tmux-web/static/js/echo/ws.js",
+    "type": "file",
+    "content": "Echo WebSocket клиент. connectEchoWs(conversationId, handlers) — открывает /ws/echo с withWsToken auth, регистрирует handlers map для server-side messages (assistant_chunk, assistant_done, action_buttons, notification, stats_update, autonomous_task_event, error, ping). На server ping автоматически шлёт pong. Reconnect: backoff [1s,2s,5s,10s]. disconnectEchoWs — закрывает, отключает реконнект. Sender helpers: sendUserMessage/sendCancel/sendActionInvoke сериализуют ClientMsg и шлют через ws.send.",
+    "createdAt": "2026-05-17T16:10:24.823Z",
+    "updatedAt": "2026-05-17T16:10:24.823Z"
+  },
+  {
+    "element": "tmux-web/static/js/echo/chat.js",
+    "path": "tmux-web/static/js/echo/chat.js",
+    "type": "file",
+    "content": "Echo chat renderer. Pure DOM без зависимостей. renderConversation(messages) — полный re-render истории чата с очисткой messageEls/streamBuffers map. appendChunk(runId, kind, delta) — streaming append: создаёт streaming-карточку при первом chunk, группирует по kind (text/thinking/tool_use) в подэлементы. finalizeMessage(runId, messageId, usage) — финализирует streaming, перерендерит text с markdown, добавляет usage footer. showThinking(runId) — dots-indicator до первого chunk. bindInput(sendCb) — Enter→send, Shift+Enter→newline, auto-resize. Минималистичный markdown: code fences, headings 2-4, bullet lists, inline **bold**/*italic*/code/[link](url). XSS-safe — строит DOM, не innerHTML.",
+    "createdAt": "2026-05-17T16:13:06.979Z",
+    "updatedAt": "2026-05-17T16:13:06.979Z"
+  },
+  {
+    "element": "tmux-web/static/js/echo/model-picker.js",
+    "path": "tmux-web/static/js/echo/model-picker.js",
+    "type": "file",
+    "content": "Echo model picker. initModelPicker(onChange) — заполняет <select id='echo-model-picker'> и навешивает change-handler. Список DEFAULT_MODELS hardcoded (claude-opus-4-5, claude-3-5-sonnet-latest, claude-3-5-haiku-latest). getSelectedModel() читает из localStorage key 'forge.echo.model', fallback на первую модель. listModels() — копия списка для других UI.",
+    "createdAt": "2026-05-17T16:14:56.864Z",
+    "updatedAt": "2026-05-17T16:14:56.864Z"
+  },
+  {
+    "element": "tmux-web/static/js/echo/autonomous.js",
+    "path": "tmux-web/static/js/echo/autonomous.js",
+    "type": "file",
+    "content": "Echo autonomous tasks UI. initAutonomousPane — вешает + New button. refreshAutonomous — список из listAutonomousTasks, рендерит с toggle/Run/Runs/Edit/Delete buttons. openCreateModal/openEditModal — overlay с form (name, prompt_template, interval_seconds, model, project_id). openRunsModal — table с status/tokens/error из listAutonomousRuns. INTERVAL_PRESETS: 1m/5m/15m/1h/6h/24h. Все ошибки через notify.",
+    "createdAt": "2026-05-17T16:14:57.119Z",
+    "updatedAt": "2026-05-17T16:14:57.119Z"
+  },
+  {
+    "element": "tmux-web/static/js/echo/memory.js",
+    "path": "tmux-web/static/js/echo/memory.js",
+    "type": "file",
+    "content": "Echo memory viewer/editor. initMemoryPane — табы global_day/project/project_day + regenerate button. setMemoryFilters(projectId, day) — обновить активный project_id и day. refreshMemory — listMemories по текущему scope+фильтрам. beginEdit — inline textarea для patch. runRegenerate — валидирует обязательные params (project_id для project/project_day, day для global_day/project_day), POST /api/echo/memories/regenerate.",
+    "createdAt": "2026-05-17T16:14:57.367Z",
+    "updatedAt": "2026-05-17T16:14:57.367Z"
+  },
+  {
+    "element": "tmux-web/static/js/echo/notifications.js",
+    "path": "tmux-web/static/js/echo/notifications.js",
+    "type": "file",
+    "content": "General-purpose toast уведомления (доступны из любого модуля, не только Echo). notify({level,title,body,ttl=5000}) показывает toast в #echo-toasts, queue cap=5 (вытесняем самый старый), CSS classes echo-toast-show/echo-toast-hide для slide-in/fade-out (см. echo-notifications.css). clearToasts() для очистки. notifyFromServerMsg(msg) маппит ServerMsg::Notification → notify.",
+    "createdAt": "2026-05-17T16:16:33.697Z",
+    "updatedAt": "2026-05-17T16:16:33.697Z"
+  },
+  {
+    "element": "tmux-web/static/js/echo/action-buttons.js",
+    "path": "tmux-web/static/js/echo/action-buttons.js",
+    "type": "file",
+    "content": "Echo action buttons UI. renderActionButtons(messageEl, descriptors, invokeCb) — рендерит кнопки под assistant-сообщением. Prompt-actions вызывают invokeCb сразу; system-actions показывают showConfirmationModal с params JSON pretty-print, кнопками Cancel/Run, Esc→cancel, Enter→confirm. Возвращает Promise<bool> для async-await.",
+    "createdAt": "2026-05-17T16:16:33.948Z",
+    "updatedAt": "2026-05-17T16:16:33.948Z"
+  },
+  {
+    "element": "tmux-web/static/js/echo/stats.js",
+    "path": "tmux-web/static/js/echo/stats.js",
+    "type": "file",
+    "content": "Echo stats sparkline. Canvas-based, без зависимостей. initStats(pollMs=30000) стартует polling getStats('minute'). updateFromWs({tokens_in_per_min, tokens_out_per_min}) — incremental update от WS StatsUpdate в последний bucket. redraw рендерит две линии (accent для tokens_in, warn для tokens_out) с baseline. Цвета берутся из CSS var(--accent), var(--warn), var(--fg-dim) — реагирует на смену темы. updateSummary в  показывает ↓X ↑Y (с k/M суффиксами).",
+    "createdAt": "2026-05-17T16:16:34.198Z",
+    "updatedAt": "2026-05-17T16:16:34.198Z"
+  },
+  {
+    "element": "tmux-web/static/css/echo.css",
+    "path": "tmux-web/static/css/echo.css",
+    "type": "file",
+    "content": "Echo plugin CSS: layout grid (300px sidebar + 1fr main), conversations list с active state, chat messages (user right-aligned with accent tint, assistant left-aligned), markdown rendering (.echo-md-pre/.echo-md-code/.echo-md-h/.echo-md-ul), input area, model picker, autonomous list, memory viewer (3 tabs), modals (echo-modal-overlay/.echo-modal/.echo-modal-form/.echo-field). Все цвета через CSS variables — реагируют на theme switch.",
+    "createdAt": "2026-05-17T16:18:24.214Z",
+    "updatedAt": "2026-05-17T16:18:24.214Z"
+  },
+  {
+    "element": "tmux-web/static/css/echo-notifications.css",
+    "path": "tmux-web/static/css/echo-notifications.css",
+    "type": "file",
+    "content": "Toast уведомления Echo. #echo-toasts position fixed top-right. .echo-toast slide-in (translateX 120%→0), fade-out (echo-toast-hide класс). Border-left color: info=accent, warn=warn, error=danger (CSS vars). Close button × top-right корнере toast'а.",
+    "createdAt": "2026-05-17T16:18:24.468Z",
+    "updatedAt": "2026-05-17T16:18:24.468Z"
+  },
+  {
+    "element": "tmux-web/static/css/echo-actions.css",
+    "path": "tmux-web/static/css/echo-actions.css",
+    "type": "file",
+    "content": "Echo action buttons + confirmation modal styles. .echo-action-buttons flex wrap с dashed top-border. .echo-action-btn (default — accent hover), .echo-action-btn-system (warning-стиль с ⚠ иконкой). Confirmation modal расширяет .echo-modal: .echo-confirm-params для pretty-print JSON params в <pre>.",
+    "createdAt": "2026-05-17T16:18:24.713Z",
+    "updatedAt": "2026-05-17T16:18:24.713Z"
+  },
+  {
+    "element": "tmux-web/static/js/echo/main.js",
+    "path": "tmux-web/static/js/echo/main.js",
+    "type": "file",
+    "content": "Echo orchestrator. initEcho() — singleton init: model picker, input binding с sendUserMessage callback (с optimistic appendMessage), sidebar tabs (Chats/Auto/Memory), refreshChatsList (если пусто — createAndOpenChat), initAutonomousPane/initMemoryPane/initStats(30s). openChat(id) — установка active, clearMessages + listMessages + renderConversation + connectEchoWs. connectEchoWs(id)/disconnectEchoWs() — обёртки ws.js с handlers map (assistant_chunk/_done, action_buttons + sendActionInvoke, notification, autonomous_task_event toast, stats_update, error). teardownEcho для cleanup в beforeunload.",
+    "createdAt": "2026-05-17T16:19:45.457Z",
+    "updatedAt": "2026-05-17T16:19:45.457Z"
+  },
+  {
+    "element": "forge-echo::config",
+    "path": "",
+    "type": "unknown",
+    "content": "Полная конфигурация плагина Echo (Phase 6). Заменяет EchoConfigStub. Поля: cli_path (PathBuf, дефолт ~/.local/bin/claude или PATH lookup), db_path (~/.config/forge/echo.db), max_parallel_runs (4, min 1), default_model (claude-3-5-sonnet-latest), capture_lines (200), autonomous_max_tokens_per_day (200_000, 0=отключен), user_message_rate_limit_per_min (30, 0=отключен). EchoConfig::load() — defaults → load_from_file(~/.config/forge/echo.toml) → apply_env() → validate_and_fix. Env override через FORGE_ECHO_* prefix. Все ошибки парсинга/чтения — warn-log + дефолты, никогда не падает.",
+    "createdAt": "2026-05-17T16:52:01.218Z",
+    "updatedAt": "2026-05-17T16:52:01.218Z"
+  },
+  {
+    "element": "forge-echo::shutdown",
+    "path": "",
+    "type": "unknown",
+    "content": "Phase 6 hardening — graceful shutdown плагина Echo. Шаги: 1) state.shutdown.cancel() — будит долгоживущие задачи через CancellationToken; 2) shutdown_workers() — abort'ит сохранённые JoinHandle'ы scheduler+memory loop'ов; 3) runner.shutdown() — abort'ит активные Claude streams, kill_on_drop на дочернем процессе CLI убивает claude binary. Безопасно вызывать многократно. Вызывается из tmux-web/main.rs при SIGTERM/Ctrl-C через axum::serve.with_graceful_shutdown.",
+    "createdAt": "2026-05-17T16:52:05.941Z",
+    "updatedAt": "2026-05-17T16:52:05.941Z"
+  },
+  {
+    "element": "Echo_Phase_6_Settings_Hardening",
+    "path": "",
+    "type": "page",
+    "content": "Phase 6 features for Echo plugin: 1) EchoConfig (plugins/echo/src/config.rs) — TOML + env loader. 2) UserSettings extension (tmux-web/src/user_settings.rs): echo_default_model: Option<String> и echo_notifications_enabled: bool. 3) Settings modal Echo tab (tmux-web/static/js/echo/settings.js + settings/modal.js). 4) Rate-limit 30/min per WS user_message (sliding-window VecDeque<Instant> в ws/mod.rs). 5) Autonomous daily token cap (state.config.autonomous_max_tokens_per_day, агрегация SUM(tokens_in+tokens_out) FROM task_runs WHERE started_at>=utc_today_start). При cap reached: task disabled + warn Notification. 6) Graceful shutdown — CancellationToken в EchoState, forge_echo::shutdown() вызывается при SIGTERM. ClaudeRunner.shutdown() abort'ит активные runs, kill_on_drop убивает children. 7) Tracing namespace forge_echo (FORGE_ECHO_DEBUG=1 включает debug-уровень). 8) +14 integration tests (plugins/echo/tests/phase6_repos_and_parsers.rs) + 5 smoke tests (tmux-web/tests/echo_smoke.rs). Total: ~167 tests up from 131 baseline.",
+    "createdAt": "2026-05-17T16:52:13.574Z",
+    "updatedAt": "2026-05-17T16:52:13.574Z"
   }
 ]

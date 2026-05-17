@@ -1,0 +1,3 @@
+# forge-echo::config
+
+Полная конфигурация плагина Echo (Phase 6). Заменяет EchoConfigStub. Поля: cli_path (PathBuf, дефолт ~/.local/bin/claude или PATH lookup), db_path (~/.config/forge/echo.db), max_parallel_runs (4, min 1), default_model (claude-3-5-sonnet-latest), capture_lines (200), autonomous_max_tokens_per_day (200_000, 0=отключен), user_message_rate_limit_per_min (30, 0=отключен). EchoConfig::load() — defaults → load_from_file(~/.config/forge/echo.toml) → apply_env() → validate_and_fix. Env override через FORGE_ECHO_* prefix. Все ошибки парсинга/чтения — warn-log + дефолты, никогда не падает.

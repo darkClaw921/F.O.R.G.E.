@@ -10,6 +10,9 @@ mod attention;
 mod auth;
 mod cli;
 mod daemon;
+// Phase 1 Echo plugin — адаптер AppState → echo_host_api::HostApi.
+// Регистрируется в main() через forge_echo::register_routes.
+mod echo_host;
 #[allow(dead_code)] // публичный API используется в Phase 3 (POST /api/todos/:id/promote)
 mod notifier;
 mod projects;
@@ -221,11 +224,21 @@ async fn main() -> anyhow::Result<()> {
 
     // Инициализация логирования. По умолчанию: info для всего + debug для tmux_web.
     // Переопределяется переменной окружения RUST_LOG.
+    //
+    // Phase 6 (Echo) — если FORGE_ECHO_DEBUG=1 и RUST_LOG не задан явно,
+    // дополнительно включаем `forge_echo=debug` чтобы пользователь видел
+    // streaming-события Echo (prompt/usage/scheduler tick).
     tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("info,tmux_web=debug")),
-        )
+        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+            let echo_debug = std::env::var("FORGE_ECHO_DEBUG")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false);
+            if echo_debug {
+                EnvFilter::new("info,tmux_web=debug,forge_echo=debug")
+            } else {
+                EnvFilter::new("info,tmux_web=debug")
+            }
+        }))
         .init();
 
     // Загрузка реестра проектов. При первом старте создастся
@@ -479,6 +492,25 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("registered /api/remote-servers routes (remote mode)");
     }
 
+    // Phase 1 (Echo) — регистрация плагина forge-echo.
+    //
+    // ВАЖНО: register_routes вызывается ДО .layer(...) ниже, чтобы
+    // bearer_auth middleware покрыл /api/echo/* и (в будущем) /ws/echo
+    // автоматически в remote-mode. Static-fallback и trace-layer
+    // применяются уже к мердженному роутеру.
+    let echo_cfg = forge_echo::EchoConfigStub::default();
+    let echo_state = forge_echo::init(echo_cfg)
+        .await
+        .context("forge_echo::init failed")?;
+    let echo_host: Arc<dyn echo_host_api::HostApi> = Arc::new(echo_host::EchoHostAdapter {
+        state: app_state.clone(),
+    });
+    let app = forge_echo::register_routes(app, echo_state.clone(), echo_host.clone());
+    tracing::info!("forge-echo: plugin registered");
+    // Phase 4 — поднимаем background scheduler автономных задач.
+    forge_echo::spawn_workers(&echo_state, echo_host.clone());
+    let _ = (&echo_state, &echo_host); // удерживаем для будущих фаз (см. план)
+
     let mut app = app
         // Embedded static fallback: serve_static резолвит "/" → index.html и
         // отдаёт остальные ассеты с правильным Content-Type из bytes-секции
@@ -540,11 +572,56 @@ async fn main() -> anyhow::Result<()> {
     // (#token=...), чтобы клиент мог авторизоваться без ручного ввода.
     qr_print::print_startup_qr(&bind_host, port, remote_mode, auth_token_value.as_deref());
 
+    // Phase 6 (Echo) — graceful shutdown по Ctrl-C / SIGTERM. axum::serve
+    // принимает фьючер shutdown-signal'а; внутри сначала ждём ctrl_c (или
+    // SIGTERM на unix), потом завершаем Echo (kill дочерние claude + abort
+    // worker'ов + закрытие соединений). После возврата future axum закрывает
+    // listener и грейсфулли разлогинивает все активные соединения.
+    let echo_for_shutdown = echo_state.clone();
+    let shutdown_signal = async move {
+        wait_for_shutdown_signal().await;
+        tracing::info!("shutdown signal received; running Echo graceful shutdown");
+        forge_echo::shutdown(&echo_for_shutdown).await;
+    };
+
     axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal)
         .await
         .context("axum server error")?;
 
     Ok(())
+}
+
+/// Phase 6 (Echo) — ждёт Ctrl-C, либо SIGTERM (на unix). Возвращается, как
+/// только пришёл первый из сигналов. Используется в graceful-shutdown
+/// future для axum::serve.
+async fn wait_for_shutdown_signal() {
+    let ctrl_c = async {
+        if let Err(e) = tokio::signal::ctrl_c().await {
+            tracing::warn!(error = ?e, "failed to install ctrl_c handler");
+        }
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut s) => {
+                s.recv().await;
+            }
+            Err(e) => {
+                tracing::warn!(error = ?e, "failed to install SIGTERM handler");
+                std::future::pending::<()>().await;
+            }
+        }
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
 }
 
 /// Phase 1 — структура ответа `GET /healthz`. Используется frontend'ом ДО

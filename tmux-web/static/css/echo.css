@@ -1,0 +1,617 @@
+/* tmux-web — Echo plugin styles (Phase 5c)
+ *
+ * Стили основного UI вкладки Echo: layout (sidebar + main), список
+ * conversations, чат-сообщения, input, model picker, autonomous-list,
+ * memory-viewer, modals.
+ *
+ * Все цвета — CSS-переменные из base.css (--bg, --fg, --accent и т.п.),
+ * чтобы тематика автоматически перекрашивала Echo UI.
+ */
+
+/* ===== Layout ============================================================= */
+
+#echo {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    height: 100%;
+    min-height: 0;
+    background: var(--bg);
+    color: var(--fg);
+    overflow: hidden;
+}
+
+#echo[hidden] {
+    display: none !important;
+}
+
+#echo-sidebar {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-elev);
+    border-right: 1px solid var(--border);
+    min-height: 0;
+    overflow: hidden;
+}
+
+#echo-sidebar-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-toolbar);
+}
+
+.echo-sidebar-tab {
+    flex: 1;
+    padding: 8px 6px;
+    background: transparent;
+    color: var(--fg-dim);
+    border: 0;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    transition: color 0.15s ease, border-color 0.15s ease;
+}
+.echo-sidebar-tab:hover { color: var(--fg); }
+.echo-sidebar-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+
+.echo-sidebar-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.echo-sidebar-pane[hidden] {
+    display: none;
+}
+
+/* ----- conversations list ----- */
+
+#echo-conversations-head,
+#echo-autonomous-head {
+    padding: 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+#echo-new-chat,
+#echo-new-auto,
+#echo-memory-regen {
+    width: 100%;
+    padding: 6px 10px;
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    transition: background 0.15s ease;
+}
+#echo-new-chat:hover,
+#echo-new-auto:hover,
+#echo-memory-regen:hover {
+    background: var(--bg-input-hover);
+}
+
+#echo-conversations-list,
+#echo-autonomous-list,
+#echo-memory-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.echo-conv-item {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border-soft);
+    cursor: pointer;
+    color: var(--fg);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: background 0.1s ease;
+}
+.echo-conv-item:hover {
+    background: var(--bg-pill);
+}
+.echo-conv-item.active {
+    background: var(--accent-tint-strong);
+    border-left: 2px solid var(--accent);
+}
+.echo-conv-item .echo-conv-title {
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.echo-conv-item .echo-conv-meta {
+    font-size: 11px;
+    color: var(--fg-dim);
+}
+
+.echo-empty {
+    padding: 16px;
+    color: var(--fg-mute);
+    text-align: center;
+    font-size: 12px;
+}
+
+/* ----- main ----- */
+
+#echo-main {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--bg);
+}
+
+#echo-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-header);
+}
+
+#echo-model-picker {
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.echo-status {
+    color: var(--fg-dim);
+    font-size: 12px;
+    margin-left: auto;
+}
+
+#echo-stats-canvas {
+    background: var(--bg-elev);
+    border-radius: 3px;
+    border: 1px solid var(--border-soft);
+}
+
+.echo-stats-text {
+    font-size: 11px;
+    color: var(--fg-dim);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ----- messages ----- */
+
+.echo-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+}
+
+.echo-msg {
+    max-width: 80%;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border-soft);
+    line-height: 1.5;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+}
+
+.echo-msg-user {
+    align-self: flex-end;
+    background: color-mix(in srgb, var(--accent) 14%, var(--bg-elev) 86%);
+    border-color: color-mix(in srgb, var(--accent) 30%, var(--border) 70%);
+}
+
+.echo-msg-assistant {
+    align-self: flex-start;
+}
+
+.echo-msg-head {
+    font-size: 11px;
+    color: var(--fg-dim);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.echo-msg-content {
+    color: var(--fg);
+    font-size: 14px;
+}
+
+.echo-msg-chunk-text { color: var(--fg); }
+.echo-msg-chunk-thinking {
+    color: var(--fg-mute);
+    font-style: italic;
+    padding-left: 12px;
+    border-left: 2px solid var(--border);
+    margin: 6px 0;
+}
+.echo-msg-chunk-thinking::before {
+    content: '💭 ';
+    margin-right: 4px;
+}
+.echo-msg-chunk-tool_use {
+    background: color-mix(in srgb, var(--warn) 12%, var(--bg) 88%);
+    border: 1px solid color-mix(in srgb, var(--warn) 30%, var(--border) 70%);
+    border-radius: 4px;
+    padding: 6px 8px;
+    margin: 6px 0;
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
+    color: var(--warn-soft);
+}
+
+.echo-msg-thinking-dots {
+    display: inline-flex;
+    gap: 4px;
+}
+.echo-msg-thinking-dots span {
+    width: 6px;
+    height: 6px;
+    background: var(--fg-dim);
+    border-radius: 50%;
+    opacity: 0.4;
+    animation: echo-blink 1.4s infinite ease-in-out both;
+}
+.echo-msg-thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+.echo-msg-thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes echo-blink {
+    0%, 80%, 100% { opacity: 0.3; }
+    40% { opacity: 1; }
+}
+
+.echo-msg-usage {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border-soft);
+    font-size: 11px;
+    color: var(--fg-mute);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Markdown bits */
+.echo-md-pre {
+    background: var(--bg-deep);
+    color: var(--fg);
+    padding: 8px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border-soft);
+    overflow-x: auto;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px;
+    margin: 6px 0;
+}
+.echo-md-pre code { background: transparent; padding: 0; }
+.echo-md-code {
+    background: var(--bg-input);
+    border: 1px solid var(--border-soft);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: ui-monospace, monospace;
+    font-size: 0.95em;
+}
+.echo-md-h { margin: 8px 0 4px; font-weight: 600; }
+.echo-md-ul { margin: 4px 0; padding-left: 20px; }
+.echo-md-p { margin: 6px 0; }
+
+/* ----- input ----- */
+
+.echo-input-wrap {
+    display: flex;
+    gap: 8px;
+    padding: 10px 12px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-header-alt);
+    align-items: flex-end;
+}
+
+#echo-input {
+    flex: 1;
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.4;
+    resize: none;
+    min-height: 36px;
+    max-height: 200px;
+    transition: border-color 0.15s ease;
+}
+#echo-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+#echo-send {
+    background: var(--accent);
+    color: var(--fg-on-accent);
+    border: 0;
+    border-radius: 6px;
+    padding: 8px 14px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1;
+    transition: background 0.15s ease;
+    align-self: stretch;
+}
+#echo-send:hover { background: var(--accent-hover); }
+#echo-send:active { background: var(--accent-active); }
+
+/* ----- autonomous list ----- */
+
+.echo-auto-item {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border-soft);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.echo-auto-head {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 8px;
+    align-items: center;
+}
+.echo-auto-name { font-size: 13px; color: var(--fg); }
+.echo-auto-meta { font-size: 11px; color: var(--fg-dim); }
+.echo-auto-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.echo-auto-btn {
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 3px;
+    padding: 3px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    font-family: inherit;
+}
+.echo-auto-btn:hover { background: var(--bg-input-hover); }
+.echo-auto-btn-danger {
+    border-color: color-mix(in srgb, var(--danger) 40%, var(--border) 60%);
+    color: var(--danger-soft);
+}
+
+/* ----- memory ----- */
+
+#echo-memory-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border-soft);
+}
+.echo-mem-tab {
+    flex: 1;
+    background: transparent;
+    color: var(--fg-dim);
+    border: 0;
+    border-bottom: 2px solid transparent;
+    padding: 6px 4px;
+    font-size: 11px;
+    cursor: pointer;
+    font-family: inherit;
+}
+.echo-mem-tab:hover { color: var(--fg); }
+.echo-mem-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+
+.echo-mem-item {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border-soft);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.echo-mem-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+}
+.echo-mem-title {
+    font-size: 12px;
+    color: var(--fg);
+    font-weight: 600;
+}
+.echo-mem-source {
+    font-size: 10px;
+    color: var(--fg-dim);
+    text-transform: uppercase;
+}
+.echo-mem-content {
+    margin: 0;
+    padding: 6px 8px;
+    background: var(--bg-deep);
+    border: 1px solid var(--border-soft);
+    border-radius: 3px;
+    font-size: 11px;
+    color: var(--fg);
+    max-height: 200px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.echo-mem-edit {
+    width: 100%;
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 3px;
+    padding: 6px 8px;
+    font-size: 11px;
+    font-family: ui-monospace, monospace;
+    resize: vertical;
+}
+.echo-mem-actions {
+    display: flex;
+    gap: 4px;
+}
+.echo-mem-btn {
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 3px;
+    padding: 3px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    font-family: inherit;
+}
+.echo-mem-btn:hover { background: var(--bg-input-hover); }
+.echo-mem-btn-primary {
+    background: var(--accent);
+    color: var(--fg-on-accent);
+    border-color: var(--accent);
+}
+.echo-mem-btn-danger {
+    border-color: color-mix(in srgb, var(--danger) 40%, var(--border) 60%);
+    color: var(--danger-soft);
+}
+
+/* ===== Echo modals (общая база для autonomous/confirm) ==================== */
+
+.echo-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--overlay-modal);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    overflow-y: auto;
+}
+
+.echo-modal {
+    background: var(--bg-elev);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    min-width: 360px;
+    max-width: 600px;
+    width: 100%;
+    box-shadow: 0 12px 30px var(--overlay-shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.echo-modal-wide { max-width: 800px; }
+
+.echo-modal h3 {
+    margin: 0;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--fg);
+}
+
+.echo-modal-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.echo-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.echo-field > span {
+    font-size: 11px;
+    color: var(--fg-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.echo-field input,
+.echo-field textarea,
+.echo-field select {
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-family: inherit;
+    font-size: 13px;
+}
+.echo-field input:focus,
+.echo-field textarea:focus,
+.echo-field select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.echo-modal-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 4px;
+}
+.echo-modal-buttons button {
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 6px 14px;
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+.echo-modal-buttons button.primary {
+    background: var(--accent);
+    color: var(--fg-on-accent);
+    border-color: var(--accent);
+}
+.echo-modal-buttons button:hover { filter: brightness(1.1); }
+
+.echo-runs-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+.echo-runs-table th,
+.echo-runs-table td {
+    text-align: left;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border-soft);
+}
+.echo-runs-table th {
+    color: var(--fg-dim);
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+}
+
+.echo-error-block {
+    background: var(--danger-bg);
+    color: var(--danger-soft);
+    padding: 8px;
+    border-radius: 4px;
+    font-size: 12px;
+}

@@ -1,6 +1,6 @@
 [package]
 name = "devforge"
-version = "0.1.12"
+version = "0.1.13"
 edition = "2021"
 description = "Web-viewer для tmux сессий через WebSocket + xterm.js"
 license = "MIT"
@@ -68,15 +68,22 @@ qrcode = { version = "0.14", default-features = false }
 # доступный с телефона в той же Wi-Fi сети.
 local-ip-address = "0.6"
 
+# Echo плагин — встроенный чат-ассистент на Claude CLI. Подключается
+# как path-dep в Cargo workspace (members: plugins/echo, plugins/echo-host-api).
+# forge-echo инициализируется в main() через `forge_echo::init` и
+# `register_routes` (~ tmux-web/src/main.rs:487).
+# echo-host-api нужен для импорта trait HostApi в `echo_host::EchoHostAdapter`.
+forge-echo = { path = "../plugins/echo" }
+echo-host-api = { path = "../plugins/echo-host-api" }
+# async-trait нужен в tmux-web потому что EchoHostAdapter имплементит
+# echo_host_api::HostApi (trait объявлен через #[async_trait]).
+async-trait = "0.1"
+
 # Daemon-режим (devforge start) — нужен setsid(2) чтобы детачнуть дочерний
 # процесс от controlling terminal, иначе он умрёт при закрытии shell.
 # libc уже есть транзитивно (tokio, mio); пинуем явно для предсказуемости.
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
-
-[profile.release]
-opt-level = 3
-lto = "thin"
 
 # Dev-dependencies — нужны только для cargo test.
 #
@@ -91,6 +98,10 @@ lto = "thin"
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 wiremock = "0.6"
+
+# Phase 6.9 — integration smoke-test для Echo (tests/echo_smoke.rs).
+# tempfile нужен для mock-CLI shell-скрипта.
+tempfile = "3"
 
 [[bin]]
 name = "devforge"

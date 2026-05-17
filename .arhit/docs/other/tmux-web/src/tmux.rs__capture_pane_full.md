@@ -1,0 +1,3 @@
+# tmux-web/src/tmux.rs::capture_pane_full
+
+Async-функция захвата pane сессии tmux с расширенным scrollback. Эквивалент 'tmux capture-pane -p -t <session> -S -<lines>'. Используется Echo плагином (prompt_builder) для подмешивания контекста tmux-сессий в Claude-prompt. Параметры: session: &str — имя tmux-сессии; lines: i32 — сколько строк истории добавить (>=0, clamp до 10_000). Возвращает Ok('') при отсутствующей сессии или non-running сервере (как и capture_pane), Err при невалидном lines или ошибке tmux. Покрыто юнит-тестами в tmux::tests (capture_pane_full_rejects_negative_lines, capture_pane_full_missing_session_returns_empty, capture_pane_full_clamps_large_lines).

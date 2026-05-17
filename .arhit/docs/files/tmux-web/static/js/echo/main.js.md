@@ -1,0 +1,3 @@
+# tmux-web/static/js/echo/main.js
+
+Echo orchestrator. initEcho() — singleton init: model picker, input binding с sendUserMessage callback (с optimistic appendMessage), sidebar tabs (Chats/Auto/Memory), refreshChatsList (если пусто — createAndOpenChat), initAutonomousPane/initMemoryPane/initStats(30s). openChat(id) — установка active, clearMessages + listMessages + renderConversation + connectEchoWs. connectEchoWs(id)/disconnectEchoWs() — обёртки ws.js с handlers map (assistant_chunk/_done, action_buttons + sendActionInvoke, notification, autonomous_task_event toast, stats_update, error). teardownEcho для cleanup в beforeunload.

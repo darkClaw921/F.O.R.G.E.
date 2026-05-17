@@ -1,0 +1,3 @@
+# plugins/echo/src/claude/prompt_builder.rs::build
+
+Собирает финальный prompt для Claude CLI из нескольких источников. Аргументы: user_text, opts:&CtxOpts, host:&dyn HostApi, db:&Db. Возвращает строку с секциями (опускаются если данных нет): [system_context] — статичная преамбула; [tmux_sessions] — capture_pane_full для каждой релевантной сессии (фильтр по session_filter); [memories] — global_day за вчера + project memories для project_id; [projects] — список проектов; [user_message] — собственно user_text. Толерантна: capture_pane_full Err для одной сессии не валит весь prompt (warn-log + skip), memories.list Err опускает блок, пустой pane пропускается. Покрыт 10 unit-тестами с MockHost.

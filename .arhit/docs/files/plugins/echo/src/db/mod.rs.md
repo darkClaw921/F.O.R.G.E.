@@ -1,0 +1,3 @@
+# plugins/echo/src/db/mod.rs
+
+Tokio-rusqlite async wrapper над SQLite-БД Echo. Db::open(path) создаёт parent dir + открывает соединение; Db::open_memory() — для тестов. Db::migrate() включает WAL+foreign_keys, создаёт служебную schema_migrations, применяет миграции из embedded folder (rust_embed) в лекс. порядке имени файла в одной транзакции, идемпотентно. RustEmbed Migrations подключает plugins/echo/migrations/V*.sql на build time. Tracing logs на pragma errors и каждой применённой миграции. Тесты в #[cfg(test)] mod tests покрывают: создание всех 7 таблиц (включая schema_migrations), идемпотентность повторного migrate(), включенность foreign_keys.

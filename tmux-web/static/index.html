@@ -41,6 +41,7 @@
                 <button id="btn-sidebar-toggle" class="sidebar-toggle-btn" type="button" title="Скрыть/показать сайдбар (Cmd/Ctrl+B)" aria-label="Toggle sidebar">☰</button>
                 <button id="tab-terminal" class="tab-btn active" type="button">Terminal</button>
                 <button id="tab-tasks" class="tab-btn" type="button">Tasks</button>
+                <button id="tab-echo" class="tab-btn" type="button">Э.Х.О</button>
                 <button id="tab-git" class="tab-btn" type="button">Git</button>
                 <button id="tab-docker" class="tab-btn" type="button">Docker</button>
                 <button id="tab-telescope" class="tab-btn" type="button">Find</button>
@@ -68,6 +69,49 @@
                     <span id="tasks-meta"></span>
                 </div>
                 <div id="tasks-board"></div>
+            </div>
+            <div id="echo" class="tab-pane" hidden>
+                <aside id="echo-sidebar">
+                    <div id="echo-sidebar-tabs">
+                        <button id="echo-sidebar-tab-chats" class="echo-sidebar-tab active" type="button">Chats</button>
+                        <button id="echo-sidebar-tab-auto" class="echo-sidebar-tab" type="button">Auto</button>
+                        <button id="echo-sidebar-tab-memory" class="echo-sidebar-tab" type="button">Memory</button>
+                    </div>
+                    <div id="echo-conversations" class="echo-sidebar-pane">
+                        <div id="echo-conversations-head">
+                            <button id="echo-new-chat" type="button" title="Новый чат">+ New chat</button>
+                        </div>
+                        <ul id="echo-conversations-list"></ul>
+                    </div>
+                    <div id="echo-autonomous" class="echo-sidebar-pane" hidden>
+                        <div id="echo-autonomous-head">
+                            <button id="echo-new-auto" type="button" title="Новая автозадача">+ New</button>
+                        </div>
+                        <ul id="echo-autonomous-list"></ul>
+                    </div>
+                    <div id="echo-memory" class="echo-sidebar-pane" hidden>
+                        <div id="echo-memory-tabs">
+                            <button class="echo-mem-tab active" data-scope="global_day" type="button">Day</button>
+                            <button class="echo-mem-tab" data-scope="project" type="button">Project</button>
+                            <button class="echo-mem-tab" data-scope="project_day" type="button">Project/Day</button>
+                        </div>
+                        <ul id="echo-memory-list"></ul>
+                        <button id="echo-memory-regen" type="button" title="Перегенерировать">↻ Regenerate</button>
+                    </div>
+                </aside>
+                <main id="echo-main">
+                    <header id="echo-header">
+                        <select id="echo-model-picker" title="Модель Claude"></select>
+                        <span id="echo-status" class="echo-status"></span>
+                        <canvas id="echo-stats-canvas" width="160" height="36" title="tokens/min"></canvas>
+                        <span id="echo-stats-text" class="echo-stats-text"></span>
+                    </header>
+                    <div id="echo-messages" class="echo-messages" role="log" aria-live="polite"></div>
+                    <footer id="echo-input-wrap" class="echo-input-wrap">
+                        <textarea id="echo-input" rows="2" placeholder="Сообщение Э.Х.О... (Enter — отправить, Shift+Enter — перенос)"></textarea>
+                        <button id="echo-send" type="button" title="Отправить">↑</button>
+                    </footer>
+                </main>
             </div>
             <div id="git" hidden>
                 <!-- lazygit-tab: xterm-терминал подключён к /ws/lazygit
@@ -130,6 +174,9 @@
             </div>
         </main>
     </div>
+
+    <!-- Phase 5: Echo toast уведомления (общий компонент, доступен из любой вкладки) -->
+    <div id="echo-toasts" class="echo-toasts" role="status" aria-live="polite"></div>
 
     <!-- xterm.js core (5.3.0) -->
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>

@@ -15,6 +15,7 @@ import { buildNotificationsForm } from './notifications-tab.js';
 import { renderRemotesTable } from './remotes-tab.js';
 import { buildTodoBehaviorForm } from './todo-tab.js';
 import { fetchUserSettings } from './user-settings-api.js';
+import { renderEchoSettingsTab } from '../echo/settings.js';
 
 export function openSettingsModal(initialTab) {
     const overlay = buildModalOverlay();
@@ -63,6 +64,7 @@ export function openSettingsModal(initialTab) {
             <button type="button" class="modal-tab-btn active" data-tab="notifications" role="tab">Notifications</button>
             <button type="button" class="modal-tab-btn" data-tab="themes" role="tab">Themes</button>
             <button type="button" class="modal-tab-btn" data-tab="todo" role="tab">TODO behavior</button>
+            <button type="button" class="modal-tab-btn" data-tab="echo" role="tab">Echo</button>
             ${remoteTabBtn}
         </div>
         <div class="modal-tab-panel" id="ps-panel-notifications" data-panel="notifications">
@@ -78,6 +80,10 @@ export function openSettingsModal(initialTab) {
         <div class="modal-tab-panel" id="ps-panel-todo" data-panel="todo" hidden>
             <h2>TODO behavior</h2>
             <div class="todo-settings-content" id="ps-todo-content"></div>
+        </div>
+        <div class="modal-tab-panel" id="ps-panel-echo" data-panel="echo" hidden>
+            <h2>Echo</h2>
+            <div class="echo-settings-content" id="ps-echo-content"></div>
         </div>
         ${remotePanel}
         <div class="modal-actions">
@@ -99,12 +105,16 @@ export function openSettingsModal(initialTab) {
 
     const $remotesTbody = card.querySelector('#ps-remotes-table tbody');
     const $todoContent = card.querySelector('#ps-todo-content');
+    const $echoContent = card.querySelector('#ps-echo-content');
 
     // TODO behavior tab state: рендерим форму один раз при первом клике.
     // userSettings fetch выполняется лениво, если bootstrap-preload не успел
     // или вернул null. defaults используются как graceful-fallback, если
     // backend down — тогда форма всё равно показывается.
     const todoState = {
+        loaded: false,
+    };
+    const echoTabState = {
         loaded: false,
     };
 
@@ -126,6 +136,24 @@ export function openSettingsModal(initialTab) {
         }));
     };
 
+    // Echo tab: ленивая загрузка user-settings (если ещё не подгружены) и
+    // рендер renderEchoSettingsTab. Использует тот же кеш state.userSettings,
+    // что и TODO panel — fetch выполняется один раз на сессию.
+    const renderEchoPanel = async () => {
+        if (echoTabState.loaded) return;
+        echoTabState.loaded = true;
+        $echoContent.innerHTML = '<div class="themes-loading">Loading settings…</div>';
+        if (state.userSettings === null) {
+            try {
+                await fetchUserSettings();
+            } catch (_) { /* fetchUserSettings swallows errors itself */ }
+        }
+        const settingsArg = state.userSettings || {};
+        renderEchoSettingsTab($echoContent, settingsArg, (updated) => {
+            if (updated) state.userSettings = updated;
+        });
+    };
+
     const showTab = (name) => {
         $tabBtns.forEach((btn) => {
             const isActive = btn.dataset.tab === name;
@@ -143,6 +171,9 @@ export function openSettingsModal(initialTab) {
         }
         if (name === 'todo') {
             renderTodoPanel();
+        }
+        if (name === 'echo') {
+            renderEchoPanel();
         }
     };
     $tabBtns.forEach((btn) => {
@@ -349,7 +380,7 @@ export function openSettingsModal(initialTab) {
     };
     renderList();
 
-    if (initialTab && (initialTab === 'themes' || initialTab === 'todo' || (initialTab === 'remotes' && isRemoteMode()))) {
+    if (initialTab && (initialTab === 'themes' || initialTab === 'todo' || initialTab === 'echo' || (initialTab === 'remotes' && isRemoteMode()))) {
         showTab(initialTab);
     }
 

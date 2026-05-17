@@ -7,7 +7,7 @@
 import { state } from './state.js';
 import {
     $btnNew, $windowNewBtn,
-    $tabTerminal, $tabTasks, $tabGit, $tabDocker, $tabTelescope,
+    $tabTerminal, $tabTasks, $tabGit, $tabDocker, $tabTelescope, $tabEcho,
     $tasksReload, $tasksNew,
     $projectSelect, $projectNew, $projectSettings,
     $btnSidebarToggle, $sidebarOverlay, $layout,
@@ -42,6 +42,9 @@ import { openNewProjectModal } from '../projects/new-project.js';
 import { openSettingsModal } from '../settings/modal.js';
 import { fetchUserSettings } from '../settings/user-settings-api.js';
 import { openCreateModal } from '../tasks/modals.js';
+import {
+    initEcho, connectEchoWs, disconnectEchoWs, teardownEcho, _debugState as echoDebug,
+} from '../echo/main.js';
 
 // ----- side-effect global listeners (app.js:745-851) -----
 // Sidebar overlay click / Esc / Cmd+B hotkey + mqlMobile change.
@@ -133,6 +136,11 @@ export async function bootstrap() {
     if ($tabGit) $tabGit.addEventListener('click', () => switchTab('git'));
     if ($tabDocker) $tabDocker.addEventListener('click', () => switchTab('docker'));
     if ($tabTelescope) $tabTelescope.addEventListener('click', () => switchTab('telescope'));
+    if ($tabEcho) $tabEcho.addEventListener('click', () => switchTab('echo'));
+
+    // Eager-init Echo (заполняет model picker, sidebar, fetch conversations).
+    // Сама вкладка остаётся hidden до switchTab('echo').
+    try { initEcho(); } catch (e) { console.warn('[bootstrap] initEcho failed', e); }
 
     if ($projectSelect) {
         $projectSelect.addEventListener('change', (ev) => {
@@ -183,12 +191,16 @@ export async function bootstrap() {
         if (state.dockerTerm) state.dockerTerm.close('beforeunload');
         if (state.telescopeTerm) state.telescopeTerm.close('beforeunload');
         stopRemoteHealthPoll();
+        teardownEcho();
     });
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
             stopPolling();
             stopTasksPolling();
             stopTodosPolling();
+            if (state.activeTab === 'echo') {
+                disconnectEchoWs();
+            }
         } else {
             fetchSessions();
             startPolling();
@@ -201,6 +213,12 @@ export async function bootstrap() {
             connectTodosWs();
             if (!state.todosWs || state.todosWs.readyState !== WebSocket.OPEN) {
                 fetchTodos();
+            }
+            if (state.activeTab === 'echo') {
+                const dbg = echoDebug();
+                if (dbg && dbg.activeConversationId) {
+                    connectEchoWs(dbg.activeConversationId);
+                }
             }
         }
     });

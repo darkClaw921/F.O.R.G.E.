@@ -1,0 +1,3 @@
+# /Users/igorgerasimov/claudeWorkspace/F.O.R.G.E./tmux-web/src/echo_host.rs
+
+EchoHostAdapter — реализация echo_host_api::HostApi для tmux-web. Оборачивает AppState и проксирует доступ к ProjectStore, tmux, auth_token. Phase 1: list_sessions возвращает пустой vec, capture_pane_full возвращает error 'not implemented in P1', list_projects и active_project_id реально читают AppState.projects (RwLock read), auth_token клонирует Arc<Option<String>>. Phase 3 (forge-fa3.2) реализует list_sessions через crate::tmux::list_sessions и capture_pane_full через новую crate::tmux::capture_pane_full(session, lines). Используется в main.rs: Arc::new(EchoHostAdapter { state: app_state.clone() }) → передаётся в forge_echo::register_routes как Arc<dyn HostApi>.

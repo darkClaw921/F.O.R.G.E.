@@ -1,0 +1,18 @@
+[package]
+name = "echo-host-api"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Plugin boundary trait + DTO для Echo плагина (HostApi)"
+
+# Мини-крейт: только trait HostApi и DTO. Никаких зависимостей на tmux-web,
+# axum, базы — это позволяет echo-плагину компилироваться отдельно и
+# тестироваться с мок-хостом.
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+# tokio только для rt — нужен Send-совместимый async API, без actual runtime
+# полезной нагрузки в этом крейте (impl HostApi живёт в tmux-web).
+tokio = { version = "1", default-features = false, features = ["rt"] }

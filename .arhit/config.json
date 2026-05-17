@@ -2,7 +2,9 @@
   "name": "F.O.R.G.E.",
   "sourcePaths": [
     "tmux-web/src",
-    "tmux-web/static"
+    "tmux-web/static",
+    "plugins/echo/src",
+    "plugins/echo-host-api/src"
   ],
   "ignore": [
     "node_modules",
