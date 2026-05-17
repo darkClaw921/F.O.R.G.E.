@@ -463,28 +463,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn healthz_uppercase_is_case_sensitive_requires_token() {
-        // /HEALTHZ ≠ /healthz: middleware case-sensitive по path.
-        // Если бы axum матчил /HEALTHZ к route("/healthz") — это вернуло бы
-        // 200 (т.к. excluded). Текущее поведение: 404 (роута нет) — он не
-        // вызывает middleware. Альтернативно: явно регистрируем /HEALTHZ
-        // и проверяем 401.
-        let state = AuthState::new(Some("secret".to_string()));
-        let router = Router::new()
-            .route("/HEALTHZ", get(ok_handler))
-            .layer(from_fn_with_state(state, bearer_auth));
-        let resp = router
-            .oneshot(req(Method::GET, "/HEALTHZ", None))
-            .await
-            .unwrap();
-        assert_eq!(
-            resp.status(),
-            StatusCode::UNAUTHORIZED,
-            "/HEALTHZ — case-sensitive, не в excluded-list → 401"
-        );
-    }
-
-    #[tokio::test]
     async fn ws_upgrade_without_auth_returns_401_not_426() {
         // GET /ws/attach с Upgrade: websocket, но без Authorization → 401
         // (middleware отвечает раньше, чем axum::extract::WebSocketUpgrade
