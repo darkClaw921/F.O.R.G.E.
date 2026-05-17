@@ -143,7 +143,8 @@ export function taskOriginById(id) {
     return dtoOrigin(issue);
 }
 
-export async function closeTask(id, reason) {
+export async function closeTask(id, reason, opts) {
+    const silent = !!(opts && opts.silent);
     const prev = applyOptimisticPatch(id, { status: 'closed' });
     try {
         const origin = taskOriginById(id);
@@ -152,19 +153,20 @@ export async function closeTask(id, reason) {
         const r = await apiFetch(url, { method: 'DELETE' }, origin);
         if (!r.ok && r.status !== 204) {
             const text = await r.text();
-            window.alert('Close не удался: ' + (text || r.status));
+            if (!silent) window.alert('Close не удался: ' + (text || r.status));
             rollbackIssue(id, prev);
             return false;
         }
         return true;
     } catch (e) {
-        window.alert('Ошибка запроса: ' + e.message);
+        if (!silent) window.alert('Ошибка запроса: ' + e.message);
         rollbackIssue(id, prev);
         return false;
     }
 }
 
-export async function purgeTask(id) {
+export async function purgeTask(id, opts) {
+    const silent = !!(opts && opts.silent);
     const idx = getIssueIndex(id);
     const prev = (idx >= 0) ? state.tasksData.issues[idx] : null;
     if (idx >= 0) {
@@ -178,7 +180,7 @@ export async function purgeTask(id) {
         }, origin);
         if (!r.ok && r.status !== 204) {
             const text = await r.text();
-            window.alert('Purge не удался: ' + (text || r.status));
+            if (!silent) window.alert('Purge не удался: ' + (text || r.status));
             if (prev && state.tasksData) {
                 state.tasksData.issues.splice(idx >= 0 ? idx : 0, 0, prev);
                 renderTasks();
@@ -187,7 +189,7 @@ export async function purgeTask(id) {
         }
         return true;
     } catch (e) {
-        window.alert('Ошибка запроса: ' + e.message);
+        if (!silent) window.alert('Ошибка запроса: ' + e.message);
         if (prev && state.tasksData) {
             state.tasksData.issues.splice(idx >= 0 ? idx : 0, 0, prev);
             renderTasks();
@@ -196,7 +198,8 @@ export async function purgeTask(id) {
     }
 }
 
-export async function deleteTodoLocal(id) {
+export async function deleteTodoLocal(id, opts) {
+    const silent = !!(opts && opts.silent);
     const idx = Array.isArray(state.todosData)
         ? state.todosData.findIndex((t) => t && t.id === id)
         : -1;
@@ -212,7 +215,7 @@ export async function deleteTodoLocal(id) {
         }, origin);
         if (!r.ok && r.status !== 204) {
             const text = await r.text();
-            window.alert('Delete TODO не удался: ' + (text || r.status));
+            if (!silent) window.alert('Delete TODO не удался: ' + (text || r.status));
             if (prev) {
                 state.todosData.splice(idx >= 0 ? idx : 0, 0, prev);
                 renderTasks();
@@ -221,7 +224,7 @@ export async function deleteTodoLocal(id) {
         }
         return true;
     } catch (e) {
-        window.alert('Ошибка запроса: ' + e.message);
+        if (!silent) window.alert('Ошибка запроса: ' + e.message);
         if (prev) {
             state.todosData.splice(idx >= 0 ? idx : 0, 0, prev);
             renderTasks();
@@ -232,18 +235,22 @@ export async function deleteTodoLocal(id) {
 
 export async function cleanColumn(status, ids) {
     if (!Array.isArray(ids) || ids.length === 0) return { ok: 0, fail: 0 };
+    const fn = (status === 'closed')
+        ? (id) => purgeTask(id, { silent: true })
+        : (status === 'todo')
+            ? (id) => deleteTodoLocal(id, { silent: true })
+            : (id) => closeTask(id, 'clean-column', { silent: true });
+
+    const CONCURRENCY = 8;
     let ok = 0;
     let fail = 0;
-    for (const id of ids) {
-        let success = false;
-        if (status === 'closed') {
-            success = await purgeTask(id);
-        } else if (status === 'todo') {
-            success = await deleteTodoLocal(id);
-        } else {
-            success = await closeTask(id, 'clean-column');
+    for (let i = 0; i < ids.length; i += CONCURRENCY) {
+        const chunk = ids.slice(i, i + CONCURRENCY);
+        const results = await Promise.allSettled(chunk.map(fn));
+        for (const r of results) {
+            if (r.status === 'fulfilled' && r.value) ok += 1;
+            else fail += 1;
         }
-        if (success) ok += 1; else fail += 1;
     }
     return { ok, fail };
 }

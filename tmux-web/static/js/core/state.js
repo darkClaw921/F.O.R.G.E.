@@ -60,6 +60,15 @@ export const state = {
     // ---- Phase 6.B: Multi-project ----
     projects: [],             // последний массив ProjectDto от /api/projects
     activeProjectId: null,    // id активного проекта (или null до первого fetch)
+    // ---- User Settings (TODO behavior) ----
+    // Кэш пользовательских настроек, загружается через GET /api/user-settings
+    // на bootstrap (best-effort) и обновляется через PATCH в settings/user-settings-api.js.
+    // null до первого успешного fetch; при ошибке остаётся null — Tasks UI должен
+    // обращаться к дефолтам, поведение совпадает с legacy (до фичи).
+    // Структура: { todo_default_plan_mode, todo_default_priority,
+    //   todo_default_issue_type, todo_plan_mode_suffix,
+    //   todo_confirm_delete, todo_confirm_promote_on_drag }.
+    userSettings: null,
     // Cross-project sessions visibility: фильтр сайдбара (UI-only).
     // '__all__' = показывать сессии всех проектов (с группировкой), либо
     // конкретный project.id — показывать только сессии этого проекта.

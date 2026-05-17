@@ -40,6 +40,7 @@ import {
 import { fetchProjects } from '../projects/projects.js';
 import { openNewProjectModal } from '../projects/new-project.js';
 import { openSettingsModal } from '../settings/modal.js';
+import { fetchUserSettings } from '../settings/user-settings-api.js';
 import { openCreateModal } from '../tasks/modals.js';
 
 // ----- side-effect global listeners (app.js:745-851) -----
@@ -164,6 +165,12 @@ export async function bootstrap() {
         fetchTodos();
         connectTodosWs();
     });
+
+    // Best-effort preload пользовательских настроек (TODO behavior).
+    // fetchUserSettings уже глотает ошибки и возвращает null — не блокируем UI.
+    try {
+        fetchUserSettings().catch(() => {});
+    } catch (_) { /* never reached, defensive */ }
 
     window.addEventListener('beforeunload', () => {
         stopPolling();

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-17T12:33:41.142Z",
+  "generatedAt": "2026-05-17T13:45:58.201Z",
   "dependencies": [
     {
       "from": "tmux-web/static/hotkeys.js",
@@ -2761,6 +2761,12 @@
     },
     {
       "from": "tmux-web/static/js/core/bootstrap.js",
+      "to": "../settings/user-settings-api.js",
+      "type": "import",
+      "toElement": "fetchUserSettings"
+    },
+    {
+      "from": "tmux-web/static/js/core/bootstrap.js",
       "to": "../tasks/modals.js",
       "type": "import",
       "toElement": "openCreateModal"
@@ -3092,6 +3098,13 @@
       "type": "call",
       "fromElement": "bootstrap",
       "toElement": "connectTodosWs"
+    },
+    {
+      "from": "tmux-web/static/js/core/bootstrap.js",
+      "to": "tmux-web/static/js/core/bootstrap.js",
+      "type": "call",
+      "fromElement": "bootstrap",
+      "toElement": "fetchUserSettings"
     },
     {
       "from": "tmux-web/static/js/core/bootstrap.js",
@@ -6021,6 +6034,18 @@
     },
     {
       "from": "tmux-web/static/js/settings/modal.js",
+      "to": "./todo-tab.js",
+      "type": "import",
+      "toElement": "buildTodoBehaviorForm"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "./user-settings-api.js",
+      "type": "import",
+      "toElement": "fetchUserSettings"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
       "to": "tmux-web/static/js/settings/modal.js",
       "type": "call",
       "fromElement": "openSettingsModal",
@@ -6101,6 +6126,27 @@
       "to": "tmux-web/static/js/settings/modal.js",
       "type": "call",
       "fromElement": "openSettingsModal",
+      "toElement": "card.querySelector"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/settings/modal.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "fetchUserSettings"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/settings/modal.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "buildTodoBehaviorForm"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/settings/modal.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
       "toElement": "btn.classList.toggle"
     },
     {
@@ -6123,6 +6169,13 @@
       "type": "call",
       "fromElement": "openSettingsModal",
       "toElement": "renderRemotesTable"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/settings/modal.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "renderTodoPanel"
     },
     {
       "from": "tmux-web/static/js/settings/modal.js",
@@ -7391,6 +7444,529 @@
       "type": "call",
       "fromElement": "openEditRemoteRow",
       "toElement": "window.alert"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "./user-settings-api.js",
+      "type": "import",
+      "toElement": "updateUserSettings"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "planWrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "planWrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "document.createTextNode"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "Number.isFinite"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "Number"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "pr.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "prWrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "it.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "itWrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "sufWrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "sufWrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "delWrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "delWrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "document.createTextNode"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "promWrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "promWrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "document.createTextNode"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "saveBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "parseInt"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "Number.isFinite"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "updateUserSettings"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "setTimeout"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "onSaved"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "actions.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/todo-tab.js",
+      "to": "tmux-web/static/js/settings/todo-tab.js",
+      "type": "call",
+      "fromElement": "buildTodoBehaviorForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/user-settings-api.js",
+      "to": "../core/state.js",
+      "type": "import",
+      "toElement": "state"
+    },
+    {
+      "from": "tmux-web/static/js/settings/user-settings-api.js",
+      "to": "tmux-web/static/js/settings/user-settings-api.js",
+      "type": "call",
+      "fromElement": "fetchUserSettings",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/js/settings/user-settings-api.js",
+      "to": "tmux-web/static/js/settings/user-settings-api.js",
+      "type": "call",
+      "fromElement": "fetchUserSettings",
+      "toElement": "console.error"
+    },
+    {
+      "from": "tmux-web/static/js/settings/user-settings-api.js",
+      "to": "tmux-web/static/js/settings/user-settings-api.js",
+      "type": "call",
+      "fromElement": "fetchUserSettings",
+      "toElement": "r.json"
+    },
+    {
+      "from": "tmux-web/static/js/settings/user-settings-api.js",
+      "to": "tmux-web/static/js/settings/user-settings-api.js",
+      "type": "call",
+      "fromElement": "fetchUserSettings",
+      "toElement": "console.error"
+    },
+    {
+      "from": "tmux-web/static/js/settings/user-settings-api.js",
+      "to": "tmux-web/static/js/settings/user-settings-api.js",
+      "type": "call",
+      "fromElement": "updateUserSettings",
+      "toElement": "deepClone"
+    },
+    {
+      "from": "tmux-web/static/js/settings/user-settings-api.js",
+      "to": "tmux-web/static/js/settings/user-settings-api.js",
+      "type": "call",
+      "fromElement": "updateUserSettings",
+      "toElement": "Object.assign"
+    },
+    {
+      "from": "tmux-web/static/js/settings/user-settings-api.js",
+      "to": "tmux-web/static/js/settings/user-settings-api.js",
+      "type": "call",
+      "fromElement": "updateUserSettings",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/js/settings/user-settings-api.js",
+      "to": "tmux-web/static/js/settings/user-settings-api.js",
+      "type": "call",
+      "fromElement": "updateUserSettings",
+      "toElement": "JSON.stringify"
+    },
+    {
+      "from": "tmux-web/static/js/settings/user-settings-api.js",
+      "to": "tmux-web/static/js/settings/user-settings-api.js",
+      "type": "call",
+      "fromElement": "updateUserSettings",
+      "toElement": "r.text"
+    },
+    {
+      "from": "tmux-web/static/js/settings/user-settings-api.js",
+      "to": "tmux-web/static/js/settings/user-settings-api.js",
+      "type": "call",
+      "fromElement": "updateUserSettings",
+      "toElement": "r.json"
+    },
+    {
+      "from": "tmux-web/static/js/settings/user-settings-api.js",
+      "to": "tmux-web/static/js/settings/user-settings-api.js",
+      "type": "call",
+      "fromElement": "deepClone",
+      "toElement": "structuredClone"
+    },
+    {
+      "from": "tmux-web/static/js/settings/user-settings-api.js",
+      "to": "tmux-web/static/js/settings/user-settings-api.js",
+      "type": "call",
+      "fromElement": "deepClone",
+      "toElement": "JSON.parse"
+    },
+    {
+      "from": "tmux-web/static/js/settings/user-settings-api.js",
+      "to": "tmux-web/static/js/settings/user-settings-api.js",
+      "type": "call",
+      "fromElement": "deepClone",
+      "toElement": "JSON.stringify"
     },
     {
       "from": "tmux-web/static/js/sidebar/mobile.js",
@@ -10351,6 +10927,223 @@
       "from": "tmux-web/static/js/tasks/crud.js",
       "to": "tmux-web/static/js/tasks/crud.js",
       "type": "call",
+      "fromElement": "purgeTask",
+      "toElement": "getIssueIndex"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "purgeTask",
+      "toElement": "state.tasksData.issues.splice"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "purgeTask",
+      "toElement": "renderTasks"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "purgeTask",
+      "toElement": "taskOriginById"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "purgeTask",
+      "toElement": "apiFetch"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "purgeTask",
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "purgeTask",
+      "toElement": "r.text"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "purgeTask",
+      "toElement": "window.alert"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "purgeTask",
+      "toElement": "state.tasksData.issues.splice"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "purgeTask",
+      "toElement": "renderTasks"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "purgeTask",
+      "toElement": "window.alert"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "purgeTask",
+      "toElement": "state.tasksData.issues.splice"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "purgeTask",
+      "toElement": "renderTasks"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "deleteTodoLocal",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "deleteTodoLocal",
+      "toElement": "state.todosData.findIndex"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "deleteTodoLocal",
+      "toElement": "state.todosData.splice"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "deleteTodoLocal",
+      "toElement": "renderTasks"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "deleteTodoLocal",
+      "toElement": "dtoOrigin"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "deleteTodoLocal",
+      "toElement": "apiFetch"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "deleteTodoLocal",
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "deleteTodoLocal",
+      "toElement": "r.text"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "deleteTodoLocal",
+      "toElement": "window.alert"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "deleteTodoLocal",
+      "toElement": "state.todosData.splice"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "deleteTodoLocal",
+      "toElement": "renderTasks"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "deleteTodoLocal",
+      "toElement": "window.alert"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "deleteTodoLocal",
+      "toElement": "state.todosData.splice"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "deleteTodoLocal",
+      "toElement": "renderTasks"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "cleanColumn",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "cleanColumn",
+      "toElement": "purgeTask"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "cleanColumn",
+      "toElement": "deleteTodoLocal"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "cleanColumn",
+      "toElement": "closeTask"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
       "fromElement": "reopenTask",
       "toElement": "applyOptimisticPatch"
     },
@@ -11518,6 +12311,12 @@
     },
     {
       "from": "tmux-web/static/js/tasks/render.js",
+      "to": "./crud.js",
+      "type": "import",
+      "toElement": "cleanColumn"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/render.js",
       "to": "tmux-web/static/js/tasks/render.js",
       "type": "call",
       "fromElement": "renderTasks",
@@ -11557,13 +12356,6 @@
       "type": "call",
       "fromElement": "renderTasks",
       "toElement": "todos.sort"
-    },
-    {
-      "from": "tmux-web/static/js/tasks/render.js",
-      "to": "tmux-web/static/js/tasks/render.js",
-      "type": "call",
-      "fromElement": "renderTasks",
-      "toElement": "byStatus.closed.slice"
     },
     {
       "from": "tmux-web/static/js/tasks/render.js",
@@ -11648,6 +12440,62 @@
       "type": "call",
       "fromElement": "renderColumn",
       "toElement": "openCreateModal"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/render.js",
+      "to": "tmux-web/static/js/tasks/render.js",
+      "type": "call",
+      "fromElement": "renderColumn",
+      "toElement": "right.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/render.js",
+      "to": "tmux-web/static/js/tasks/render.js",
+      "type": "call",
+      "fromElement": "renderColumn",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/render.js",
+      "to": "tmux-web/static/js/tasks/render.js",
+      "type": "call",
+      "fromElement": "renderColumn",
+      "toElement": "cleanBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/render.js",
+      "to": "tmux-web/static/js/tasks/render.js",
+      "type": "call",
+      "fromElement": "renderColumn",
+      "toElement": "ev.stopPropagation"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/render.js",
+      "to": "tmux-web/static/js/tasks/render.js",
+      "type": "call",
+      "fromElement": "renderColumn",
+      "toElement": "window.confirm"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/render.js",
+      "to": "tmux-web/static/js/tasks/render.js",
+      "type": "call",
+      "fromElement": "renderColumn",
+      "toElement": "items.map"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/render.js",
+      "to": "tmux-web/static/js/tasks/render.js",
+      "type": "call",
+      "fromElement": "renderColumn",
+      "toElement": "cleanColumn"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/render.js",
+      "to": "tmux-web/static/js/tasks/render.js",
+      "type": "call",
+      "fromElement": "renderColumn",
+      "toElement": "window.alert"
     },
     {
       "from": "tmux-web/static/js/tasks/render.js",
@@ -11788,6 +12636,13 @@
       "type": "call",
       "fromElement": "renderColumn",
       "toElement": "raw.slice"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/render.js",
+      "to": "tmux-web/static/js/tasks/render.js",
+      "type": "call",
+      "fromElement": "renderColumn",
+      "toElement": "window.confirm"
     },
     {
       "from": "tmux-web/static/js/tasks/render.js",

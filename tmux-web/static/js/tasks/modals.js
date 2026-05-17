@@ -57,9 +57,25 @@ export function openCreateModal(preset) {
 
     const initial = Object.assign({ status: 'open' }, preset || {});
     const isTodo = initial.status === 'todo';
+    if (isTodo) {
+        const us = state.userSettings || null;
+        if (initial.priority === undefined || initial.priority === null) {
+            initial.priority = (us && typeof us.todo_default_priority === 'number')
+                ? us.todo_default_priority
+                : 2;
+        }
+        if (!initial.issue_type) {
+            initial.issue_type = (us && us.todo_default_issue_type)
+                ? us.todo_default_issue_type
+                : 'task';
+        }
+    }
     const heading = isTodo ? 'New TODO' : 'New task';
+    const todoPlanDefault = isTodo
+        ? !!(state.userSettings && state.userSettings.todo_default_plan_mode)
+        : false;
     const planModeBlock = isTodo
-        ? `<label class="checkbox-row"><input type="checkbox" id="tm-plan-mode"> Включить план мод
+        ? `<label class="checkbox-row"><input type="checkbox" id="tm-plan-mode"${todoPlanDefault ? ' checked' : ''}> Включить план мод
              <span class="hint">— при promote добавит «Создай план для этой задачи»</span></label>`
         : '';
     card.innerHTML = `
@@ -313,7 +329,8 @@ export function openTodoEditModal(todo) {
     });
 
     card.querySelector('#td-delete').addEventListener('click', async () => {
-        if (!window.confirm('Удалить TODO?')) return;
+        const confirmDelete = !(state.userSettings && state.userSettings.todo_confirm_delete === false);
+        if (confirmDelete && !window.confirm('Удалить TODO?')) return;
         close();
         try {
             const origin = dtoOrigin(todo);

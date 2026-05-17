@@ -29,6 +29,7 @@ mod tasks_watcher;
 mod themes;
 mod tmux;
 mod todos;
+mod user_settings;
 mod ws;
 mod ws_tasks;
 mod ws_todos;
@@ -57,6 +58,7 @@ use crate::tasks::TaskEvent;
 use crate::themes::{Theme, ThemesState};
 use crate::tmux::SessionInfo;
 use crate::todos::TodoStore;
+use crate::user_settings::{PatchUserSettingsReq, UserSettings, UserSettingsStore};
 use crate::ws_todos::TodoEvent;
 
 /// Глобальное состояние axum-приложения.
@@ -136,6 +138,10 @@ struct AppState {
     /// `remote_proxy::proxy_request` (handler'ы подключают в Phase 3.4).
     #[allow(dead_code)]
     http: reqwest::Client,
+    /// User-level настройки (`~/.forge/user_settings.json`). Cheap-clonable
+    /// (Arc<RwLock> внутри). Используется REST-handler'ами
+    /// `/api/user-settings` и `promote_todo` (кастомный plan_mode_suffix).
+    user_settings: UserSettingsStore,
 }
 
 #[tokio::main]
@@ -317,6 +323,34 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    // User-level настройки: ~/.forge/user_settings.json. Каталог создаём
+    // eagerly через create_dir_all (no-op если уже есть) — Store сам не
+    // создаёт parent при отсутствии файла, а нам нужно, чтобы первый patch
+    // не падал из-за отсутствия `.forge/`. Файл данных создаётся lazy.
+    let user_settings_path = match std::env::var("HOME") {
+        Ok(home) => PathBuf::from(home).join(".forge").join("user_settings.json"),
+        Err(e) => {
+            tracing::warn!(error = ?e, "HOME env var not set; user_settings persistence disabled");
+            // Фолбэк в temp dir — Store будет работать на чтение/запись,
+            // но настройки не переживут перезапуск. Сохраняем работоспособность.
+            std::env::temp_dir().join("devforge_user_settings.json")
+        }
+    };
+    if let Some(parent) = user_settings_path.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            tracing::warn!(
+                path = %parent.display(),
+                error = ?e,
+                "failed to create user_settings parent dir; first patch may fail"
+            );
+        }
+    }
+    let user_settings_store = UserSettingsStore::new(user_settings_path.clone());
+    tracing::info!(
+        path = %user_settings_path.display(),
+        "user_settings store initialized"
+    );
+
     let app_state = AppState {
         projects: Arc::new(RwLock::new(store)),
         tasks_tx: tasks_tx.clone(),
@@ -334,6 +368,7 @@ async fn main() -> anyhow::Result<()> {
         // выставленных явно — это TODO для Phase 7 robustness; пока полагаемся
         // на дефолты reqwest 0.12, где connect timeout не задан, общий — 30s).
         http: reqwest::Client::new(),
+        user_settings: user_settings_store,
     };
 
     // Spawn фоновый watcher. Живёт всю жизнь процесса; завершится только
@@ -397,6 +432,14 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/themes/custom/:id",
             put(put_custom_theme).delete(delete_custom_theme),
+        )
+        // User-level settings: глобальные пользовательские настройки,
+        // персистятся в ~/.forge/user_settings.json. GET возвращает текущий
+        // снимок (или дефолты, если файл отсутствует); PATCH применяет
+        // частичный апдейт и атомарно сохраняет на диск.
+        .route(
+            "/api/user-settings",
+            get(get_user_settings).patch(patch_user_settings),
         )
         // WebSocket-attach в tmux-сессию.
         .route("/ws/attach", get(ws::attach))
@@ -1565,8 +1608,13 @@ async fn close_task(
             Ok(StatusCode::NO_CONTENT.into_response())
         }
         Err(e) => {
+            let msg = format!("{e:#}");
+            if msg.contains("ISSUE_NOT_FOUND") || msg.contains("Issue not found") {
+                tracing::info!(%id, "task already absent — treating close as idempotent success");
+                return Ok(StatusCode::NO_CONTENT.into_response());
+            }
             tracing::warn!(%id, error = ?e, "br close failed");
-            Err((StatusCode::BAD_REQUEST, format!("{e:#}")))
+            Err((StatusCode::BAD_REQUEST, msg))
         }
     }
 }
@@ -1651,8 +1699,13 @@ async fn purge_task(
             Ok(StatusCode::NO_CONTENT.into_response())
         }
         Err(e) => {
+            let msg = format!("{e:#}");
+            if msg.contains("ISSUE_NOT_FOUND") || msg.contains("Issue not found") {
+                tracing::info!(%id, "task already absent — treating purge as idempotent success");
+                return Ok(StatusCode::NO_CONTENT.into_response());
+            }
             tracing::warn!(%id, error = ?e, "br delete failed");
-            Err((StatusCode::BAD_REQUEST, format!("{e:#}")))
+            Err((StatusCode::BAD_REQUEST, msg))
         }
     }
 }
@@ -2545,10 +2598,20 @@ async fn promote_todo(
         &todo.issue_type,
     );
     if todo.plan_mode {
+        // Кастомный suffix из user-level настроек (~/.forge/user_settings.json).
+        // Если в настройках пусто (после trim — строки из одних пробелов тоже
+        // считаются «пустыми»), используем константу PLAN_MODE_SUFFIX —
+        // это сохраняет инвариант «нулевая конфигурация = поведение до фичи».
+        let custom_suffix = state.user_settings.get().todo_plan_mode_suffix;
+        let suffix_str: &str = if custom_suffix.trim().is_empty() {
+            PLAN_MODE_SUFFIX
+        } else {
+            custom_suffix.as_str()
+        };
         if !text.is_empty() && !text.ends_with('\n') {
             text.push('\n');
         }
-        text.push_str(PLAN_MODE_SUFFIX);
+        text.push_str(suffix_str);
     }
 
     let mode = if project_snap.notify_wait_previous {
@@ -2841,6 +2904,49 @@ async fn delete_custom_theme(
     }
     tracing::info!(%id, "custom theme deleted");
     Ok(StatusCode::NO_CONTENT)
+}
+
+// =============================================================================
+// User-settings endpoints (~/.forge/user_settings.json)
+// =============================================================================
+
+/// `GET /api/user-settings` — текущие настройки пользователя.
+///
+/// Если файл `~/.forge/user_settings.json` отсутствует или повреждён,
+/// возвращаются дефолтные значения [`UserSettings::default`] (см.
+/// инвариант «нулевая конфигурация = поведение до фичи»).
+async fn get_user_settings(State(state): State<AppState>) -> Json<UserSettings> {
+    Json(state.user_settings.get())
+}
+
+/// `PATCH /api/user-settings` — частичное обновление настроек.
+///
+/// Тело: [`PatchUserSettingsReq`] — все поля опциональные, применяются
+/// только `Some(..)`-варианты. Валидация:
+/// - `todo_default_priority` клампится в `0..=4` (значения >4 → 4);
+/// - `todo_plan_mode_suffix` принимается **без trim** (даже строка
+///   из одних пробелов сохраняется как есть; решение об «эффективной
+///   пустоте» принимается на стороне `promote_todo`).
+///
+/// При ошибке записи на диск — 500 c сообщением. При успехе — 200 +
+/// JSON c обновлённым `UserSettings`.
+async fn patch_user_settings(
+    State(state): State<AppState>,
+    Json(payload): Json<PatchUserSettingsReq>,
+) -> Result<Json<UserSettings>, (StatusCode, String)> {
+    match state.user_settings.patch(payload) {
+        Ok(updated) => {
+            tracing::info!("user_settings patched");
+            Ok(Json(updated))
+        }
+        Err(e) => {
+            tracing::error!(error = ?e, "user_settings patch failed");
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("user_settings patch failed: {e:#}"),
+            ))
+        }
+    }
 }
 
 // =============================================================================

@@ -13,6 +13,8 @@ import { renderSidebar } from '../sidebar/sidebar.js';
 import { loadThemesIntoPanel } from '../themes/panel.js';
 import { buildNotificationsForm } from './notifications-tab.js';
 import { renderRemotesTable } from './remotes-tab.js';
+import { buildTodoBehaviorForm } from './todo-tab.js';
+import { fetchUserSettings } from './user-settings-api.js';
 
 export function openSettingsModal(initialTab) {
     const overlay = buildModalOverlay();
@@ -60,6 +62,7 @@ export function openSettingsModal(initialTab) {
         <div class="modal-tabs" role="tablist">
             <button type="button" class="modal-tab-btn active" data-tab="notifications" role="tab">Notifications</button>
             <button type="button" class="modal-tab-btn" data-tab="themes" role="tab">Themes</button>
+            <button type="button" class="modal-tab-btn" data-tab="todo" role="tab">TODO behavior</button>
             ${remoteTabBtn}
         </div>
         <div class="modal-tab-panel" id="ps-panel-notifications" data-panel="notifications">
@@ -71,6 +74,10 @@ export function openSettingsModal(initialTab) {
             <div class="themes-content" id="ps-themes-content">
                 <div class="themes-loading">Loading themes…</div>
             </div>
+        </div>
+        <div class="modal-tab-panel" id="ps-panel-todo" data-panel="todo" hidden>
+            <h2>TODO behavior</h2>
+            <div class="todo-settings-content" id="ps-todo-content"></div>
         </div>
         ${remotePanel}
         <div class="modal-actions">
@@ -91,6 +98,33 @@ export function openSettingsModal(initialTab) {
     };
 
     const $remotesTbody = card.querySelector('#ps-remotes-table tbody');
+    const $todoContent = card.querySelector('#ps-todo-content');
+
+    // TODO behavior tab state: рендерим форму один раз при первом клике.
+    // userSettings fetch выполняется лениво, если bootstrap-preload не успел
+    // или вернул null. defaults используются как graceful-fallback, если
+    // backend down — тогда форма всё равно показывается.
+    const todoState = {
+        loaded: false,
+    };
+
+    const renderTodoPanel = async () => {
+        if (todoState.loaded) return;
+        todoState.loaded = true;
+        $todoContent.innerHTML = '<div class="themes-loading">Loading settings…</div>';
+        if (state.userSettings === null) {
+            try {
+                await fetchUserSettings();
+            } catch (_) { /* fetchUserSettings swallows errors itself */ }
+        }
+        $todoContent.innerHTML = '';
+        // Если state.userSettings всё ещё null (backend down) — передаём пустой
+        // объект; buildTodoBehaviorForm подставит дефолты из своей константы.
+        const settingsArg = state.userSettings || {};
+        $todoContent.appendChild(buildTodoBehaviorForm(settingsArg, (updated) => {
+            if (updated) state.userSettings = updated;
+        }));
+    };
 
     const showTab = (name) => {
         $tabBtns.forEach((btn) => {
@@ -106,6 +140,9 @@ export function openSettingsModal(initialTab) {
         }
         if (name === 'remotes') {
             renderRemotesTable($remotesTbody);
+        }
+        if (name === 'todo') {
+            renderTodoPanel();
         }
     };
     $tabBtns.forEach((btn) => {
@@ -312,7 +349,7 @@ export function openSettingsModal(initialTab) {
     };
     renderList();
 
-    if (initialTab && (initialTab === 'themes' || (initialTab === 'remotes' && isRemoteMode()))) {
+    if (initialTab && (initialTab === 'themes' || initialTab === 'todo' || (initialTab === 'remotes' && isRemoteMode()))) {
         showTab(initialTab);
     }
 

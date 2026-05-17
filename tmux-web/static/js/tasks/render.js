@@ -186,6 +186,8 @@ export function renderColumn(status, items) {
             if (targetStatus !== 'open') {
                 return;
             }
+            const needConfirm = !!(state.userSettings && state.userSettings.todo_confirm_promote_on_drag === true);
+            if (needConfirm && !window.confirm('Promote TODO в bd-задачу?')) return;
             promoteTodo(todoId);
             return;
         }
