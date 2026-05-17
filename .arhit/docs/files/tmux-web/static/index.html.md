@@ -31,14 +31,39 @@ telescope-pane (Phase 2): #telescope-placeholder, #telescope-error, #telescope-e
 
 ### #git-legacy
 
-Обёртка над старой git-разметкой (toolbar/files/commit/graph), оставлена hidden до Phase 5 cleanup. Нужна чтобы legacy DOM-refs (, ,  и т.д.) не были null при загрузке app.js.
+Обёртка над старой git-разметкой (toolbar/files/commit/graph), оставлена hidden до Phase 5 cleanup. Нужна чтобы legacy DOM-refs не были null при загрузке app.js.
+
+## Mobile-расширения (Phase A/B/C)
+
+### #sidebar-overlay
+
+`<div id="sidebar-overlay" hidden>` добавлен сразу после `</aside>` (закрытия сайдбара). Это полупрозрачный fullscreen overlay, видимый только при открытом мобильном сайдбаре (`body.sidebar-open` + mobile viewport). Цель — затемнить фон контента и обеспечить click-to-close для off-canvas сайдбара. CSS-стили — в `style.css` (`#sidebar-overlay`). JS-handler (click + Esc) — в `app.js` (см. `setMobileSidebarOpen`).
+
+### #quick-cmd-bar (внутри #terminal)
+
+`<div id="quick-cmd-bar">` добавлен внутри panel `#terminal`, после `<div id="terminal-term">`. Структура:
+- `<div class="quick-cmd-keys">` — slot для spec-клавиш (Esc, Tab, ^C, стрелки) — рендерится JS-модулем `quick-cmd.js`.
+- `<div class="quick-cmd-cmds">` — slot для top-N команд (динамически из localStorage `forge.quickCmd.*`).
+- `<button class="quick-cmd-edit">` — кнопка открытия редактора команд.
+
+Видимость: на desktop bar — обычная горизонтальная панель внизу `#terminal`. На mobile (max-width:768px) — `position:absolute; bottom:0` с `safe-area-inset-bottom`. Стили см. в `style.css` (`.quick-cmd-bar`, `.quick-cmd-key`, `.quick-cmd-cmd`, `.quick-cmd-edit`).
+
+### .tui-quick-bar (внутри #git / #docker / #telescope)
+
+В каждой из трёх TUI-панелей добавлен `<div class="tui-quick-bar" id="{git|docker|telescope}-quick-bar">`. Это аналог `#quick-cmd-bar`, но с fixed-набором TUI-клавиш (`q, Esc, ?, :, /, h, j, k, l, Enter, ^C, Tab, ↑↓←→`). Рендеринг и обработка кликов — в `quick-cmd.js` (`refreshTuiBars`). Видимость управляется атрибутом `hidden` через MutationObserver + matchMedia (mobile-only).
 
 ## Подключаемые скрипты
 
-xterm.js + addon-fit + addon-web-links (CDN/embedded). app.js — главный IIFE-modul.
+xterm.js + addon-fit + addon-web-links (CDN/embedded). 
+
+- `<script src="/app.js">` — главный IIFE-modul (state, WS, TUI-tabs, hotkeys).
+- `<script src="/quick-cmd.js">` — IIFE-modul quick-cmd-bar (подключён после `app.js`, так как зависит от `window.ForgeApp.sendToActivePty`). Phase B/C.
 
 ## Связи
 
 - Tab-кнопки → switchTab() в app.js.
 - {prefix}-term → state.gitTerm/dockerTerm/telescopeTerm через initTuiTabs() (создаёт createTuiTab инстансы с DOM-refs).
 - {prefix}-install-help → install-help блок, показывается createTuiTab при binary-not-found.
+- #sidebar-overlay → click/Esc handlers в app.js (setMobileSidebarOpen / Esc-handler).
+- #quick-cmd-bar / #git-quick-bar / #docker-quick-bar / #telescope-quick-bar → JS-рендеринг и обработка в quick-cmd.js (`window.QuickCmd.refresh / refreshTuiBars`).
+- Гамбургер-кнопка сайдбара (на mobile) → `toggleSidebar()` в app.js (mobile-ветка через `isMobileViewport()`).

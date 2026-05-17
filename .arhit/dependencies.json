@@ -1,6 +1,118 @@
 {
-  "generatedAt": "2026-05-15T14:35:38.026Z",
+  "generatedAt": "2026-05-16T18:00:38.526Z",
   "dependencies": [
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "hash.match"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "decodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "localStorage.setItem"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "history.replaceState"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "getAuthToken",
+      "toElement": "localStorage.getItem"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "window.fetch.bind"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "getAuthToken"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "_origFetch"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "_origFetch"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "_origFetch"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "Object.assign"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "h.has"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "h.set"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "_origFetch"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "withWsToken",
+      "toElement": "getAuthToken"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "withWsToken",
+      "toElement": "wsUrl.includes"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "withWsToken",
+      "toElement": "encodeURIComponent"
+    },
     {
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
@@ -355,6 +467,20 @@
       "type": "call",
       "fromElement": "initTerminal",
       "toElement": "term.onData"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "initTerminal",
+      "toElement": "window.QuickCmd.onPtyInput"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "initTerminal",
+      "toElement": "console.debug"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -864,6 +990,18 @@
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
+      "toElement": "window.matchMedia"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
       "fromElement": "applySidebarCollapsed",
       "toElement": "String"
     },
@@ -906,6 +1044,41 @@
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
+      "fromElement": "setMobileSidebarOpen",
+      "toElement": "document.body.classList.toggle"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "setMobileSidebarOpen",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "toggleSidebar",
+      "toElement": "isMobileViewport"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "toggleSidebar",
+      "toElement": "document.body.classList.contains"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "toggleSidebar",
+      "toElement": "setMobileSidebarOpen"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
       "fromElement": "toggleSidebar",
       "toElement": "applySidebarCollapsed"
     },
@@ -915,6 +1088,20 @@
       "type": "call",
       "fromElement": "toggleSidebar",
       "toElement": "localStorage.setItem"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "restoreSidebarState",
+      "toElement": "isMobileViewport"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "restoreSidebarState",
+      "toElement": "setMobileSidebarOpen"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -934,6 +1121,106 @@
       "from": "tmux-web/static/app.js",
       "to": "tmux-web/static/app.js",
       "type": "call",
+      "toElement": "setMobileSidebarOpen"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "window.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "isMobileViewport"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.body.classList.contains"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "setMobileSidebarOpen"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "applyTerminalFontSize",
+      "toElement": "isMobileViewport"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "applyTerminalFontSize",
+      "toElement": "state.fitAddon.fit"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "applyTerminalFontSize",
+      "toElement": "tuis.forEach"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "applyTerminalFontSize",
+      "toElement": "t.fit.fit"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "setMobileSidebarOpen"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "document.body.classList.remove"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "localStorage.getItem"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "applySidebarCollapsed"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "applyTerminalFontSize"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "_mqlMobile.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "_mqlMobile.addListener"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
       "toElement": "window.addEventListener"
     },
     {
@@ -947,6 +1234,18 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "toElement": "ev.key.toLowerCase"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "tgt.classList.contains"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "toElement": "tgt.closest"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -2056,6 +2355,13 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "connectWs",
+      "toElement": "withWsToken"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "connectWs",
       "toElement": "console.error"
     },
     {
@@ -2595,6 +2901,20 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "mount",
+      "toElement": "window.QuickCmd.onPtyInput"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "mount",
+      "toElement": "console.debug"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "mount",
       "toElement": "ws.send"
     },
     {
@@ -2715,6 +3035,13 @@
       "type": "call",
       "fromElement": "connect",
       "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "connect",
+      "toElement": "withWsToken"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -3449,6 +3776,13 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "connectTasksWs",
+      "toElement": "withWsToken"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "connectTasksWs",
       "toElement": "console.warn"
     },
     {
@@ -3877,6 +4211,13 @@
       "type": "call",
       "fromElement": "connectTodosWs",
       "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "connectTodosWs",
+      "toElement": "withWsToken"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -10546,6 +10887,13 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "fromElement": "bootstrap",
+      "toElement": "applyTerminalFontSize"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "bootstrap",
       "toElement": "showPlaceholder"
     },
     {
@@ -10589,6 +10937,13 @@
       "type": "call",
       "fromElement": "bootstrap",
       "toElement": "initTuiTabs"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "bootstrap",
+      "toElement": "applyTerminalFontSize"
     },
     {
       "from": "tmux-web/static/app.js",
@@ -10853,6 +11208,34 @@
       "to": "tmux-web/static/app.js",
       "type": "call",
       "toElement": "bootstrap"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "sendToActivePty",
+      "toElement": "console.debug"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "sendToActivePty",
+      "toElement": "ws.send"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "sendToActivePty",
+      "toElement": "state.encoder.encode"
+    },
+    {
+      "from": "tmux-web/static/app.js",
+      "to": "tmux-web/static/app.js",
+      "type": "call",
+      "fromElement": "sendToActivePty",
+      "toElement": "console.warn"
     },
     {
       "from": "tmux-web/static/hotkeys.js",
@@ -11670,6 +12053,1418 @@
       "to": "tmux-web/static/hotkeys.js",
       "type": "call",
       "toElement": "hideHints"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "lsGetJSON",
+      "toElement": "localStorage.getItem"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "lsGetJSON",
+      "toElement": "JSON.parse"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "lsSetJSON",
+      "toElement": "localStorage.setItem"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "lsSetJSON",
+      "toElement": "JSON.stringify"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "getFreq",
+      "toElement": "lsGetJSON"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "getFreq",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "setFreq",
+      "toElement": "lsSetJSON"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "getPinned",
+      "toElement": "lsGetJSON"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "getPinned",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "getPinned",
+      "toElement": "v.filter"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "setPinned",
+      "toElement": "lsSetJSON"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "getHidden",
+      "toElement": "lsGetJSON"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "getHidden",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "getHidden",
+      "toElement": "v.filter"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "setHidden",
+      "toElement": "lsSetJSON"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "normalize",
+      "toElement": "text.trim"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "normalize",
+      "toElement": "t.charCodeAt"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "normalize",
+      "toElement": "re.test"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "normalize",
+      "toElement": "t.charCodeAt"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "bumpFreq",
+      "toElement": "getFreq"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "bumpFreq",
+      "toElement": "setFreq"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "computeTopCommands",
+      "toElement": "getFreq"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "computeTopCommands",
+      "toElement": "getPinned"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "computeTopCommands",
+      "toElement": "getHidden"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "computeTopCommands",
+      "toElement": "pool.add"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "computeTopCommands",
+      "toElement": "Object.keys"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "computeTopCommands",
+      "toElement": "pool.add"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "computeTopCommands",
+      "toElement": "pool.add"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "computeTopCommands",
+      "toElement": "Array.from"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "computeTopCommands",
+      "toElement": "pinnedSet.has"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "computeTopCommands",
+      "toElement": "hidden.has"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "computeTopCommands",
+      "toElement": "DEFAULTS.map"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "rank",
+      "toElement": "pinned.indexOf"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "rank",
+      "toElement": "defaultsIdx.has"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "rank",
+      "toElement": "defaultsIdx.get"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "computeTopCommands",
+      "toElement": "filtered.sort"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "computeTopCommands",
+      "toElement": "rank"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "computeTopCommands",
+      "toElement": "rank"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "computeTopCommands",
+      "toElement": "filtered.slice"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "sendToPty",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "sendToPty",
+      "toElement": "app.sendToActivePty"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "isMobile",
+      "toElement": "window.matchMedia"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureRefs",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureRefs",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureRefs",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureRefs",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureRefs",
+      "toElement": "state.editBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureRefs",
+      "toElement": "e.preventDefault"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureRefs",
+      "toElement": "e.stopPropagation"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureRefs",
+      "toElement": "openEditor"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderSpecKeys",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderSpecKeys",
+      "toElement": "btn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderSpecKeys",
+      "toElement": "e.preventDefault"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderSpecKeys",
+      "toElement": "e.stopPropagation"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderSpecKeys",
+      "toElement": "sendToPty"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderSpecKeys",
+      "toElement": "state.keysEl.appendChild"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderCommands",
+      "toElement": "computeTopCommands"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderCommands",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderCommands",
+      "toElement": "state.cmdsEl.appendChild"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderCommands",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderCommands",
+      "toElement": "btn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderCommands",
+      "toElement": "e.preventDefault"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderCommands",
+      "toElement": "e.stopPropagation"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderCommands",
+      "toElement": "sendToPty"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderCommands",
+      "toElement": "state.cmdsEl.appendChild"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "refresh",
+      "toElement": "ensureRefs"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "refresh",
+      "toElement": "isMobile"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "refresh",
+      "toElement": "renderSpecKeys"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "refresh",
+      "toElement": "renderCommands"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "refresh",
+      "toElement": "refreshTuiBars"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "processEscByte",
+      "toElement": "endEsc"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "processEscByte",
+      "toElement": "endEsc"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "processEscByte",
+      "toElement": "endEsc"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "processEscByte",
+      "toElement": "endEsc"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "processEscByte",
+      "toElement": "endEsc"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "processEscByte",
+      "toElement": "endEsc"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "onPtyInput",
+      "toElement": "data.charAt"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "onPtyInput",
+      "toElement": "data.charCodeAt"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "onPtyInput",
+      "toElement": "processEscByte"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "onPtyInput",
+      "toElement": "startEsc"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "onPtyInput",
+      "toElement": "normalize"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "onPtyInput",
+      "toElement": "bumpFreq"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "onPtyInput",
+      "toElement": "isMobile"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "onPtyInput",
+      "toElement": "refresh"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "onPtyInput",
+      "toElement": "state.inputBuffer.slice"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "buildKnownList",
+      "toElement": "getFreq"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "buildKnownList",
+      "toElement": "getPinned"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "buildKnownList",
+      "toElement": "Object.keys"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "buildKnownList",
+      "toElement": "set.add"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "buildKnownList",
+      "toElement": "set.add"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "buildKnownList",
+      "toElement": "set.add"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "buildKnownList",
+      "toElement": "Array.from"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureEditor",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureEditor",
+      "toElement": "document.body.appendChild"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureEditor",
+      "toElement": "overlay.querySelector"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureEditor",
+      "toElement": "overlay.querySelector"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureEditor",
+      "toElement": "overlay.querySelector"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureEditor",
+      "toElement": "overlay.querySelector"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureEditor",
+      "toElement": "closeBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureEditor",
+      "toElement": "overlay.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureEditor",
+      "toElement": "closeEditor"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "doAdd",
+      "toElement": "normalize"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "doAdd",
+      "toElement": "getFreq"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "doAdd",
+      "toElement": "setFreq"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "doAdd",
+      "toElement": "getHidden"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "doAdd",
+      "toElement": "setHidden"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "doAdd",
+      "toElement": "renderList"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "doAdd",
+      "toElement": "refresh"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureEditor",
+      "toElement": "addBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureEditor",
+      "toElement": "addInput.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureEditor",
+      "toElement": "e.preventDefault"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureEditor",
+      "toElement": "doAdd"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "buildKnownList"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "listEl.appendChild"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "getPinned"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "getHidden"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "li.appendChild"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "pinned.has"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "pinBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "getPinned"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "cur.includes"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "setPinned"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "cur.filter"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "cur.push"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "setPinned"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "renderList"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "refresh"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "actions.appendChild"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "hidden.has"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "hideBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "getHidden"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "cur.includes"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "setHidden"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "cur.filter"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "cur.push"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "setHidden"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "renderList"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "refresh"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "actions.appendChild"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "delBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "getFreq"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "setFreq"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "setPinned"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "getPinned"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "setHidden"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "getHidden"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "renderList"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "refresh"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "actions.appendChild"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "li.appendChild"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "renderList",
+      "toElement": "listEl.appendChild"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "openEditor",
+      "toElement": "ensureEditor"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "openEditor",
+      "toElement": "overlay._renderList"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureTuiBarFilled",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureTuiBarFilled",
+      "toElement": "btn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureTuiBarFilled",
+      "toElement": "e.preventDefault"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureTuiBarFilled",
+      "toElement": "e.stopPropagation"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureTuiBarFilled",
+      "toElement": "sendToPty"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "ensureTuiBarFilled",
+      "toElement": "barEl.appendChild"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "refreshTuiBars",
+      "toElement": "isMobile"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "refreshTuiBars",
+      "toElement": "getActiveTab"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "refreshTuiBars",
+      "toElement": "Object.keys"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "refreshTuiBars",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "refreshTuiBars",
+      "toElement": "ensureTuiBarFilled"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "initTuiBars",
+      "toElement": "Object.keys"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "initTuiBars",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "initTuiBars",
+      "toElement": "ensureTuiBarFilled"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "initTuiBars",
+      "toElement": "refreshTuiBars"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "initTuiBars",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "initTuiBars",
+      "toElement": "observer.observe"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "initTuiBars",
+      "toElement": "refreshTuiBars"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "onMqChange",
+      "toElement": "refresh"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "migrateStorage",
+      "toElement": "getFreq"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "migrateStorage",
+      "toElement": "Object.keys"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "migrateStorage",
+      "toElement": "normalize"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "migrateStorage",
+      "toElement": "setFreq"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "migrateStorage",
+      "toElement": "getPinned"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "migrateStorage",
+      "toElement": "pinned.filter"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "migrateStorage",
+      "toElement": "normalize"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "migrateStorage",
+      "toElement": "setPinned"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "migrateStorage",
+      "toElement": "getHidden"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "migrateStorage",
+      "toElement": "hidden.filter"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "migrateStorage",
+      "toElement": "normalize"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "migrateStorage",
+      "toElement": "setHidden"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "migrateStorage",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "init",
+      "toElement": "migrateStorage"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "init",
+      "toElement": "ensureRefs"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "init",
+      "toElement": "setTimeout"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "init",
+      "toElement": "window.matchMedia"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "init",
+      "toElement": "state.mq.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "init",
+      "toElement": "state.mq.addListener"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "init",
+      "toElement": "initTuiBars"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "fromElement": "init",
+      "toElement": "refresh"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "toElement": "document.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/quick-cmd.js",
+      "to": "tmux-web/static/quick-cmd.js",
+      "type": "call",
+      "toElement": "init"
     }
   ]
 }

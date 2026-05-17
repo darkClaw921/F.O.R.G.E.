@@ -12,6 +12,80 @@
 (function () {
     'use strict';
 
+    // ---- Auth bootstrap (remote-mode + mobile QR) ----
+    //
+    // При входе по QR-ссылке вида http://host:port#token=<token> читаем
+    // токен из hash, сохраняем в localStorage и удаляем hash из URL,
+    // чтобы он не висел в адресной строке. Далее токен используется в:
+    //   - подменённом window.fetch → Authorization: Bearer <token>;
+    //   - withWsToken(url) → '?token=...' query для WebSocket (браузер
+    //     не даёт ставить custom headers на WS из JS).
+    const AUTH_TOKEN_KEY = 'forge.authToken';
+    (function bootstrapAuthToken() {
+        try {
+            const hash = location.hash || '';
+            const m = hash.match(/[#&]token=([^&]+)/);
+            if (m) {
+                const token = decodeURIComponent(m[1]);
+                if (token) {
+                    localStorage.setItem(AUTH_TOKEN_KEY, token);
+                    // Чистим hash, чтобы токен не висел в URL.
+                    try {
+                        history.replaceState(
+                            null,
+                            '',
+                            location.pathname + location.search,
+                        );
+                    } catch (_) {
+                        location.hash = '';
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[auth] failed to parse token from hash', e);
+        }
+    })();
+
+    function getAuthToken() {
+        try { return localStorage.getItem(AUTH_TOKEN_KEY) || ''; }
+        catch (_) { return ''; }
+    }
+
+    // Подмена fetch: для всех same-origin запросов добавляем Bearer-токен,
+    // если он есть. Не трогаем external URLs (CDN xterm.js и т.п.).
+    const _origFetch = window.fetch.bind(window);
+    window.fetch = function (input, init) {
+        const token = getAuthToken();
+        if (!token) return _origFetch(input, init);
+        // Определяем URL-объект чтобы проверить same-origin.
+        let urlStr;
+        if (typeof input === 'string') urlStr = input;
+        else if (input && typeof input.url === 'string') urlStr = input.url;
+        else return _origFetch(input, init);
+        try {
+            const u = new URL(urlStr, location.href);
+            if (u.origin !== location.origin) return _origFetch(input, init);
+        } catch (_) {
+            // Не парсится — относительный URL, считаем same-origin.
+        }
+        const next = Object.assign({}, init || {});
+        const h = new Headers((init && init.headers) || {});
+        if (!h.has('Authorization')) {
+            h.set('Authorization', 'Bearer ' + token);
+        }
+        next.headers = h;
+        return _origFetch(input, next);
+    };
+
+    // Добавляет token-query к WS-URL. Если токена нет — возвращает URL без
+    // изменений (legacy localhost-mode).
+    function withWsToken(wsUrl) {
+        const token = getAuthToken();
+        if (!token) return wsUrl;
+        const sep = wsUrl.includes('?') ? '&' : '?';
+        return wsUrl + sep + 'token=' + encodeURIComponent(token);
+    }
+
     // ---- глобальное состояние ----
     const state = {
         // Phase 5 — режим запуска бэкенда. Загружается из GET /healthz один раз
@@ -212,6 +286,9 @@
 
         // Ввод пользователя — bytes → WS (cx2.5).
         term.onData((data) => {
+            if (window.QuickCmd && typeof window.QuickCmd.onPtyInput === 'function') {
+                try { window.QuickCmd.onPtyInput(data); } catch (e) { console.debug('[quick-cmd] onPtyInput failed', e); }
+            }
             if (state.ws && state.ws.readyState === WebSocket.OPEN) {
                 state.ws.send(state.encoder.encode(data));
             }
@@ -554,10 +631,30 @@
 
     // -------------------------------------------------------------------------
     // Sidebar collapse — кнопка ☰ в #tab-bar + hotkey Cmd/Ctrl+B
+    //
+    // Десктоп: класс 'sidebar-collapsed' на #layout, состояние в
+    // state.sidebarCollapsed, persist в localStorage('forge.sidebarCollapsed').
+    //
+    // Mobile (matchMedia '(max-width: 768px)'): класс 'sidebar-open' на
+    // <body>, drawer-режим (off-canvas, см. style.css Phase A). По умолчанию
+    // закрыт; click на #sidebar-overlay или Esc — закрывает. Состояние НЕ
+    // персистится — каждое открытие приложения начинается с закрытого drawer.
     // -------------------------------------------------------------------------
+
+    // matchMedia-инстанс на module-level, чтобы не плодить listeners.
+    const _mqlMobile = (typeof window.matchMedia === 'function')
+        ? window.matchMedia('(max-width: 768px)')
+        : null;
+    function isMobileViewport() {
+        return !!(_mqlMobile && _mqlMobile.matches);
+    }
+
+    const $sidebarOverlay = document.getElementById('sidebar-overlay');
 
     /**
      * Применяет collapsed-состояние к #layout и кэширует флаг в state.
+     * Используется только на десктопе. На мобиле игнорируется — там drawer
+     * управляется через body.sidebar-open (см. setMobileSidebarOpen).
      * После CSS transition (~180ms) вызывает refit всех видимых xterm-инстансов,
      * чтобы они подстроили cols/rows под новую ширину #main.
      */
@@ -582,7 +679,26 @@
         }, 200);
     }
 
+    /**
+     * Mobile-only: переключает класс sidebar-open на <body> и aria-атрибуты
+     * на кнопке-гамбургере. Overlay и сам сайдбар анимируются через CSS
+     * (см. @media (max-width: 768px) в style.css).
+     */
+    function setMobileSidebarOpen(open) {
+        const isOpen = !!open;
+        document.body.classList.toggle('sidebar-open', isOpen);
+        if ($btnSidebarToggle) {
+            $btnSidebarToggle.setAttribute('aria-pressed', String(isOpen));
+            $btnSidebarToggle.title = isOpen ? 'Закрыть меню' : 'Открыть меню';
+        }
+    }
+
     function toggleSidebar() {
+        if (isMobileViewport()) {
+            const willOpen = !document.body.classList.contains('sidebar-open');
+            setMobileSidebarOpen(willOpen);
+            return;
+        }
         applySidebarCollapsed(!state.sidebarCollapsed);
         try {
             localStorage.setItem('forge.sidebarCollapsed', state.sidebarCollapsed ? '1' : '0');
@@ -590,6 +706,13 @@
     }
 
     function restoreSidebarState() {
+        if (isMobileViewport()) {
+            // На мобиле — всегда закрыто при старте.
+            setMobileSidebarOpen(false);
+            // Десктоп-флаг тоже синхронизуем для согласованности state.
+            state.sidebarCollapsed = false;
+            return;
+        }
         let collapsed = false;
         try {
             collapsed = localStorage.getItem('forge.sidebarCollapsed') === '1';
@@ -599,6 +722,84 @@
 
     if ($btnSidebarToggle) {
         $btnSidebarToggle.addEventListener('click', toggleSidebar);
+    }
+    // Click на overlay → закрытие mobile-drawer'а.
+    if ($sidebarOverlay) {
+        $sidebarOverlay.addEventListener('click', () => {
+            setMobileSidebarOpen(false);
+        });
+    }
+    // Esc → закрытие mobile-drawer'а, если он открыт. На десктопе ничего не делает.
+    window.addEventListener('keydown', (ev) => {
+        if (ev.key !== 'Escape') return;
+        if (!isMobileViewport()) return;
+        if (!document.body.classList.contains('sidebar-open')) return;
+        setMobileSidebarOpen(false);
+    });
+    // -------------------------------------------------------------------------
+    // Mobile font scaling для xterm/TUI (A4)
+    //
+    // На мобиле уменьшаем шрифт всех xterm-инстансов (основной + git/docker/
+    // telescope), чтобы стандартные 80 колонок влезали в узкий viewport. После
+    // изменения fontSize вызываем fit() — он пересчитает cols/rows и xterm
+    // авто-эмиттит onResize → sendResize в PTY (см. attach в createTuiTab).
+    // -------------------------------------------------------------------------
+    const TERM_FONT_SIZE_DESKTOP = 13;
+    const TERM_FONT_SIZE_MOBILE = 11;
+
+    /**
+     * Применяет нужный fontSize ко всем существующим xterm-инстансам и делает
+     * fit(). Безопасен на любом этапе bootstrap — пропускает несуществующие
+     * либо ещё не attached терминалы (FitAddon бросает, если term._core === undefined).
+     */
+    function applyTerminalFontSize() {
+        const size = isMobileViewport() ? TERM_FONT_SIZE_MOBILE : TERM_FONT_SIZE_DESKTOP;
+        // Основной терминал
+        if (state.term && state.term.options && state.term.options.fontSize !== size) {
+            try { state.term.options.fontSize = size; } catch (_) {}
+            try { state.fitAddon && state.fitAddon.fit(); } catch (_) {}
+        }
+        // TUI-инстансы: каждый — это TuiTab.state с .term и .fit (FitAddon)
+        const tuis = [state.gitTerm, state.dockerTerm, state.telescopeTerm];
+        tuis.forEach((t) => {
+            if (!t || !t.term || !t.term.options) return;
+            if (t.term.options.fontSize === size) return;
+            try { t.term.options.fontSize = size; } catch (_) {}
+            try { t.fit && t.fit.fit(); } catch (_) {}
+        });
+    }
+
+    // При переходе viewport mobile → desktop снимаем mobile-класс,
+    // чтобы не остаться с зависшим drawer'ом. И наоборот: при mobile-режиме
+    // снимаем десктопный sidebar-collapsed (иначе #sidebar спрятан width:0).
+    if (_mqlMobile) {
+        const _onMqlChange = (e) => {
+            if (e.matches) {
+                // ушли в mobile — снимаем десктопный collapse
+                if ($layout && $layout.classList.contains('sidebar-collapsed')) {
+                    $layout.classList.remove('sidebar-collapsed');
+                }
+                // drawer стартует закрытым
+                setMobileSidebarOpen(false);
+            } else {
+                // ушли в desktop — снимаем mobile-класс и восстанавливаем
+                // персистентное состояние десктопа.
+                document.body.classList.remove('sidebar-open');
+                let collapsed = false;
+                try {
+                    collapsed = localStorage.getItem('forge.sidebarCollapsed') === '1';
+                } catch (_) { /* ignore */ }
+                applySidebarCollapsed(collapsed);
+            }
+            // В обе стороны — пересчитать шрифт терминалов.
+            applyTerminalFontSize();
+        };
+        if (typeof _mqlMobile.addEventListener === 'function') {
+            _mqlMobile.addEventListener('change', _onMqlChange);
+        } else if (typeof _mqlMobile.addListener === 'function') {
+            // Safari <14 fallback
+            _mqlMobile.addListener(_onMqlChange);
+        }
     }
     // Hotkey Cmd+B / Ctrl+B — toggle. Перехватываем на window-capture-phase,
     // чтобы хоткей не съедался xterm/TUI-mouse-mode.
@@ -1256,7 +1457,7 @@
 
         let ws;
         try {
-            ws = new WebSocket(url);
+            ws = new WebSocket(withWsToken(url));
         } catch (e) {
             console.error('WebSocket ctor failed', e);
             setStatus('error', 'ws ctor error');
@@ -1697,6 +1898,9 @@
             });
 
             term.onData((data) => {
+                if (window.QuickCmd && typeof window.QuickCmd.onPtyInput === 'function') {
+                    try { window.QuickCmd.onPtyInput(data); } catch (e) { console.debug('[quick-cmd] onPtyInput failed', e); }
+                }
                 const ws = tabState.ws;
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     try {
@@ -1774,7 +1978,7 @@
 
             let ws;
             try {
-                ws = new WebSocket(url);
+                ws = new WebSocket(withWsToken(url));
             } catch (e) {
                 console.warn('[' + name + '] WebSocket constructor failed', e);
                 showBanner('Failed to open WebSocket: ' + (e && e.message ? e.message : String(e)));
@@ -2310,7 +2514,7 @@
         const url = `${proto}://${location.host}/ws/tasks${qs}`;
         let ws;
         try {
-            ws = new WebSocket(url);
+            ws = new WebSocket(withWsToken(url));
         } catch (e) {
             console.warn('tasks ws constructor failed', e);
             scheduleTasksWsReconnect();
@@ -2580,7 +2784,7 @@
 
         let ws;
         try {
-            ws = new WebSocket(url);
+            ws = new WebSocket(withWsToken(url));
         } catch (e) {
             console.warn('todos ws constructor failed', e);
             scheduleTodosWsReconnect();
@@ -6094,6 +6298,8 @@
         // background сразу. См. комментарий в initTerminal.
         const termTheme = await loadActiveThemeOrNull();
         initTerminal(termTheme);
+        // Phase A: подогнать fontSize основного xterm под viewport (mobile vs desktop).
+        applyTerminalFontSize();
         showPlaceholder(true);
         setStatus('disconnected', 'disconnected');
 
@@ -6110,6 +6316,9 @@
         // initTerminal — нужны DOM-элементы (которые уже есть, но также
         // полезно держать инициализацию вблизи listeners-привязок tab-bar).
         initTuiTabs();
+        // Phase A: после создания TUI-tabs повторно применить mobile fontSize
+        // ко всем инстансам (state.gitTerm/dockerTerm/telescopeTerm).
+        applyTerminalFontSize();
 
         // TUI-табы: переключение через tab-bar. Кнопки Retry / × внутри
         // error-banner привязываются прямо в createTuiTab() (см. initTuiTabs).
@@ -6219,4 +6428,48 @@
     } else {
         bootstrap();
     }
+
+    /**
+     * sendToActivePty(text) — отправляет произвольный текст в WS активной
+     * вкладки (terminal / git / docker / telescope). Используется
+     * quick-cmd.js для отправки команд из quick-command bar и spec-keys.
+     *
+     * Диспетчер по state.activeTab:
+     *   'terminal'  → state.ws
+     *   'git'       → state.gitTerm.ws
+     *   'docker'    → state.dockerTerm.ws
+     *   'telescope' → state.telescopeTerm.ws
+     *
+     * Если WS не открыт / отсутствует — тихо игнорируем (console.debug).
+     * Передаётся как UTF-8 байты через state.encoder (как обычный stdin).
+     */
+    function sendToActivePty(text) {
+        if (typeof text !== 'string' || text.length === 0) return;
+        let ws = null;
+        const tab = state.activeTab;
+        if (tab === 'terminal') {
+            ws = state.ws;
+        } else if (tab === 'git' && state.gitTerm) {
+            ws = state.gitTerm.ws;
+        } else if (tab === 'docker' && state.dockerTerm) {
+            ws = state.dockerTerm.ws;
+        } else if (tab === 'telescope' && state.telescopeTerm) {
+            ws = state.telescopeTerm.ws;
+        }
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            console.debug('[ForgeApp] sendToActivePty: WS not open for tab', tab);
+            return;
+        }
+        try {
+            ws.send(state.encoder.encode(text));
+        } catch (e) {
+            console.warn('[ForgeApp] sendToActivePty failed', e);
+        }
+    }
+
+    // Публичный API для quick-cmd.js и других внешних модулей.
+    window.ForgeApp = {
+        sendToActivePty: sendToActivePty,
+        state: state,
+    };
 })();

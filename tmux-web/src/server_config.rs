@@ -55,14 +55,6 @@ pub struct ServerConfig {
     pub port: Option<u16>,
 }
 
-impl ServerConfig {
-    /// Подразумевается ли remote-mode из содержимого файла. True, если задан
-    /// либо токен, либо bind (любого вида — пользователь явно хотел
-    /// нелокальный сценарий).
-    pub fn implies_remote(&self) -> bool {
-        self.auth_token.is_some() || self.bind.is_some()
-    }
-}
 
 /// Эффективная конфигурация сервера после применения приоритетов
 /// CLI > file > env > default. Возвращается из [`resolve`].
@@ -148,16 +140,20 @@ pub fn save_to(path: &Path, cfg: &ServerConfig) -> Result<()> {
 /// 4. Default: bind=127.0.0.1 (или 0.0.0.0 при remote_mode), port=7331,
 ///    auth_token=None.
 ///
-/// **Auto remote-mode**: если в файле есть `auth_token` или `bind` —
-/// remote_mode становится `true` даже без `--remote` в CLI.
+/// **Remote-mode только при явном CLI-флаге** `--remote`. Раньше файл
+/// `server_config.json` мог авто-включать remote-mode если в нём
+/// сохранены `auth_token`/`bind` — это сбивало с толку: после одного
+/// запуска с `--remote` следующий `cargo run` без флагов автоматически
+/// поднимался на `0.0.0.0` и просил токен. Теперь это требует явного
+/// `--remote`. Файл по-прежнему используется как кэш токена/порта/bind
+/// (см. ниже), но сам факт его наличия НЕ переключает режим.
 ///
 /// **Auto-generation токена** делается в отдельной фазе (см.
 /// [`finalize_token`]) — `resolve` сам токен не генерирует, чтобы
 /// resolver оставался pure-функцией.
 pub fn resolve(cli_opts: &RunOptions, file_cfg: Option<&ServerConfig>) -> EffectiveConfig {
-    // remote_mode: CLI флаг ИЛИ файл подразумевает remote.
-    let remote_mode = cli_opts.remote
-        || file_cfg.map(|f| f.implies_remote()).unwrap_or(false);
+    // remote_mode: ТОЛЬКО CLI-флаг. Файл больше не подразумевает remote.
+    let remote_mode = cli_opts.remote;
 
     // Port: CLI > file > default.
     // ВАЖНО: cli_opts.port это уже разрешённое значение (DEFAULT_PORT, если
@@ -416,27 +412,6 @@ mod tests {
     }
 
     #[test]
-    fn implies_remote_logic() {
-        assert!(!ServerConfig::default().implies_remote());
-        assert!(ServerConfig {
-            auth_token: Some("x".into()),
-            ..Default::default()
-        }
-        .implies_remote());
-        assert!(ServerConfig {
-            bind: Some("0.0.0.0".into()),
-            ..Default::default()
-        }
-        .implies_remote());
-        assert!(ServerConfig {
-            port: Some(8080),
-            ..Default::default()
-        }
-        .implies_remote()
-            == false); // port один не подразумевает remote
-    }
-
-    #[test]
     fn resolve_default_is_localhost_no_auth() {
         let cli = RunOptions::default();
         let eff = resolve(&cli, None);
@@ -496,26 +471,31 @@ mod tests {
     }
 
     #[test]
-    fn resolve_file_implies_remote_without_cli_flag() {
-        // CLI без --remote, но в файле есть auth_token → remote_mode=true.
+    fn resolve_file_does_not_imply_remote_without_cli_flag() {
+        // CLI без --remote, в файле есть auth_token/bind — но remote_mode
+        // должен ОСТАВАТЬСЯ false. Раньше тут было auto-remote, но это
+        // сбивало с толку: cargo run после одного --remote запускал
+        // публичный сервер без явного флага. См. resolve().
         let cli = RunOptions::default();
         let file = ServerConfig {
             auth_token: Some("auto".into()),
-            bind: None,
+            bind: Some("0.0.0.0".into()),
             port: None,
         };
         let eff = resolve(&cli, Some(&file));
-        assert!(eff.remote_mode);
-        assert_eq!(eff.auth_token.as_deref(), Some("auto"));
+        assert!(!eff.remote_mode);
+        assert_eq!(eff.bind, "127.0.0.1");
+        // Токен в legacy localhost-mode стирается (см. resolve).
+        assert!(eff.auth_token.is_none());
     }
 
     #[test]
     fn resolve_non_remote_strips_token() {
-        // Даже если в файле есть токен, но remote-mode не активен — token=None.
-        // (В нашей логике implies_remote() сделает его активным, так что
-        // тест нужен для случая, когда remote_mode явно false, что
-        // невозможно при auth_token=Some из файла. Чек на разрешение через
-        // CLI override port-only.)
+        // Если файл не подразумевает remote (нет auth_token и bind) — то
+        // и без --remote сервер локальный, token=None. После изменения в
+        // resolve() поведение «implies_remote» больше не активируется
+        // автоматически, поэтому даже при auth_token=Some/bind=Some в
+        // файле без CLI флага --remote получим localhost-mode.
         let cli = RunOptions {
             port: 9000,
             remote: false,

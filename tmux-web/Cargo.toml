@@ -1,6 +1,6 @@
 [package]
 name = "devforge"
-version = "0.1.6"
+version = "0.1.7"
 edition = "2021"
 description = "Web-viewer для tmux сессий через WebSocket + xterm.js"
 license = "MIT"
@@ -58,6 +58,15 @@ reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"], defau
 #   - rustls-tls-webpki-roots — TLS без OpenSSL, доверенные корни через
 #     webpki-roots (Mozilla CA bundle), консистентно с reqwest rustls-tls.
 tokio-tungstenite = { version = "0.24", features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
+
+# Генерация QR-кодов для startup-баннера: пользователь может отсканировать
+# код камерой телефона и сразу открыть tmux-web mobile UI. default-features
+# отключены — нам не нужен image-рендеринг (svg/png), только unicode-вывод
+# в stdout, который доступен в базовом API крейта без флагов.
+qrcode = { version = "0.14", default-features = false }
+# Резолв LAN-IP машины (не loopback) — нужен чтобы вывести в QR URL,
+# доступный с телефона в той же Wi-Fi сети.
+local-ip-address = "0.6"
 
 # Daemon-режим (devforge start) — нужен setsid(2) чтобы детачнуть дочерний
 # процесс от controlling terminal, иначе он умрёт при закрытии shell.

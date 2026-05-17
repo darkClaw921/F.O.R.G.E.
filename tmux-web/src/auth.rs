@@ -49,6 +49,14 @@ const EXCLUDED_EXACT: &[&str] = &["/healthz", "/"];
 /// Префиксы статики — пропускаются без аутентификации.
 const EXCLUDED_PREFIXES: &[&str] = &["/assets/", "/static/"];
 
+/// Защищённые префиксы — требуют Bearer-токена. Всё, что не попадает под
+/// эти префиксы (и не /healthz / /), считается статикой и пропускается.
+/// Это нужно потому что embedded static-asset endpoint (`static_embed::
+/// serve_static`) отдаёт файлы прямо из корня (`/app.js`, `/style.css`,
+/// `/quick-cmd.js`, `/hotkeys.js`, ...) — без явного префикса. Иначе
+/// браузер на телефоне получит 401 на `/style.css` и UI не загрузится.
+const PROTECTED_PREFIXES: &[&str] = &["/api/", "/ws/"];
+
 /// Параметры, нужные middleware'у. Передаются через
 /// `State<AuthState>` чтобы не тащить `AppState` целиком (это упрощает
 /// unit-тесты и устраняет циклическую зависимость auth ↔ main).
@@ -71,6 +79,12 @@ impl AuthState {
 }
 
 /// Возвращает `true`, если запрос к этому пути НЕ требует Bearer-проверки.
+///
+/// Логика: защищаются только пути из [`PROTECTED_PREFIXES`] (`/api/`, `/ws/`).
+/// Остальное — статика (`/`, `/style.css`, `/app.js`, `/quick-cmd.js`,
+/// `/hotkeys.js`, `/favicon.ico`, ...) — отдаётся без токена, иначе клиент
+/// (особенно мобильный, открывший сразу URL без Authorization-header) не
+/// получит даже HTML/CSS и UI не загрузится.
 pub fn is_path_excluded(path: &str) -> bool {
     if EXCLUDED_EXACT.contains(&path) {
         return true;
@@ -80,7 +94,13 @@ pub fn is_path_excluded(path: &str) -> bool {
             return true;
         }
     }
-    false
+    for p in PROTECTED_PREFIXES {
+        if path.starts_with(p) {
+            return false;
+        }
+    }
+    // Не /api/ и не /ws/ — это статика, пропускаем.
+    true
 }
 
 /// Извлекает Bearer-token из заголовка `Authorization`. Возвращает `None`,
@@ -98,6 +118,57 @@ fn extract_bearer(req: &Request<Body>) -> Option<String> {
         return None;
     }
     Some(token)
+}
+
+/// Извлекает токен из URL query (`?token=...`). Нужно для WebSocket-эндпоинтов:
+/// браузер не позволяет ставить кастомные headers на WS из JS, поэтому
+/// токен передаётся в query. Возвращает `None`, если параметра нет или он пуст.
+fn extract_query_token(req: &Request<Body>) -> Option<String> {
+    let query = req.uri().query()?;
+    for pair in query.split('&') {
+        let mut it = pair.splitn(2, '=');
+        let k = it.next()?;
+        if k != "token" {
+            continue;
+        }
+        let v = it.next().unwrap_or("");
+        let decoded = urlencoding_decode(v);
+        if decoded.is_empty() {
+            return None;
+        }
+        return Some(decoded);
+    }
+    None
+}
+
+/// Минимальный URL-decode для значения `?token=...` (только `%XX` и `+`).
+/// Свой код вместо crate `urlencoding` — избегаем новой зависимости ради
+/// одного места.
+fn urlencoding_decode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b == b'+' {
+            out.push(' ');
+            i += 1;
+        } else if b == b'%' && i + 2 < bytes.len() {
+            let h = std::str::from_utf8(&bytes[i + 1..i + 3]).ok();
+            let parsed = h.and_then(|s| u8::from_str_radix(s, 16).ok());
+            if let Some(byte) = parsed {
+                out.push(byte as char);
+                i += 3;
+            } else {
+                out.push(b as char);
+                i += 1;
+            }
+        } else {
+            out.push(b as char);
+            i += 1;
+        }
+    }
+    out
 }
 
 /// Axum middleware: Bearer auth.
@@ -122,8 +193,18 @@ pub async fn bearer_auth(
         return next.run(req).await;
     }
 
-    match extract_bearer(&req) {
-        Some(provided) if provided == expected => next.run(req).await,
+    // Для WS-эндпоинтов разрешаем токен через query (?token=...), т.к.
+    // браузер не позволяет ставить custom headers на WebSocket из JS.
+    let provided_header = extract_bearer(&req);
+    let provided_query = if path.starts_with("/ws/") {
+        extract_query_token(&req)
+    } else {
+        None
+    };
+
+    let provided = provided_header.or(provided_query);
+    match provided {
+        Some(token) if token == expected => next.run(req).await,
         _ => (
             StatusCode::UNAUTHORIZED,
             [("WWW-Authenticate", "Bearer realm=\"devforge\"")],

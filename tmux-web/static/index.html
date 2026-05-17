@@ -35,6 +35,7 @@
                 <span id="status-text">disconnected</span>
             </footer>
         </aside>
+        <div id="sidebar-overlay" hidden></div>
         <main id="main">
             <div id="tab-bar">
                 <button id="btn-sidebar-toggle" class="sidebar-toggle-btn" type="button" title="Скрыть/показать сайдбар (Cmd/Ctrl+B)" aria-label="Toggle sidebar">☰</button>
@@ -46,7 +47,13 @@
                 <span id="git-status-meta" class="tab-meta"></span>
                 <span id="tasks-status" class="tab-meta"></span>
             </div>
-            <div id="terminal"></div>
+            <div id="terminal">
+                <div id="quick-cmd-bar" class="quick-cmd-bar" hidden>
+                    <div class="quick-cmd-keys" id="quick-cmd-keys"></div>
+                    <div class="quick-cmd-cmds" id="quick-cmd-cmds"></div>
+                    <button id="quick-cmd-edit" class="quick-cmd-edit" type="button" title="Edit commands">✎</button>
+                </div>
+            </div>
             <div id="placeholder" class="placeholder">
                 <p>Выберите сессию слева или создайте новую.</p>
             </div>
@@ -75,6 +82,7 @@
                     </div>
                 </div>
                 <div id="git-term" class="git-term"></div>
+                <div id="git-quick-bar" class="tui-quick-bar" data-target="git" hidden></div>
             </div>
             <div id="docker" hidden>
                 <!-- lazydocker-tab: xterm-терминал подключён к /ws/lazydocker.
@@ -91,6 +99,7 @@
                     </div>
                 </div>
                 <div id="docker-term" class="tui-term"></div>
+                <div id="docker-quick-bar" class="tui-quick-bar" data-target="docker" hidden></div>
             </div>
             <div id="telescope" hidden>
                 <!-- telescope-tab: xterm-терминал подключён к /ws/telescope (tv).
@@ -113,6 +122,7 @@
                     </div>
                 </div>
                 <div id="telescope-term" class="tui-term"></div>
+                <div id="telescope-quick-bar" class="tui-quick-bar" data-target="telescope" hidden></div>
             </div>
         </main>
     </div>
@@ -126,6 +136,8 @@
 
     <!-- Приложение -->
     <script src="/app.js"></script>
+    <!-- Quick-command bar для mobile -->
+    <script src="/quick-cmd.js"></script>
     <!-- Горячие клавиши (vim-style + Cmd-hint mode) -->
     <script src="/hotkeys.js"></script>
 </body>

@@ -1,35 +1,15 @@
 # tmux-web/static/app.js
 
-Frontend SPA tmux-web. Phase 4-5: lazygit-tab через xterm + WS /ws/lazygit. Phase 6+: error-banner с детектом OS и copy-to-clipboard командами установки lazygit.
+{"element":"tmux-web/static/app.js","path":"tmux-web/static/app.js","type":"file","content":"Frontend SPA tmux-web. Phase 4-5: lazygit-tab через xterm + WS /ws/lazygit. Phase 6+: error-banner с детектом OS и copy-to-clipboard командами установки lazygit.\n\n## state.gitTerm\n{ term, fit, ws, mounted, currentCwd, errorSticky } — изолированный xterm.Terminal+FitAddon для git-таба, отдельный от основного terminal-таба. Открывается WS на switchTab('git'), закрывается на уход с таба или beforeunload.\n\n## Ключевые функции\n- mountGitTerm() — лениво создаёт Terminal+FitAddon в #git-term, biz Binary I/O.\n- openLazygitForActiveProject() — open WS /ws/lazygit?cwd=<path>&cols=&rows=. Если активного проекта нет — placeholder #git-placeholder.\n- connectGitWs(cwd) — handshake WebSocket. onmessage(ArrayBuffer)→term.write; onmessage(text JSON {type:'error',message})→showGitBanner. term.onData→ws.send Binary. resize→ws Text {type:'resize',cols,rows}.\n- gitSwitchCwd(newCwd) — отправляет {type:'switch_cwd',cwd} (control), fallback на reconnect.\n- closeGitWs(reason) — graceful close.\n- showGitBanner(message, {showInstall}) — красный banner поверх xterm. showInstall=true → renderInstallHelp(): рендер списка установочных команд для разных OS.\n- renderInstallHelp() — заполняет #git-install-list карточками: macOS(Homebrew/MacPorts), Debian/Ubuntu (через curl tarball + install), Arch (pacman), Fedora (dnf copr), Windows (winget/Scoop), Go (go install). detectClientOS() через navigator.platform/userAgent помечает текущую OS классом .detected и сортирует её первой.\n- copyToClipboardSafe(text) — Clipboard API с fallback на скрытый textarea+execCommand. Кнопка Copy получает класс .copied на 1400ms.\n- detectClientOS() — возвращает 'mac' | 'linux' | 'windows' | null. Дистрибутив Linux точно не детектится (выводим все варианты apt/pacman/dnf).\n- hideGitBanner() — скрывает и banner и install-help.\n- retryGitConnection() — hideGitBanner + closeGitWs + openLazygitForActiveProject.\n\n## Wire-протокол /ws/lazygit\n- Binary in/out — сырые байты PTY.\n- Text frames: {type:'resize',cols,rows} | {type:'switch_cwd',cwd} от клиента; {type:'error',message} от сервера.\n- При получении error frame с lazygit-not-found / no-such-file → showGitBanner с showInstall=true.\n\n## DOM\n- #git-term — xterm container.\n- #git-placeholder — 'Select a project to open lazygit'.\n- #git-error — sticky red banner (order:-1 в flex).\n- #git-error-text / -retry / -close — текст и контролы banner.\n- #git-install-help — раскрывающийся блок только при lazygit-not-found, со списком команд.\n- #git-install-list — ul, li с .os-label/.os-cmd/.os-copy.\n\n## Удалено в Phase 5\nPolling /api/git/*, fetchGitStatus/Log/Stage/Unstage/Commit, renderGitToolbar/Files/Graph, computeGitLanes, state.gitStatus/gitLog/gitPollTimer, legacy DOM-refs (///...). Custom git UI полностью заменён на lazygit TUI.","createdAt":"2026-05-10T18:21:29.362Z","updatedAt":"2026-05-10T18:21:29.362Z"}
 
-## state.gitTerm
-{ term, fit, ws, mounted, currentCwd, errorSticky } — изолированный xterm.Terminal+FitAddon для git-таба, отдельный от основного terminal-таба. Открывается WS на switchTab('git'), закрывается на уход с таба или beforeunload.
+## Auth-bootstrap (Phase: remote-mode + mobile QR)
 
-## Ключевые функции
-- mountGitTerm() — лениво создаёт Terminal+FitAddon в #git-term, biz Binary I/O.
-- openLazygitForActiveProject() — open WS /ws/lazygit?cwd=<path>&cols=&rows=. Если активного проекта нет — placeholder #git-placeholder.
-- connectGitWs(cwd) — handshake WebSocket. onmessage(ArrayBuffer)→term.write; onmessage(text JSON {type:'error',message})→showGitBanner. term.onData→ws.send Binary. resize→ws Text {type:'resize',cols,rows}.
-- gitSwitchCwd(newCwd) — отправляет {type:'switch_cwd',cwd} (control), fallback на reconnect.
-- closeGitWs(reason) — graceful close.
-- showGitBanner(message, {showInstall}) — красный banner поверх xterm. showInstall=true → renderInstallHelp(): рендер списка установочных команд для разных OS.
-- renderInstallHelp() — заполняет #git-install-list карточками: macOS(Homebrew/MacPorts), Debian/Ubuntu (через curl tarball + install), Arch (pacman), Fedora (dnf copr), Windows (winget/Scoop), Go (go install). detectClientOS() через navigator.platform/userAgent помечает текущую OS классом .detected и сортирует её первой.
-- copyToClipboardSafe(text) — Clipboard API с fallback на скрытый textarea+execCommand. Кнопка Copy получает класс .copied на 1400ms.
-- detectClientOS() — возвращает 'mac' | 'linux' | 'windows' | null. Дистрибутив Linux точно не детектится (выводим все варианты apt/pacman/dnf).
-- hideGitBanner() — скрывает и banner и install-help.
-- retryGitConnection() — hideGitBanner + closeGitWs + openLazygitForActiveProject.
+В самом начале IIFE добавлен auth-pipeline:
 
-## Wire-протокол /ws/lazygit
-- Binary in/out — сырые байты PTY.
-- Text frames: {type:'resize',cols,rows} | {type:'switch_cwd',cwd} от клиента; {type:'error',message} от сервера.
-- При получении error frame с lazygit-not-found / no-such-file → showGitBanner с showInstall=true.
+1. **bootstrapAuthToken()** — IIFE при загрузке: парсит location.hash regex /[#&]token=([^&]+)/, сохраняет в localStorage 'forge.authToken' (AUTH_TOKEN_KEY), удаляет hash через history.replaceState. Это нужно потому что QR из qr_print.rs содержит '#token=<token>' для remote-mode.
 
-## DOM
-- #git-term — xterm container.
-- #git-placeholder — 'Select a project to open lazygit'.
-- #git-error — sticky red banner (order:-1 в flex).
-- #git-error-text / -retry / -close — текст и контролы banner.
-- #git-install-help — раскрывающийся блок только при lazygit-not-found, со списком команд.
-- #git-install-list — ul, li с .os-label/.os-cmd/.os-copy.
+2. **window.fetch override** — глобальный wrapper: для same-origin запросов добавляет 'Authorization: Bearer <token>' header если localStorage содержит токен. Не overrides если caller уже передал Authorization. Не трогает external URLs (xterm.js CDN).
 
-## Удалено в Phase 5
-Polling /api/git/*, fetchGitStatus/Log/Stage/Unstage/Commit, renderGitToolbar/Files/Graph, computeGitLanes, state.gitStatus/gitLog/gitPollTimer, legacy DOM-refs (///...). Custom git UI полностью заменён на lazygit TUI.
+3. **withWsToken(wsUrl)** — хелпер: добавляет '?token=<token>' или '&token=<token>' к WS-URL. Используется ВО ВСЕХ местах 'new WebSocket(url)' (4 места: connectWs /ws/attach, createTuiTab /ws/lazygit|lazydocker|telescope, connectTasksWs /ws/tasks, connectTodosWs /ws/todos). Браузер не даёт ставить custom headers на WebSocket из JS, поэтому токен передаётся в query.
+
+LS-ключ: 'forge.authToken'. Очистка: пользователь логинится заново через QR-сканирование.

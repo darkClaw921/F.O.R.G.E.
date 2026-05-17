@@ -1,6 +1,6 @@
 {
   "root": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E.",
-  "generatedAt": "2026-05-15T14:35:37.606Z",
+  "generatedAt": "2026-05-16T18:00:38.167Z",
   "nodes": [
     {
       "id": "tmux-web/static/app.js",
@@ -15,6 +15,14 @@
       "name": "hotkeys.js",
       "type": "file",
       "path": "tmux-web/static/hotkeys.js",
+      "exports": [],
+      "children": []
+    },
+    {
+      "id": "tmux-web/static/quick-cmd.js",
+      "name": "quick-cmd.js",
+      "type": "file",
+      "path": "tmux-web/static/quick-cmd.js",
       "exports": [],
       "children": []
     }

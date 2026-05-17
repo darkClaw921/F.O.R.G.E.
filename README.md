@@ -108,11 +108,13 @@
 - 🔭 **Find** — встроенный [`television`](https://github.com/alexpasmantier/television) (`tv`), fuzzy-finder в духе telescope.nvim (`/ws/telescope`). Над терминалом — переключатель каналов **`Files / Content / Dirs / Git log`** (Files = по именам через fd, Content = по содержимому через ripgrep, Dirs = по каталогам, Git log = по коммитам). Клик по кнопке — мгновенный reconnect с новым каналом. Требует helpers `fd` + `bat` + `rg` — ставятся одной командой `brew install television fd bat ripgrep`.
 
 Каждая вкладка:
+
 - автодетектит установку бинаря и показывает install-banner с командами для macOS/Linux при отсутствии,
 - поддерживает retry + ResizeObserver + Binary-frame stdin (контракт идентичен `/ws/attach`),
 - работает в remote-режиме через generic `remote_proxy` — `?server=<id>` прозрачно проксируется на upstream-сервер по тому же пути.
 
 **Копирование текста из preview-панели:** TUI-программы (tv/lazygit/lazydocker) захватывают мышь, поэтому обычное выделение не работает. Используй стандартный xterm.js-bypass:
+
 - macOS: `⌥ Option + drag` для selection → `⌘ Cmd + C` для копирования
 - Linux/Windows: `Shift + drag` для selection → `Ctrl + Shift + C` для копирования
 
@@ -173,20 +175,20 @@
 └────────────────────────────────────────────────────────────────────┘
 ```
 
-| Модуль                               | Назначение                                                             |
-| ------------------------------------------ | -------------------------------------------------------------------------------- |
-| `src/main.rs`                            | Axum-роутер, REST endpoints, статика, health-check.                 |
-| `src/tmux.rs`                            | Обёртка над `tmux` CLI: list / new / kill.                           |
-| `src/pty.rs`                             | `portable-pty` + `tmux attach` / `lazygit` / `lazydocker` / `tv` на одну WS-сессию. |
+| Модуль                               | Назначение                                                                                                                              |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/main.rs`                            | Axum-роутер, REST endpoints, статика, health-check.                                                                                  |
+| `src/tmux.rs`                            | Обёртка над `tmux` CLI: list / new / kill.                                                                                            |
+| `src/pty.rs`                             | `portable-pty` + `tmux attach` / `lazygit` / `lazydocker` / `tv` на одну WS-сессию.                                         |
 | `src/ws.rs`                              | WebSocket-bridge: байты PTY ↔ браузер + control-сообщения. Generic `handle_tui_socket<F>` для всех TUI-табов. |
-| `src/remote_proxy.rs`                    | Прозрачный WS-proxy для remote-режима (все `/ws/*` пути, включая TUI). |
-| `src/tasks.rs`                           | REST `/api/tasks`, дёргает `br`.                                      |
-| `src/ws_tasks.rs` + `tasks_watcher.rs` | WS-стрим изменений `.beads/issues.jsonl`.                        |
-| `src/todos.rs` + `ws_todos.rs`         | TODO-конвейер с прокидыванием в tmux.                     |
-| `src/projects.rs`                        | Мульти-проекты, init, активный проект.                |
-| `src/themes.rs`                          | 9 пресетов + custom темы.                                            |
-| `src/attention.rs` + `notifier.rs`     | Десктоп-нотификации.                                           |
-| `static/`                                | `index.html`, `app.js` (~4.5k), `style.css` (~2.2k), `hotkeys.js`.       |
+| `src/remote_proxy.rs`                    | Прозрачный WS-proxy для remote-режима (все `/ws/*` пути, включая TUI).                                         |
+| `src/tasks.rs`                           | REST `/api/tasks`, дёргает `br`.                                                                                                       |
+| `src/ws_tasks.rs` + `tasks_watcher.rs` | WS-стрим изменений `.beads/issues.jsonl`.                                                                                         |
+| `src/todos.rs` + `ws_todos.rs`         | TODO-конвейер с прокидыванием в tmux.                                                                                      |
+| `src/projects.rs`                        | Мульти-проекты, init, активный проект.                                                                                 |
+| `src/themes.rs`                          | 9 пресетов + custom темы.                                                                                                             |
+| `src/attention.rs` + `notifier.rs`     | Десктоп-нотификации.                                                                                                            |
+| `static/`                                | `index.html`, `app.js` (~4.5k), `style.css` (~2.2k), `hotkeys.js`.                                                                        |
 
 ---
 
@@ -217,12 +219,12 @@ devforge stop                  # остановить daemon (SIGTERM, fallback 
 devforge --help                # полный список опций
 ```
 
-| Команда | Что делает |
-|---------|-----------|
-| `run` *(default)* | Запускает сервер в foreground. Логи в stdout. Завершается по `Ctrl+C`. |
-| `start [--port N]` | Спавнит daemon через `setsid(2)`, PID пишется в `~/.config/forge/devforge.pid`, stdout/stderr — в `~/.config/forge/devforge.log`. |
-| `stop` | Читает PID, шлёт `SIGTERM`, ждёт до 5 секунд, при таймауте — `SIGKILL`. |
-| `status` | Печатает «running (PID …)» или «not running»; детектит stale pid-файлы после краша. |
+| Команда        | Что делает                                                                                                                                           |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `run` *(default)* | Запускает сервер в foreground. Логи в stdout. Завершается по `Ctrl+C`.                                                    |
+| `start [--port N]`  | Спавнит daemon через `setsid(2)`, PID пишется в `~/.config/forge/devforge.pid`, stdout/stderr — в `~/.config/forge/devforge.log`. |
+| `stop`              | Читает PID, шлёт `SIGTERM`, ждёт до 5 секунд, при таймауте — `SIGKILL`.                                                 |
+| `status`            | Печатает «running (PID …)» или «not running»; детектит stale pid-файлы после краша.                                    |
 
 Опция `-p` / `--port <N>` (default `7331`) валидна для `run` и `start`. Сервер всегда биндится на `127.0.0.1` — наружу не торчит.
 
@@ -261,7 +263,7 @@ devforge --help                # полный список опций
 ### Сборка и запуск
 
 ```bash
-git clone <repo> F.O.R.G.E.
+git clone https://github.com/darkClaw921/F.O.R.G.E.
 cd F.O.R.G.E./tmux-web
 cargo run --release
 ```
@@ -292,6 +294,7 @@ git config core.hooksPath .githooks
 ```
 
 Параметры:
+
 - тесты прогоняются через `cargo test --quiet --color=always` в `tmux-web/`;
 - bump версии работает только если она имеет формат `X.Y.Z` (SemVer-подобный) — иначе пропускается без падения;
 - MAJOR/MINOR никогда не трогаются, только PATCH;
@@ -318,9 +321,9 @@ git config core.hooksPath .githooks
 | GET / PATCH                 | `/api/themes[/active]`            | Темы.                                          |
 | POST / PUT / DELETE         | `/api/themes/custom[/:id]`        | Custom-темы.                                   |
 | GET (WS)                    | `/ws/attach?session=&cols=&rows=` | tmux attach.                                       |
-| GET (WS)                    | `/ws/lazygit?cwd=&cols=&rows=`    | lazygit TUI в cwd проекта.            |
-| GET (WS)                    | `/ws/lazydocker?cwd=&cols=&rows=` | lazydocker TUI в cwd проекта.    |
-| GET (WS)                    | `/ws/telescope?cwd=&cols=&rows=`  | television (`tv`) fuzzy-finder.            |
+| GET (WS)                    | `/ws/lazygit?cwd=&cols=&rows=`    | lazygit TUI в cwd проекта.                 |
+| GET (WS)                    | `/ws/lazydocker?cwd=&cols=&rows=` | lazydocker TUI в cwd проекта.              |
+| GET (WS)                    | `/ws/telescope?cwd=&cols=&rows=`  | television (`tv`) fuzzy-finder.                  |
 | GET (WS)                    | `/ws/tasks` / `/ws/todos`       | Live-стримы JSON.                            |
 
 ---

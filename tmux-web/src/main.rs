@@ -14,6 +14,7 @@ mod daemon;
 mod notifier;
 mod projects;
 mod pty;
+mod qr_print;
 // Phase 3 — модуль HTTP-прокси на удалённые devforge. Публичные функции
 // (`proxy_request`, `enrich_with_origin`) используются в handler'ах
 // resource-routes (task forge-v5x9.4), но до их подключения компилятор
@@ -476,6 +477,12 @@ async fn main() -> anyhow::Result<()> {
             auth_token_value.as_deref(),
         );
     }
+
+    // QR-баннер для подключения с телефона. Печатается всегда: на loopback
+    // даёт LAN-IP с подсказкой запустить с --remote, на remote-mode — QR
+    // с реальным bind/LAN-URL. В remote-mode URL включает токен в hash
+    // (#token=...), чтобы клиент мог авторизоваться без ручного ввода.
+    qr_print::print_startup_qr(&bind_host, port, remote_mode, auth_token_value.as_deref());
 
     axum::serve(listener, app)
         .await
