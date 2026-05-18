@@ -490,7 +490,23 @@ pub async fn new_window(session: &str, name: Option<&str>) -> anyhow::Result<()>
         );
     }
 
-    let mut args: Vec<&str> = vec!["new-window", "-t", session];
+    // Двоеточие в конце таргета указывает tmux, что это session-target
+    // (а не target-window). Без двоеточия tmux резолвит `-t <session>`
+    // в текущее активное окно этой сессии и пытается создать новое
+    // окно ровно по тому же индексу — что приводит к ошибке
+    // "create window failed: index N in use".
+    let target = format!("{session}:");
+    // `-c "#{pane_current_path}"` — новое окно открывается в той же рабочей
+    // директории, что и текущая активная панель сессии. Без этого флага
+    // tmux использует cwd самого сервера (как правило — $HOME), и новое
+    // окно «теряет» путь, в котором была создана сессия.
+    let mut args: Vec<&str> = vec![
+        "new-window",
+        "-t",
+        &target,
+        "-c",
+        "#{pane_current_path}",
+    ];
     if let Some(n) = name {
         if !n.is_empty() {
             args.push("-n");

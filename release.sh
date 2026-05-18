@@ -33,8 +33,7 @@ echo "==> Updating version to ${VERSION} in project files..."
 sed -i '' "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" tmux-web/Cargo.toml
 sed -i '' "s|archive/refs/tags/v[^\"]*\.tar\.gz|archive/refs/tags/${TAG}.tar.gz|" "Formula/${FORMULA_NAME}"
 
-echo "==> Building release binary (smoke test)..."
-# Phase 1 (Echo): проект теперь Cargo workspace, собираем только бинарь
+echo "==> Building release binary (smoke test).."# Phase 1 (Echo): проект теперь Cargo workspace, собираем только бинарь
 # devforge через -p. Команда запускается из корня workspace, чтобы cargo
 # правильно резолвил workspace-root Cargo.toml и path-deps (forge-echo,
 # echo-host-api в plugins/).

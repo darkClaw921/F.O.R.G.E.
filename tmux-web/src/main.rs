@@ -1080,8 +1080,11 @@ struct RenameSessionReq {
 }
 
 /// `PATCH /api/sessions/:name` — переименовывает существующую сессию.
-/// Новое имя автопрефиксуется через `active.tmux_prefix` (если ещё не префиксовано),
-/// как и при `POST /api/sessions`.
+/// Имя используется **ровно как ввёл пользователь** (с trim пробелов).
+/// Автопрефикса по `active.tmux_prefix` здесь нет: при rename пользователь
+/// явно задаёт желаемое имя, и навязывать `forge-…` было бы сюрпризом.
+/// При новом `POST /api/sessions` префикс применяется — там это нужно,
+/// чтобы сессия попала в активный проект.
 ///
 /// - 200 OK + `{ "name": "<new>" }` при успехе.
 /// - 400 Bad Request при невалидном теле/имени, если сессии нет или новое имя занято.
@@ -1109,11 +1112,7 @@ async fn rename_session(
     let req: RenameSessionReq = serde_json::from_slice(&body)
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid body: {e}")))?;
 
-    let new_name = {
-        let store = state.projects.read().await;
-        let active = store.active();
-        ensure_prefixed(&active.tmux_prefix, req.name.trim())
-    };
+    let new_name = req.name.trim().to_string();
 
     match tmux::rename_session(&name, &new_name).await {
         Ok(()) => {
