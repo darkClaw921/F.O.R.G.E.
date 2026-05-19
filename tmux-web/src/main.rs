@@ -902,6 +902,12 @@ struct SessionDto {
     #[serde(flatten)]
     info: SessionInfo,
     needs_attention: bool,
+    /// `true` если за прошедший тик watcher'а (1.5с) содержимое последних
+    /// 30 строк pane менялось — индикатор активной генерации Claude или любого
+    /// другого процесса, рисующего в pane. Сигнал независим от
+    /// `needs_attention`: оба флага могут гореть одновременно.
+    /// См. [`attention::AttentionState::update_generation`].
+    is_generating: bool,
     project_id: Option<String>,
     project_name: Option<String>,
     /// Идентификатор папочно-ориентированной группы для sidebar-группировки.
@@ -959,14 +965,17 @@ async fn get_sessions(
     match tmux::list_sessions().await {
         Ok(list) => {
             let attention = state.attention.snapshot().await;
+            let generating = state.attention.generating_snapshot().await;
             let dtos: Vec<SessionDto> = list
                 .into_iter()
                 .map(|s| {
                     let needs_attention = attention.get(&s.name).copied().unwrap_or(false);
+                    let is_generating = generating.get(&s.name).copied().unwrap_or(false);
                     let (project_id, project_name) = resolve_project(&s, &projects_snap);
                     let (folder_id, folder_label) = resolve_folder(&s);
                     SessionDto {
                         needs_attention,
+                        is_generating,
                         project_id,
                         project_name,
                         folder_id,

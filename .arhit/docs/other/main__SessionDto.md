@@ -1,23 +1,11 @@
 # main::SessionDto
 
-DTO-структура для JSON-сериализации записи tmux-сессии в ответе GET /api/sessions (tmux-web/src/main.rs:756-787).
+DTO в src/main.rs (~line 901), сериализуемый в JSON для GET /api/sessions. Структура: name, attached, windows и пр. из tmux::SessionInfo через #[serde(flatten)] + needs_attention: bool + is_generating: bool + project_id/project_name: Option<String> + folder_id/folder_label: Option<String> + origin: String.
 
-Derive: #[derive(Debug, Serialize)].
+Поле needs_attention заполняется из snapshot'а AppState.attention в хендлере: attention.get(&s.name).copied().unwrap_or(false). Snapshot снимается ОДИН РАЗ за вызов хендлера, чтобы все сессии в ответе видели согласованное состояние watcher'а.
 
-Поля:
-- info: SessionInfo — флаттенится через #[serde(flatten)], то есть поля SessionInfo (name, path, attached, windows, created, session_group и т.д.) выливаются в корень JSON-объекта на уровне с остальными полями DTO.
-- needs_attention: bool — индикатор наличия Claude permission prompt в панели сессии (см. attention::detect_claude_prompt). true → фронт подсвечивает вкладку оранжевым.
-- project_id: Option<String> — id зарегистрированного проекта (uuid) либо синтетический ключ '__path__:<cwd>' либо tmux_prefix-матч. Используется в switchActiveProject и фильтрах TODO/.beads. None для orphan-сессий с пустым path.
-- project_name: Option<String> — отображаемое имя проекта (basename последней папки project.path либо Project::name как fallback).
-- folder_id: Option<String> — (Phase 1 forge-fl3t) идентификатор папочно-ориентированной группы вида '__folder:<absolute_path>'. Заполняется helper'ом resolve_folder. Префикс '__folder:' исключает коллизии с project_id. None зеркалит резолв basename → пустая строка / отсутствует.
-- folder_label: Option<String> — (Phase 1 forge-fl3t) человекочитаемая метка папочной группы — basename последней папки session.path. Используется во фронте в group-header sidebar.
-- origin: String — (Phase 3) источник записи: всегда 'local' для локально-сгенерированных DTO. Прокси через ?server=<id> НЕ строит SessionDto на этой стороне — там прокидывается уже готовый JSON remote'а, обогащённый remote_proxy::enrich_with_origin. Поле сериализуется ВСЕГДА, чтобы фронт получал унифицированный формат.
+Поле is_generating заполняется из generating_snapshot() аналогично. Семантика: true когда за прошедший 1.5с тик watcher'а содержимое последних 30 строк pane изменилось (Claude печатает, идёт tool call, или любая другая активность типа htop/tail -f — фолз-позитивы приняты). Independent от needs_attention: оба флага могут гореть одновременно.
 
-Сериализация всех Option<String> полей идёт БЕЗ skip_serializing_if — ключи folder_id, folder_label, project_id, project_name присутствуют в JSON всегда (значение null при None). Это упрощает контракт для фронта.
+project_id/project_name — id и имя проекта-владельца сессии через projects::session_belongs или None для orphan. folder_id/folder_label — папочная группировка для sidebar (__folder:<path>). origin — всегда 'local' для локально-сгенерированных DTO; remote-сессии прокидываются через remote_proxy::enrich_with_origin, минуя SessionDto.
 
-Конструируется только в одном месте — внутри замыкания .map() в get_sessions (main.rs ~807-822) после snapshot'а projects и attention. Поля заполняются по очереди:
-  let (project_id, project_name) = resolve_project(&s, &projects_snap);
-  let (folder_id, folder_label) = resolve_folder(&s);
-  SessionDto { needs_attention, project_id, project_name, folder_id, folder_label, info: s, origin: 'local'.to_string() }
-
-Связи: SessionInfo (tmux.rs) — flatten-источник; resolve_project (main.rs) — заполняет project_*; resolve_folder (main.rs) — заполняет folder_*; attention::AttentionState — источник needs_attention.
+Используется фронтендом sessions.js при polling /api/sessions каждые 3с. Файл: src/main.rs.

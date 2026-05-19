@@ -48,6 +48,7 @@
 }
 
 .session-item {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -144,6 +145,29 @@
     font-size: 0.78rem;
     padding: 14px;
     text-align: center;
+}
+
+/* ===== Claude generation indicator =====
+ *
+ * Пульсирующий значок ✶ в правом нижнем углу .session-item, виден когда
+ * SessionDto.is_generating === true (см. attention::AttentionState::
+ * update_generation). Использует position: absolute, чтобы НЕ сдвигать
+ * существующие .btn-rename / .btn-kill в .session-actions.
+ */
+.session-item .claude-spark {
+    position: absolute;
+    right: 8px;
+    bottom: 4px;
+    font-size: 0.75rem;
+    line-height: 1;
+    color: var(--accent);
+    pointer-events: none;
+    animation: claude-spark-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes claude-spark-pulse {
+    0%, 100% { opacity: 0.4; }
+    50%      { opacity: 1; }
 }
 
 /* ===== Phase 5 — origin/project headers внутри session-list ===== */

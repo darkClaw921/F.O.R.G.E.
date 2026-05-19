@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-17T16:51:52.500Z",
+  "generatedAt": "2026-05-19T17:05:39.220Z",
   "dependencies": [
     {
       "from": "tmux-web/static/hotkeys.js",
@@ -5893,21 +5893,91 @@
       "to": "tmux-web/static/js/echo/chat.js",
       "type": "call",
       "fromElement": "appendChunk",
-      "toElement": "document.createTextNode"
+      "toElement": "_scheduleTypewriter"
     },
     {
       "from": "tmux-web/static/js/echo/chat.js",
       "to": "tmux-web/static/js/echo/chat.js",
       "type": "call",
-      "fromElement": "appendChunk",
+      "fromElement": "_scheduleTypewriter",
+      "toElement": "Math.max"
+    },
+    {
+      "from": "tmux-web/static/js/echo/chat.js",
+      "to": "tmux-web/static/js/echo/chat.js",
+      "type": "call",
+      "fromElement": "_scheduleTypewriter",
+      "toElement": "Math.ceil"
+    },
+    {
+      "from": "tmux-web/static/js/echo/chat.js",
+      "to": "tmux-web/static/js/echo/chat.js",
+      "type": "call",
+      "fromElement": "_scheduleTypewriter",
+      "toElement": "a.pending.slice"
+    },
+    {
+      "from": "tmux-web/static/js/echo/chat.js",
+      "to": "tmux-web/static/js/echo/chat.js",
+      "type": "call",
+      "fromElement": "_scheduleTypewriter",
+      "toElement": "a.pending.slice"
+    },
+    {
+      "from": "tmux-web/static/js/echo/chat.js",
+      "to": "tmux-web/static/js/echo/chat.js",
+      "type": "call",
+      "fromElement": "_scheduleTypewriter",
       "toElement": "k.appendChild"
     },
     {
       "from": "tmux-web/static/js/echo/chat.js",
       "to": "tmux-web/static/js/echo/chat.js",
       "type": "call",
-      "fromElement": "appendChunk",
+      "fromElement": "_scheduleTypewriter",
+      "toElement": "document.createTextNode"
+    },
+    {
+      "from": "tmux-web/static/js/echo/chat.js",
+      "to": "tmux-web/static/js/echo/chat.js",
+      "type": "call",
+      "fromElement": "_scheduleTypewriter",
       "toElement": "scrollToBottom"
+    },
+    {
+      "from": "tmux-web/static/js/echo/chat.js",
+      "to": "tmux-web/static/js/echo/chat.js",
+      "type": "call",
+      "fromElement": "_scheduleTypewriter",
+      "toElement": "requestAnimationFrame"
+    },
+    {
+      "from": "tmux-web/static/js/echo/chat.js",
+      "to": "tmux-web/static/js/echo/chat.js",
+      "type": "call",
+      "fromElement": "_scheduleTypewriter",
+      "toElement": "requestAnimationFrame"
+    },
+    {
+      "from": "tmux-web/static/js/echo/chat.js",
+      "to": "tmux-web/static/js/echo/chat.js",
+      "type": "call",
+      "fromElement": "_flushAllPending",
+      "toElement": "Object.keys"
+    },
+    {
+      "from": "tmux-web/static/js/echo/chat.js",
+      "to": "tmux-web/static/js/echo/chat.js",
+      "type": "call",
+      "fromElement": "_flushAllPending",
+      "toElement": "k.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/echo/chat.js",
+      "to": "tmux-web/static/js/echo/chat.js",
+      "type": "call",
+      "fromElement": "_flushAllPending",
+      "toElement": "document.createTextNode"
     },
     {
       "from": "tmux-web/static/js/echo/chat.js",
@@ -5915,6 +5985,13 @@
       "type": "call",
       "fromElement": "finalizeMessage",
       "toElement": "_streamBuffers.get"
+    },
+    {
+      "from": "tmux-web/static/js/echo/chat.js",
+      "to": "tmux-web/static/js/echo/chat.js",
+      "type": "call",
+      "fromElement": "finalizeMessage",
+      "toElement": "_flushAllPending"
     },
     {
       "from": "tmux-web/static/js/echo/chat.js",
@@ -9829,6 +9906,12 @@
     },
     {
       "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "../tabs/tui-tabs.js",
+      "type": "import",
+      "toElement": "syncGitToCurrentSession"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
       "to": "tmux-web/static/js/sessions/sessions.js",
       "type": "call",
       "fromElement": "fetchSessions",
@@ -10008,6 +10091,20 @@
       "type": "call",
       "fromElement": "buildSessionItem",
       "toElement": "actions.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "buildSessionItem",
+      "toElement": "li.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "buildSessionItem",
+      "toElement": "document.createElement"
     },
     {
       "from": "tmux-web/static/js/sessions/sessions.js",
@@ -10350,6 +10447,13 @@
       "to": "tmux-web/static/js/sessions/sessions.js",
       "type": "call",
       "fromElement": "openSession",
+      "toElement": "syncGitToCurrentSession"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "openSession",
       "toElement": "switchSession"
     },
     {
@@ -10358,6 +10462,13 @@
       "type": "call",
       "fromElement": "openSession",
       "toElement": "connectWs"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "openSession",
+      "toElement": "syncGitToCurrentSession"
     },
     {
       "from": "tmux-web/static/js/sessions/sessions.js",
@@ -10393,6 +10504,13 @@
       "type": "call",
       "fromElement": "switchSession",
       "toElement": "scheduleResizeFromTerm"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "switchSession",
+      "toElement": "syncGitToCurrentSession"
     },
     {
       "from": "tmux-web/static/js/sessions/sessions.js",
@@ -15212,6 +15330,13 @@
       "to": "tmux-web/static/js/tabs/tui-tabs.js",
       "type": "call",
       "fromElement": "openForActiveProject",
+      "toElement": "opts.resolveCwd"
+    },
+    {
+      "from": "tmux-web/static/js/tabs/tui-tabs.js",
+      "to": "tmux-web/static/js/tabs/tui-tabs.js",
+      "type": "call",
+      "fromElement": "openForActiveProject",
       "toElement": "getActiveProject"
     },
     {
@@ -15289,6 +15414,13 @@
       "to": "tmux-web/static/js/tabs/tui-tabs.js",
       "type": "call",
       "fromElement": "initTuiTabs",
+      "toElement": "sessionCwdOrNull"
+    },
+    {
+      "from": "tmux-web/static/js/tabs/tui-tabs.js",
+      "to": "tmux-web/static/js/tabs/tui-tabs.js",
+      "type": "call",
+      "fromElement": "initTuiTabs",
       "toElement": "createTuiTab"
     },
     {
@@ -15339,6 +15471,34 @@
       "type": "call",
       "fromElement": "initTuiTabs",
       "toElement": "state.telescopeTerm.openForActiveProject"
+    },
+    {
+      "from": "tmux-web/static/js/tabs/tui-tabs.js",
+      "to": "tmux-web/static/js/tabs/tui-tabs.js",
+      "type": "call",
+      "fromElement": "sessionCwdOrNull",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/js/tabs/tui-tabs.js",
+      "to": "tmux-web/static/js/tabs/tui-tabs.js",
+      "type": "call",
+      "fromElement": "sessionCwdOrNull",
+      "toElement": "list.find"
+    },
+    {
+      "from": "tmux-web/static/js/tabs/tui-tabs.js",
+      "to": "tmux-web/static/js/tabs/tui-tabs.js",
+      "type": "call",
+      "fromElement": "syncGitToCurrentSession",
+      "toElement": "sessionCwdOrNull"
+    },
+    {
+      "from": "tmux-web/static/js/tabs/tui-tabs.js",
+      "to": "tmux-web/static/js/tabs/tui-tabs.js",
+      "type": "call",
+      "fromElement": "syncGitToCurrentSession",
+      "toElement": "t.switchCwd"
     },
     {
       "from": "tmux-web/static/js/tabs/tui-tabs.js",

@@ -45,6 +45,8 @@ use tokio::sync::RwLock;
 #[derive(Debug, Clone, Default)]
 pub struct AttentionState {
     map: Arc<RwLock<HashMap<String, bool>>>,
+    generating: Arc<RwLock<HashMap<String, bool>>>,
+    last_hash: Arc<RwLock<HashMap<String, u64>>>,
 }
 
 impl AttentionState {
@@ -52,6 +54,8 @@ impl AttentionState {
     pub fn new() -> Self {
         Self {
             map: Arc::new(RwLock::new(HashMap::new())),
+            generating: Arc::new(RwLock::new(HashMap::new())),
+            last_hash: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -72,6 +76,44 @@ impl AttentionState {
     pub async fn set(&self, name: &str, flag: bool) {
         let mut guard = self.map.write().await;
         guard.insert(name.to_string(), flag);
+    }
+
+    /// Возвращает копию состояния «генерирует / работает» по всем сессиям.
+    ///
+    /// Семантика `is_generating`: за прошедший тик watcher'а (1.5с) содержимое
+    /// последних 30 строк pane изменилось. На практике это означает, что
+    /// что-то рисуется на экране — Claude печатает, выводится stream tool
+    /// output, идёт `tail -f`, и т.п. Frontend подсвечивает такие сессии
+    /// пульсирующим значком.
+    pub async fn generating_snapshot(&self) -> HashMap<String, bool> {
+        self.generating.read().await.clone()
+    }
+
+    /// Обновляет состояние генерации для одной сессии на основе нового
+    /// хэша содержимого pane.
+    ///
+    /// Сравнивает `current_hash` с сохранённым с прошлого тика. Если хэшей
+    /// раньше не было (первое наблюдение сессии) — `is_generating=false`
+    /// (нет точки сравнения), но текущий хэш сохраняется для следующего
+    /// тика. В остальных случаях `is_generating = (prev != current)`.
+    ///
+    /// Возвращает финальное значение флага.
+    pub async fn update_generation(&self, name: &str, current_hash: u64) -> bool {
+        let prev = {
+            let mut hashes = self.last_hash.write().await;
+            let p = hashes.get(name).copied();
+            hashes.insert(name.to_string(), current_hash);
+            p
+        };
+        let is_gen = match prev {
+            Some(p) => p != current_hash,
+            None => false,
+        };
+        self.generating
+            .write()
+            .await
+            .insert(name.to_string(), is_gen);
+        is_gen
     }
 }
 
@@ -241,6 +283,76 @@ Enter to select · ↑/↓ to navigate · Esc to cancel
         let s2 = s1.clone();
         s1.set("a", true).await;
         let snap = s2.snapshot().await;
+        assert_eq!(snap.get("a"), Some(&true));
+    }
+
+    #[tokio::test]
+    async fn update_generation_first_call_returns_false() {
+        // Первое наблюдение сессии — нет точки сравнения, флаг должен
+        // быть false, но хэш сохраняется.
+        let s = AttentionState::new();
+        let flag = s.update_generation("forge", 42).await;
+        assert!(!flag, "первый вызов — нет prev hash, generating=false");
+        let snap = s.generating_snapshot().await;
+        assert_eq!(snap.get("forge"), Some(&false));
+    }
+
+    #[tokio::test]
+    async fn update_generation_same_hash_returns_false() {
+        // Содержимое не менялось → флаг false.
+        let s = AttentionState::new();
+        s.update_generation("forge", 42).await; // первый тик: stash hash
+        let flag = s.update_generation("forge", 42).await;
+        assert!(!flag, "одинаковый хэш → generating=false");
+        assert_eq!(s.generating_snapshot().await.get("forge"), Some(&false));
+    }
+
+    #[tokio::test]
+    async fn update_generation_different_hash_returns_true() {
+        // Содержимое менялось → флаг true.
+        let s = AttentionState::new();
+        s.update_generation("forge", 42).await; // baseline
+        let flag = s.update_generation("forge", 99).await;
+        assert!(flag, "разный хэш → generating=true");
+        assert_eq!(s.generating_snapshot().await.get("forge"), Some(&true));
+    }
+
+    #[tokio::test]
+    async fn update_generation_tracks_multiple_sessions_independently() {
+        // Две сессии не мешают друг другу: у одной хэш меняется,
+        // у другой — нет.
+        let s = AttentionState::new();
+        s.update_generation("a", 1).await;
+        s.update_generation("b", 1).await;
+
+        s.update_generation("a", 2).await; // меняется
+        s.update_generation("b", 1).await; // нет
+
+        let snap = s.generating_snapshot().await;
+        assert_eq!(snap.get("a"), Some(&true));
+        assert_eq!(snap.get("b"), Some(&false));
+    }
+
+    #[tokio::test]
+    async fn update_generation_resets_when_pane_stops_changing() {
+        // После активной генерации (true) хэш стабилизируется →
+        // на следующем тике флаг должен сброситься в false.
+        let s = AttentionState::new();
+        s.update_generation("forge", 1).await;
+        s.update_generation("forge", 2).await; // true
+        let flag = s.update_generation("forge", 2).await;
+        assert!(!flag, "после стабилизации generating должен стать false");
+    }
+
+    #[tokio::test]
+    async fn generating_snapshot_returns_independent_copy() {
+        let s1 = AttentionState::new();
+        s1.update_generation("a", 1).await;
+        s1.update_generation("a", 2).await;
+        let snap = s1.generating_snapshot().await;
+        // Snapshot — owned копия; модификации после snapshot не должны её
+        // менять.
+        s1.update_generation("a", 2).await;
         assert_eq!(snap.get("a"), Some(&true));
     }
 
@@ -492,12 +604,30 @@ pub async fn watcher_loop(attention: Arc<AttentionState>) {
             let detected = detect_claude_prompt(&pane);
             let pane_hash = hash_pane(&pane);
 
+            // Generation-detector: захват последних 30 строк pane (включая
+            // scrollback) и сравнение хэша с предыдущим тиком. Если
+            // содержимое менялось — Claude/процесс что-то рисует. Это
+            // **независимый** сигнал от `detect_claude_prompt`: оба флага
+            // могут гореть одновременно, и значения не дедуплицируются.
+            //
+            // Отдельный capture с lines=30 (а не переиспользование `pane`)
+            // выбран сознательно: `capture_pane` хэширует **видимую**
+            // часть (без scrollback) ради дедупа prompt-детектора, а здесь
+            // нужны именно последние 30 строк истории — иначе быстрый
+            // ввод/вывод, выходящий за пределы экрана, мог бы пропуститься.
+            let pane30 = crate::tmux::capture_pane_full(&s.name, 30)
+                .await
+                .unwrap_or_default();
+            let gen_hash = hash_pane(&pane30);
+            attention.update_generation(&s.name, gen_hash).await;
+
             tracing::debug!(
                 session = %s.name,
                 group = ?s.session_group,
                 pane_hash,
                 detected,
                 pane_len = pane.len(),
+                gen_hash,
                 "attention check"
             );
 

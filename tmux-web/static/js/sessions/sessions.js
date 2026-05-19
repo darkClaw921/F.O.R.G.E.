@@ -17,6 +17,7 @@ import { showPlaceholder, scheduleResizeFromTerm } from '../terminal/xterm.js';
 import { renderSidebar } from '../sidebar/sidebar.js';
 import { connectWs, disconnectWs } from '../ws/attach.js';
 import { switchActiveProject } from '../projects/projects.js';
+import { syncGitToCurrentSession } from '../tabs/tui-tabs.js';
 
 export async function fetchSessions() {
     try {
@@ -91,6 +92,14 @@ export function buildSessionItem(s) {
     actions.appendChild(btnKill);
 
     li.appendChild(actions);
+
+    if (s.is_generating) {
+        const spark = document.createElement('span');
+        spark.className = 'claude-spark';
+        spark.title = 'Claude генерирует';
+        spark.textContent = '✶';
+        li.appendChild(spark);
+    }
 
     li.addEventListener('click', () => openSession(s.name, sessOrigin));
 
@@ -218,6 +227,7 @@ export async function openSession(name, origin) {
         if (targetProjectId && targetProjectId !== state.activeProjectId) {
             await switchActiveProject(targetProjectId);
             connectWs(name, 'local');
+            syncGitToCurrentSession();
             return;
         }
     }
@@ -227,6 +237,7 @@ export async function openSession(name, origin) {
         return;
     }
     connectWs(name, sessOrigin);
+    syncGitToCurrentSession();
 }
 
 export function switchSession(name) {
@@ -236,6 +247,7 @@ export function switchSession(name) {
         if (state.term) state.term.reset();
         renderSidebar();
         scheduleResizeFromTerm();
+        syncGitToCurrentSession();
     } catch (e) {
         console.warn('switch failed', e);
         disconnectWs();

@@ -402,11 +402,22 @@ export function createTuiTab(opts) {
     }
 
     function openForActiveProject() {
-        const project = getActiveProject();
-        if (!project || !project.path) {
+        // Резолвер cwd: по умолчанию — корень активного проекта; вкладка
+        // может передать кастомный (например, git берёт cwd текущей сессии,
+        // чтобы lazygit показывал репо именно той сессии, в которой юзер
+        // работает, а не корень проекта в целом).
+        let cwd = null;
+        if (typeof opts.resolveCwd === 'function') {
+            try { cwd = opts.resolveCwd(); } catch (_) { cwd = null; }
+        }
+        if (!cwd) {
+            const project = getActiveProject();
+            cwd = project && project.path ? project.path : null;
+        }
+        if (!cwd) {
             if (refs.placeholderEl) refs.placeholderEl.hidden = false;
             if (refs.termEl) refs.termEl.hidden = true;
-            close('no active project');
+            close('no cwd');
             return;
         }
         if (refs.placeholderEl) refs.placeholderEl.hidden = true;
@@ -418,7 +429,7 @@ export function createTuiTab(opts) {
         }
         requestAnimationFrame(() => {
             try { tabState.fit && tabState.fit.fit(); } catch (_) {}
-            connect(project.path);
+            connect(cwd);
             try { term.focus(); } catch (_) {}
         });
     }
@@ -486,6 +497,12 @@ export function initTuiTabs() {
             notFoundMsg: 'lazygit not found in PATH. Install it using one of the commands below:',
             entries: LAZYGIT_INSTALL_ENTRIES,
         },
+        // git привязан к cwd текущей сессии, а не к корню проекта. Это
+        // даёт корректный git-контекст: разные сессии одного проекта
+        // могут жить в разных подпапках, плюс orphan-сессии (project_id=null)
+        // тоже получают свой git. Fallback на project.path — внутри
+        // openForActiveProject, если сессия не выбрана.
+        resolveCwd: () => sessionCwdOrNull(),
     });
 
     state.dockerTerm = createTuiTab({
@@ -556,6 +573,41 @@ export function initTuiTabs() {
             });
         });
     }
+}
+
+/**
+ * Возвращает cwd текущей tmux-сессии (`state.currentSession.path`) или null,
+ * если сессия не выбрана / не найдена в state.sessions / не имеет path.
+ *
+ * Используется git-вкладкой как resolveCwd: lazygit показывает репо
+ * именно той сессии, в которой юзер сейчас работает, а не корень проекта.
+ * Это важно для:
+ *   1) Разных сессий одного проекта в разных подпапках.
+ *   2) orphan-сессий (project_id=null), для которых getActiveProject не даёт path.
+ */
+function sessionCwdOrNull() {
+    const name = state.currentSession;
+    if (!name) return null;
+    const list = Array.isArray(state.sessions) ? state.sessions : [];
+    const sess = list.find((s) => s && s.name === name);
+    return sess && sess.path ? sess.path : null;
+}
+
+/**
+ * Синхронизирует git-WS с cwd текущей сессии. Вызывается из openSession /
+ * switchSession сразу после установки state.currentSession. Логика:
+ *   - Если git-WS открыт и cwd сессии отличается от текущего — switchCwd
+ *     (на бэке lazygit перезапускается под новым cwd).
+ *   - Если git-WS не открыт — ничего не делаем; resolveCwd подхватит свежий
+ *     session.path при первом openForActiveProject (т.е. при клике на вкладку).
+ */
+export function syncGitToCurrentSession() {
+    const t = state.gitTerm;
+    if (!t || !t.ws) return;
+    const cwd = sessionCwdOrNull();
+    if (!cwd) return;
+    if (t.currentCwd === cwd) return;
+    t.switchCwd(cwd);
 }
 
 export function getActiveProject() {
