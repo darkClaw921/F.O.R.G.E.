@@ -32,7 +32,11 @@
 }
 
 .tab-meta {
-    margin-left: auto;
+    margin-left: 12px;
     color: var(--fg-placeholder);
     font-size: 12px;
+}
+
+#tab-echo {
+    margin-left: auto;
 }
