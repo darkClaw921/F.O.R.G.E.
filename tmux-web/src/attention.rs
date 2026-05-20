@@ -28,10 +28,23 @@
 //! Async-замок обязателен: и watcher_loop, и axum-хендлеры (Phase 3) дёргают
 //! `snapshot`/`set` из tokio runtime.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
+
+/// Размер скользящего окна хэшей pane для детекции генерации.
+///
+/// `is_generating = true` только когда последние `GENERATION_WINDOW` хэшей
+/// pane различны между собой. Это означает `GENERATION_WINDOW - 1` подряд
+/// идущих переходов с защитой от осцилляции (например, redraw-цикл вида
+/// `1 → 2 → 1 → 2` отсеивается, потому что в окне всего 2 уникальных значения).
+///
+/// Значение `4` даёт порог детекции ~4.5с (3 перехода × 1.5с тик). Это
+/// устраняет ложные срабатывания при attach клиента / switch-client /
+/// resize-window, которые обычно генерируют 2-3 тика разовых изменений
+/// pane (status-line refresh, перерисовка linked-сессий).
+const GENERATION_WINDOW: usize = 4;
 
 /// Разделяемое состояние «у каких сессий сейчас открыт Claude permission
 /// prompt».
@@ -46,13 +59,21 @@ use tokio::sync::RwLock;
 pub struct AttentionState {
     map: Arc<RwLock<HashMap<String, bool>>>,
     generating: Arc<RwLock<HashMap<String, bool>>>,
-    /// Хэш pane на предыдущем тике watcher'а.
-    last_hash: Arc<RwLock<HashMap<String, u64>>>,
-    /// Хэш pane на тике перед предыдущим. Нужен для устранения «вспышек»
-    /// индикатора при разовой перерисовке pane (например, после
-    /// `switch-client`/`resize-window`): is_generating требует **двух
-    /// последовательных** изменений хэша, а не одного.
-    prev_prev_hash: Arc<RwLock<HashMap<String, u64>>>,
+    /// Скользящее окно последних `GENERATION_WINDOW` хэшей pane на сессию.
+    ///
+    /// На каждом тике watcher'а в конец `VecDeque` для сессии пушится
+    /// текущий хэш, переполнение выталкивается из начала. `is_generating`
+    /// становится `true` только если окно заполнено и **все** хэши в нём
+    /// уникальны — это эквивалентно `GENERATION_WINDOW - 1` подряд идущим
+    /// переходам с одновременным запретом осцилляций (`A → B → A → B`),
+    /// которые иначе пройдут через простой debounce «отличается ли от
+    /// соседа».
+    ///
+    /// Заменяет старые поля `last_hash` + `prev_prev_hash` (debounce N=2):
+    /// они не справлялись с серией из 2-3 тиков перерисовки pane после
+    /// attach клиента / resize-window — индикатор ложно зажигался на
+    /// сессиях, в которых ничего не происходило.
+    hash_history: Arc<RwLock<HashMap<String, VecDeque<u64>>>>,
 }
 
 impl AttentionState {
@@ -61,8 +82,7 @@ impl AttentionState {
         Self {
             map: Arc::new(RwLock::new(HashMap::new())),
             generating: Arc::new(RwLock::new(HashMap::new())),
-            last_hash: Arc::new(RwLock::new(HashMap::new())),
-            prev_prev_hash: Arc::new(RwLock::new(HashMap::new())),
+            hash_history: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -99,41 +119,60 @@ impl AttentionState {
     /// Обновляет состояние генерации для одной сессии на основе нового
     /// хэша содержимого pane.
     ///
-    /// Семантика — debounce по двум последовательным изменениям: чтобы
-    /// устранить ложные «вспышки» индикатора при разовой перерисовке pane
-    /// (`switch-client`, `resize-window`, attach/detach клиента), требуем,
-    /// чтобы хэш изменился **дважды подряд**:
+    /// Семантика — скользящее окно `GENERATION_WINDOW` хэшей с требованием
+    /// **все хэши в окне уникальны**. Это даёт `GENERATION_WINDOW - 1`
+    /// подряд идущих переходов с защитой от осцилляций (циклы вида
+    /// `A → B → A → B`, которые типично возникают при tmux redraw после
+    /// attach клиента / switch-client / resize-window).
     ///
-    /// ```text
-    /// is_generating = (prev_prev != prev) && (prev != current)
-    /// ```
-    ///
-    /// Если истории недостаточно (первое или второе наблюдение сессии) —
-    /// `false`. Реальная генерация Claude меняет pane на каждом тике
-    /// watcher'а (1.5с), поэтому индикатор появится через ~3 секунды
-    /// после старта генерации.
+    /// Если окно ещё не заполнено (`< GENERATION_WINDOW` наблюдений сессии)
+    /// или среди хэшей есть повторы — `false`. Реальная генерация Claude
+    /// меняет pane на каждом тике watcher'а (1.5с), поэтому индикатор
+    /// появится через `(GENERATION_WINDOW - 1) × 1.5 ≈ 4.5` секунды после
+    /// старта генерации.
     ///
     /// Возвращает финальное значение флага.
     pub async fn update_generation(&self, name: &str, current_hash: u64) -> bool {
-        let (prev, prev_prev) = {
-            let mut last = self.last_hash.write().await;
-            let mut prev_prev = self.prev_prev_hash.write().await;
-            let p = last.get(name).copied();
-            let pp = prev_prev.get(name).copied();
-            if let Some(p_val) = p {
-                prev_prev.insert(name.to_string(), p_val);
+        let (is_gen, window_snapshot, unique_count) = {
+            let mut history = self.hash_history.write().await;
+            let entry = history.entry(name.to_string()).or_default();
+            entry.push_back(current_hash);
+            while entry.len() > GENERATION_WINDOW {
+                entry.pop_front();
             }
-            last.insert(name.to_string(), current_hash);
-            (p, pp)
+            let unique: HashSet<u64> = entry.iter().copied().collect();
+            let unique_n = unique.len();
+            let flag = entry.len() == GENERATION_WINDOW && unique_n == GENERATION_WINDOW;
+            let snap: Vec<u64> = entry.iter().copied().collect();
+            (flag, snap, unique_n)
         };
-        let is_gen = match (prev_prev, prev) {
-            (Some(pp), Some(p)) => pp != p && p != current_hash,
-            _ => false,
+
+        let prev_flag = {
+            let mut gen_map = self.generating.write().await;
+            let prev = gen_map.get(name).copied().unwrap_or(false);
+            gen_map.insert(name.to_string(), is_gen);
+            prev
         };
-        self.generating
-            .write()
-            .await
-            .insert(name.to_string(), is_gen);
+
+        if prev_flag != is_gen {
+            tracing::info!(
+                session = %name,
+                from = prev_flag,
+                to = is_gen,
+                window = ?window_snapshot,
+                unique = unique_count,
+                "is_generating transition"
+            );
+        } else {
+            tracing::debug!(
+                session = %name,
+                is_generating = is_gen,
+                window = ?window_snapshot,
+                unique = unique_count,
+                "is_generating tick"
+            );
+        }
+
         is_gen
     }
 }
@@ -341,27 +380,59 @@ Enter to select · ↑/↓ to navigate · Esc to cancel
     }
 
     #[tokio::test]
-    async fn update_generation_two_consecutive_changes_return_true() {
-        // Два изменения подряд (реальная генерация Claude) → true.
+    async fn update_generation_three_changes_still_false_window_not_full() {
+        // 3 тика с distinct хэшами — окно ещё не заполнено (нужно 4) → false.
+        // Это новый порог после расширения debounce: одиночная серия 2-3
+        // тиков redraw от tmux attach не зажжёт индикатор.
         let s = AttentionState::new();
-        s.update_generation("forge", 1).await; // tick 1
-        s.update_generation("forge", 2).await; // tick 2 — change #1, флаг ещё false
-        let flag = s.update_generation("forge", 3).await; // tick 3 — change #2
-        assert!(flag, "два изменения подряд → generating=true");
+        s.update_generation("forge", 1).await;
+        s.update_generation("forge", 2).await;
+        let flag = s.update_generation("forge", 3).await;
+        assert!(!flag, "3 наблюдений мало — окно требует {}", GENERATION_WINDOW);
+    }
+
+    #[tokio::test]
+    async fn update_generation_four_distinct_changes_return_true() {
+        // 4 distinct hash подряд — окно заполнено и все уникальны → true.
+        let s = AttentionState::new();
+        s.update_generation("forge", 1).await;
+        s.update_generation("forge", 2).await;
+        s.update_generation("forge", 3).await;
+        let flag = s.update_generation("forge", 4).await;
+        assert!(flag, "4 distinct наблюдения подряд → generating=true");
         assert_eq!(s.generating_snapshot().await.get("forge"), Some(&true));
     }
 
     #[tokio::test]
+    async fn update_generation_oscillation_returns_false() {
+        // Осцилляция A→B→A→B (типичный паттерн redraw после tmux attach,
+        // когда status-line / cursor мигают между двумя состояниями) —
+        // соседние пары всё отличаются, но в окне всего 2 уникальных
+        // значения → false. Это главная разница со старым debounce N=2.
+        let s = AttentionState::new();
+        s.update_generation("forge", 1).await;
+        s.update_generation("forge", 2).await;
+        s.update_generation("forge", 1).await;
+        let flag = s.update_generation("forge", 2).await;
+        assert!(
+            !flag,
+            "осцилляция между 2 состояниями не должна считаться генерацией"
+        );
+    }
+
+    #[tokio::test]
     async fn update_generation_tracks_multiple_sessions_independently() {
-        // Две сессии не мешают друг другу: у одной хэш меняется дважды
-        // подряд, у другой — нет.
+        // Две сессии не мешают друг другу: у одной все хэши уникальны,
+        // у другой — повторы (генерация только в первой).
         let s = AttentionState::new();
         s.update_generation("a", 1).await;
         s.update_generation("b", 1).await;
-        s.update_generation("a", 2).await; // change #1
-        s.update_generation("b", 1).await; // нет
-        s.update_generation("a", 3).await; // change #2 → true
-        s.update_generation("b", 1).await; // нет
+        s.update_generation("a", 2).await;
+        s.update_generation("b", 1).await;
+        s.update_generation("a", 3).await;
+        s.update_generation("b", 1).await;
+        s.update_generation("a", 4).await; // window full, all distinct → true
+        s.update_generation("b", 1).await; // все одинаковые → false
 
         let snap = s.generating_snapshot().await;
         assert_eq!(snap.get("a"), Some(&true));
@@ -370,13 +441,14 @@ Enter to select · ↑/↓ to navigate · Esc to cancel
 
     #[tokio::test]
     async fn update_generation_resets_when_pane_stops_changing() {
-        // После активной генерации (true) хэш стабилизируется →
-        // на следующем тике флаг должен сброситься в false.
+        // После активной генерации (true) хэш стабилизируется — на
+        // следующем тике в окне появляется повтор → флаг сбрасывается.
         let s = AttentionState::new();
         s.update_generation("forge", 1).await;
         s.update_generation("forge", 2).await;
-        s.update_generation("forge", 3).await; // true
-        let flag = s.update_generation("forge", 3).await;
+        s.update_generation("forge", 3).await;
+        s.update_generation("forge", 4).await; // true
+        let flag = s.update_generation("forge", 4).await; // в окне [2,3,4,4] есть повтор
         assert!(!flag, "после стабилизации generating должен стать false");
     }
 
@@ -385,11 +457,12 @@ Enter to select · ↑/↓ to navigate · Esc to cancel
         let s1 = AttentionState::new();
         s1.update_generation("a", 1).await;
         s1.update_generation("a", 2).await;
-        s1.update_generation("a", 3).await; // true
+        s1.update_generation("a", 3).await;
+        s1.update_generation("a", 4).await; // true
         let snap = s1.generating_snapshot().await;
         // Snapshot — owned копия; модификации после snapshot не должны её
         // менять.
-        s1.update_generation("a", 3).await;
+        s1.update_generation("a", 4).await;
         assert_eq!(snap.get("a"), Some(&true));
     }
 
@@ -684,6 +757,23 @@ pub async fn watcher_loop(attention: Arc<AttentionState>) {
         // Шаг 3: записать финальные флаги.
         for (name, flag) in final_flags {
             attention.set(&name, flag).await;
+        }
+
+        // Сводный лог по индикаторам всех сессий за тик. Уровень info, чтобы
+        // его было видно при дефолтной фильтрации RUST_LOG=info, но компактно:
+        // одна строка с парами session=needs_attention/is_generating.
+        let attn_snap = attention.snapshot().await;
+        let gen_snap = attention.generating_snapshot().await;
+        let summary: Vec<String> = sessions
+            .iter()
+            .map(|s| {
+                let na = attn_snap.get(&s.name).copied().unwrap_or(false);
+                let gn = gen_snap.get(&s.name).copied().unwrap_or(false);
+                format!("{}[a={},g={}]", s.name, na as u8, gn as u8)
+            })
+            .collect();
+        if !summary.is_empty() {
+            tracing::info!(tick = %summary.join(" "), "indicator summary");
         }
     }
 }
