@@ -331,8 +331,11 @@ else
         docker run --rm --platform linux/amd64 --security-opt seccomp=unconfined \
             -v "${AUR_DIR}:/pkg" -w /pkg archlinux:latest bash -c '
                 sed -i "s/^DownloadUser/#DownloadUser/" /etc/pacman.conf || true
-                pacman -Syu --noconfirm --needed --quiet pacman-contrib >/dev/null 2>&1
-                makepkg --printsrcinfo > .SRCINFO
+                pacman -Syu --noconfirm --needed --quiet pacman-contrib sudo >/dev/null 2>&1
+                useradd -m srcuser 2>/dev/null || true
+                chown -R srcuser:srcuser /pkg
+                sudo -u srcuser bash -c "cd /pkg && makepkg --printsrcinfo > .SRCINFO"
+                chown -R 0:0 /pkg
             '
 
         # Синхронизируем .SRCINFO в основной репо (для коммит-в-коммит парности).

@@ -1,6 +1,6 @@
 [package]
 name = "devforge"
-version = "0.1.23"
+version = "0.1.24"
 edition = "2021"
 description = "Web-viewer для tmux сессий через WebSocket + xterm.js"
 license = "MIT"
