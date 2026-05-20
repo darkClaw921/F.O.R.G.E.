@@ -547,6 +547,10 @@ export function initTuiTabs() {
             notFoundMsg: 'television (tv) и helper-утилиты fd / bat / rg (ripgrep) нужны для Find-вкладки. Установите все 4 одной командой:',
             entries: TELESCOPE_INSTALL_ENTRIES,
         },
+        // telescope (Find) привязан к cwd текущей сессии, как git/tasks:
+        // fuzzy-finder должен искать в каталоге сессии, а не в корне проекта.
+        // Fallback на project.path делается внутри openForActiveProject.
+        resolveCwd: () => sessionCwdOrNull(),
     });
 
     state.telescopeTerm.channel = 'files';
@@ -603,6 +607,22 @@ function sessionCwdOrNull() {
  */
 export function syncGitToCurrentSession() {
     const t = state.gitTerm;
+    if (!t || !t.ws) return;
+    const cwd = sessionCwdOrNull();
+    if (!cwd) return;
+    if (t.currentCwd === cwd) return;
+    t.switchCwd(cwd);
+}
+
+/**
+ * Синхронизирует telescope-WS (Find) с cwd текущей сессии. По образцу
+ * syncGitToCurrentSession: если WS открыт и сессия сменила cwd —
+ * switchCwd (на бэке tv перезапускается под новым cwd). Если WS не
+ * открыт — ничего не делаем; resolveCwd подхватит свежий session.path
+ * при следующем openForActiveProject.
+ */
+export function syncTelescopeToCurrentSession() {
+    const t = state.telescopeTerm;
     if (!t || !t.ws) return;
     const cwd = sessionCwdOrNull();
     if (!cwd) return;

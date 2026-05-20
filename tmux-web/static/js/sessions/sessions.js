@@ -17,7 +17,7 @@ import { showPlaceholder, scheduleResizeFromTerm } from '../terminal/xterm.js';
 import { renderSidebar } from '../sidebar/sidebar.js';
 import { connectWs, disconnectWs } from '../ws/attach.js';
 import { switchActiveProject } from '../projects/projects.js';
-import { syncGitToCurrentSession } from '../tabs/tui-tabs.js';
+import { syncGitToCurrentSession, syncTelescopeToCurrentSession } from '../tabs/tui-tabs.js';
 import { syncTasksToCurrentSession } from '../ws/tasks-ws.js';
 
 export async function fetchSessions() {
@@ -230,6 +230,7 @@ export async function openSession(name, origin) {
             connectWs(name, 'local');
             syncGitToCurrentSession();
             syncTasksToCurrentSession();
+            syncTelescopeToCurrentSession();
             return;
         }
     }
@@ -241,6 +242,7 @@ export async function openSession(name, origin) {
     connectWs(name, sessOrigin);
     syncGitToCurrentSession();
     syncTasksToCurrentSession();
+    syncTelescopeToCurrentSession();
 }
 
 export function switchSession(name) {
@@ -252,6 +254,7 @@ export function switchSession(name) {
         scheduleResizeFromTerm();
         syncGitToCurrentSession();
         syncTasksToCurrentSession();
+        syncTelescopeToCurrentSession();
     } catch (e) {
         console.warn('switch failed', e);
         disconnectWs();
