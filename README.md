@@ -207,6 +207,21 @@ devforge          # стартует на http://127.0.0.1:7331
 > Если ранее уже подключали неправильный tap — отвяжите его:
 > `brew untap darkClaw921/devforge 2>/dev/null || true`
 
+### 🏛 Установка через AUR (Arch Linux / Manjaro / EndeavourOS)
+
+Пакет: **[`devforge`](https://aur.archlinux.org/packages/devforge)** в AUR.
+
+```bash
+yay -S devforge          # или: paru -S devforge
+devforge                 # стартует на http://127.0.0.1:7331
+```
+
+PKGBUILD собирает бинарь из исходников через `cargo build -p devforge --release --locked`.
+Зависимости в рантайме — `tmux` (обязательно), опционально `lazygit` / `lazydocker` /
+`television` / `fd` / `bat` / `ripgrep`. Подробности и локальная сборка пакета —
+см. [`packaging/aur/devforge/README.md`](packaging/aur/devforge/README.md).
+Релизы AUR обновляются автоматически из `release.sh`.
+
 ### 🎛 Команды и флаги
 
 ```bash

@@ -281,8 +281,91 @@ else
 fi
 cd "${REPO_ROOT}"
 
+# ----------------------------------------------------------------------
+# 12) AUR (Arch User Repository) update — packaging/aur/devforge → AUR git
+# ----------------------------------------------------------------------
+#
+# Толкает PKGBUILD/.SRCINFO в ssh://aur@aur.archlinux.org/devforge.git.
+# Требования:
+#   - SSH-доступ к AUR (ключ ~/.ssh/aur_devforge или Host aur.archlinux.org
+#     в ~/.ssh/config; см. packaging/aur/devforge/README.md).
+#   - docker — для генерации .SRCINFO через makepkg --printsrcinfo
+#     (на macOS makepkg отсутствует).
+#
+# Отключить шаг: SKIP_AUR=1 ./release.sh
+
+if [ "${SKIP_AUR:-0}" = "1" ]; then
+    echo "==> AUR push skipped (SKIP_AUR=1)."
+else
+    echo "==> Updating AUR package devforge → ${TAG}..."
+
+    AUR_LOCAL_PKGBUILD="${REPO_ROOT}/packaging/aur/devforge/PKGBUILD"
+    if [ ! -f "${AUR_LOCAL_PKGBUILD}" ]; then
+        echo "WARN: ${AUR_LOCAL_PKGBUILD} не найден — пропускаю AUR-публикацию." >&2
+    elif ! command -v docker >/dev/null 2>&1; then
+        echo "WARN: docker не найден — не могу сгенерировать .SRCINFO; пропускаю AUR." >&2
+        echo "      Установите docker или выставьте SKIP_AUR=1." >&2
+    elif ! ssh -o BatchMode=yes -o ConnectTimeout=10 aur@aur.archlinux.org help >/dev/null 2>&1; then
+        echo "WARN: нет SSH-доступа к aur@aur.archlinux.org — пропускаю AUR." >&2
+        echo "      Проверьте ~/.ssh/config (Host aur.archlinux.org → IdentityFile ~/.ssh/aur_devforge)." >&2
+    else
+        AUR_DIR="$(mktemp -d)"
+        # Расширяем основной EXIT-trap, чтобы убрать и AUR-каталог
+        trap 'rm -rf "${TAP_DIR}" "${FORMULA_OUT}" "${AUR_DIR}"' EXIT
+
+        git clone ssh://aur@aur.archlinux.org/devforge.git "${AUR_DIR}"
+
+        # Берём PKGBUILD из основного репо и подставляем pkgver / sha256sums / pkgrel.
+        cp "${AUR_LOCAL_PKGBUILD}" "${AUR_DIR}/PKGBUILD"
+        sed -i.bak \
+            -e "s|^pkgver=.*|pkgver=${TARGET}|" \
+            -e "s|^pkgrel=.*|pkgrel=1|" \
+            -e "s|^sha256sums=.*|sha256sums=('${SHA256}')|" \
+            "${AUR_DIR}/PKGBUILD"
+        rm -f "${AUR_DIR}/PKGBUILD.bak"
+
+        # Генерируем .SRCINFO в archlinux-контейнере (makepkg --printsrcinfo).
+        # --security-opt seccomp=unconfined нужен для Docker Desktop на macOS
+        # (иначе pacman падает с "error restricting syscalls via seccomp").
+        echo "    Generating .SRCINFO via docker archlinux:latest..."
+        docker run --rm --platform linux/amd64 --security-opt seccomp=unconfined \
+            -v "${AUR_DIR}:/pkg" -w /pkg archlinux:latest bash -c '
+                sed -i "s/^DownloadUser/#DownloadUser/" /etc/pacman.conf || true
+                pacman -Syu --noconfirm --needed --quiet pacman-contrib >/dev/null 2>&1
+                makepkg --printsrcinfo > .SRCINFO
+            '
+
+        # Синхронизируем .SRCINFO в основной репо (для коммит-в-коммит парности).
+        cp "${AUR_DIR}/.SRCINFO" "${REPO_ROOT}/packaging/aur/devforge/.SRCINFO"
+
+        # .gitignore артефактов сборки в AUR-репо (idempotent).
+        if [ ! -f "${AUR_DIR}/.gitignore" ]; then
+            cat > "${AUR_DIR}/.gitignore" <<'AUR_GITIGNORE'
+*.pkg.tar.zst
+*.tar.gz
+src/
+pkg/
+AUR_GITIGNORE
+        fi
+
+        cd "${AUR_DIR}"
+        git add PKGBUILD .SRCINFO .gitignore
+        if ! git diff --cached --quiet; then
+            git -c user.email="darkclaw921@users.noreply.github.com" \
+                -c user.name="darkClaw921" \
+                commit -m "Release v${TARGET}"
+            git push origin master
+            echo "    ✓ AUR обновлён: https://aur.archlinux.org/packages/devforge"
+        else
+            echo "    (AUR PKGBUILD already up-to-date)"
+        fi
+        cd "${REPO_ROOT}"
+    fi
+fi
+
 echo ""
 echo "==> Done. Released ${TAG}."
 echo "    GitHub:  https://github.com/${REPO}/releases/tag/${TAG}"
 echo "    Install: brew tap darkClaw921/tap && brew install devforge"
 echo "    Upgrade: brew upgrade devforge"
+echo "    AUR:     yay -S devforge   (https://aur.archlinux.org/packages/devforge)"

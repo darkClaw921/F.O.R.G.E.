@@ -2695,5 +2695,19 @@
     "content": "Функция в tmux-web/static/js/tabs/tui-tabs.js. Синхронизирует cwd lazygit-вкладки с cwd текущей tmux-сессии (state.currentSession → s.path).\n\nВызывается из sessions/sessions.js в трёх местах:\n1. openSession после connectWs — при первом открытии сессии.\n2. switchSession после установки state.currentSession — при переключении между сессиями одного проекта (через WS-сообщение 'switch').\n3. openSession после switchActiveProject — при переключении на сессию из другого проекта.\n\nПоведение:\n- Если state.gitTerm отсутствует или WS не открыт → ничего не делает. resolveCwd (см. ниже) подхватит свежий path при следующем openForActiveProject (т.е. при клике на git-вкладку).\n- Если cwd сессии не определён (sessionCwdOrNull вернул null) → ничего не делает.\n- Если t.currentCwd === cwd сессии → no-op (избегает лишних switch_cwd сообщений).\n- Иначе → t.switchCwd(cwd), который шлёт {type:'switch_cwd',cwd} в WS, и бэкенд (ws.rs::lazygit_attach) рестартит lazygit под новым cwd.\n\nСвязка с createTuiTab: вкладка git инициализируется с resolveCwd: () => sessionCwdOrNull(). Это используется в openForActiveProject как первичный источник cwd; fallback — getActiveProject().path, если сессия не выбрана.\n\nЦель: lazygit показывает git-репо именно той сессии, в которой работает юзер (включая orphan-сессии без project_id и сессии в подпапках проекта), а не статически корень активного проекта.",
     "createdAt": "2026-05-19T17:05:17.963Z",
     "updatedAt": "2026-05-19T17:05:17.963Z"
+  },
+  {
+    "element": "aur-packaging",
+    "path": "",
+    "type": "page",
+    "content": "AUR-пакет devforge (source build).\n\nФайлы:\n- packaging/aur/devforge/PKGBUILD — основной PKGBUILD: pkgname=devforge, source-build через cargo, depends=tmux+gcc-libs+glibc, makedepends=rust+cargo, статика embed-ится через rust-embed.\n- packaging/aur/devforge/.SRCINFO — метаданные для AUR (генерируется через 'makepkg --printsrcinfo').\n- packaging/aur/devforge/README.md — инструкция по локальной сборке (docker archlinux:latest) и первичной публикации в AUR (ssh://aur@aur.archlinux.org/devforge.git).\n\nРелиз-флоу: после ./release.sh нужно вручную скопировать PKGBUILD+SRCINFO в клон AUR-репо, обновить pkgver, перегенерировать .SRCINFO, push. Автоматизация (PUBLISH_AUR=1 блок в release.sh) — TODO после регистрации AUR-аккаунта.\n\nУстановка пользователем: yay -S devforge / paru -S devforge. Документировано в README.md (раздел 'Установка через AUR').\n\nДополнения к стандартному PKGBUILD: options=('!lto') — workspace уже задаёт lto='thin' в profile.release, makepkg по умолчанию пытается передать -C lto, что конфликтует. --frozen в cargo build гарантирует строгую сборку по Cargo.lock.",
+    "createdAt": "2026-05-20T08:31:45.381Z",
+    "updatedAt": "2026-05-20T08:31:52.306Z",
+    "aliases": [
+      "pacman",
+      "AUR",
+      "PKGBUILD",
+      "arch linux установка"
+    ]
   }
 ]
