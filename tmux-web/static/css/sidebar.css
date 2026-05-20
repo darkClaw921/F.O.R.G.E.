@@ -280,6 +280,33 @@
     background: var(--bg-header-alt);
 }
 
+.app-version {
+    margin-left: auto;
+    font-size: 0.68rem;
+    color: var(--fg-mute);
+    opacity: 0.75;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    text-decoration: none;
+    cursor: pointer;
+    transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.app-version:hover {
+    opacity: 1;
+    color: var(--fg);
+    text-decoration: underline;
+}
+
+.app-version::before {
+    content: "v";
+    opacity: 0.6;
+}
+
+.app-version:empty {
+    display: none;
+}
+
 .status-dot {
     width: 8px;
     height: 8px;

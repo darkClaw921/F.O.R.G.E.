@@ -31,6 +31,7 @@ export async function loadHealthz() {
         state.remoteMode = !!data.remote_mode;
         state.serverVersion = typeof data.version === 'string' ? data.version : null;
         state.healthzLoaded = true;
+        renderAppVersion();
     } catch (e) {
         console.warn('loadHealthz failed:', e);
         state.remoteMode = false;
@@ -46,4 +47,14 @@ export async function loadHealthz() {
  */
 export function isRemoteMode() {
     return state.remoteMode === true;
+}
+
+/**
+ * Отрисовывает версию приложения в footer'е сайдбара (слева снизу).
+ * Берёт значение из state.serverVersion (заполняется loadHealthz из /healthz).
+ */
+function renderAppVersion() {
+    const el = document.getElementById('app-version');
+    if (!el) return;
+    el.textContent = state.serverVersion || '';
 }

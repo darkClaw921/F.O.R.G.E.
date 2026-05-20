@@ -100,6 +100,7 @@ pub fn load_from(path: &Path) -> Result<Option<ServerConfig>> {
 }
 
 /// Сохранить в файл по умолчанию (создавая `~/.config/forge/` при нужде).
+#[allow(dead_code)]
 pub fn save(cfg: &ServerConfig) -> Result<()> {
     let path = default_server_config_path()?;
     if let Some(parent) = path.parent() {
