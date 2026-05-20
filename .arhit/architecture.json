@@ -1,6 +1,6 @@
 {
   "root": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E.",
-  "generatedAt": "2026-05-19T17:05:38.670Z",
+  "generatedAt": "2026-05-20T06:06:35.607Z",
   "nodes": [
     {
       "id": "tmux-web/static/app.js",
@@ -2587,10 +2587,18 @@
           "name": "isRemoteMode",
           "type": "function",
           "path": "tmux-web/static/js/remote/healthz.js",
-          "line": 47,
+          "line": 48,
           "exports": [
             "isRemoteMode"
           ]
+        },
+        {
+          "id": "tmux-web/static/js/remote/healthz.js:renderAppVersion",
+          "name": "renderAppVersion",
+          "type": "function",
+          "path": "tmux-web/static/js/remote/healthz.js",
+          "line": 56,
+          "exports": []
         }
       ]
     },
@@ -2736,7 +2744,7 @@
           "name": "fetchSessions",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 22,
+          "line": 23,
           "exports": [
             "fetchSessions"
           ]
@@ -2746,7 +2754,7 @@
           "name": "buildSessionItem",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 36,
+          "line": 37,
           "exports": [
             "buildSessionItem"
           ]
@@ -2756,7 +2764,7 @@
           "name": "groupSessionsByFolder",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 109,
+          "line": 110,
           "exports": [
             "groupSessionsByFolder"
           ]
@@ -2766,7 +2774,7 @@
           "name": "startPolling",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 123,
+          "line": 124,
           "exports": [
             "startPolling"
           ]
@@ -2776,7 +2784,7 @@
           "name": "stopPolling",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 128,
+          "line": 129,
           "exports": [
             "stopPolling"
           ]
@@ -2786,7 +2794,7 @@
           "name": "createSessionPrompt",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 135,
+          "line": 136,
           "exports": [
             "createSessionPrompt"
           ]
@@ -2796,7 +2804,7 @@
           "name": "renameSession",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 158,
+          "line": 159,
           "exports": [
             "renameSession"
           ]
@@ -2806,7 +2814,7 @@
           "name": "killSession",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 194,
+          "line": 195,
           "exports": [
             "killSession"
           ]
@@ -2816,7 +2824,7 @@
           "name": "openSession",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 216,
+          "line": 217,
           "exports": [
             "openSession"
           ]
@@ -2826,7 +2834,7 @@
           "name": "switchSession",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 243,
+          "line": 246,
           "exports": [
             "switchSession"
           ]
@@ -4222,15 +4230,24 @@
         "scheduleTasksWsReconnect",
         "handleTasksWsMessage",
         "fetchTasks",
+        "syncTasksToCurrentSession",
         "setTasksStatus"
       ],
       "children": [
+        {
+          "id": "tmux-web/static/js/ws/tasks-ws.js:sessionCwdOrNull",
+          "name": "sessionCwdOrNull",
+          "type": "function",
+          "path": "tmux-web/static/js/ws/tasks-ws.js",
+          "line": 24,
+          "exports": []
+        },
         {
           "id": "tmux-web/static/js/ws/tasks-ws.js:startTasksPolling",
           "name": "startTasksPolling",
           "type": "function",
           "path": "tmux-web/static/js/ws/tasks-ws.js",
-          "line": 22,
+          "line": 32,
           "exports": [
             "startTasksPolling"
           ]
@@ -4240,7 +4257,7 @@
           "name": "stopTasksPolling",
           "type": "function",
           "path": "tmux-web/static/js/ws/tasks-ws.js",
-          "line": 27,
+          "line": 37,
           "exports": [
             "stopTasksPolling"
           ]
@@ -4250,7 +4267,7 @@
           "name": "connectTasksWs",
           "type": "function",
           "path": "tmux-web/static/js/ws/tasks-ws.js",
-          "line": 34,
+          "line": 44,
           "exports": [
             "connectTasksWs"
           ]
@@ -4260,7 +4277,7 @@
           "name": "disconnectTasksWs",
           "type": "function",
           "path": "tmux-web/static/js/ws/tasks-ws.js",
-          "line": 98,
+          "line": 112,
           "exports": [
             "disconnectTasksWs"
           ]
@@ -4270,7 +4287,7 @@
           "name": "scheduleTasksWsReconnect",
           "type": "function",
           "path": "tmux-web/static/js/ws/tasks-ws.js",
-          "line": 110,
+          "line": 124,
           "exports": [
             "scheduleTasksWsReconnect"
           ]
@@ -4280,7 +4297,7 @@
           "name": "handleTasksWsMessage",
           "type": "function",
           "path": "tmux-web/static/js/ws/tasks-ws.js",
-          "line": 122,
+          "line": 136,
           "exports": [
             "handleTasksWsMessage"
           ]
@@ -4290,9 +4307,19 @@
           "name": "fetchTasks",
           "type": "function",
           "path": "tmux-web/static/js/ws/tasks-ws.js",
-          "line": 186,
+          "line": 200,
           "exports": [
             "fetchTasks"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/ws/tasks-ws.js:syncTasksToCurrentSession",
+          "name": "syncTasksToCurrentSession",
+          "type": "function",
+          "path": "tmux-web/static/js/ws/tasks-ws.js",
+          "line": 229,
+          "exports": [
+            "syncTasksToCurrentSession"
           ]
         },
         {
@@ -4300,7 +4327,7 @@
           "name": "setTasksStatus",
           "type": "function",
           "path": "tmux-web/static/js/ws/tasks-ws.js",
-          "line": 207,
+          "line": 241,
           "exports": [
             "setTasksStatus"
           ]

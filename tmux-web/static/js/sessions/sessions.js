@@ -18,6 +18,7 @@ import { renderSidebar } from '../sidebar/sidebar.js';
 import { connectWs, disconnectWs } from '../ws/attach.js';
 import { switchActiveProject } from '../projects/projects.js';
 import { syncGitToCurrentSession } from '../tabs/tui-tabs.js';
+import { syncTasksToCurrentSession } from '../ws/tasks-ws.js';
 
 export async function fetchSessions() {
     try {
@@ -228,6 +229,7 @@ export async function openSession(name, origin) {
             await switchActiveProject(targetProjectId);
             connectWs(name, 'local');
             syncGitToCurrentSession();
+            syncTasksToCurrentSession();
             return;
         }
     }
@@ -238,6 +240,7 @@ export async function openSession(name, origin) {
     }
     connectWs(name, sessOrigin);
     syncGitToCurrentSession();
+    syncTasksToCurrentSession();
 }
 
 export function switchSession(name) {
@@ -248,6 +251,7 @@ export function switchSession(name) {
         renderSidebar();
         scheduleResizeFromTerm();
         syncGitToCurrentSession();
+        syncTasksToCurrentSession();
     } catch (e) {
         console.warn('switch failed', e);
         disconnectWs();

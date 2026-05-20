@@ -1,41 +1,39 @@
 # tmux-web/src/attention.rs
 
-Attention-watcher для tmux-сессий: фоновый цикл, который раз в 1.5с обходит все tmux-сессии активного проекта, захватывает содержимое pane через crate::tmux::capture_pane, применяет детектор Claude permission prompt и записывает финальные флаги needs_attention в shared AttentionState. С Phase 2 forge-bjm включает обязательную дедупликацию между сессиями одной session-group и сессиями с идентичным pane_hash.
+Attention-watcher для tmux-сессий. Раз в 1500мс watcher_loop обходит все сессии (без фильтра по project, фильтр снят ради cross-project sessions visibility), снимает capture_pane и обновляет общие AttentionState через два независимых сигнала.
 
-ОСНОВНЫЕ ЭЛЕМЕНТЫ:
+## Структура AttentionState
 
-- pub struct AttentionState — Arc<RwLock<HashMap<session_name, bool>>>. Дёшево клонируется, дешёвый snapshot() возвращает owned copy. set(name, flag) пишет финальный флаг (после дедупа). Используется axum-хендлерами /api/attention и broadcast'ом в WS.
+Поля под tokio::RwLock:
+- map: HashMap<String, bool> — needs_attention для оранжевой подсветки вкладки (Claude permission/plan/question prompt).
+- generating: HashMap<String, bool> — is_generating: индикатор работы (что-то рисуется в pane).
+- last_hash: HashMap<String, u64> — хэш pane на предыдущем тике (для is_generating).
+- prev_prev_hash: HashMap<String, u64> — хэш на тике перед предыдущим (debounce).
 
-- pub fn detect_claude_prompt(pane: &str) -> bool — строгий AND-детектор: одновременно требует '❯ 1. Yes', '2. Yes,', '3. No'. Покрывает варианты edit/file-create/bash prompt'ов Claude Code. Короткие маркеры выбраны сознательно для покрытия разных UI-режимов.
+Clone дешёвый — лишь клонирование Arc.
 
-- pub async fn watcher_loop(attention: Arc<AttentionState>) — основной цикл (sleep 1500ms → list_sessions → capture_pane по каждой → детектор → дедуп → set). Никогда не завершается штатно. Сбой list_sessions/capture_pane не валит loop (unwrap_or_default).
+## detect_claude_prompt(pane)
+OR трёх детекторов:
+1. detect_permission_prompt — три маркера AND: '❯ 1. Yes', '2. Yes,', '3. No'.
+2. detect_plan_prompt — footer 'Enter to select' + 'Tab/Arrow keys to navigate'.
+3. detect_question_prompt — footer 'Enter to select' + '↑/↓ to navigate'.
 
-  Иттерация состоит из трёх шагов:
-  1) Сбор Vec<SessionAttention> — для каждой сессии: name, id, attached, session_group, pane_hash, detected. На этом шаге эмитится диагностический tracing::debug!('attention check') с полями session/group/pane_hash/detected/pane_len.
-  2) Дедупликация через deduplicate_attention(&collected).
-  3) Запись финальных флагов attention.set(name, flag) для каждой сессии.
+## update_generation(name, current_hash) — debounce двух последовательных изменений
 
-- struct SessionAttention (private) — снимок состояния одной сессии для дедупа в одной итерации. Поля: name, id, attached, session_group, pane_hash, detected.
+Семантика: is_generating = (prev_prev != prev) && (prev != current_hash). Если истории недостаточно (< 2 предыдущих наблюдений) — false. На каждом тике сдвиг: prev_prev <- prev, prev <- current.
 
-- fn hash_pane(pane: &str) -> u64 — DefaultHasher по содержимому pane. Стабилен в рамках одного процесса. Не криптостоек, не нужно: используется только для эквивалентности 'один и тот же текст → один хэш'.
+Цель — устранить ложные 'вспышки' индикатора при разовой перерисовке pane (switch-client, resize-window, attach/detach клиента, любые одиночные события tmux-сервера). Реальная генерация Claude меняет pane на каждом тике watcher'а (1.5с), поэтому индикатор появляется через ~3 секунды после старта генерации.
 
-- fn deduplicate_attention(items: &[SessionAttention]) -> Vec<(String, bool)> — чистая функция, нормализует флаги. Алгоритм:
-  * Union-find по двум осям: pane_hash (точное совпадение содержимого) и session_group (linked-сессии tmux могут расходиться по cursor-blink, но логически делят работу).
-  * В каждой объединённой группе: если ни одной detected=true → все остаются false; если хотя бы одна detected=true → выбирается primary через pick_primary, у него флаг true, у остальных false (даже если их детектор сработал).
-  Это устраняет 'оранжевое отображение всей группы' — root cause баг-репорта forge-bjm.
+## watcher_loop(attention)
 
-- fn pick_primary(items, members) -> Option<usize> — выбирает primary среди detected=true членов группы:
-  1) attached>0 имеет приоритет (пользователь реально смотрит на эту сессию);
-  2) среди attached>0 (или среди всех если все detached) — наибольший session_id лексикографически: свежее созданная сессия предпочтительнее;
-  3) fallback: лексикографически наибольшее имя.
-  Полностью детерминирована — одни и те же входы → один и тот же primary.
+Бесконечный цикл (1500мс). На каждом тике:
+1. tmux::list_sessions без фильтра.
+2. Для каждой сессии: capture_pane (видимая часть) + detect_claude_prompt → flag detected; capture_pane_full(name, 30) → gen_hash → update_generation. Оба capture делаются независимо: один для prompt-детектора (видимое), другой для is_generating (последние 30 строк включая scrollback).
+3. deduplicate_attention(collected) — группировка по pane_hash и session_group (union-find); primary = attached>0 → max session_id → max name. Только primary получает needs_attention=true.
+4. attention.set(name, final_flag) для каждой сессии.
 
-ТЕСТЫ (Phase 2): #[cfg(test)] mod tests содержит 8 новых юнит-тестов дедуп-логики (dedup_same_pane_hash_keeps_only_primary, dedup_different_pane_hash_no_grouping, dedup_attached_wins_over_detached, dedup_same_group_unifies_even_with_different_pane_hash, dedup_no_detection_keeps_all_false, dedup_three_detached_picks_largest_id, dedup_empty_input_returns_empty, dedup_single_detected_session_unchanged) + hash_pane_is_deterministic_and_collision_free_for_distinct_inputs. Helper mk_session(name, attached, group, pane_hash, detected) для краткости фикстур. Тесты не используют моки tmux — оперируют SessionAttention напрямую.
+Loop никогда не завершается штатно. Сбои tmux::list_sessions/capture_pane не валят loop (unwrap_or_default → пустой результат, тик пропускается).
 
-ЗАВИСИМОСТИ:
-- crate::tmux::list_sessions, crate::tmux::capture_pane — источник данных.
-- crate::tmux::SessionInfo — содержит поле session_group, добавленное в Phase 1.1.
-- tokio::sync::RwLock — async-замок для AttentionState.
-- tracing — debug-логирование диагностики.
+## Известные ограничения
 
-ДИАГНОСТИКА: при RUST_LOG=tmux_web::attention=debug каждые 1.5с в логах появляется строка 'attention check' для каждой сессии с полями session/group/pane_hash/detected/pane_len — это ключевой инструмент для воспроизведения и подтверждения причины ложно-позитивных срабатываний (Phase 1.2).
+См. memory project_attention_dedup_bug.md: дедуп needs_attention может прятать вкладку (linked-сессия attached → оригинал гасится; одинаковый pane_hash → схлопывание). Решение по правке не принято.

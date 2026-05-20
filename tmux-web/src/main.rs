@@ -1418,7 +1418,16 @@ async fn get_tasks(
         };
     }
 
-    let cwd = {
+    // Tasks следуют за cwd текущей сессии (как git-вкладка): если фронт
+    // передал ?path=<abs>, берём его как cwd для list_tasks, иначе fallback
+    // на active project.
+    let cwd = if let Some(p) = q
+        .get("path")
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
+        PathBuf::from(p)
+    } else {
         let store = state.projects.read().await;
         store.active().path.clone()
     };

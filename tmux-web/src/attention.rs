@@ -46,7 +46,13 @@ use tokio::sync::RwLock;
 pub struct AttentionState {
     map: Arc<RwLock<HashMap<String, bool>>>,
     generating: Arc<RwLock<HashMap<String, bool>>>,
+    /// Хэш pane на предыдущем тике watcher'а.
     last_hash: Arc<RwLock<HashMap<String, u64>>>,
+    /// Хэш pane на тике перед предыдущим. Нужен для устранения «вспышек»
+    /// индикатора при разовой перерисовке pane (например, после
+    /// `switch-client`/`resize-window`): is_generating требует **двух
+    /// последовательных** изменений хэша, а не одного.
+    prev_prev_hash: Arc<RwLock<HashMap<String, u64>>>,
 }
 
 impl AttentionState {
@@ -56,6 +62,7 @@ impl AttentionState {
             map: Arc::new(RwLock::new(HashMap::new())),
             generating: Arc::new(RwLock::new(HashMap::new())),
             last_hash: Arc::new(RwLock::new(HashMap::new())),
+            prev_prev_hash: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -92,22 +99,36 @@ impl AttentionState {
     /// Обновляет состояние генерации для одной сессии на основе нового
     /// хэша содержимого pane.
     ///
-    /// Сравнивает `current_hash` с сохранённым с прошлого тика. Если хэшей
-    /// раньше не было (первое наблюдение сессии) — `is_generating=false`
-    /// (нет точки сравнения), но текущий хэш сохраняется для следующего
-    /// тика. В остальных случаях `is_generating = (prev != current)`.
+    /// Семантика — debounce по двум последовательным изменениям: чтобы
+    /// устранить ложные «вспышки» индикатора при разовой перерисовке pane
+    /// (`switch-client`, `resize-window`, attach/detach клиента), требуем,
+    /// чтобы хэш изменился **дважды подряд**:
+    ///
+    /// ```text
+    /// is_generating = (prev_prev != prev) && (prev != current)
+    /// ```
+    ///
+    /// Если истории недостаточно (первое или второе наблюдение сессии) —
+    /// `false`. Реальная генерация Claude меняет pane на каждом тике
+    /// watcher'а (1.5с), поэтому индикатор появится через ~3 секунды
+    /// после старта генерации.
     ///
     /// Возвращает финальное значение флага.
     pub async fn update_generation(&self, name: &str, current_hash: u64) -> bool {
-        let prev = {
-            let mut hashes = self.last_hash.write().await;
-            let p = hashes.get(name).copied();
-            hashes.insert(name.to_string(), current_hash);
-            p
+        let (prev, prev_prev) = {
+            let mut last = self.last_hash.write().await;
+            let mut prev_prev = self.prev_prev_hash.write().await;
+            let p = last.get(name).copied();
+            let pp = prev_prev.get(name).copied();
+            if let Some(p_val) = p {
+                prev_prev.insert(name.to_string(), p_val);
+            }
+            last.insert(name.to_string(), current_hash);
+            (p, pp)
         };
-        let is_gen = match prev {
-            Some(p) => p != current_hash,
-            None => false,
+        let is_gen = match (prev_prev, prev) {
+            (Some(pp), Some(p)) => pp != p && p != current_hash,
+            _ => false,
         };
         self.generating
             .write()
@@ -308,24 +329,38 @@ Enter to select · ↑/↓ to navigate · Esc to cancel
     }
 
     #[tokio::test]
-    async fn update_generation_different_hash_returns_true() {
-        // Содержимое менялось → флаг true.
+    async fn update_generation_single_change_returns_false() {
+        // Одиночное изменение (как при разовой перерисовке pane после
+        // switch-client) НЕ должно зажигать индикатор: нужны два
+        // последовательных изменения.
         let s = AttentionState::new();
-        s.update_generation("forge", 42).await; // baseline
-        let flag = s.update_generation("forge", 99).await;
-        assert!(flag, "разный хэш → generating=true");
+        s.update_generation("forge", 42).await; // tick 1
+        let flag = s.update_generation("forge", 99).await; // tick 2 — одно изменение
+        assert!(!flag, "одиночное изменение хэша → generating=false (debounce)");
+        assert_eq!(s.generating_snapshot().await.get("forge"), Some(&false));
+    }
+
+    #[tokio::test]
+    async fn update_generation_two_consecutive_changes_return_true() {
+        // Два изменения подряд (реальная генерация Claude) → true.
+        let s = AttentionState::new();
+        s.update_generation("forge", 1).await; // tick 1
+        s.update_generation("forge", 2).await; // tick 2 — change #1, флаг ещё false
+        let flag = s.update_generation("forge", 3).await; // tick 3 — change #2
+        assert!(flag, "два изменения подряд → generating=true");
         assert_eq!(s.generating_snapshot().await.get("forge"), Some(&true));
     }
 
     #[tokio::test]
     async fn update_generation_tracks_multiple_sessions_independently() {
-        // Две сессии не мешают друг другу: у одной хэш меняется,
-        // у другой — нет.
+        // Две сессии не мешают друг другу: у одной хэш меняется дважды
+        // подряд, у другой — нет.
         let s = AttentionState::new();
         s.update_generation("a", 1).await;
         s.update_generation("b", 1).await;
-
-        s.update_generation("a", 2).await; // меняется
+        s.update_generation("a", 2).await; // change #1
+        s.update_generation("b", 1).await; // нет
+        s.update_generation("a", 3).await; // change #2 → true
         s.update_generation("b", 1).await; // нет
 
         let snap = s.generating_snapshot().await;
@@ -339,8 +374,9 @@ Enter to select · ↑/↓ to navigate · Esc to cancel
         // на следующем тике флаг должен сброситься в false.
         let s = AttentionState::new();
         s.update_generation("forge", 1).await;
-        s.update_generation("forge", 2).await; // true
-        let flag = s.update_generation("forge", 2).await;
+        s.update_generation("forge", 2).await;
+        s.update_generation("forge", 3).await; // true
+        let flag = s.update_generation("forge", 3).await;
         assert!(!flag, "после стабилизации generating должен стать false");
     }
 
@@ -349,10 +385,11 @@ Enter to select · ↑/↓ to navigate · Esc to cancel
         let s1 = AttentionState::new();
         s1.update_generation("a", 1).await;
         s1.update_generation("a", 2).await;
+        s1.update_generation("a", 3).await; // true
         let snap = s1.generating_snapshot().await;
         // Snapshot — owned копия; модификации после snapshot не должны её
         // менять.
-        s1.update_generation("a", 2).await;
+        s1.update_generation("a", 3).await;
         assert_eq!(snap.get("a"), Some(&true));
     }
 

@@ -79,6 +79,9 @@ export const state = {
     tasksWsBackoffStep: 0,    // индекс в TASKS_WS_BACKOFFS_MS для следующей попытки
     tasksWsReconnectTimer: null, // setTimeout handle на reconnect
     tasksWsClosedByUs: false, // true → не реконнектиться (например, страница уходит)
+    // cwd текущей tasks-подписки (как у TuiTab.currentCwd для git). Используется
+    // в syncTasksToCurrentSession для определения, нужно ли переподключать ws.
+    tasksCurrentCwd: null,
     // ---- Phase 4 (TODO kanban): локальный store + realtime WS ----
     // Массив TODO-карточек активного проекта (фильтр project_id выполняет
     // бэкенд: REST /api/todos?project_id=… и WS /ws/todos?project_id=…).

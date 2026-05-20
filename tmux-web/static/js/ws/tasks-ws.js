@@ -19,6 +19,16 @@ import { renderTasks } from '../tasks/render.js';
 const TASKS_POLL_INTERVAL_MS = 30000;
 const TASKS_WS_BACKOFFS_MS = [1000, 2000, 5000, 10000];
 
+// Tasks следуют за cwd текущей tmux-сессии (по аналогии с git-вкладкой).
+// Возвращает абсолютный путь сессии или null, если сессия не выбрана/без path.
+function sessionCwdOrNull() {
+    const name = state.currentSession;
+    if (!name) return null;
+    const list = Array.isArray(state.sessions) ? state.sessions : [];
+    const sess = list.find((s) => s && s.name === name);
+    return sess && sess.path ? sess.path : null;
+}
+
 export function startTasksPolling() {
     if (state.tasksPollTimer) clearInterval(state.tasksPollTimer);
     state.tasksPollTimer = setInterval(fetchTasks, TASKS_POLL_INTERVAL_MS);
@@ -46,13 +56,17 @@ export function connectTasksWs() {
     }
 
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const pid = state.activeProjectId || '';
     const server = (isRemoteMode()
         && state.activeOrigin
         && state.activeOrigin !== 'local'
         && state.activeOrigin !== 'all')
         ? state.activeOrigin
         : null;
+    // Приоритет: cwd сессии → activeProjectId. ws_tasks.rs распознаёт
+    // префикс `__path__:<abs>` и резолвит project_path напрямую.
+    const cwd = !server ? sessionCwdOrNull() : null;
+    const pid = cwd ? `__path__:${cwd}` : (state.activeProjectId || '');
+    state.tasksCurrentCwd = cwd;
     let qs = '';
     if (pid && !server) {
         qs = `?project_id=${encodeURIComponent(pid)}`;
@@ -185,7 +199,11 @@ export function handleTasksWsMessage(raw) {
 
 export async function fetchTasks() {
     try {
-        const r = await fetch('/api/tasks', { headers: { 'Accept': 'application/json' } });
+        const cwd = sessionCwdOrNull();
+        const url = cwd
+            ? `/api/tasks?path=${encodeURIComponent(cwd)}`
+            : '/api/tasks';
+        const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
         if (!r.ok) {
             console.warn('GET /api/tasks failed:', r.status);
             state.tasksData = { issues: [], total: 0 };
@@ -201,6 +219,22 @@ export async function fetchTasks() {
         state.tasksData = state.tasksData || { issues: [], total: 0 };
         setTasksStatus('error', 'tasks: network');
         renderTasks();
+    }
+}
+
+// Синхронизирует tasks с cwd текущей сессии (по образцу syncGitToCurrentSession).
+// Если cwd не изменился — no-op. Иначе закрываем старый WS, чистим snapshot и,
+// если вкладка tasks активна, делаем fetchTasks + connectTasksWs. Если вкладка
+// неактивна — ws/fetch произойдут при следующем switchTab('tasks').
+export function syncTasksToCurrentSession() {
+    const cwd = sessionCwdOrNull();
+    if (state.tasksCurrentCwd === cwd) return;
+    state.tasksCurrentCwd = cwd;
+    state.tasksData = null;
+    disconnectTasksWs();
+    if (state.activeTab === 'tasks') {
+        fetchTasks();
+        setTimeout(connectTasksWs, 0);
     }
 }
 
