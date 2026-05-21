@@ -1,17 +1,15 @@
-// tmux-web — Settings modal (Phase 1 ES Modules refactor)
+// tmux-web — Settings modal.
 //
-// 1:1 копия openSettingsModal из IIFE `tmux-web/static/app.js` (3940-4402).
-// Локальные функции (renderRemotesTable / openEditRemoteRow) вынесены в
-// remotes-tab.js; здесь — диспетчер табов + Notifications список проектов.
+// Диспетчер табов: Notifications (global notifier-config), Themes,
+// TODO behavior, Echo, и опциональный Remote servers tab в remote-mode.
 
 import { state } from '../core/state.js';
 import { buildModalOverlay } from '../core/utils.js';
 import { isRemoteMode } from '../remote/healthz.js';
 import { fetchRemoteServers } from '../remote/servers.js';
-import { fetchProjects } from '../projects/projects.js';
 import { renderSidebar } from '../sidebar/sidebar.js';
 import { loadThemesIntoPanel } from '../themes/panel.js';
-import { buildNotificationsForm } from './notifications-tab.js';
+import { buildNotificationsForm, fetchNotifierConfig } from './notifications-tab.js';
 import { renderRemotesTable } from './remotes-tab.js';
 import { buildTodoBehaviorForm } from './todo-tab.js';
 import { fetchUserSettings } from './user-settings-api.js';
@@ -68,8 +66,10 @@ export function openSettingsModal(initialTab) {
             ${remoteTabBtn}
         </div>
         <div class="modal-tab-panel" id="ps-panel-notifications" data-panel="notifications">
-            <h2>Projects</h2>
-            <ul class="modal-projects" id="ps-list"></ul>
+            <h2>Notifications</h2>
+            <div class="notifier-content" id="ps-notifier-content">
+                <div class="themes-loading">Loading…</div>
+            </div>
         </div>
         <div class="modal-tab-panel" id="ps-panel-themes" data-panel="themes" hidden>
             <h2>Themes</h2>
@@ -93,7 +93,7 @@ export function openSettingsModal(initialTab) {
     overlay.appendChild(card);
     document.body.appendChild(overlay);
 
-    const $list = card.querySelector('#ps-list');
+    const $notifierContent = card.querySelector('#ps-notifier-content');
     const $tabBtns = card.querySelectorAll('.modal-tab-btn');
     const $panels = card.querySelectorAll('.modal-tab-panel');
     const $themesContent = card.querySelector('#ps-themes-content');
@@ -154,6 +154,24 @@ export function openSettingsModal(initialTab) {
         });
     };
 
+    const notifierState = {
+        loaded: false,
+    };
+
+    const renderNotifierPanel = async () => {
+        if (notifierState.loaded) return;
+        notifierState.loaded = true;
+        $notifierContent.innerHTML = '<div class="themes-loading">Loading…</div>';
+        const cfg = await fetchNotifierConfig();
+        $notifierContent.innerHTML = '';
+        $notifierContent.appendChild(buildNotificationsForm(cfg, () => {
+            // no-op: form keeps текущие значения после успешного PATCH
+        }));
+    };
+
+    // Notifications — дефолтная вкладка; рендерим её сразу.
+    renderNotifierPanel();
+
     const showTab = (name) => {
         $tabBtns.forEach((btn) => {
             const isActive = btn.dataset.tab === name;
@@ -163,6 +181,9 @@ export function openSettingsModal(initialTab) {
         $panels.forEach((p) => {
             p.hidden = p.dataset.panel !== name;
         });
+        if (name === 'notifications' && !notifierState.loaded) {
+            renderNotifierPanel();
+        }
         if (name === 'themes' && !themesState.loaded) {
             loadThemesIntoPanel($themesContent, themesState);
         }
@@ -304,83 +325,7 @@ export function openSettingsModal(initialTab) {
         });
     }
 
-    const expanded = new Set();
-
-    const renderList = () => {
-        $list.innerHTML = '';
-        for (const p of state.projects) {
-            const li = document.createElement('li');
-            li.className = 'modal-project-item' + (p.active ? ' active' : '');
-
-            const row = document.createElement('div');
-            row.className = 'modal-project-row';
-
-            const meta = document.createElement('div');
-            meta.className = 'modal-project-meta';
-            const name = document.createElement('div');
-            name.className = 'modal-project-name';
-            name.textContent = p.name + (p.active ? ' (active)' : '');
-            const sub = document.createElement('div');
-            sub.className = 'modal-project-sub';
-            sub.textContent = `${p.id} · ${p.path}`;
-            meta.appendChild(name);
-            meta.appendChild(sub);
-            row.appendChild(meta);
-
-            const settingsBtn = document.createElement('button');
-            settingsBtn.type = 'button';
-            settingsBtn.className = 'btn-settings';
-            const isOpen = expanded.has(p.id);
-            settingsBtn.textContent = isOpen ? '▾ notifications' : '▸ notifications';
-            settingsBtn.title = 'Настройки нотификаций';
-            settingsBtn.addEventListener('click', () => {
-                if (expanded.has(p.id)) {
-                    expanded.delete(p.id);
-                } else {
-                    expanded.add(p.id);
-                }
-                renderList();
-            });
-            row.appendChild(settingsBtn);
-
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'btn-remove';
-            btn.textContent = 'remove';
-            btn.disabled = !!p.active;
-            btn.title = p.active ? 'Нельзя удалить активный проект' : `Удалить ${p.id}`;
-            btn.addEventListener('click', async () => {
-                if (!window.confirm(`Удалить проект "${p.id}"?`)) return;
-                try {
-                    const r = await fetch('/api/projects/' + encodeURIComponent(p.id), {
-                        method: 'DELETE',
-                    });
-                    if (!r.ok && r.status !== 204) {
-                        const text = await r.text();
-                        window.alert('Не удалось удалить: ' + (text || r.status));
-                        return;
-                    }
-                    await fetchProjects();
-                    renderList();
-                } catch (e) {
-                    window.alert('Ошибка запроса: ' + e.message);
-                }
-            });
-            row.appendChild(btn);
-            li.appendChild(row);
-
-            if (isOpen) {
-                li.appendChild(buildNotificationsForm(p, () => {
-                    renderList();
-                }));
-            }
-
-            $list.appendChild(li);
-        }
-    };
-    renderList();
-
-    if (initialTab && (initialTab === 'themes' || initialTab === 'todo' || initialTab === 'echo' || (initialTab === 'remotes' && isRemoteMode()))) {
+    if (initialTab && (initialTab === 'notifications' || initialTab === 'themes' || initialTab === 'todo' || initialTab === 'echo' || (initialTab === 'remotes' && isRemoteMode()))) {
         showTab(initialTab);
     }
 

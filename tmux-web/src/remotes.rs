@@ -40,7 +40,37 @@ use anyhow::{anyhow, bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::cli;
-use crate::projects::slugify;
+
+// `slugify` ранее жил в `crate::projects`, удалённом в Phase 4
+// (`remove-projects-concept`). Перенесён сюда как локальный helper —
+// единственное место, где он сейчас нужен.
+//
+// Правила:
+// - lower-case;
+// - `[a-z0-9_-]` оставляем как есть;
+// - всё остальное (пробелы, юникод, `/`, `:`) → `-`;
+// - схлопываем подряд идущие `-`;
+// - триммим `-` по краям.
+fn slugify(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut last_dash = false;
+    for ch in input.chars() {
+        let c = ch.to_ascii_lowercase();
+        if c.is_ascii_alphanumeric() || c == '_' {
+            out.push(c);
+            last_dash = false;
+        } else if c == '-' {
+            if !last_dash {
+                out.push('-');
+                last_dash = true;
+            }
+        } else if !last_dash && !out.is_empty() {
+            out.push('-');
+            last_dash = true;
+        }
+    }
+    out.trim_matches('-').to_string()
+}
 
 /// Одна запись о remote-сервере.
 ///

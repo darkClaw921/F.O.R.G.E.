@@ -9,7 +9,7 @@ import {
     $btnNew, $windowNewBtn,
     $tabTerminal, $tabTasks, $tabGit, $tabDocker, $tabTelescope, $tabEcho,
     $tasksReload, $tasksNew,
-    $projectSelect, $projectNew, $projectSettings,
+    $projectSettings,
     $btnSidebarToggle, $sidebarOverlay, $layout,
 } from './dom.js';
 import {
@@ -37,8 +37,6 @@ import {
 import {
     fetchTodos, connectTodosWs, disconnectTodosWs, stopTodosPolling,
 } from '../ws/todos-ws.js';
-import { fetchProjects } from '../projects/projects.js';
-import { openNewProjectModal } from '../projects/new-project.js';
 import { openSettingsModal } from '../settings/modal.js';
 import { fetchUserSettings } from '../settings/user-settings-api.js';
 import { openCreateModal } from '../tasks/modals.js';
@@ -142,19 +140,6 @@ export async function bootstrap() {
     // Сама вкладка остаётся hidden до switchTab('echo').
     try { initEcho(); } catch (e) { console.warn('[bootstrap] initEcho failed', e); }
 
-    if ($projectSelect) {
-        $projectSelect.addEventListener('change', (ev) => {
-            const id = ev.target.value;
-            state.projectFilter = id;
-            try {
-                localStorage.setItem('forge.projectFilter', id);
-            } catch (_) {}
-            renderSidebar();
-        });
-    }
-    if ($projectNew) {
-        $projectNew.addEventListener('click', openNewProjectModal);
-    }
     if ($projectSettings) {
         $projectSettings.addEventListener('click', openSettingsModal);
     }
@@ -166,13 +151,11 @@ export async function bootstrap() {
         });
     }
 
-    fetchProjects().finally(() => {
-        fetchSessions();
-        startPolling();
-        connectTasksWs();
-        fetchTodos();
-        connectTodosWs();
-    });
+    fetchSessions();
+    startPolling();
+    connectTasksWs();
+    fetchTodos();
+    connectTodosWs();
 
     // Best-effort preload пользовательских настроек (TODO behavior).
     // fetchUserSettings уже глотает ошибки и возвращает null — не блокируем UI.

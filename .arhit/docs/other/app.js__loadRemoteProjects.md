@@ -1,3 +1,3 @@
 # app.js::loadRemoteProjects
 
-Phase 5 — async. GET /api/projects?server=<id> → state.remoteProjects[serverId]. Lazy-load: вызывается только при разворачивании origin-секции в sidebar или при выборе сервера в origin-табах. Кэш через Map. При ошибке кладёт пустой массив.
+DELETED in Phase 5 (remove-projects-concept). Функция loadRemoteProjects (и связанные state.remoteProjects, origin-tabs/sidebar lazy-load) удалены вместе с remote/servers.js project-веткой и origin-tabs.js subscription. План: /Users/igorgerasimov/.claude/plans/remove-projects-concept.md (Phase 5).

@@ -14,9 +14,7 @@
 <body>
     <div id="layout">
         <aside id="sidebar">
-            <div id="project-bar">
-                <select id="project-select" title="Активный проект"></select>
-                <button id="project-new" type="button" title="New project">+</button>
+            <div id="settings-bar">
                 <button id="project-settings" type="button" title="Settings">⚙</button>
             </div>
             <header class="sidebar-header">
@@ -119,7 +117,7 @@
                      (см. mountGitTerm/connectGitWs в app.js). Placeholder
                      показывается до выбора проекта, error-banner — при
                      WS-error / lazygit-not-found. -->
-                <div class="git-placeholder" id="git-placeholder">Select a project to open lazygit</div>
+                <div class="git-placeholder" id="git-placeholder">Select a session to open lazygit</div>
                 <div class="git-error" id="git-error" hidden>
                     <span class="git-error-text" id="git-error-text"></span>
                     <button type="button" class="git-error-retry" id="git-error-retry">Retry</button>
@@ -136,7 +134,7 @@
             <div id="docker" hidden>
                 <!-- lazydocker-tab: xterm-терминал подключён к /ws/lazydocker.
                      Структура зеркальна #git (см. createTuiTab factory в app.js). -->
-                <div class="tui-placeholder" id="docker-placeholder">Select a project to open lazydocker</div>
+                <div class="tui-placeholder" id="docker-placeholder">Select a session to open lazydocker</div>
                 <div class="tui-error" id="docker-error" hidden>
                     <span class="tui-error-text" id="docker-error-text"></span>
                     <button type="button" class="tui-error-retry" id="docker-error-retry">Retry</button>
@@ -159,7 +157,7 @@
                     <button type="button" class="tui-channel-btn" id="telescope-ch-dirs" data-channel="dirs" title="Поиск директорий">Dirs</button>
                     <button type="button" class="tui-channel-btn" id="telescope-ch-git" data-channel="git-log" title="Git log">Git log</button>
                 </div>
-                <div class="tui-placeholder" id="telescope-placeholder">Select a project to open telescope</div>
+                <div class="tui-placeholder" id="telescope-placeholder">Select a session to open telescope</div>
                 <div class="tui-error" id="telescope-error" hidden>
                     <span class="tui-error-text" id="telescope-error-text"></span>
                     <button type="button" class="tui-error-retry" id="telescope-error-retry">Retry</button>

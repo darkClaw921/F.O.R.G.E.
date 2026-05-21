@@ -1,27 +1,29 @@
 // tmux-web — /ws/todos WebSocket + fetchTodos + polling
-// (Phase 1 ES Modules refactor)
 //
-// 1:1 копии из IIFE `tmux-web/static/app.js`:
-//   - TODOS_WS_BACKOFFS_MS / TODOS_POLL_INTERVAL_MS (app.js:1896, 1902)
-//   - fetchTodos             (app.js:2977)
-//   - startTodosPolling/stopTodosPolling (app.js:2998, 3003)
-//   - connectTodosWs         (app.js:3020)
-//   - disconnectTodosWs      (app.js:3080)
-//   - scheduleTodosWsReconnect (app.js:3092)
-//   - handleTodosWsMessage   (app.js:3114)
+// Todos фильтруются по cwd-path активной сессии (?path=<abs>).
 
 import { state } from '../core/state.js';
 import { withWsToken } from '../core/auth.js';
 import { isRemoteMode } from '../remote/healthz.js';
-import { renderTasks, currentTodosProjectId } from '../tasks/render.js';
+import { renderTasks, currentTodosPath } from '../tasks/render.js';
 
 const TODOS_WS_BACKOFFS_MS = [1000, 2000, 5000, 10000];
 const TODOS_POLL_INTERVAL_MS = 30000;
 
-export async function fetchTodos(projectId) {
-    const pid = projectId || currentTodosProjectId();
+// Todos следуют за path текущей tmux-сессии. Возвращает sess.path или null,
+// если сессия не выбрана / не нашлась в state.sessions / без cwd.
+function sessionPathOrNull() {
+    const name = state.currentSession;
+    if (!name) return null;
+    const list = Array.isArray(state.sessions) ? state.sessions : [];
+    const sess = list.find((s) => s && s.name === name);
+    return sess && sess.path ? sess.path : null;
+}
+
+export async function fetchTodos(path) {
+    const p = path || currentTodosPath();
     try {
-        const url = pid ? '/api/todos?project_id=' + encodeURIComponent(pid) : '/api/todos';
+        const url = p ? '/api/todos?path=' + encodeURIComponent(p) : '/api/todos';
         const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
         if (!r.ok) {
             console.warn('GET /api/todos failed:', r.status);
@@ -65,7 +67,7 @@ export function connectTodosWs() {
         state.todosWsReconnectTimer = null;
     }
 
-    const pid = currentTodosProjectId();
+    const p = currentTodosPath();
     const proto = (location.protocol === 'https:') ? 'wss' : 'ws';
     const server = (isRemoteMode()
         && state.activeOrigin
@@ -74,8 +76,8 @@ export function connectTodosWs() {
         ? state.activeOrigin
         : null;
     let qs = '';
-    if (pid && !server) {
-        qs = '?project_id=' + encodeURIComponent(pid);
+    if (p && !server) {
+        qs = '?path=' + encodeURIComponent(p);
     } else if (server) {
         qs = '?server=' + encodeURIComponent(server);
     }
@@ -107,6 +109,20 @@ export function connectTodosWs() {
         startTodosPolling();
         scheduleTodosWsReconnect();
     };
+}
+
+// Синхронизирует todos с path текущей сессии. Если path совпадает с уже
+// загруженным — no-op. Иначе: чистит снапшот, переподключает ws и
+// рефетчит todos для нового path. Вызывается из openSession / switchSession
+// после смены currentSession.
+export function syncTodosToCurrentSession() {
+    const p = sessionPathOrNull();
+    if (state.todosCurrentPath === p) return;
+    state.todosCurrentPath = p;
+    state.todosData = [];
+    disconnectTodosWs();
+    fetchTodos(p);
+    setTimeout(connectTodosWs, 0);
 }
 
 export function disconnectTodosWs() {

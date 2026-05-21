@@ -1,22 +1,25 @@
-//! Phase 6.D — WebSocket-handler `/ws/tasks?project_id=...` для realtime
-//! task-стрима с привязкой к конкретному проекту.
+//! WebSocket-handler `/ws/tasks?path=...` для realtime
+//! task-стрима с привязкой к cwd.
 //!
-//! Клиент подключается → сервер резолвит `project_id` в путь → отправляет
-//! полный `{kind:"snapshot",data:...}` (тот же JSON, что вернул бы
-//! `GET /api/tasks?project_id=...`) → дальше шлёт `{kind:"upsert",issue:...}`
-//! / `{kind:"removed",id:"..."}` по мере того, как per-connection notify
-//! watcher детектит изменения `<path>/.beads/issues.jsonl`.
+//! Клиент подключается → сервер берёт `?path=` (или fallback на
+//! `state.active_path_tx`) → отправляет полный `{kind:"snapshot",data:...}`
+//! (тот же JSON, что вернул бы `GET /api/tasks?path=...`) → дальше шлёт
+//! `{kind:"upsert",issue:...}` / `{kind:"removed",id:"..."}` по мере того,
+//! как per-connection notify watcher детектит изменения
+//! `<path>/.beads/issues.jsonl`.
+//!
+//! После Phase 4 (`remove-projects-concept`) понятие «проект» удалено
+//! целиком — query-параметр сменился c `project_id` на `path`.
 //!
 //! ### Почему per-connection watcher (а не shared broadcast)
 //!
-//! Раньше WS подписывался на глобальный `state.tasks_tx` — тот пушил события
-//! только активного проекта. Это ломалось в multi-tab сценарии: вкладка A
-//! на проекте X и вкладка B на проекте Y — кто-то получал чужие/пустые
-//! события. Per-conn watcher решает проблему: каждое соединение отслеживает
-//! ровно тот `.beads/`, который соответствует его `project_id`.
+//! Multi-tab сценарий: вкладка A на cwd X и вкладка B на cwd Y. Глобальный
+//! broadcast пушит события только одного «активного» пути. Per-conn watcher
+//! решает проблему: каждое соединение отслеживает ровно тот `.beads/`,
+//! который соответствует его `?path=`.
 //!
-//! Глобальный `tasks_tx` остаётся для `notifier.rs` (он привязан к active
-//! project и отслеживает только его).
+//! Глобальный `tasks_tx` остаётся для `notifier.rs` (он привязан к
+//! initial active path и отслеживает только его).
 //!
 //! ### Wire-протокол
 //!
@@ -32,11 +35,11 @@
 //! Клиент → сервер: только Pong (axum шлёт автоматически на Ping) и Close.
 //! Любые другие frames — игнорируются (warn-log).
 //!
-//! ### Резолв project_id → path
+//! ### Резолв path
 //!
-//! Если `project_id` в query пуст — берём активный проект.
-//! Если `project_id` начинается с `__path__:` — extract абсолютный путь.
-//! Иначе ищем в `ProjectStore::find_any` (registered + transient).
+//! Если `path` в query пуст — берём `state.active_path_tx.borrow()`
+//! (последний установленный активный путь, по умолчанию — cwd процесса).
+//! Иначе используем переданный путь как есть (`PathBuf::from(&path)`).
 //!
 //! ### Lifecycle
 //!
@@ -69,21 +72,21 @@ use crate::AppState;
 /// настолько часто, чтобы нагружать CPU/сеть.
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 
-/// Query-параметры WS-handler'а. `project_id` опционален — если пуст,
-/// берём активный проект из `state.projects` на момент connect.
+/// Query-параметры WS-handler'а. `path` опционален — если пуст,
+/// берём текущее значение `state.active_path_tx` на момент connect.
 ///
-/// Phase 4: handler перешёл на `Query<HashMap<String,String>>` для поддержки
+/// Handler перешёл на `Query<HashMap<String,String>>` для поддержки
 /// `?server=<id>`-прокси; struct сохранён как документация контракта query.
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct TasksWsQuery {
     #[serde(default)]
-    pub project_id: Option<String>,
+    pub path: Option<String>,
 }
 
-/// `GET /ws/tasks?project_id=...` — upgrade в WebSocket, далее [`handle_socket`].
+/// `GET /ws/tasks?path=...` — upgrade в WebSocket, далее [`handle_socket`].
 ///
-/// ### Phase 4 — поддержка `?server=<id>` (remote proxy)
+/// ### Поддержка `?server=<id>` (remote proxy)
 ///
 /// Если в query присутствует `server=<id>`:
 /// - `state.remote_mode == false` → upgrade + Close{1008, 'remote mode disabled'}.
@@ -117,9 +120,8 @@ pub async fn tasks_ws(
         });
     }
 
-    // Локальный путь — резолвим project_id (может быть пустой).
-    let project_id = raw.get("project_id").cloned();
-    let path = resolve_project_path(&state, project_id.as_deref()).await;
+    // Локальный путь — берём из ?path= или fallback на active_path_tx.
+    let path = resolve_active_path(&state, raw.get("path").map(String::as_str));
     tracing::info!(path = %path.display(), "ws/tasks upgrade");
     ws.on_upgrade(move |socket| handle_socket(socket, path))
 }
@@ -170,41 +172,28 @@ async fn close_with_policy_violation(mut socket: WebSocket, reason: &str) {
     let _ = socket.send(Message::Close(Some(cf))).await;
 }
 
-/// Резолвит `project_id` query → path.
+/// Резолвит `?path=` query → PathBuf.
 ///
-/// - `None` или пусто → active project.
-/// - `__path__:<abs>` → `<abs>` (transient project).
-/// - Иначе ищем в `ProjectStore::find_any`. Если не нашли — fallback на active.
-async fn resolve_project_path(state: &AppState, project_id: Option<&str>) -> PathBuf {
-    let store = state.projects.read().await;
-    match project_id {
-        Some(id) if !id.is_empty() => {
-            if let Some(rest) = id.strip_prefix("__path__:") {
-                return PathBuf::from(rest);
-            }
-            if let Some(p) = store.find_any(id) {
-                return p.path.clone();
-            }
-            tracing::warn!(
-                %id,
-                "ws/tasks: project_id not found in store, falling back to active"
-            );
-            store.active().path.clone()
-        }
-        _ => store.active().path.clone(),
+/// - `None` или пусто → последнее значение `state.active_path_tx` (по
+///   умолчанию — cwd процесса).
+/// - `Some(path)` → как есть.
+fn resolve_active_path(state: &AppState, path: Option<&str>) -> PathBuf {
+    match path.map(str::trim) {
+        Some(p) if !p.is_empty() => PathBuf::from(p),
+        _ => state.active_path_tx.borrow().clone(),
     }
 }
 
 /// Основной обработчик одного WS-соединения.
-async fn handle_socket(socket: WebSocket, project_path: PathBuf) {
+async fn handle_socket(socket: WebSocket, active_path: PathBuf) {
     let (ws_tx, mut ws_rx) = socket.split();
     let ws_tx = Arc::new(Mutex::new(ws_tx));
 
     // 1) Шлём snapshot. Если br не отвечает — отдаём пустой envelope.
-    let snapshot_data = match tasks::list_tasks(&project_path).await {
+    let snapshot_data = match tasks::list_tasks(&active_path).await {
         Ok(v) => v,
         Err(e) => {
-            tracing::warn!(error = ?e, path = %project_path.display(), "ws/tasks: initial list_tasks failed");
+            tracing::warn!(error = ?e, path = %active_path.display(), "ws/tasks: initial list_tasks failed");
             serde_json::json!({"issues": [], "total": 0})
         }
     };
@@ -218,7 +207,7 @@ async fn handle_socket(socket: WebSocket, project_path: PathBuf) {
     }
 
     // 2) Берём baseline snapshot для последующих diff'ов.
-    let mut prev = match snapshot(&project_path).await {
+    let mut prev = match snapshot(&active_path).await {
         Ok(s) => s,
         Err(_) => std::collections::HashMap::new(),
     };
@@ -226,7 +215,7 @@ async fn handle_socket(socket: WebSocket, project_path: PathBuf) {
     // 3) Поднимаем per-conn notify watcher если есть `.beads/`. Если нет —
     //    остаёмся в heartbeat-only режиме (клиент получит пустой snapshot
     //    и не будет реконнектиться впустую).
-    let beads_dir = find_beads_dir(&project_path);
+    let beads_dir = find_beads_dir(&active_path);
     let (notify_tx, mut notify_rx) =
         mpsc::unbounded_channel::<notify::Result<notify::Event>>();
     let _watcher: Option<RecommendedWatcher> = match beads_dir.as_ref() {
@@ -253,7 +242,7 @@ async fn handle_socket(socket: WebSocket, project_path: PathBuf) {
             }
         }
         None => {
-            tracing::debug!(path = %project_path.display(), "ws/tasks: no .beads/ found — heartbeat only");
+            tracing::debug!(path = %active_path.display(), "ws/tasks: no .beads/ found — heartbeat only");
             None
         }
     };
@@ -278,7 +267,7 @@ async fn handle_socket(socket: WebSocket, project_path: PathBuf) {
                 else { std::future::pending::<()>().await }
             } => {
                 debounce_deadline = None;
-                match snapshot(&project_path).await {
+                match snapshot(&active_path).await {
                     Ok(new_snap) => {
                         let events = diff_issues(&prev, &new_snap);
                         for ev in events {

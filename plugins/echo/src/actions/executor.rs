@@ -156,27 +156,21 @@ async fn execute_system(
             Ok(InvokeResult::Ok)
         }
         SystemActionKind::OpenProject => {
+            // После Phase 4 (`remove-projects-concept`) F.O.R.G.E. больше
+            // не работает в терминах проектов — `HostApi::list_projects`
+            // удалён. Action оставлен в enum'е ради совместимости
+            // (старые сохранённые conversations могут ссылаться на него),
+            // но валидация невозможна. Возвращаем soft-error,
+            // подсказывающий клиенту, что концепция устарела.
+            let _ = host; // подавляем "unused" — host больше не нужен здесь
             let pid = params.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            if pid.is_empty() {
-                return Ok(InvokeResult::Error {
-                    msg: "open_project: missing params.id".into(),
-                });
-            }
-            match host.list_projects().await {
-                Ok(projects) => {
-                    if !projects.iter().any(|p| p.id == pid) {
-                        return Ok(InvokeResult::Error {
-                            msg: format!("project not found: {pid}"),
-                        });
-                    }
-                }
-                Err(e) => {
-                    return Ok(InvokeResult::Error {
-                        msg: format!("list_projects failed: {e}"),
-                    });
-                }
-            }
-            Ok(InvokeResult::Ok)
+            tracing::info!(
+                project_id = %pid,
+                "actions::executor: open_project deprecated — projects removed in Phase 4"
+            );
+            Ok(InvokeResult::Error {
+                msg: "open_project is deprecated: projects were removed".into(),
+            })
         }
     }
 }
@@ -185,11 +179,10 @@ async fn execute_system(
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use echo_host_api::{ProjectInfo, SessionInfo};
+    use echo_host_api::SessionInfo;
 
     struct StubHost {
         sessions: Vec<SessionInfo>,
-        projects: Vec<ProjectInfo>,
     }
     #[async_trait]
     impl HostApi for StubHost {
@@ -198,12 +191,6 @@ mod tests {
         }
         async fn capture_pane_full(&self, _s: &str, _l: i32) -> anyhow::Result<String> {
             Ok(String::new())
-        }
-        async fn list_projects(&self) -> anyhow::Result<Vec<ProjectInfo>> {
-            Ok(self.projects.clone())
-        }
-        async fn active_project_id(&self) -> Option<String> {
-            None
         }
         fn auth_token(&self) -> Option<String> {
             None
@@ -216,11 +203,6 @@ mod tests {
                 name: "dev".into(),
                 windows: 1,
                 panes: 1,
-            }],
-            projects: vec![ProjectInfo {
-                id: "p1".into(),
-                name: "P1".into(),
-                path: "/tmp/p1".into(),
             }],
         })
     }
@@ -302,7 +284,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn open_project_validates() {
+    async fn open_project_is_deprecated() {
+        // После Phase 4 (remove-projects-concept) open_project всегда
+        // возвращает soft-error "deprecated", независимо от params.
         let a = Action::System {
             id: "1".into(),
             label: "Open".into(),
@@ -310,18 +294,9 @@ mod tests {
             params: serde_json::json!({"id": "p1"}),
         };
         let r = invoke(&a, host(), false).await.unwrap();
-        assert_eq!(r, InvokeResult::Ok);
-    }
-
-    #[tokio::test]
-    async fn open_project_unknown_returns_error() {
-        let a = Action::System {
-            id: "1".into(),
-            label: "Open".into(),
-            name: SystemActionKind::OpenProject,
-            params: serde_json::json!({"id": "nope"}),
-        };
-        let r = invoke(&a, host(), false).await.unwrap();
-        assert!(matches!(r, InvokeResult::Error { .. }));
+        match r {
+            InvokeResult::Error { msg } => assert!(msg.contains("deprecated")),
+            other => panic!("expected deprecated error, got: {other:?}"),
+        }
     }
 }

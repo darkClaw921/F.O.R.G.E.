@@ -7,7 +7,7 @@
 //   - renderColumn      (app.js:3235)
 //   - renderTodoCard    (app.js:3393)
 //   - renderCard        (app.js:3583)
-//   - currentTodosProjectId (app.js:2967)
+//   - currentTodosPath
 //   - setTasksStatus    — re-exported from ws/tasks-ws.js (см. ниже)
 
 import { state } from '../core/state.js';
@@ -27,8 +27,11 @@ export const COLUMN_TITLES = {
     closed: 'Closed',
 };
 
-export function currentTodosProjectId() {
-    return state.activeProjectId || null;
+export function currentTodosPath() {
+    if (state.todosCurrentPath !== null && state.todosCurrentPath !== undefined) {
+        return state.todosCurrentPath;
+    }
+    return null;
 }
 
 export function renderTasks() {

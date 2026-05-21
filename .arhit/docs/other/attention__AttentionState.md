@@ -1,17 +1,32 @@
 # attention::AttentionState
 
-Разделяемое состояние watcher-флагов для tmux-сессий, src/attention.rs. Cheaply cloneable (Arc).
+Shared state attention-watcher'а (tmux-web/src/attention.rs). Cheap-clone (Arc внутри). Используется AppState.attention.
 
-Содержит ТРИ независимых HashMap под Arc<RwLock>:
-- map: HashMap<session_name, bool> — флаг 'нужно внимание' (Claude permission/plan/question prompt). Пишется detect_claude_prompt из watcher_loop через .set(). Читается get_sessions через .snapshot() и пробрасывается во фронт как SessionDto.needs_attention.
-- generating: HashMap<session_name, bool> — флаг 'идёт генерация'. true означает, что за прошедший тик (1.5с) hash содержимого последних 30 строк pane отличается от сохранённого. Пишется update_generation(). Читается через generating_snapshot() и пробрасывается во фронт как SessionDto.is_generating. Frontend подсвечивает пульсирующим значком .claude-spark.
-- last_hash: HashMap<session_name, u64> — сохранённый хэш capture_pane_full(name, 30) с предыдущего тика. Внутреннее поле, наружу не отдаётся. Используется только update_generation для сравнения.
+## Поля (все под tokio::sync::RwLock)
 
-Методы:
-- new() / Default — создаёт пустое состояние.
-- snapshot() -> HashMap<String, bool> — owned копия map.
-- set(&str, bool) — пишет в map (не удаляет ключи при false).
-- generating_snapshot() -> HashMap<String, bool> — owned копия generating.
-- update_generation(&str, u64) -> bool — атомарно: читает last_hash[name], сохраняет current_hash, считает is_gen = (prev != current) либо false при первом наблюдении, пишет в generating[name]. Возвращает финальный флаг.
+- map: RwLock<HashMap<String, bool>> — needs_attention для оранжевой подсветки вкладки. Ключ — session.name. Значение true означает, что в pane сессии обнаружен Claude prompt (permission/plan/question).
+- generating: RwLock<HashMap<String, bool>> — финальный is_generating (после per-tick дедупликации). Ключ — session.name. true = pane менялся в этом тике И сессия — primary в группе session_group/gen_hash50.
+- last_gen_hash: RwLock<HashMap<String, u64>> — ПОСЛЕДНИЙ замеченный gen_hash50 на сессию. Используется update_generation для сравнения prev≠current. Заменил прежние поля hash_history (VecDeque) + константу GENERATION_WINDOW=4 (sliding window).
 
-Семантика 'первого тика': при первом наблюдении сессии generating=false (нет точки сравнения), но хэш сохраняется. Это предотвращает ложное срабатывание при появлении новой сессии.
+## Конструктор
+
+- new() -> AttentionState — все три HashMap пустые. Создаётся в main.rs::main() и оборачивается в Arc::new() для совместного использования handler'ами и watcher'ом.
+
+## Методы
+
+### Чтение
+- snapshot() -> HashMap<String, bool> — атомарный клон self.map. Используется get_sessions для needs_attention.
+- generating_snapshot() -> HashMap<String, bool> — атомарный клон self.generating. Используется get_sessions для is_generating.
+
+### Запись (используются ТОЛЬКО watcher_loop'ом)
+
+- set(snapshot: HashMap<String, bool>) — полная замена self.map. Вызывается ПОСЛЕ deduplicate_attention с результатом дедупа needs_attention.
+- set_generating(name: &str, flag: bool) — точечная установка self.generating[name]=flag. Вызывается ПОСЛЕ deduplicate_generating для каждой сессии. НОВЫЙ метод (Phase 1.4 рефакторинга).
+- update_generation(name: &str, current_hash: u64) -> bool — RAW сигнал: возвращает true если last_gen_hash[name] != current_hash. Атомарно обновляет last_gen_hash[name]=current_hash. Не пишет в self.generating! Финальную запись делает set_generating после дедупа. Новая семантика заменила старый sliding-window K=4 (см. memory project_is_generating_debounce.md).
+- cleanup для исчезнувших сессий — выполняется в watcher_loop через .retain на всех трёх HashMap (по списку текущих имён tmux::list_sessions).
+
+## Связи
+
+- main.rs::AppState.attention — единственный владелец Arc<AttentionState>.
+- main.rs::get_sessions — читает snapshot() и generating_snapshot() для заполнения SessionDto.{needs_attention,is_generating}.
+- attention::watcher_loop — единственный писатель.

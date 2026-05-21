@@ -1,4 +1,4 @@
-//! Phase 6.D — фоновый file-watcher для `.beads/issues.jsonl`.
+//! Фоновый file-watcher для `.beads/issues.jsonl`.
 //!
 //! ### Назначение
 //!
@@ -13,8 +13,14 @@
 //!
 //! [`run_watcher`] — единственный публичный entry-point, его spawn'ит
 //! `main.rs` один раз при старте сервера. Внутри — outer-loop, который
-//! пересоздаёт notify-watcher при каждой смене активного проекта (сигнал
+//! пересоздаёт notify-watcher при каждой смене активного пути (сигнал
 //! приходит через `tokio::sync::watch::Receiver<PathBuf>`).
+//!
+//! После Phase 4 (`remove-projects-concept`) активный путь больше не
+//! связан с понятием «проект» — `active_path_tx` в `AppState` остаётся
+//! как опциональный точка обновления (например, при ручной смене активной
+//! сессии), но по умолчанию хост стартует с фиксированным initial-путём
+//! (cwd процесса) и watcher следит за его `.beads/` директорией.
 //!
 //! Для каждого активного пути:
 //! 1. Читаем initial snapshot задач через [`crate::tasks::snapshot`] —
@@ -66,10 +72,9 @@ pub const DEBOUNCE_MS: u64 = 200;
 ///
 /// # Параметры
 ///
-/// - `active_path_rx` — receiver, который получает новый путь активного
-///   проекта при каждом `set_active_project` / `init_project` /
-///   `create_project` (последние два не меняют active, но безопаснее
-///   слать на всякий случай).
+/// - `active_path_rx` — receiver, который получает новый путь, на чьём
+///   `.beads/` нужно следить. Sender держит хост-процесс (`AppState`),
+///   обновление пути остаётся опциональным extension-point (Phase 4+).
 /// - `tasks_tx` — broadcast-sender, в который пушатся [`TaskEvent`]'ы.
 ///   Подписчики — WS-handler'ы `/ws/tasks` (по одному `subscribe()` на
 ///   соединение).
@@ -80,12 +85,14 @@ pub async fn run_watcher(
     loop {
         // Текущий активный путь.
         let path = active_path_rx.borrow().clone();
-        tracing::info!(path = %path.display(), "tasks watcher: starting for project");
+        tracing::info!(path = %path.display(), "tasks watcher: starting for path");
 
         // Запускаем inner-loop, который ведёт watcher до следующей смены пути.
         watch_one(path, &mut active_path_rx, &tasks_tx).await;
 
-        // Если active_path_rx закрылся — выходим.
+        // Если active_path_rx закрылся — выходим. У `watch::Receiver` нет
+        // прямого «is_closed» через has_changed; следующий `.changed().await`
+        // вернёт Err и мы вернёмся из `watch_one`.
         if active_path_rx.has_changed().is_err() {
             tracing::info!("tasks watcher: active_path channel closed, exiting");
             return;
@@ -99,14 +106,14 @@ pub async fn run_watcher(
 /// - `active_path_rx.changed()` сигналит новый путь.
 /// - Или `active_path_rx` закрылся (тогда возвращается; внешний loop тоже выйдет).
 async fn watch_one(
-    project_path: PathBuf,
+    active_path: PathBuf,
     active_path_rx: &mut watch::Receiver<PathBuf>,
     tasks_tx: &broadcast::Sender<TaskEvent>,
 ) {
     // 1) Initial snapshot — baseline, не бродкастим.
-    let mut prev = match snapshot(&project_path).await {
+    let mut prev = match snapshot(&active_path).await {
         Ok(s) => {
-            tracing::debug!(path = %project_path.display(), n = s.len(), "initial snapshot taken");
+            tracing::debug!(path = %active_path.display(), n = s.len(), "initial snapshot taken");
             s
         }
         Err(e) => {
@@ -115,7 +122,7 @@ async fn watch_one(
             // создаст «added» для всех задач.
             tracing::warn!(
                 error = ?e,
-                path = %project_path.display(),
+                path = %active_path.display(),
                 "initial snapshot failed; using empty baseline"
             );
             std::collections::HashMap::new()
@@ -125,11 +132,11 @@ async fn watch_one(
     // 2) Найдём фактический `.beads/` каталог. `br` walk'ает up до корня репо,
     //    поэтому active project может быть подкаталогом — мы должны идти тем же
     //    путём, иначе watch на пустую директорию ничего не даст.
-    let beads_dir = match find_beads_dir(&project_path) {
+    let beads_dir = match find_beads_dir(&active_path) {
         Some(d) => d,
         None => {
             tracing::warn!(
-                path = %project_path.display(),
+                path = %active_path.display(),
                 "tasks watcher: no .beads/ found in project path or its ancestors — skipping watch"
             );
             let _ = active_path_rx.changed().await;
@@ -195,9 +202,9 @@ async fn watch_one(
                     return;
                 }
                 let new_path = active_path_rx.borrow().clone();
-                if new_path != project_path {
+                if new_path != active_path {
                     tracing::info!(
-                        from = %project_path.display(),
+                        from = %active_path.display(),
                         to = %new_path.display(),
                         "tasks watcher: active project changed"
                     );
@@ -212,7 +219,7 @@ async fn watch_one(
                 else { std::future::pending::<()>().await }
             } => {
                 debounce_deadline = None;
-                match snapshot(&project_path).await {
+                match snapshot(&active_path).await {
                     Ok(new_snap) => {
                         let events = diff_issues(&prev, &new_snap);
                         if !events.is_empty() {

@@ -3,8 +3,12 @@
 //! Подмешивает в один текст:
 //! - содержимое релевантных tmux-pane'ов (`capture_pane_full`),
 //! - релевантные memories (global_day за вчера + project memories для project_id),
-//! - список проектов (для контекста);
 //! - сам user_text.
+//!
+//! После Phase 4 (`remove-projects-concept`) секция `[projects]` удалена —
+//! HostApi больше не предоставляет список проектов. `project_id` в
+//! `CtxOpts` остаётся как непрозрачный ярлык для фильтрации memories
+//! внутри SQLite (Echo сам управляет этим soft-FK).
 //!
 //! ## Стратегия "не упасть, если что-то не доступно"
 //!
@@ -75,9 +79,6 @@ impl Default for CtxOpts {
 ///
 /// ### Project <project_id>
 /// <content>
-///
-/// [projects]
-/// - <id>: <name> (<path>)
 ///
 /// [user_message]
 /// <user_text>
@@ -187,20 +188,6 @@ sessions and project memories. Use the context below to ground your answer.\n",
         }
     }
 
-    // -- projects list --
-    match host.list_projects().await {
-        Ok(projects) if !projects.is_empty() => {
-            out.push_str("\n[projects]\n");
-            for p in projects {
-                let _ = writeln!(out, "- {}: {} ({})", p.id, p.name, p.path);
-            }
-        }
-        Ok(_) => {}
-        Err(e) => {
-            tracing::warn!(error = %e, "prompt_builder: list_projects failed");
-        }
-    }
-
     // -- user message --
     out.push_str("\n[user_message]\n");
     out.push_str(user_text);
@@ -215,14 +202,13 @@ sessions and project memories. Use the context below to ground your answer.\n",
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use echo_host_api::{ProjectInfo, SessionInfo};
+    use echo_host_api::SessionInfo;
 
     /// Mock HostApi для тестов.
     struct MockHost {
         sessions: Vec<SessionInfo>,
         // Имя сессии → выдача capture_pane_full. Если "ERR" — вернёт Err.
         pane_data: std::collections::HashMap<String, String>,
-        projects: Vec<ProjectInfo>,
     }
 
     #[async_trait]
@@ -236,12 +222,6 @@ mod tests {
                 Some(s) => Ok(s.clone()),
                 None => Ok(String::new()),
             }
-        }
-        async fn list_projects(&self) -> anyhow::Result<Vec<ProjectInfo>> {
-            Ok(self.projects.clone())
-        }
-        async fn active_project_id(&self) -> Option<String> {
-            self.projects.first().map(|p| p.id.clone())
         }
         fn auth_token(&self) -> Option<String> {
             None
@@ -270,11 +250,6 @@ mod tests {
         MockHost {
             sessions: session_infos,
             pane_data,
-            projects: vec![ProjectInfo {
-                id: "p1".into(),
-                name: "Proj One".into(),
-                path: "/tmp/p1".into(),
-            }],
         }
     }
 
@@ -385,15 +360,6 @@ mod tests {
         // Без project_id project-memory не должна попадать.
         let p2 = build("hi", &CtxOpts::default(), &host, &db).await.unwrap();
         assert!(!p2.contains("Project notes for p1"));
-    }
-
-    #[tokio::test]
-    async fn build_includes_projects_list() {
-        let host = make_host(&[]);
-        let db = fresh_db().await;
-        let p = build("hi", &CtxOpts::default(), &host, &db).await.unwrap();
-        assert!(p.contains("[projects]"));
-        assert!(p.contains("- p1: Proj One"));
     }
 
     #[tokio::test]

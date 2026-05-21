@@ -77,25 +77,10 @@ async fn create_conversation(
     State(state): State<Arc<EchoState>>,
     Json(b): Json<CreateBody>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    // Soft-FK: проверяем существование project_id через HostApi, но НЕ
-    // отказываем — лишь логируем warning. Хост сам ответственен за UI-валидацию.
-    if let Some(pid) = b.project_id.as_deref() {
-        if let Some(host) = state.host.get() {
-            match host.list_projects().await {
-                Ok(projects) => {
-                    if !projects.iter().any(|p| p.id == pid) {
-                        tracing::warn!(
-                            project_id = %pid,
-                            "forge-echo: chat_session.project_id not found in host projects (soft-FK allowed)"
-                        );
-                    }
-                }
-                Err(e) => {
-                    tracing::debug!("forge-echo: HostApi::list_projects failed: {e:#}");
-                }
-            }
-        }
-    }
+    // После Phase 4 (`remove-projects-concept`) HostApi больше не
+    // позволяет перечислить проекты, поэтому soft-FK-валидация
+    // невозможна. `project_id` остаётся как непрозрачный label —
+    // принимаем любое значение, ответственность за смысл лежит на caller'е.
     let model = b.model.as_deref().unwrap_or("sonnet-4");
     let s = chats::create(&state.db, &b.title, b.project_id.as_deref(), model)
         .await

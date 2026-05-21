@@ -62,14 +62,13 @@ export function connectTasksWs() {
         && state.activeOrigin !== 'all')
         ? state.activeOrigin
         : null;
-    // Приоритет: cwd сессии → activeProjectId. ws_tasks.rs распознаёт
-    // префикс `__path__:<abs>` и резолвит project_path напрямую.
+    // ws_tasks.rs принимает `?path=<abs_cwd>` (Phase 4: убрали project_id).
+    // Если cwd пустой — backend fallback на active_path_tx.
     const cwd = !server ? sessionCwdOrNull() : null;
-    const pid = cwd ? `__path__:${cwd}` : (state.activeProjectId || '');
     state.tasksCurrentCwd = cwd;
     let qs = '';
-    if (pid && !server) {
-        qs = `?project_id=${encodeURIComponent(pid)}`;
+    if (cwd && !server) {
+        qs = `?path=${encodeURIComponent(cwd)}`;
     } else if (server) {
         qs = `?server=${encodeURIComponent(server)}`;
     }

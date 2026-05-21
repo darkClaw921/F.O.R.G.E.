@@ -402,17 +402,11 @@ export function createTuiTab(opts) {
     }
 
     function openForActiveProject() {
-        // Резолвер cwd: по умолчанию — корень активного проекта; вкладка
-        // может передать кастомный (например, git берёт cwd текущей сессии,
-        // чтобы lazygit показывал репо именно той сессии, в которой юзер
-        // работает, а не корень проекта в целом).
+        // Резолвер cwd: вкладка передаёт resolveCwd (sessionCwdOrNull) —
+        // lazygit/docker/telescope открывается в cwd активной tmux-сессии.
         let cwd = null;
         if (typeof opts.resolveCwd === 'function') {
             try { cwd = opts.resolveCwd(); } catch (_) { cwd = null; }
-        }
-        if (!cwd) {
-            const project = getActiveProject();
-            cwd = project && project.path ? project.path : null;
         }
         if (!cwd) {
             if (refs.placeholderEl) refs.placeholderEl.hidden = false;
@@ -499,7 +493,7 @@ export function initTuiTabs() {
         },
         // git привязан к cwd текущей сессии, а не к корню проекта. Это
         // даёт корректный git-контекст: разные сессии одного проекта
-        // могут жить в разных подпапках, плюс orphan-сессии (project_id=null)
+        // могут жить в разных подпапках (orphan-сессии без folder_id)
         // тоже получают свой git. Fallback на project.path — внутри
         // openForActiveProject, если сессия не выбрана.
         resolveCwd: () => sessionCwdOrNull(),
@@ -587,7 +581,7 @@ export function initTuiTabs() {
  * именно той сессии, в которой юзер сейчас работает, а не корень проекта.
  * Это важно для:
  *   1) Разных сессий одного проекта в разных подпапках.
- *   2) orphan-сессий (project_id=null), для которых getActiveProject не даёт path.
+ *   2) сессий без cwd (sess.path=null), для которых resolveCwd не даёт path.
  */
 function sessionCwdOrNull() {
     const name = state.currentSession;
@@ -628,19 +622,6 @@ export function syncTelescopeToCurrentSession() {
     if (!cwd) return;
     if (t.currentCwd === cwd) return;
     t.switchCwd(cwd);
-}
-
-export function getActiveProject() {
-    const id = state.activeProjectId;
-    if (!id) return null;
-    const list = Array.isArray(state.projects) ? state.projects : [];
-    const found = list.find((p) => p && p.id === id);
-    if (found) return found;
-    if (typeof id === 'string' && id.startsWith('__path__:')) {
-        const cwd = id.slice('__path__:'.length);
-        if (cwd) return { id, name: cwd, path: cwd };
-    }
-    return null;
 }
 
 function _git() {

@@ -1,0 +1,3 @@
+# tmux-web/src/echo_host.rs
+
+EchoHostAdapter — реализация echo_host_api::HostApi для F.O.R.G.E. После Phase 4 (remove-projects-concept) trait упрощён: импл list_projects() и active_project_id() удалены, ProjectInfo DTO снят. Остались методы list_sessions() (через tmux::list_sessions), capture_pane_full() (через tmux::capture_pane_full), auth_token() (Bearer-token из AppState.auth_token, None в localhost-mode). Структура: один Arc<AppState> внутри adapter'а, кладётся в Arc<dyn HostApi> и передаётся в forge_echo::register_routes / forge_echo::spawn_workers. Plugin boundary остаётся единственной точкой связи между хостом (tmux-web) и Echo плагином — adapter не утекает AppState в плагин-крейт.

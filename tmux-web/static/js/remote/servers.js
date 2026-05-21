@@ -47,27 +47,6 @@ export async function fetchRemoteServers() {
     }
 }
 
-export async function loadRemoteProjects(serverId) {
-    if (!isRemoteMode() || !serverId) return [];
-    try {
-        const url = '/api/projects?server=' + encodeURIComponent(serverId);
-        const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
-        if (!r.ok) {
-            console.warn('GET /api/projects?server=' + serverId + ' failed:', r.status);
-            state.remoteProjects.set(serverId, []);
-            return [];
-        }
-        const data = await r.json();
-        const arr = Array.isArray(data) ? data : [];
-        state.remoteProjects.set(serverId, arr);
-        return arr;
-    } catch (e) {
-        console.warn('loadRemoteProjects(' + serverId + ') failed:', e);
-        state.remoteProjects.set(serverId, []);
-        return [];
-    }
-}
-
 export async function loadRemoteSessions(serverId) {
     if (!isRemoteMode() || !serverId) return [];
     try {
@@ -173,7 +152,6 @@ export function aggregateAllOrigins() {
     out.set('local', {
         label: 'Local',
         online: 'local',
-        projects: Array.isArray(state.projects) ? state.projects.slice() : [],
         sessions: Array.isArray(state.sessions) ? state.sessions.slice() : [],
     });
     for (const srv of (state.remoteServers || [])) {
@@ -181,7 +159,6 @@ export function aggregateAllOrigins() {
         out.set(sid, {
             label: srv.label || sid,
             online: state.remoteOnline.get(sid) || 'unknown',
-            projects: state.remoteProjects.get(sid) || [],
             sessions: state.remoteSessions.get(sid) || [],
         });
     }

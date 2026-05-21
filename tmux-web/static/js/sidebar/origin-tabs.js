@@ -11,7 +11,7 @@
 import { state } from '../core/state.js';
 import { $originTabs } from '../core/dom.js';
 import { isRemoteMode } from '../remote/healthz.js';
-import { loadRemoteSessions, loadRemoteProjects } from '../remote/servers.js';
+import { loadRemoteSessions } from '../remote/servers.js';
 import { renderSidebar } from './sidebar.js';
 import { openSettingsModal } from '../settings/modal.js';
 import { disconnectTasksWs, connectTasksWs } from '../ws/tasks-ws.js';
@@ -100,22 +100,20 @@ export function renderOriginTabs() {
         btn.addEventListener('click', () => {
             state.activeOrigin = originKey;
             saveActiveOriginToStorage();
-            // При выборе конкретного remote — lazy-load его данных.
+            // При выборе конкретного remote — lazy-load его сессий.
             if (originKey !== 'all' && originKey !== 'local') {
                 if (!state.remoteSessions.has(originKey)) {
                     loadRemoteSessions(originKey).then(() => renderSidebar());
                 }
-                if (!state.remoteProjects.has(originKey)) {
-                    loadRemoteProjects(originKey);
-                }
             }
-            // Phase 5: реcоединяем tasks/todos WS чтобы они переподписались
+            // Реcоединяем tasks/todos WS чтобы они переподписались
             // на нужный origin (см. connectTasksWs/connectTodosWs — они
             // читают state.activeOrigin при формировании URL).
             disconnectTasksWs();
             disconnectTodosWs();
             state.tasksData = null;
             state.todosData = [];
+            state.todosCurrentPath = null;
             setTimeout(() => { connectTasksWs(); connectTodosWs(); }, 0);
             renderSidebar();
         });

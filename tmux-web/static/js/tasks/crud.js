@@ -288,19 +288,15 @@ export async function promoteTodo(id, sessionOverride) {
         ? String(sessionOverride).trim()
         : (state.currentSession || null);
     if (!session) {
-        const projectId = prev && prev.project_id
-            ? prev.project_id
-            : (state.activeProjectId || null);
-        const projectSessions = (state.sessions || [])
-            .filter((s) => projectId ? s.project_id === projectId : true)
+        const allSessions = (state.sessions || [])
             .map((s) => s.name)
             .sort((a, b) => String(a).localeCompare(String(b)));
-        if (projectSessions.length > 0) {
-            session = projectSessions[0];
+        if (allSessions.length > 0) {
+            session = allSessions[0];
         }
     }
     if (!session) {
-        window.alert('Нет активной сессии для уведомления. Открой/создай tmux-сессию для проекта.');
+        window.alert('Нет активной сессии для уведомления. Открой/создай tmux-сессию.');
         return;
     }
 

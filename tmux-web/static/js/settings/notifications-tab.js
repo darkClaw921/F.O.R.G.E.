@@ -1,27 +1,80 @@
-// tmux-web — Notifications form + saveProjectSettings
-// (Phase 1 ES Modules refactor)
+// tmux-web — Notifications tab (global notifier-config).
 //
-// 1:1 копии из IIFE `tmux-web/static/app.js`:
-//   - buildNotificationsForm  (app.js:5391)
-//   - saveProjectSettings     (app.js:5530)
+// Заменяет project-specific notify-настройки на единый глобальный конфиг,
+// читаемый/обновляемый через REST:
+//   GET   /api/notifier-config  — текущий снапшот NotifierConfig
+//   PATCH /api/notifier-config  — частичное обновление (PatchNotifierConfigReq)
+//
+// На бэкенде состояние хранится в ~/.config/forge/notifier.json
+// (см. tmux-web/src/notifier_config.rs).
 
-import { state } from '../core/state.js';
+/**
+ * Загружает текущий глобальный notifier-config с бэкенда.
+ * При ошибке возвращает дефолты (template="", delay_minutes=0,
+ * wait_previous=false, session=null) и пишет warning в console.
+ */
+export async function fetchNotifierConfig() {
+    try {
+        const r = await fetch('/api/notifier-config', {
+            headers: { 'Accept': 'application/json' },
+        });
+        if (!r.ok) {
+            console.warn('GET /api/notifier-config failed:', r.status);
+            return { template: '', delay_minutes: 0, wait_previous: false, session: null };
+        }
+        return await r.json();
+    } catch (e) {
+        console.warn('fetchNotifierConfig failed', e);
+        return { template: '', delay_minutes: 0, wait_previous: false, session: null };
+    }
+}
 
-export function buildNotificationsForm(project, onSaved) {
-    const fs = document.createElement('fieldset');
-    fs.className = 'notify-fieldset';
+/**
+ * Сохраняет частичное обновление notifier-config через PATCH.
+ * Семантика `session`: пустая строка после trim сбрасывает session в None
+ * на бэкенде (см. patch_notifier_config / PatchNotifierConfigReq).
+ */
+export async function saveNotifierConfig(patch) {
+    try {
+        const r = await fetch('/api/notifier-config', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(patch),
+        });
+        if (!r.ok) {
+            const text = await r.text();
+            return { ok: false, error: text || ('HTTP ' + r.status) };
+        }
+        const updated = await r.json();
+        return { ok: true, config: updated };
+    } catch (e) {
+        return { ok: false, error: e && e.message ? e.message : String(e) };
+    }
+}
 
-    const legend = document.createElement('legend');
-    legend.textContent = 'Notifications';
-    fs.appendChild(legend);
+/**
+ * Строит форму глобальных notifier-настроек. Принимает текущий снапшот
+ * config (или пустой объект) и опционально callback onSaved(updated).
+ *
+ * Поддерживаемые поля:
+ *   - template          (textarea)
+ *   - delay_minutes     (number, ≥0)
+ *   - wait_previous     (checkbox)
+ *   - session           (text; пустая строка ⇒ сброс в None)
+ */
+export function buildNotificationsForm(config, onSaved) {
+    const cfg = config || {};
+    const root = document.createElement('div');
+    root.className = 'notifier-global';
 
     const hint = document.createElement('div');
     hint.className = 'notify-hint';
     hint.textContent =
-        'Шаблон: плейсхолдеры {id} {title} {description} {priority} {type}. ' +
+        'Глобальные настройки notifier. Шаблон: плейсхолдеры {id} {title} {description} {priority} {type}. ' +
         'delay_minutes=0 — отправлять сразу; wait_previous переопределяет delay ' +
-        '(сообщение уходит после закрытия предыдущей задачи в той же сессии).';
-    fs.appendChild(hint);
+        '(сообщение уходит после закрытия предыдущей задачи в той же сессии). ' +
+        'session — дефолтная tmux-сессия для notify (пусто = должна быть указана в promote_todo).';
+    root.appendChild(hint);
 
     const tplWrap = document.createElement('label');
     tplWrap.className = 'notify-field';
@@ -30,12 +83,10 @@ export function buildNotificationsForm(project, onSaved) {
     tpl.className = 'notify-template';
     tpl.rows = 3;
     tpl.placeholder = 'task: {title}\n{description}';
-    tpl.value = (project && typeof project.notify_template === 'string')
-        ? project.notify_template
-        : '';
+    tpl.value = typeof cfg.template === 'string' ? cfg.template : '';
     tpl.title = 'Шаблон. Поддержка плейсхолдеров: {id} {title} {description} {priority} {type}.';
     tplWrap.appendChild(tpl);
-    fs.appendChild(tplWrap);
+    root.appendChild(tplWrap);
 
     const delayWrap = document.createElement('label');
     delayWrap.className = 'notify-field';
@@ -45,44 +96,39 @@ export function buildNotificationsForm(project, onSaved) {
     delay.min = '0';
     delay.step = '1';
     delay.className = 'notify-delay';
-    const delayVal = (project && typeof project.notify_delay_minutes === 'number')
-        ? project.notify_delay_minutes
-        : 0;
+    const delayVal = (typeof cfg.delay_minutes === 'number') ? cfg.delay_minutes : 0;
     delay.value = String(delayVal);
     delay.title = '0 — отправлять сразу. Игнорируется, если включён wait_previous.';
     delayWrap.appendChild(delay);
-    fs.appendChild(delayWrap);
+    root.appendChild(delayWrap);
 
     const waitWrap = document.createElement('label');
     waitWrap.className = 'modal-check notify-check';
     const wait = document.createElement('input');
     wait.type = 'checkbox';
     wait.className = 'notify-wait';
-    wait.checked = !!(project && project.notify_wait_previous);
+    wait.checked = !!cfg.wait_previous;
     wait.title = 'Ждать закрытия предыдущей задачи перед отправкой следующей. Переопределяет delay.';
     waitWrap.appendChild(wait);
-    const waitText = document.createTextNode(' Wait for previous (overrides delay)');
-    waitWrap.appendChild(waitText);
-    fs.appendChild(waitWrap);
+    waitWrap.appendChild(document.createTextNode(' Wait for previous (overrides delay)'));
+    root.appendChild(waitWrap);
 
     const sessWrap = document.createElement('label');
     sessWrap.className = 'notify-field';
-    sessWrap.textContent = 'Session override';
+    sessWrap.textContent = 'Default tmux session';
     const sess = document.createElement('input');
     sess.type = 'text';
     sess.className = 'notify-session';
-    sess.placeholder = 'override: tmux session name (пусто = текущая сессия проекта)';
-    sess.value = (project && typeof project.notify_session === 'string')
-        ? project.notify_session
-        : '';
-    sess.title = 'Если задано — все нотификации этого проекта пойдут в указанную сессию.';
+    sess.placeholder = 'tmux session name (пусто = требовать body.session в promote_todo)';
+    sess.value = (typeof cfg.session === 'string') ? cfg.session : '';
+    sess.title = 'Дефолтная tmux-сессия для notify. Пусто = сбросить (сервер ждёт body.session в promote_todo).';
     sessWrap.appendChild(sess);
-    fs.appendChild(sessWrap);
+    root.appendChild(sessWrap);
 
     const err = document.createElement('div');
     err.className = 'notify-error';
     err.style.display = 'none';
-    fs.appendChild(err);
+    root.appendChild(err);
 
     const actions = document.createElement('div');
     actions.className = 'notify-actions';
@@ -97,71 +143,24 @@ export function buildNotificationsForm(project, onSaved) {
 
         const rawDelay = parseInt(delay.value, 10);
         const safeDelay = Number.isFinite(rawDelay) && rawDelay >= 0 ? rawDelay : 0;
-        const rawSess = String(sess.value || '').trim();
-        const payload = {
-            notify_template: String(tpl.value || ''),
-            notify_delay_minutes: safeDelay,
-            notify_wait_previous: !!wait.checked,
-            notify_session: rawSess === '' ? null : rawSess,
+        const patch = {
+            template: String(tpl.value || ''),
+            delay_minutes: safeDelay,
+            wait_previous: !!wait.checked,
+            session: String(sess.value || '').trim(),
         };
 
-        const result = await saveProjectSettings(project.id, payload);
+        const result = await saveNotifierConfig(patch);
         saveBtn.disabled = false;
         if (result.ok) {
-            if (typeof onSaved === 'function') onSaved();
+            if (typeof onSaved === 'function') onSaved(result.config);
         } else {
             err.style.display = '';
             err.textContent = result.error || 'Не удалось сохранить настройки.';
         }
     });
     actions.appendChild(saveBtn);
-    fs.appendChild(actions);
+    root.appendChild(actions);
 
-    return fs;
-}
-
-export async function saveProjectSettings(projectId, payload) {
-    if (!projectId) {
-        return { ok: false, error: 'no project id' };
-    }
-
-    const idx = Array.isArray(state.projects)
-        ? state.projects.findIndex((p) => p && p.id === projectId)
-        : -1;
-    const prev = (idx >= 0) ? state.projects[idx] : null;
-    if (idx >= 0 && prev) {
-        state.projects[idx] = Object.assign({}, prev, {
-            notify_template: payload.notify_template,
-            notify_delay_minutes: payload.notify_delay_minutes,
-            notify_wait_previous: payload.notify_wait_previous,
-            notify_session: payload.notify_session,
-        });
-    }
-
-    try {
-        const r = await fetch('/api/projects/' + encodeURIComponent(projectId) + '/settings', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
-        if (!r.ok) {
-            if (idx >= 0 && prev) {
-                state.projects[idx] = prev;
-            }
-            const text = await r.text();
-            return { ok: false, error: text || ('HTTP ' + r.status) };
-        }
-        const updated = await r.json();
-        if (idx >= 0) {
-            state.projects[idx] = updated;
-        } else if (Array.isArray(state.projects)) {
-            state.projects.push(updated);
-        }
-        return { ok: true, project: updated };
-    } catch (e) {
-        if (idx >= 0 && prev) {
-            state.projects[idx] = prev;
-        }
-        return { ok: false, error: e && e.message ? e.message : String(e) };
-    }
+    return root;
 }

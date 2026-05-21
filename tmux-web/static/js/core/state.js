@@ -27,7 +27,6 @@ export const state = {
     // remoteServers: список RemoteServerView { id, label, url } (без token).
     // remoteProjects / remoteSessions: lazy-load кэши per server-id.
     remoteServers: [],
-    remoteProjects: new Map(),  // server_id → ProjectDto[] (origin-aware)
     remoteSessions: new Map(),  // server_id → SessionDto[]
     // Phase 5 — активный origin-фильтр в sidebar. Значения:
     //   'all'   — показывать всё (local + все remote);
@@ -57,9 +56,6 @@ export const state = {
     activeTab: 'terminal',    // 'terminal' | 'tasks' | 'git'
     tasksPollTimer: null,     // setInterval handle для fetchTasks (fallback polling)
     tasksData: null,          // последний JSON snapshot {issues, total, ...} или null
-    // ---- Phase 6.B: Multi-project ----
-    projects: [],             // последний массив ProjectDto от /api/projects
-    activeProjectId: null,    // id активного проекта (или null до первого fetch)
     // ---- User Settings (TODO behavior) ----
     // Кэш пользовательских настроек, загружается через GET /api/user-settings
     // на bootstrap (best-effort) и обновляется через PATCH в settings/user-settings-api.js.
@@ -69,11 +65,6 @@ export const state = {
     //   todo_default_issue_type, todo_plan_mode_suffix,
     //   todo_confirm_delete, todo_confirm_promote_on_drag }.
     userSettings: null,
-    // Cross-project sessions visibility: фильтр сайдбара (UI-only).
-    // '__all__' = показывать сессии всех проектов (с группировкой), либо
-    // конкретный project.id — показывать только сессии этого проекта.
-    // Не путать с activeProjectId (backend-side активный проект).
-    projectFilter: '__all__',
     // ---- Phase 6.D: Realtime tasks WS ----
     tasksWs: null,            // WebSocket | null
     tasksWsBackoffStep: 0,    // индекс в TASKS_WS_BACKOFFS_MS для следующей попытки
@@ -82,9 +73,9 @@ export const state = {
     // cwd текущей tasks-подписки (как у TuiTab.currentCwd для git). Используется
     // в syncTasksToCurrentSession для определения, нужно ли переподключать ws.
     tasksCurrentCwd: null,
-    // ---- Phase 4 (TODO kanban): локальный store + realtime WS ----
-    // Массив TODO-карточек активного проекта (фильтр project_id выполняет
-    // бэкенд: REST /api/todos?project_id=… и WS /ws/todos?project_id=…).
+    // ---- TODO kanban: локальный store + realtime WS ----
+    // Массив TODO-карточек активной сессии (фильтр path выполняет бэкенд:
+    // REST /api/todos?path=… и WS /ws/todos?path=…).
     // null до первого fetch/snapshot, потом — массив (возможно пустой).
     todosData: [],
     todosWs: null,            // WebSocket | null
@@ -92,6 +83,11 @@ export const state = {
     todosWsReconnectTimer: null,
     todosWsClosedByUs: false,
     todosPollTimer: null,     // fallback poll setInterval handle
+    // path текущей todos-подписки (sess.path активной сессии).
+    // Используется syncTodosToCurrentSession для определения, нужно ли
+    // переподключать ws и рефетчить, когда пользователь кликает сессию
+    // с другим cwd.
+    todosCurrentPath: null,
     // ---- Themes (Phase 3) ----
     // Активная тема, последняя применённая через applyTheme().
     // Используется Phase 5 (live preview) и для повторного применения после

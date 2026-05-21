@@ -16,9 +16,9 @@ import { apiFetch, dtoOrigin } from '../core/api.js';
 import { showPlaceholder, scheduleResizeFromTerm } from '../terminal/xterm.js';
 import { renderSidebar } from '../sidebar/sidebar.js';
 import { connectWs, disconnectWs } from '../ws/attach.js';
-import { switchActiveProject } from '../projects/projects.js';
 import { syncGitToCurrentSession, syncTelescopeToCurrentSession } from '../tabs/tui-tabs.js';
 import { syncTasksToCurrentSession } from '../ws/tasks-ws.js';
+import { syncTodosToCurrentSession } from '../ws/todos-ws.js';
 
 export async function fetchSessions() {
     try {
@@ -223,17 +223,6 @@ export async function openSession(name, origin) {
 
     const sess = state.sessions.find((s) => s.name === name);
     const sessOrigin = origin || dtoOrigin(sess);
-    if (sessOrigin === 'local') {
-        const targetProjectId = sess && sess.project_id ? sess.project_id : null;
-        if (targetProjectId && targetProjectId !== state.activeProjectId) {
-            await switchActiveProject(targetProjectId);
-            connectWs(name, 'local');
-            syncGitToCurrentSession();
-            syncTasksToCurrentSession();
-            syncTelescopeToCurrentSession();
-            return;
-        }
-    }
 
     if (state.ws && state.ws.readyState === WebSocket.OPEN) {
         switchSession(name);
@@ -242,6 +231,7 @@ export async function openSession(name, origin) {
     connectWs(name, sessOrigin);
     syncGitToCurrentSession();
     syncTasksToCurrentSession();
+    syncTodosToCurrentSession();
     syncTelescopeToCurrentSession();
 }
 
@@ -254,6 +244,7 @@ export function switchSession(name) {
         scheduleResizeFromTerm();
         syncGitToCurrentSession();
         syncTasksToCurrentSession();
+        syncTodosToCurrentSession();
         syncTelescopeToCurrentSession();
     } catch (e) {
         console.warn('switch failed', e);

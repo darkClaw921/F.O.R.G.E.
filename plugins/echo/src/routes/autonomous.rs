@@ -282,7 +282,7 @@ mod tests {
     use crate::claude::ClaudeRunner;
     use crate::db::Db;
     use async_trait::async_trait;
-    use echo_host_api::{HostApi, ProjectInfo, SessionInfo};
+    use echo_host_api::{HostApi, SessionInfo};
     use std::path::PathBuf;
 
     struct StubHost;
@@ -293,12 +293,6 @@ mod tests {
         }
         async fn capture_pane_full(&self, _s: &str, _l: i32) -> anyhow::Result<String> {
             Ok(String::new())
-        }
-        async fn list_projects(&self) -> anyhow::Result<Vec<ProjectInfo>> {
-            Ok(Vec::new())
-        }
-        async fn active_project_id(&self) -> Option<String> {
-            None
         }
         fn auth_token(&self) -> Option<String> {
             None

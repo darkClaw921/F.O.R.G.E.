@@ -29,7 +29,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use axum::Router;
-use echo_host_api::{HostApi, ProjectInfo, SessionInfo};
+use echo_host_api::{HostApi, SessionInfo};
 use forge_echo::config::EchoConfig;
 use forge_echo::db::repo::autonomous;
 use forge_echo::scheduler::runner::run_task;
@@ -37,9 +37,14 @@ use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
 use tokio_tungstenite::tungstenite::Message;
 
-/// Тестовый mock-Host. Возвращает пустые сессии/проекты — этого хватает
+/// Тестовый mock-Host. Возвращает пустые сессии — этого хватает
 /// prompt_builder'у Echo, чтобы построить минимальный prompt.
+///
+/// После Phase 4 (`remove-projects-concept`) host больше не выдаёт
+/// проекты — поле `project_id` оставлено как непрозрачный label для
+/// soft-FK в Echo SQLite, но через HostApi не транслируется.
 struct FakeHost {
+    #[allow(dead_code)]
     project_id: Option<String>,
 }
 
@@ -50,20 +55,6 @@ impl HostApi for FakeHost {
     }
     async fn capture_pane_full(&self, _s: &str, _l: i32) -> anyhow::Result<String> {
         Ok(String::new())
-    }
-    async fn list_projects(&self) -> anyhow::Result<Vec<ProjectInfo>> {
-        Ok(self
-            .project_id
-            .as_ref()
-            .map(|id| vec![ProjectInfo {
-                id: id.clone(),
-                name: "fake".into(),
-                path: "/tmp".into(),
-            }])
-            .unwrap_or_default())
-    }
-    async fn active_project_id(&self) -> Option<String> {
-        self.project_id.clone()
     }
     fn auth_token(&self) -> Option<String> {
         None

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-19T17:05:39.220Z",
+  "generatedAt": "2026-05-21T12:30:40.676Z",
   "dependencies": [
     {
       "from": "tmux-web/static/hotkeys.js",
@@ -2511,18 +2511,6 @@
       "from": "tmux-web/static/js/core/bootstrap.js",
       "to": "./dom.js",
       "type": "import",
-      "toElement": "$projectSelect"
-    },
-    {
-      "from": "tmux-web/static/js/core/bootstrap.js",
-      "to": "./dom.js",
-      "type": "import",
-      "toElement": "$projectNew"
-    },
-    {
-      "from": "tmux-web/static/js/core/bootstrap.js",
-      "to": "./dom.js",
-      "type": "import",
       "toElement": "$projectSettings"
     },
     {
@@ -2746,18 +2734,6 @@
       "to": "../ws/todos-ws.js",
       "type": "import",
       "toElement": "stopTodosPolling"
-    },
-    {
-      "from": "tmux-web/static/js/core/bootstrap.js",
-      "to": "../projects/projects.js",
-      "type": "import",
-      "toElement": "fetchProjects"
-    },
-    {
-      "from": "tmux-web/static/js/core/bootstrap.js",
-      "to": "../projects/new-project.js",
-      "type": "import",
-      "toElement": "openNewProjectModal"
     },
     {
       "from": "tmux-web/static/js/core/bootstrap.js",
@@ -3077,20 +3053,6 @@
       "to": "tmux-web/static/js/core/bootstrap.js",
       "type": "call",
       "fromElement": "bootstrap",
-      "toElement": "localStorage.setItem"
-    },
-    {
-      "from": "tmux-web/static/js/core/bootstrap.js",
-      "to": "tmux-web/static/js/core/bootstrap.js",
-      "type": "call",
-      "fromElement": "bootstrap",
-      "toElement": "renderSidebar"
-    },
-    {
-      "from": "tmux-web/static/js/core/bootstrap.js",
-      "to": "tmux-web/static/js/core/bootstrap.js",
-      "type": "call",
-      "fromElement": "bootstrap",
       "toElement": "isRemoteMode"
     },
     {
@@ -3113,13 +3075,6 @@
       "type": "call",
       "fromElement": "bootstrap",
       "toElement": "renderSidebar"
-    },
-    {
-      "from": "tmux-web/static/js/core/bootstrap.js",
-      "to": "tmux-web/static/js/core/bootstrap.js",
-      "type": "call",
-      "fromElement": "bootstrap",
-      "toElement": "fetchProjects"
     },
     {
       "from": "tmux-web/static/js/core/bootstrap.js",
@@ -3337,18 +3292,6 @@
       "type": "call",
       "fromElement": "bootstrap",
       "toElement": "connectEchoWs"
-    },
-    {
-      "from": "tmux-web/static/js/core/dom.js",
-      "to": "tmux-web/static/js/core/dom.js",
-      "type": "call",
-      "toElement": "document.getElementById"
-    },
-    {
-      "from": "tmux-web/static/js/core/dom.js",
-      "to": "tmux-web/static/js/core/dom.js",
-      "type": "call",
-      "toElement": "document.getElementById"
     },
     {
       "from": "tmux-web/static/js/core/dom.js",
@@ -8771,530 +8714,6 @@
       "toElement": "sendClientMsg"
     },
     {
-      "from": "tmux-web/static/js/projects/new-project.js",
-      "to": "../core/utils.js",
-      "type": "import",
-      "toElement": "buildModalOverlay"
-    },
-    {
-      "from": "tmux-web/static/js/projects/new-project.js",
-      "to": "./projects.js",
-      "type": "import",
-      "toElement": "fetchProjects"
-    },
-    {
-      "from": "tmux-web/static/js/projects/new-project.js",
-      "to": "tmux-web/static/js/projects/new-project.js",
-      "type": "call",
-      "fromElement": "openNewProjectModal",
-      "toElement": "buildModalOverlay"
-    },
-    {
-      "from": "tmux-web/static/js/projects/new-project.js",
-      "to": "tmux-web/static/js/projects/new-project.js",
-      "type": "call",
-      "fromElement": "openNewProjectModal",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/projects/new-project.js",
-      "to": "tmux-web/static/js/projects/new-project.js",
-      "type": "call",
-      "fromElement": "openNewProjectModal",
-      "toElement": "overlay.appendChild"
-    },
-    {
-      "from": "tmux-web/static/js/projects/new-project.js",
-      "to": "tmux-web/static/js/projects/new-project.js",
-      "type": "call",
-      "fromElement": "openNewProjectModal",
-      "toElement": "document.body.appendChild"
-    },
-    {
-      "from": "tmux-web/static/js/projects/new-project.js",
-      "to": "tmux-web/static/js/projects/new-project.js",
-      "type": "call",
-      "fromElement": "openNewProjectModal",
-      "toElement": "card.querySelector"
-    },
-    {
-      "from": "tmux-web/static/js/projects/new-project.js",
-      "to": "tmux-web/static/js/projects/new-project.js",
-      "type": "call",
-      "fromElement": "openNewProjectModal",
-      "toElement": "card.querySelector"
-    },
-    {
-      "from": "tmux-web/static/js/projects/new-project.js",
-      "to": "tmux-web/static/js/projects/new-project.js",
-      "type": "call",
-      "fromElement": "openNewProjectModal",
-      "toElement": "card.querySelector"
-    },
-    {
-      "from": "tmux-web/static/js/projects/new-project.js",
-      "to": "tmux-web/static/js/projects/new-project.js",
-      "type": "call",
-      "fromElement": "openNewProjectModal",
-      "toElement": "card.querySelector"
-    },
-    {
-      "from": "tmux-web/static/js/projects/new-project.js",
-      "to": "tmux-web/static/js/projects/new-project.js",
-      "type": "call",
-      "fromElement": "openNewProjectModal",
-      "toElement": "card.querySelector"
-    },
-    {
-      "from": "tmux-web/static/js/projects/new-project.js",
-      "to": "tmux-web/static/js/projects/new-project.js",
-      "type": "call",
-      "fromElement": "openNewProjectModal",
-      "toElement": "overlay.remove"
-    },
-    {
-      "from": "tmux-web/static/js/projects/new-project.js",
-      "to": "tmux-web/static/js/projects/new-project.js",
-      "type": "call",
-      "fromElement": "openNewProjectModal",
-      "toElement": "overlay.addEventListener"
-    },
-    {
-      "from": "tmux-web/static/js/projects/new-project.js",
-      "to": "tmux-web/static/js/projects/new-project.js",
-      "type": "call",
-      "fromElement": "openNewProjectModal",
-      "toElement": "close"
-    },
-    {
-      "from": "tmux-web/static/js/projects/new-project.js",
-      "to": "tmux-web/static/js/projects/new-project.js",
-      "type": "call",
-      "fromElement": "openNewProjectModal",
-      "toElement": "window.alert"
-    },
-    {
-      "from": "tmux-web/static/js/projects/new-project.js",
-      "to": "tmux-web/static/js/projects/new-project.js",
-      "type": "call",
-      "fromElement": "openNewProjectModal",
-      "toElement": "fetch"
-    },
-    {
-      "from": "tmux-web/static/js/projects/new-project.js",
-      "to": "tmux-web/static/js/projects/new-project.js",
-      "type": "call",
-      "fromElement": "openNewProjectModal",
-      "toElement": "JSON.stringify"
-    },
-    {
-      "from": "tmux-web/static/js/projects/new-project.js",
-      "to": "tmux-web/static/js/projects/new-project.js",
-      "type": "call",
-      "fromElement": "openNewProjectModal",
-      "toElement": "r.text"
-    },
-    {
-      "from": "tmux-web/static/js/projects/new-project.js",
-      "to": "tmux-web/static/js/projects/new-project.js",
-      "type": "call",
-      "fromElement": "openNewProjectModal",
-      "toElement": "window.alert"
-    },
-    {
-      "from": "tmux-web/static/js/projects/new-project.js",
-      "to": "tmux-web/static/js/projects/new-project.js",
-      "type": "call",
-      "fromElement": "openNewProjectModal",
-      "toElement": "close"
-    },
-    {
-      "from": "tmux-web/static/js/projects/new-project.js",
-      "to": "tmux-web/static/js/projects/new-project.js",
-      "type": "call",
-      "fromElement": "openNewProjectModal",
-      "toElement": "fetchProjects"
-    },
-    {
-      "from": "tmux-web/static/js/projects/new-project.js",
-      "to": "tmux-web/static/js/projects/new-project.js",
-      "type": "call",
-      "fromElement": "openNewProjectModal",
-      "toElement": "window.alert"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "../core/state.js",
-      "type": "import",
-      "toElement": "state"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "../core/dom.js",
-      "type": "import",
-      "toElement": "$projectSelect"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "../core/dom.js",
-      "type": "import",
-      "toElement": "$gitPlaceholder"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "../core/dom.js",
-      "type": "import",
-      "toElement": "$gitTermEl"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "../core/dom.js",
-      "type": "import",
-      "toElement": "$dockerPlaceholder"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "../core/dom.js",
-      "type": "import",
-      "toElement": "$dockerTermEl"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "../core/dom.js",
-      "type": "import",
-      "toElement": "$telescopePlaceholder"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "../core/dom.js",
-      "type": "import",
-      "toElement": "$telescopeTermEl"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "../ws/attach.js",
-      "type": "import",
-      "toElement": "disconnectWs"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "../terminal/xterm.js",
-      "type": "import",
-      "toElement": "showPlaceholder"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "../terminal/xterm.js",
-      "type": "import",
-      "toElement": "setStatus"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "../sessions/sessions.js",
-      "type": "import",
-      "toElement": "fetchSessions"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "../ws/tasks-ws.js",
-      "type": "import",
-      "toElement": "disconnectTasksWs"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "../ws/tasks-ws.js",
-      "type": "import",
-      "toElement": "connectTasksWs"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "../ws/tasks-ws.js",
-      "type": "import",
-      "toElement": "fetchTasks"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "../ws/todos-ws.js",
-      "type": "import",
-      "toElement": "disconnectTodosWs"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "../ws/todos-ws.js",
-      "type": "import",
-      "toElement": "connectTodosWs"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "../ws/todos-ws.js",
-      "type": "import",
-      "toElement": "fetchTodos"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "../tabs/tui-tabs.js",
-      "type": "import",
-      "toElement": "openLazygitForActiveProject"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "../tabs/tui-tabs.js",
-      "type": "import",
-      "toElement": "getActiveProject"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "fetchProjects",
-      "toElement": "fetch"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "fetchProjects",
-      "toElement": "console.warn"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "fetchProjects",
-      "toElement": "r.json"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "fetchProjects",
-      "toElement": "Array.isArray"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "fetchProjects",
-      "toElement": "state.projects.find"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "fetchProjects",
-      "toElement": "localStorage.getItem"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "fetchProjects",
-      "toElement": "state.projects.some"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "fetchProjects",
-      "toElement": "renderProjectSelect"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "fetchProjects",
-      "toElement": "openLazygitForActiveProject"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "fetchProjects",
-      "toElement": "state.dockerTerm.openForActiveProject"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "fetchProjects",
-      "toElement": "state.telescopeTerm.openForActiveProject"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "fetchProjects",
-      "toElement": "console.warn"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "renderProjectSelect",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "renderProjectSelect",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "switchActiveProject",
-      "toElement": "fetch"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "switchActiveProject",
-      "toElement": "JSON.stringify"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "switchActiveProject",
-      "toElement": "r.text"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "switchActiveProject",
-      "toElement": "window.alert"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "switchActiveProject",
-      "toElement": "renderProjectSelect"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "switchActiveProject",
-      "toElement": "disconnectWs"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "switchActiveProject",
-      "toElement": "showPlaceholder"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "switchActiveProject",
-      "toElement": "setStatus"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "switchActiveProject",
-      "toElement": "fetchProjects"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "switchActiveProject",
-      "toElement": "fetchSessions"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "switchActiveProject",
-      "toElement": "disconnectTasksWs"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "switchActiveProject",
-      "toElement": "setTimeout"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "switchActiveProject",
-      "toElement": "fetchTasks"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "switchActiveProject",
-      "toElement": "disconnectTodosWs"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "switchActiveProject",
-      "toElement": "setTimeout"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "switchActiveProject",
-      "toElement": "fetchTodos"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "switchActiveProject",
-      "toElement": "getActiveProject"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "switchActiveProject",
-      "toElement": "entry.tab.switchCwd"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "switchActiveProject",
-      "toElement": "entry.tab.openForActiveProject"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "switchActiveProject",
-      "toElement": "entry.tab.close"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "switchActiveProject",
-      "toElement": "window.alert"
-    },
-    {
-      "from": "tmux-web/static/js/projects/projects.js",
-      "to": "tmux-web/static/js/projects/projects.js",
-      "type": "call",
-      "fromElement": "switchActiveProject",
-      "toElement": "renderProjectSelect"
-    },
-    {
       "from": "tmux-web/static/js/remote/healthz.js",
       "to": "../core/state.js",
       "type": "import",
@@ -9326,7 +8745,21 @@
       "to": "tmux-web/static/js/remote/healthz.js",
       "type": "call",
       "fromElement": "loadHealthz",
+      "toElement": "renderAppVersion"
+    },
+    {
+      "from": "tmux-web/static/js/remote/healthz.js",
+      "to": "tmux-web/static/js/remote/healthz.js",
+      "type": "call",
+      "fromElement": "loadHealthz",
       "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/js/remote/healthz.js",
+      "to": "tmux-web/static/js/remote/healthz.js",
+      "type": "call",
+      "fromElement": "renderAppVersion",
+      "toElement": "document.getElementById"
     },
     {
       "from": "tmux-web/static/js/remote/servers.js",
@@ -9429,76 +8862,6 @@
       "type": "call",
       "fromElement": "fetchRemoteServers",
       "toElement": "console.warn"
-    },
-    {
-      "from": "tmux-web/static/js/remote/servers.js",
-      "to": "tmux-web/static/js/remote/servers.js",
-      "type": "call",
-      "fromElement": "loadRemoteProjects",
-      "toElement": "isRemoteMode"
-    },
-    {
-      "from": "tmux-web/static/js/remote/servers.js",
-      "to": "tmux-web/static/js/remote/servers.js",
-      "type": "call",
-      "fromElement": "loadRemoteProjects",
-      "toElement": "encodeURIComponent"
-    },
-    {
-      "from": "tmux-web/static/js/remote/servers.js",
-      "to": "tmux-web/static/js/remote/servers.js",
-      "type": "call",
-      "fromElement": "loadRemoteProjects",
-      "toElement": "fetch"
-    },
-    {
-      "from": "tmux-web/static/js/remote/servers.js",
-      "to": "tmux-web/static/js/remote/servers.js",
-      "type": "call",
-      "fromElement": "loadRemoteProjects",
-      "toElement": "console.warn"
-    },
-    {
-      "from": "tmux-web/static/js/remote/servers.js",
-      "to": "tmux-web/static/js/remote/servers.js",
-      "type": "call",
-      "fromElement": "loadRemoteProjects",
-      "toElement": "state.remoteProjects.set"
-    },
-    {
-      "from": "tmux-web/static/js/remote/servers.js",
-      "to": "tmux-web/static/js/remote/servers.js",
-      "type": "call",
-      "fromElement": "loadRemoteProjects",
-      "toElement": "r.json"
-    },
-    {
-      "from": "tmux-web/static/js/remote/servers.js",
-      "to": "tmux-web/static/js/remote/servers.js",
-      "type": "call",
-      "fromElement": "loadRemoteProjects",
-      "toElement": "Array.isArray"
-    },
-    {
-      "from": "tmux-web/static/js/remote/servers.js",
-      "to": "tmux-web/static/js/remote/servers.js",
-      "type": "call",
-      "fromElement": "loadRemoteProjects",
-      "toElement": "state.remoteProjects.set"
-    },
-    {
-      "from": "tmux-web/static/js/remote/servers.js",
-      "to": "tmux-web/static/js/remote/servers.js",
-      "type": "call",
-      "fromElement": "loadRemoteProjects",
-      "toElement": "console.warn"
-    },
-    {
-      "from": "tmux-web/static/js/remote/servers.js",
-      "to": "tmux-web/static/js/remote/servers.js",
-      "type": "call",
-      "fromElement": "loadRemoteProjects",
-      "toElement": "state.remoteProjects.set"
     },
     {
       "from": "tmux-web/static/js/remote/servers.js",
@@ -9806,20 +9169,6 @@
       "to": "tmux-web/static/js/remote/servers.js",
       "type": "call",
       "fromElement": "aggregateAllOrigins",
-      "toElement": "state.projects.slice"
-    },
-    {
-      "from": "tmux-web/static/js/remote/servers.js",
-      "to": "tmux-web/static/js/remote/servers.js",
-      "type": "call",
-      "fromElement": "aggregateAllOrigins",
-      "toElement": "Array.isArray"
-    },
-    {
-      "from": "tmux-web/static/js/remote/servers.js",
-      "to": "tmux-web/static/js/remote/servers.js",
-      "type": "call",
-      "fromElement": "aggregateAllOrigins",
       "toElement": "state.sessions.slice"
     },
     {
@@ -9835,13 +9184,6 @@
       "type": "call",
       "fromElement": "aggregateAllOrigins",
       "toElement": "state.remoteOnline.get"
-    },
-    {
-      "from": "tmux-web/static/js/remote/servers.js",
-      "to": "tmux-web/static/js/remote/servers.js",
-      "type": "call",
-      "fromElement": "aggregateAllOrigins",
-      "toElement": "state.remoteProjects.get"
     },
     {
       "from": "tmux-web/static/js/remote/servers.js",
@@ -9900,15 +9242,27 @@
     },
     {
       "from": "tmux-web/static/js/sessions/sessions.js",
-      "to": "../projects/projects.js",
+      "to": "../tabs/tui-tabs.js",
       "type": "import",
-      "toElement": "switchActiveProject"
+      "toElement": "syncGitToCurrentSession"
     },
     {
       "from": "tmux-web/static/js/sessions/sessions.js",
       "to": "../tabs/tui-tabs.js",
       "type": "import",
-      "toElement": "syncGitToCurrentSession"
+      "toElement": "syncTelescopeToCurrentSession"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "../ws/tasks-ws.js",
+      "type": "import",
+      "toElement": "syncTasksToCurrentSession"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "../ws/todos-ws.js",
+      "type": "import",
+      "toElement": "syncTodosToCurrentSession"
     },
     {
       "from": "tmux-web/static/js/sessions/sessions.js",
@@ -10433,27 +9787,6 @@
       "to": "tmux-web/static/js/sessions/sessions.js",
       "type": "call",
       "fromElement": "openSession",
-      "toElement": "switchActiveProject"
-    },
-    {
-      "from": "tmux-web/static/js/sessions/sessions.js",
-      "to": "tmux-web/static/js/sessions/sessions.js",
-      "type": "call",
-      "fromElement": "openSession",
-      "toElement": "connectWs"
-    },
-    {
-      "from": "tmux-web/static/js/sessions/sessions.js",
-      "to": "tmux-web/static/js/sessions/sessions.js",
-      "type": "call",
-      "fromElement": "openSession",
-      "toElement": "syncGitToCurrentSession"
-    },
-    {
-      "from": "tmux-web/static/js/sessions/sessions.js",
-      "to": "tmux-web/static/js/sessions/sessions.js",
-      "type": "call",
-      "fromElement": "openSession",
       "toElement": "switchSession"
     },
     {
@@ -10469,6 +9802,27 @@
       "type": "call",
       "fromElement": "openSession",
       "toElement": "syncGitToCurrentSession"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "openSession",
+      "toElement": "syncTasksToCurrentSession"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "openSession",
+      "toElement": "syncTodosToCurrentSession"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "openSession",
+      "toElement": "syncTelescopeToCurrentSession"
     },
     {
       "from": "tmux-web/static/js/sessions/sessions.js",
@@ -10511,6 +9865,27 @@
       "type": "call",
       "fromElement": "switchSession",
       "toElement": "syncGitToCurrentSession"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "switchSession",
+      "toElement": "syncTasksToCurrentSession"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "switchSession",
+      "toElement": "syncTodosToCurrentSession"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "switchSession",
+      "toElement": "syncTelescopeToCurrentSession"
     },
     {
       "from": "tmux-web/static/js/sessions/sessions.js",
@@ -11038,12 +10413,6 @@
     },
     {
       "from": "tmux-web/static/js/settings/modal.js",
-      "to": "../projects/projects.js",
-      "type": "import",
-      "toElement": "fetchProjects"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
       "to": "../sidebar/sidebar.js",
       "type": "import",
       "toElement": "renderSidebar"
@@ -11059,6 +10428,12 @@
       "to": "./notifications-tab.js",
       "type": "import",
       "toElement": "buildNotificationsForm"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "./notifications-tab.js",
+      "type": "import",
+      "toElement": "fetchNotifierConfig"
     },
     {
       "from": "tmux-web/static/js/settings/modal.js",
@@ -11208,6 +10583,27 @@
       "to": "tmux-web/static/js/settings/modal.js",
       "type": "call",
       "fromElement": "openSettingsModal",
+      "toElement": "fetchNotifierConfig"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/settings/modal.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "buildNotificationsForm"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/settings/modal.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "renderNotifierPanel"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/settings/modal.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
       "toElement": "btn.classList.toggle"
     },
     {
@@ -11216,6 +10612,13 @@
       "type": "call",
       "fromElement": "openSettingsModal",
       "toElement": "btn.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/settings/modal.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "renderNotifierPanel"
     },
     {
       "from": "tmux-web/static/js/settings/modal.js",
@@ -11502,230 +10905,6 @@
       "to": "tmux-web/static/js/settings/modal.js",
       "type": "call",
       "fromElement": "openSettingsModal",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "meta.appendChild"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "meta.appendChild"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "row.appendChild"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "expanded.has"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "settingsBtn.addEventListener"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "expanded.has"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "expanded.delete"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "expanded.add"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "renderList"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "row.appendChild"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "btn.addEventListener"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "window.confirm"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "fetch"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "encodeURIComponent"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "r.text"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "window.alert"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "fetchProjects"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "renderList"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "window.alert"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "row.appendChild"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "li.appendChild"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "li.appendChild"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "buildNotificationsForm"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "renderList"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
-      "toElement": "renderList"
-    },
-    {
-      "from": "tmux-web/static/js/settings/modal.js",
-      "to": "tmux-web/static/js/settings/modal.js",
-      "type": "call",
-      "fromElement": "openSettingsModal",
       "toElement": "isRemoteMode"
     },
     {
@@ -11765,9 +10944,66 @@
     },
     {
       "from": "tmux-web/static/js/settings/notifications-tab.js",
-      "to": "../core/state.js",
-      "type": "import",
-      "toElement": "state"
+      "to": "tmux-web/static/js/settings/notifications-tab.js",
+      "type": "call",
+      "fromElement": "fetchNotifierConfig",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/js/settings/notifications-tab.js",
+      "to": "tmux-web/static/js/settings/notifications-tab.js",
+      "type": "call",
+      "fromElement": "fetchNotifierConfig",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/js/settings/notifications-tab.js",
+      "to": "tmux-web/static/js/settings/notifications-tab.js",
+      "type": "call",
+      "fromElement": "fetchNotifierConfig",
+      "toElement": "r.json"
+    },
+    {
+      "from": "tmux-web/static/js/settings/notifications-tab.js",
+      "to": "tmux-web/static/js/settings/notifications-tab.js",
+      "type": "call",
+      "fromElement": "fetchNotifierConfig",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/js/settings/notifications-tab.js",
+      "to": "tmux-web/static/js/settings/notifications-tab.js",
+      "type": "call",
+      "fromElement": "saveNotifierConfig",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/js/settings/notifications-tab.js",
+      "to": "tmux-web/static/js/settings/notifications-tab.js",
+      "type": "call",
+      "fromElement": "saveNotifierConfig",
+      "toElement": "JSON.stringify"
+    },
+    {
+      "from": "tmux-web/static/js/settings/notifications-tab.js",
+      "to": "tmux-web/static/js/settings/notifications-tab.js",
+      "type": "call",
+      "fromElement": "saveNotifierConfig",
+      "toElement": "r.text"
+    },
+    {
+      "from": "tmux-web/static/js/settings/notifications-tab.js",
+      "to": "tmux-web/static/js/settings/notifications-tab.js",
+      "type": "call",
+      "fromElement": "saveNotifierConfig",
+      "toElement": "r.json"
+    },
+    {
+      "from": "tmux-web/static/js/settings/notifications-tab.js",
+      "to": "tmux-web/static/js/settings/notifications-tab.js",
+      "type": "call",
+      "fromElement": "saveNotifierConfig",
+      "toElement": "String"
     },
     {
       "from": "tmux-web/static/js/settings/notifications-tab.js",
@@ -11788,21 +11024,7 @@
       "to": "tmux-web/static/js/settings/notifications-tab.js",
       "type": "call",
       "fromElement": "buildNotificationsForm",
-      "toElement": "fs.appendChild"
-    },
-    {
-      "from": "tmux-web/static/js/settings/notifications-tab.js",
-      "to": "tmux-web/static/js/settings/notifications-tab.js",
-      "type": "call",
-      "fromElement": "buildNotificationsForm",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/settings/notifications-tab.js",
-      "to": "tmux-web/static/js/settings/notifications-tab.js",
-      "type": "call",
-      "fromElement": "buildNotificationsForm",
-      "toElement": "fs.appendChild"
+      "toElement": "root.appendChild"
     },
     {
       "from": "tmux-web/static/js/settings/notifications-tab.js",
@@ -11830,7 +11052,7 @@
       "to": "tmux-web/static/js/settings/notifications-tab.js",
       "type": "call",
       "fromElement": "buildNotificationsForm",
-      "toElement": "fs.appendChild"
+      "toElement": "root.appendChild"
     },
     {
       "from": "tmux-web/static/js/settings/notifications-tab.js",
@@ -11865,7 +11087,7 @@
       "to": "tmux-web/static/js/settings/notifications-tab.js",
       "type": "call",
       "fromElement": "buildNotificationsForm",
-      "toElement": "fs.appendChild"
+      "toElement": "root.appendChild"
     },
     {
       "from": "tmux-web/static/js/settings/notifications-tab.js",
@@ -11880,6 +11102,13 @@
       "type": "call",
       "fromElement": "buildNotificationsForm",
       "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/notifications-tab.js",
+      "to": "tmux-web/static/js/settings/notifications-tab.js",
+      "type": "call",
+      "fromElement": "buildNotificationsForm",
+      "toElement": "waitWrap.appendChild"
     },
     {
       "from": "tmux-web/static/js/settings/notifications-tab.js",
@@ -11900,14 +11129,7 @@
       "to": "tmux-web/static/js/settings/notifications-tab.js",
       "type": "call",
       "fromElement": "buildNotificationsForm",
-      "toElement": "waitWrap.appendChild"
-    },
-    {
-      "from": "tmux-web/static/js/settings/notifications-tab.js",
-      "to": "tmux-web/static/js/settings/notifications-tab.js",
-      "type": "call",
-      "fromElement": "buildNotificationsForm",
-      "toElement": "fs.appendChild"
+      "toElement": "root.appendChild"
     },
     {
       "from": "tmux-web/static/js/settings/notifications-tab.js",
@@ -11935,7 +11157,7 @@
       "to": "tmux-web/static/js/settings/notifications-tab.js",
       "type": "call",
       "fromElement": "buildNotificationsForm",
-      "toElement": "fs.appendChild"
+      "toElement": "root.appendChild"
     },
     {
       "from": "tmux-web/static/js/settings/notifications-tab.js",
@@ -11949,7 +11171,7 @@
       "to": "tmux-web/static/js/settings/notifications-tab.js",
       "type": "call",
       "fromElement": "buildNotificationsForm",
-      "toElement": "fs.appendChild"
+      "toElement": "root.appendChild"
     },
     {
       "from": "tmux-web/static/js/settings/notifications-tab.js",
@@ -12005,7 +11227,7 @@
       "to": "tmux-web/static/js/settings/notifications-tab.js",
       "type": "call",
       "fromElement": "buildNotificationsForm",
-      "toElement": "saveProjectSettings"
+      "toElement": "saveNotifierConfig"
     },
     {
       "from": "tmux-web/static/js/settings/notifications-tab.js",
@@ -12026,84 +11248,7 @@
       "to": "tmux-web/static/js/settings/notifications-tab.js",
       "type": "call",
       "fromElement": "buildNotificationsForm",
-      "toElement": "fs.appendChild"
-    },
-    {
-      "from": "tmux-web/static/js/settings/notifications-tab.js",
-      "to": "tmux-web/static/js/settings/notifications-tab.js",
-      "type": "call",
-      "fromElement": "saveProjectSettings",
-      "toElement": "Array.isArray"
-    },
-    {
-      "from": "tmux-web/static/js/settings/notifications-tab.js",
-      "to": "tmux-web/static/js/settings/notifications-tab.js",
-      "type": "call",
-      "fromElement": "saveProjectSettings",
-      "toElement": "state.projects.findIndex"
-    },
-    {
-      "from": "tmux-web/static/js/settings/notifications-tab.js",
-      "to": "tmux-web/static/js/settings/notifications-tab.js",
-      "type": "call",
-      "fromElement": "saveProjectSettings",
-      "toElement": "Object.assign"
-    },
-    {
-      "from": "tmux-web/static/js/settings/notifications-tab.js",
-      "to": "tmux-web/static/js/settings/notifications-tab.js",
-      "type": "call",
-      "fromElement": "saveProjectSettings",
-      "toElement": "fetch"
-    },
-    {
-      "from": "tmux-web/static/js/settings/notifications-tab.js",
-      "to": "tmux-web/static/js/settings/notifications-tab.js",
-      "type": "call",
-      "fromElement": "saveProjectSettings",
-      "toElement": "encodeURIComponent"
-    },
-    {
-      "from": "tmux-web/static/js/settings/notifications-tab.js",
-      "to": "tmux-web/static/js/settings/notifications-tab.js",
-      "type": "call",
-      "fromElement": "saveProjectSettings",
-      "toElement": "JSON.stringify"
-    },
-    {
-      "from": "tmux-web/static/js/settings/notifications-tab.js",
-      "to": "tmux-web/static/js/settings/notifications-tab.js",
-      "type": "call",
-      "fromElement": "saveProjectSettings",
-      "toElement": "r.text"
-    },
-    {
-      "from": "tmux-web/static/js/settings/notifications-tab.js",
-      "to": "tmux-web/static/js/settings/notifications-tab.js",
-      "type": "call",
-      "fromElement": "saveProjectSettings",
-      "toElement": "r.json"
-    },
-    {
-      "from": "tmux-web/static/js/settings/notifications-tab.js",
-      "to": "tmux-web/static/js/settings/notifications-tab.js",
-      "type": "call",
-      "fromElement": "saveProjectSettings",
-      "toElement": "Array.isArray"
-    },
-    {
-      "from": "tmux-web/static/js/settings/notifications-tab.js",
-      "to": "tmux-web/static/js/settings/notifications-tab.js",
-      "type": "call",
-      "fromElement": "saveProjectSettings",
-      "toElement": "state.projects.push"
-    },
-    {
-      "from": "tmux-web/static/js/settings/notifications-tab.js",
-      "to": "tmux-web/static/js/settings/notifications-tab.js",
-      "type": "call",
-      "fromElement": "saveProjectSettings",
-      "toElement": "String"
+      "toElement": "root.appendChild"
     },
     {
       "from": "tmux-web/static/js/settings/remotes-tab.js",
@@ -12337,13 +11482,6 @@
       "type": "call",
       "fromElement": "renderRemotesTable",
       "toElement": "fetchRemoteServers"
-    },
-    {
-      "from": "tmux-web/static/js/settings/remotes-tab.js",
-      "to": "tmux-web/static/js/settings/remotes-tab.js",
-      "type": "call",
-      "fromElement": "renderRemotesTable",
-      "toElement": "state.remoteProjects.delete"
     },
     {
       "from": "tmux-web/static/js/settings/remotes-tab.js",
@@ -13211,12 +12349,6 @@
     },
     {
       "from": "tmux-web/static/js/sidebar/origin-tabs.js",
-      "to": "../remote/servers.js",
-      "type": "import",
-      "toElement": "loadRemoteProjects"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/origin-tabs.js",
       "to": "./sidebar.js",
       "type": "import",
       "toElement": "renderSidebar"
@@ -13466,20 +12598,6 @@
       "to": "tmux-web/static/js/sidebar/origin-tabs.js",
       "type": "call",
       "fromElement": "renderOriginTabs",
-      "toElement": "state.remoteProjects.has"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/origin-tabs.js",
-      "to": "tmux-web/static/js/sidebar/origin-tabs.js",
-      "type": "call",
-      "fromElement": "renderOriginTabs",
-      "toElement": "loadRemoteProjects"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/origin-tabs.js",
-      "to": "tmux-web/static/js/sidebar/origin-tabs.js",
-      "type": "call",
-      "fromElement": "renderOriginTabs",
       "toElement": "disconnectTasksWs"
     },
     {
@@ -13606,12 +12724,6 @@
       "from": "tmux-web/static/js/sidebar/sidebar.js",
       "to": "../remote/servers.js",
       "type": "import",
-      "toElement": "loadRemoteProjects"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/sidebar.js",
-      "to": "../remote/servers.js",
-      "type": "import",
       "toElement": "loadRemoteSessions"
     },
     {
@@ -13659,154 +12771,7 @@
       "to": "tmux-web/static/js/sidebar/sidebar.js",
       "type": "call",
       "fromElement": "renderSidebar",
-      "toElement": "state.sessions.filter"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/sidebar.js",
-      "to": "tmux-web/static/js/sidebar/sidebar.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/sidebar.js",
-      "to": "tmux-web/static/js/sidebar/sidebar.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "groups.has"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/sidebar.js",
-      "to": "tmux-web/static/js/sidebar/sidebar.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "groups.set"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/sidebar.js",
-      "to": "tmux-web/static/js/sidebar/sidebar.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "groups.get"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/sidebar.js",
-      "to": "tmux-web/static/js/sidebar/sidebar.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "groups.values"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/sidebar.js",
-      "to": "tmux-web/static/js/sidebar/sidebar.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "arr.sort"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/sidebar.js",
-      "to": "tmux-web/static/js/sidebar/sidebar.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "a.name.localeCompare"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/sidebar.js",
-      "to": "tmux-web/static/js/sidebar/sidebar.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "groups.keys"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/sidebar.js",
-      "to": "tmux-web/static/js/sidebar/sidebar.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "nonOrphanKeys.push"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/sidebar.js",
-      "to": "tmux-web/static/js/sidebar/sidebar.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "nonOrphanKeys.sort"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/sidebar.js",
-      "to": "tmux-web/static/js/sidebar/sidebar.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "groups.get"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/sidebar.js",
-      "to": "tmux-web/static/js/sidebar/sidebar.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "groups.get"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/sidebar.js",
-      "to": "tmux-web/static/js/sidebar/sidebar.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "la.localeCompare"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/sidebar.js",
-      "to": "tmux-web/static/js/sidebar/sidebar.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "groups.get"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/sidebar.js",
-      "to": "tmux-web/static/js/sidebar/sidebar.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "key.startsWith"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/sidebar.js",
-      "to": "tmux-web/static/js/sidebar/sidebar.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "key.slice"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/sidebar.js",
-      "to": "tmux-web/static/js/sidebar/sidebar.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/sidebar.js",
-      "to": "tmux-web/static/js/sidebar/sidebar.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "buildSessionItem"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/sidebar.js",
-      "to": "tmux-web/static/js/sidebar/sidebar.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "groups.get"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/sidebar.js",
-      "to": "tmux-web/static/js/sidebar/sidebar.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/sidebar.js",
-      "to": "tmux-web/static/js/sidebar/sidebar.js",
-      "type": "call",
-      "fromElement": "renderSidebar",
-      "toElement": "buildSessionItem"
+      "toElement": "renderFolderGroups"
     },
     {
       "from": "tmux-web/static/js/sidebar/sidebar.js",
@@ -13848,13 +12813,6 @@
       "to": "tmux-web/static/js/sidebar/sidebar.js",
       "type": "call",
       "fromElement": "renderSidebarWithOrigin",
-      "toElement": "state.remoteProjects.get"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/sidebar.js",
-      "to": "tmux-web/static/js/sidebar/sidebar.js",
-      "type": "call",
-      "fromElement": "renderSidebarWithOrigin",
       "toElement": "state.remoteSessions.get"
     },
     {
@@ -13863,13 +12821,6 @@
       "type": "call",
       "fromElement": "renderSidebarWithOrigin",
       "toElement": "isOriginCollapsed"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/sidebar.js",
-      "to": "tmux-web/static/js/sidebar/sidebar.js",
-      "type": "call",
-      "fromElement": "renderSidebarWithOrigin",
-      "toElement": "loadRemoteProjects"
     },
     {
       "from": "tmux-web/static/js/sidebar/sidebar.js",
@@ -14037,132 +12988,125 @@
       "to": "tmux-web/static/js/sidebar/sidebar.js",
       "type": "call",
       "fromElement": "renderOriginSection",
-      "toElement": "sessions.filter"
+      "toElement": "renderFolderGroups"
     },
     {
       "from": "tmux-web/static/js/sidebar/sidebar.js",
       "to": "tmux-web/static/js/sidebar/sidebar.js",
       "type": "call",
-      "fromElement": "renderOriginSection",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/sidebar.js",
-      "to": "tmux-web/static/js/sidebar/sidebar.js",
-      "type": "call",
-      "fromElement": "renderOriginSection",
+      "fromElement": "renderFolderGroups",
       "toElement": "groupSessionsByFolder"
     },
     {
       "from": "tmux-web/static/js/sidebar/sidebar.js",
       "to": "tmux-web/static/js/sidebar/sidebar.js",
       "type": "call",
-      "fromElement": "renderOriginSection",
+      "fromElement": "renderFolderGroups",
       "toElement": "byFolder.keys"
     },
     {
       "from": "tmux-web/static/js/sidebar/sidebar.js",
       "to": "tmux-web/static/js/sidebar/sidebar.js",
       "type": "call",
-      "fromElement": "renderOriginSection",
+      "fromElement": "renderFolderGroups",
       "toElement": "nonOrphanKeys.push"
     },
     {
       "from": "tmux-web/static/js/sidebar/sidebar.js",
       "to": "tmux-web/static/js/sidebar/sidebar.js",
       "type": "call",
-      "fromElement": "renderOriginSection",
+      "fromElement": "renderFolderGroups",
       "toElement": "nonOrphanKeys.sort"
     },
     {
       "from": "tmux-web/static/js/sidebar/sidebar.js",
       "to": "tmux-web/static/js/sidebar/sidebar.js",
       "type": "call",
-      "fromElement": "renderOriginSection",
+      "fromElement": "renderFolderGroups",
       "toElement": "byFolder.get"
     },
     {
       "from": "tmux-web/static/js/sidebar/sidebar.js",
       "to": "tmux-web/static/js/sidebar/sidebar.js",
       "type": "call",
-      "fromElement": "renderOriginSection",
+      "fromElement": "renderFolderGroups",
       "toElement": "byFolder.get"
     },
     {
       "from": "tmux-web/static/js/sidebar/sidebar.js",
       "to": "tmux-web/static/js/sidebar/sidebar.js",
       "type": "call",
-      "fromElement": "renderOriginSection",
+      "fromElement": "renderFolderGroups",
       "toElement": "la.localeCompare"
     },
     {
       "from": "tmux-web/static/js/sidebar/sidebar.js",
       "to": "tmux-web/static/js/sidebar/sidebar.js",
       "type": "call",
-      "fromElement": "renderOriginSection",
+      "fromElement": "renderFolderGroups",
       "toElement": "byFolder.get"
     },
     {
       "from": "tmux-web/static/js/sidebar/sidebar.js",
       "to": "tmux-web/static/js/sidebar/sidebar.js",
       "type": "call",
-      "fromElement": "renderOriginSection",
+      "fromElement": "renderFolderGroups",
+      "toElement": "byFolder.get"
+    },
+    {
+      "from": "tmux-web/static/js/sidebar/sidebar.js",
+      "to": "tmux-web/static/js/sidebar/sidebar.js",
+      "type": "call",
+      "fromElement": "renderFolderGroups",
       "toElement": "key.startsWith"
     },
     {
       "from": "tmux-web/static/js/sidebar/sidebar.js",
       "to": "tmux-web/static/js/sidebar/sidebar.js",
       "type": "call",
-      "fromElement": "renderOriginSection",
+      "fromElement": "renderFolderGroups",
       "toElement": "key.slice"
     },
     {
       "from": "tmux-web/static/js/sidebar/sidebar.js",
       "to": "tmux-web/static/js/sidebar/sidebar.js",
       "type": "call",
-      "fromElement": "renderOriginSection",
+      "fromElement": "renderFolderGroups",
       "toElement": "document.createElement"
     },
     {
       "from": "tmux-web/static/js/sidebar/sidebar.js",
       "to": "tmux-web/static/js/sidebar/sidebar.js",
       "type": "call",
-      "fromElement": "renderOriginSection",
+      "fromElement": "renderFolderGroups",
       "toElement": "buildSessionItem"
     },
     {
       "from": "tmux-web/static/js/sidebar/sidebar.js",
       "to": "tmux-web/static/js/sidebar/sidebar.js",
       "type": "call",
-      "fromElement": "renderOriginSection",
+      "fromElement": "renderFolderGroups",
       "toElement": "li.classList.add"
     },
     {
       "from": "tmux-web/static/js/sidebar/sidebar.js",
       "to": "tmux-web/static/js/sidebar/sidebar.js",
       "type": "call",
-      "fromElement": "renderOriginSection",
-      "toElement": "byFolder.get"
-    },
-    {
-      "from": "tmux-web/static/js/sidebar/sidebar.js",
-      "to": "tmux-web/static/js/sidebar/sidebar.js",
-      "type": "call",
-      "fromElement": "renderOriginSection",
+      "fromElement": "renderFolderGroups",
       "toElement": "document.createElement"
     },
     {
       "from": "tmux-web/static/js/sidebar/sidebar.js",
       "to": "tmux-web/static/js/sidebar/sidebar.js",
       "type": "call",
-      "fromElement": "renderOriginSection",
+      "fromElement": "renderFolderGroups",
       "toElement": "buildSessionItem"
     },
     {
       "from": "tmux-web/static/js/sidebar/sidebar.js",
       "to": "tmux-web/static/js/sidebar/sidebar.js",
       "type": "call",
-      "fromElement": "renderOriginSection",
+      "fromElement": "renderFolderGroups",
       "toElement": "li.classList.add"
     },
     {
@@ -15337,13 +14281,6 @@
       "to": "tmux-web/static/js/tabs/tui-tabs.js",
       "type": "call",
       "fromElement": "openForActiveProject",
-      "toElement": "getActiveProject"
-    },
-    {
-      "from": "tmux-web/static/js/tabs/tui-tabs.js",
-      "to": "tmux-web/static/js/tabs/tui-tabs.js",
-      "type": "call",
-      "fromElement": "openForActiveProject",
       "toElement": "close"
     },
     {
@@ -15435,6 +14372,13 @@
       "to": "tmux-web/static/js/tabs/tui-tabs.js",
       "type": "call",
       "fromElement": "initTuiTabs",
+      "toElement": "sessionCwdOrNull"
+    },
+    {
+      "from": "tmux-web/static/js/tabs/tui-tabs.js",
+      "to": "tmux-web/static/js/tabs/tui-tabs.js",
+      "type": "call",
+      "fromElement": "initTuiTabs",
       "toElement": "btn.addEventListener"
     },
     {
@@ -15504,29 +14448,15 @@
       "from": "tmux-web/static/js/tabs/tui-tabs.js",
       "to": "tmux-web/static/js/tabs/tui-tabs.js",
       "type": "call",
-      "fromElement": "getActiveProject",
-      "toElement": "Array.isArray"
+      "fromElement": "syncTelescopeToCurrentSession",
+      "toElement": "sessionCwdOrNull"
     },
     {
       "from": "tmux-web/static/js/tabs/tui-tabs.js",
       "to": "tmux-web/static/js/tabs/tui-tabs.js",
       "type": "call",
-      "fromElement": "getActiveProject",
-      "toElement": "list.find"
-    },
-    {
-      "from": "tmux-web/static/js/tabs/tui-tabs.js",
-      "to": "tmux-web/static/js/tabs/tui-tabs.js",
-      "type": "call",
-      "fromElement": "getActiveProject",
-      "toElement": "id.startsWith"
-    },
-    {
-      "from": "tmux-web/static/js/tabs/tui-tabs.js",
-      "to": "tmux-web/static/js/tabs/tui-tabs.js",
-      "type": "call",
-      "fromElement": "getActiveProject",
-      "toElement": "id.slice"
+      "fromElement": "syncTelescopeToCurrentSession",
+      "toElement": "t.switchCwd"
     },
     {
       "from": "tmux-web/static/js/tabs/tui-tabs.js",
@@ -20992,6 +19922,20 @@
       "from": "tmux-web/static/js/ws/tasks-ws.js",
       "to": "tmux-web/static/js/ws/tasks-ws.js",
       "type": "call",
+      "fromElement": "sessionCwdOrNull",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/js/ws/tasks-ws.js",
+      "to": "tmux-web/static/js/ws/tasks-ws.js",
+      "type": "call",
+      "fromElement": "sessionCwdOrNull",
+      "toElement": "list.find"
+    },
+    {
+      "from": "tmux-web/static/js/ws/tasks-ws.js",
+      "to": "tmux-web/static/js/ws/tasks-ws.js",
+      "type": "call",
       "fromElement": "startTasksPolling",
       "toElement": "clearInterval"
     },
@@ -21022,6 +19966,13 @@
       "type": "call",
       "fromElement": "connectTasksWs",
       "toElement": "isRemoteMode"
+    },
+    {
+      "from": "tmux-web/static/js/ws/tasks-ws.js",
+      "to": "tmux-web/static/js/ws/tasks-ws.js",
+      "type": "call",
+      "fromElement": "connectTasksWs",
+      "toElement": "sessionCwdOrNull"
     },
     {
       "from": "tmux-web/static/js/ws/tasks-ws.js",
@@ -21280,6 +20231,20 @@
       "to": "tmux-web/static/js/ws/tasks-ws.js",
       "type": "call",
       "fromElement": "fetchTasks",
+      "toElement": "sessionCwdOrNull"
+    },
+    {
+      "from": "tmux-web/static/js/ws/tasks-ws.js",
+      "to": "tmux-web/static/js/ws/tasks-ws.js",
+      "type": "call",
+      "fromElement": "fetchTasks",
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/js/ws/tasks-ws.js",
+      "to": "tmux-web/static/js/ws/tasks-ws.js",
+      "type": "call",
+      "fromElement": "fetchTasks",
       "toElement": "fetch"
     },
     {
@@ -21346,6 +20311,34 @@
       "toElement": "renderTasks"
     },
     {
+      "from": "tmux-web/static/js/ws/tasks-ws.js",
+      "to": "tmux-web/static/js/ws/tasks-ws.js",
+      "type": "call",
+      "fromElement": "syncTasksToCurrentSession",
+      "toElement": "sessionCwdOrNull"
+    },
+    {
+      "from": "tmux-web/static/js/ws/tasks-ws.js",
+      "to": "tmux-web/static/js/ws/tasks-ws.js",
+      "type": "call",
+      "fromElement": "syncTasksToCurrentSession",
+      "toElement": "disconnectTasksWs"
+    },
+    {
+      "from": "tmux-web/static/js/ws/tasks-ws.js",
+      "to": "tmux-web/static/js/ws/tasks-ws.js",
+      "type": "call",
+      "fromElement": "syncTasksToCurrentSession",
+      "toElement": "fetchTasks"
+    },
+    {
+      "from": "tmux-web/static/js/ws/tasks-ws.js",
+      "to": "tmux-web/static/js/ws/tasks-ws.js",
+      "type": "call",
+      "fromElement": "syncTasksToCurrentSession",
+      "toElement": "setTimeout"
+    },
+    {
       "from": "tmux-web/static/js/ws/todos-ws.js",
       "to": "../core/state.js",
       "type": "import",
@@ -21373,14 +20366,28 @@
       "from": "tmux-web/static/js/ws/todos-ws.js",
       "to": "../tasks/render.js",
       "type": "import",
-      "toElement": "currentTodosProjectId"
+      "toElement": "currentTodosPath"
+    },
+    {
+      "from": "tmux-web/static/js/ws/todos-ws.js",
+      "to": "tmux-web/static/js/ws/todos-ws.js",
+      "type": "call",
+      "fromElement": "sessionPathOrNull",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/js/ws/todos-ws.js",
+      "to": "tmux-web/static/js/ws/todos-ws.js",
+      "type": "call",
+      "fromElement": "sessionPathOrNull",
+      "toElement": "list.find"
     },
     {
       "from": "tmux-web/static/js/ws/todos-ws.js",
       "to": "tmux-web/static/js/ws/todos-ws.js",
       "type": "call",
       "fromElement": "fetchTodos",
-      "toElement": "currentTodosProjectId"
+      "toElement": "currentTodosPath"
     },
     {
       "from": "tmux-web/static/js/ws/todos-ws.js",
@@ -21485,7 +20492,7 @@
       "to": "tmux-web/static/js/ws/todos-ws.js",
       "type": "call",
       "fromElement": "connectTodosWs",
-      "toElement": "currentTodosProjectId"
+      "toElement": "currentTodosPath"
     },
     {
       "from": "tmux-web/static/js/ws/todos-ws.js",
@@ -21563,6 +20570,34 @@
       "type": "call",
       "fromElement": "connectTodosWs",
       "toElement": "scheduleTodosWsReconnect"
+    },
+    {
+      "from": "tmux-web/static/js/ws/todos-ws.js",
+      "to": "tmux-web/static/js/ws/todos-ws.js",
+      "type": "call",
+      "fromElement": "syncTodosToCurrentSession",
+      "toElement": "sessionPathOrNull"
+    },
+    {
+      "from": "tmux-web/static/js/ws/todos-ws.js",
+      "to": "tmux-web/static/js/ws/todos-ws.js",
+      "type": "call",
+      "fromElement": "syncTodosToCurrentSession",
+      "toElement": "disconnectTodosWs"
+    },
+    {
+      "from": "tmux-web/static/js/ws/todos-ws.js",
+      "to": "tmux-web/static/js/ws/todos-ws.js",
+      "type": "call",
+      "fromElement": "syncTodosToCurrentSession",
+      "toElement": "fetchTodos"
+    },
+    {
+      "from": "tmux-web/static/js/ws/todos-ws.js",
+      "to": "tmux-web/static/js/ws/todos-ws.js",
+      "type": "call",
+      "fromElement": "syncTodosToCurrentSession",
+      "toElement": "setTimeout"
     },
     {
       "from": "tmux-web/static/js/ws/todos-ws.js",

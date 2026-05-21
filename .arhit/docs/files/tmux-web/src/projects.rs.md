@@ -1,37 +1,3 @@
 # tmux-web/src/projects.rs
 
-Multi-project registry для tmux-web. Хранит список проектов и id активного, персистится в ~/.config/forge/projects.json (atomic write через tempfile + rename). При первом старте если файла нет — создаёт дефолт с одним проектом forge (path = std::env::current_dir, tmux_prefix = 'forge').
-
-## Типы
-- Project { id, name, path: PathBuf, tmux_prefix: String } — один проект. id — slug от name ([a-z0-9_-]+). tmux_prefix используется для фильтрации tmux-сессий (пустой = все, ровно prefix или prefix-* = принадлежит проекту).
-- ProjectsFile { projects, active_project_id } — JSON envelope для файла.
-- ProjectStore { file_path, projects, active_id } — in-memory реестр с инвариантом: active_id всегда указывает на существующий проект.
-
-## Методы ProjectStore
-- load(file_path) -> Self — читает файл; при отсутствии создаёт дефолт + сохраняет. Чинит stale active_id.
-- save() -> anyhow::Result<()> — атомарная запись через <file>.tmp + rename (POSIX-атомарно).
-- list() -> Vec<Project> — копия списка.
-- get(id) -> Option<&Project>.
-- active() -> &Project — гарантированно существует.
-- active_id() -> &str.
-- add(name, path, tmux_prefix?) -> Result<Project> — id=slug(name), prefix default = id; дубликаты → Err.
-- remove(id) -> Result<bool> — нельзя удалить активный.
-- set_active(id) -> Result<()> — несуществующий id → Err.
-
-## Свободные функции
-- default_registry_path() -> Result<PathBuf> — $HOME/.config/forge/projects.json (без крейта dirs).
-- slugify(name) -> String — lower-case, [a-z0-9_-], всё прочее → '-' с схлопыванием.
-- session_belongs(prefix, session_name) -> bool — пустой prefix матчит всё; иначе name == prefix или name начинается с prefix-.
-- ensure_prefixed(prefix, name) -> String — добавляет prefix- если ещё не префиксован.
-
-## Зависимости
-- anyhow, serde/serde_json, tracing, std::path. Без новых внешних крейтов.
-
-## Конкурентность
-Не Clone; в AppState — Arc<RwLock<ProjectStore>>.
-
-## Тесты (cargo test projects::)
-- slugify_basic, session_belongs_rules, ensure_prefixed_rules — pure functions.
-- load_save_roundtrip — bootstrap + add + save + reload.
-- set_active_and_remove — нельзя удалить активный, set_active валидирует id.
-- add_duplicate_rejected.
+УДАЛЁН в Phase 4 (remove-projects-concept, 2026-05-21). Модуль ProjectStore полностью снят: концепция «проектов» в F.O.R.G.E. больше не существует. Source of truth — cwd активной сессии, группировка в UI — folder-headers (SessionDto.folder_id/folder_label). Что заменило: 1) AppState.projects → ушло; 2) active_path: вычисляется из std::env::current_dir() при старте, хранится в state.active_path_tx; 3) slugify(): перенесён в tmux-web/src/remotes.rs как локальный helper; 4) state_dir() в cli.rs: вычисляется напрямую из HOME ($HOME/.config/forge). Связанные удалённые элементы: /api/projects/* routes (get_projects, create_project, delete_project, patch_project_settings, set_active_project, init_project), ProjectDto, CreateProjectReq, PatchProjectSettingsReq, SetActiveReq, InitProjectReq, touch_if_missing, run_in, resolve_project, folder_name. Что остаётся: ~/.config/forge/projects.json больше не читается (legacy миграция в todos.rs читает его один раз для project_id → root_path mapping). См. план в /Users/igorgerasimov/.claude/plans/remove-projects-concept.md

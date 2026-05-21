@@ -3,14 +3,14 @@
 //! ### Назначение
 //!
 //! Когда пользователь promote'ит TODO-карточку в реальную bd-задачу,
-//! нужно отправить текстовое уведомление в активную tmux-сессию проекта
+//! нужно отправить текстовое уведомление в активную tmux-сессию
 //! с заданной задержкой и в одном из трёх режимов:
 //!
 //! - **Immediate** — сразу `tmux::send_keys`.
 //! - **Delayed { fire_at }** — `tokio::time::sleep_until(fire_at)` затем send.
-//! - **WaitPrevious { project_id }** — ждём, пока в `tasks_watcher`
+//! - **WaitPrevious { previous_task_id }** — ждём, пока в `tasks_watcher`
 //!   придёт `TaskEvent::Upsert { issue }` с `issue.status == "closed"` и
-//!   `issue.id == previous_promoted_id`. Это очередь FIFO per project:
+//!   `issue.id == previous_promoted_id`. Это очередь FIFO per root_path:
 //!   пока предыдущий промоут не закрыт — следующий висит.
 //!
 //! ### Архитектура
@@ -25,11 +25,19 @@
 //! ### Persist
 //!
 //! `<project_root>/.forge/notify_state.json` — в нём:
-//! `{"pending": [...], "wait_queues": {project_id -> [job_id]}, "last_promoted_open_id": {project_id -> task_id}}`.
+//! `{"pending": [...], "wait_queues": {root_path -> [job_id]}, "last_promoted_open_id": {root_path -> task_id}}`.
 //! Atomic save через tempfile+rename (паттерн из `todos.rs`/`projects.rs`).
 //!
 //! При старте: читаем state, восстанавливаем pending jobs.
 //! Delayed-jobs с `fire_at` уже в прошлом — выполняются сразу.
+//!
+//! ### Phase 3
+//!
+//! Поле `NotifyJob.project_id` переименовано в `root_path` — явная семантика
+//! (cwd-only архитектура, см. план `remove-projects-concept.md`). Ключи map'ов
+//! `wait_queues` / `last_promoted_open_id` — теперь root_path TODO. Никаких
+//! lookup'ов в `ProjectStore` notifier больше не делает: session_name
+//! приходит в job напрямую от вызывающего кода (`promote_todo`).
 
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
@@ -56,10 +64,20 @@ pub enum NotifyMode {
 }
 
 /// Описание одной нотификации в очереди.
+///
+/// Phase 3: поле `project_id` переименовано в `root_path` (явная семантика
+/// после отказа от концепции Project). Используется как ключ для
+/// `wait_queues` / `last_promoted_open_id`. `target_session` приходит
+/// напрямую от вызывающего кода (`promote_todo` / `NotifierConfig.session`),
+/// никакого lookup'а через `tmux_prefix` в notifier'е больше нет.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NotifyJob {
     pub id: String,
-    pub project_id: String,
+    /// Корневой путь TODO/проекта (cwd-only). До Phase 3 поле называлось
+    /// `project_id`. `#[serde(alias = "project_id")]` сохраняет совместимость
+    /// со старыми `notify_state.json` (миграция без потерь pending-job'ов).
+    #[serde(alias = "project_id")]
+    pub root_path: String,
     pub task_id: String,
     pub target_session: String,
     pub text: String,
@@ -271,13 +289,13 @@ fn next_delayed_deadline(state: &NotifyState) -> Option<Instant> {
 
 /// При получении нового job'а: добавить в state, выполнить если можно сразу.
 async fn handle_enqueue(state: &mut NotifyState, job: NotifyJob, state_path: &std::path::Path) {
-    tracing::debug!(job_id = %job.id, project = %job.project_id, mode = ?job.mode, "enqueue");
+    tracing::debug!(job_id = %job.id, root = %job.root_path, mode = ?job.mode, "enqueue");
 
     match &job.mode {
         NotifyMode::Immediate => {
             state
                 .last_promoted_open_id
-                .insert(job.project_id.clone(), job.task_id.clone());
+                .insert(job.root_path.clone(), job.task_id.clone());
             if let Err(e) = save_state(state_path, state) {
                 tracing::warn!(error = ?e, "save_state before immediate fire failed");
             }
@@ -290,14 +308,14 @@ async fn handle_enqueue(state: &mut NotifyState, job: NotifyJob, state_path: &st
             }
         }
         NotifyMode::WaitPrevious { previous_task_id } => {
-            let pid = job.project_id.clone();
+            let key = job.root_path.clone();
             let queue_was_empty = state
                 .wait_queues
-                .get(&pid)
+                .get(&key)
                 .map(|q| q.is_empty())
                 .unwrap_or(true);
 
-            let last_open = state.last_promoted_open_id.get(&pid).cloned();
+            let last_open = state.last_promoted_open_id.get(&key).cloned();
             let nothing_to_wait = match (previous_task_id.as_ref(), last_open.as_ref()) {
                 (None, _) if queue_was_empty => true,
                 (Some(_), None) if queue_was_empty => true,
@@ -307,7 +325,7 @@ async fn handle_enqueue(state: &mut NotifyState, job: NotifyJob, state_path: &st
             if nothing_to_wait {
                 state
                     .last_promoted_open_id
-                    .insert(pid.clone(), job.task_id.clone());
+                    .insert(key.clone(), job.task_id.clone());
                 if let Err(e) = save_state(state_path, state) {
                     tracing::warn!(error = ?e, "save_state before wait_previous immediate fire failed");
                 }
@@ -315,7 +333,7 @@ async fn handle_enqueue(state: &mut NotifyState, job: NotifyJob, state_path: &st
             } else {
                 state
                     .wait_queues
-                    .entry(pid)
+                    .entry(key)
                     .or_default()
                     .push_back(job.id.clone());
                 state.pending.push(job);
@@ -352,7 +370,7 @@ async fn fire_due_immediate_and_overdue(
         for job in &to_fire {
             state
                 .last_promoted_open_id
-                .insert(job.project_id.clone(), job.task_id.clone());
+                .insert(job.root_path.clone(), job.task_id.clone());
             fire_job(job).await;
         }
         if let Err(e) = save_state(state_path, state) {
@@ -387,7 +405,7 @@ async fn fire_due_delayed(state: &mut NotifyState, state_path: &std::path::Path)
     for job in &to_fire {
         state
             .last_promoted_open_id
-            .insert(job.project_id.clone(), job.task_id.clone());
+            .insert(job.root_path.clone(), job.task_id.clone());
         fire_job(job).await;
     }
 
@@ -402,29 +420,29 @@ async fn handle_task_closed(
     closed_task_id: &str,
     state_path: &std::path::Path,
 ) {
-    let projects_waiting: Vec<String> = state
+    let roots_waiting: Vec<String> = state
         .last_promoted_open_id
         .iter()
         .filter(|(_, v)| v.as_str() == closed_task_id)
         .map(|(k, _)| k.clone())
         .collect();
 
-    if projects_waiting.is_empty() {
+    if roots_waiting.is_empty() {
         return;
     }
 
     let mut fired_any = false;
 
-    for project_id in projects_waiting {
-        state.last_promoted_open_id.remove(&project_id);
+    for root_path in roots_waiting {
+        state.last_promoted_open_id.remove(&root_path);
 
         let next_id = state
             .wait_queues
-            .get_mut(&project_id)
+            .get_mut(&root_path)
             .and_then(|q| q.pop_front());
-        if let Some(empty) = state.wait_queues.get(&project_id) {
+        if let Some(empty) = state.wait_queues.get(&root_path) {
             if empty.is_empty() {
-                state.wait_queues.remove(&project_id);
+                state.wait_queues.remove(&root_path);
             }
         }
 
@@ -434,7 +452,7 @@ async fn handle_task_closed(
                 let job = state.pending.remove(idx);
                 state
                     .last_promoted_open_id
-                    .insert(project_id.clone(), job.task_id.clone());
+                    .insert(root_path.clone(), job.task_id.clone());
                 if let Err(e) = save_state(state_path, state) {
                     tracing::warn!(error = ?e, "save_state before wait_previous chain fire failed");
                 }
@@ -442,7 +460,7 @@ async fn handle_task_closed(
                 fired_any = true;
             } else {
                 tracing::warn!(
-                    project = %project_id,
+                    root = %root_path,
                     job_id = %job_id,
                     "wait_queues head id missing from pending — skipping"
                 );
@@ -467,7 +485,7 @@ async fn fire_job(job: &NotifyJob) {
             Ok(()) => {
                 tracing::info!(
                     job_id = %job.id,
-                    project = %job.project_id,
+                    root = %job.root_path,
                     task = %job.task_id,
                     session = %job.target_session,
                     attempt = attempt + 1,
@@ -497,9 +515,12 @@ async fn fire_job(job: &NotifyJob) {
 }
 
 /// Конструктор NotifyJob со сгенерированным UUID и timestamp.
+///
+/// Phase 3: первый аргумент — `root_path` (cwd-only архитектура).
+/// Вызывающий код (`promote_todo`) передаёт `todo.root_path` напрямую.
 #[allow(dead_code)]
 pub fn new_job(
-    project_id: String,
+    root_path: String,
     task_id: String,
     target_session: String,
     text: String,
@@ -507,7 +528,7 @@ pub fn new_job(
 ) -> NotifyJob {
     NotifyJob {
         id: uuid::Uuid::new_v4().to_string(),
-        project_id,
+        root_path,
         task_id,
         target_session,
         text,
@@ -551,7 +572,7 @@ mod tests {
         let mut state = NotifyState::default();
         state.pending.push(NotifyJob {
             id: "job-1".into(),
-            project_id: "forge".into(),
+            root_path: "forge".into(),
             task_id: "forge-1".into(),
             target_session: "forge-main".into(),
             text: "test text".into(),
@@ -583,7 +604,7 @@ mod tests {
         let mut state = NotifyState::default();
         state.pending.push(NotifyJob {
             id: "a".into(),
-            project_id: "p".into(),
+            root_path: "p".into(),
             task_id: "p-1".into(),
             target_session: "s".into(),
             text: "x".into(),
@@ -594,7 +615,7 @@ mod tests {
         });
         state.pending.push(NotifyJob {
             id: "b".into(),
-            project_id: "p".into(),
+            root_path: "p".into(),
             task_id: "p-2".into(),
             target_session: "s".into(),
             text: "x".into(),
@@ -605,7 +626,7 @@ mod tests {
         });
         state.pending.push(NotifyJob {
             id: "c".into(),
-            project_id: "p".into(),
+            root_path: "p".into(),
             task_id: "p-3".into(),
             target_session: "s".into(),
             text: "x".into(),
@@ -643,6 +664,24 @@ mod tests {
         let s3 = serde_json::to_string(&m3).unwrap();
         let parsed: NotifyMode = serde_json::from_str(&s3).unwrap();
         assert_eq!(parsed, m3);
+    }
+
+    #[test]
+    fn legacy_project_id_alias_deserializes_to_root_path() {
+        // Phase 3 migration: старые notify_state.json содержат `project_id`.
+        // `#[serde(alias = "project_id")]` должен загружать их в root_path.
+        let body = r#"{
+            "id": "job-legacy",
+            "project_id": "/home/user/old-project",
+            "task_id": "forge-1",
+            "target_session": "s",
+            "text": "hello",
+            "mode": {"kind": "immediate"},
+            "created_at_unix_ms": 1
+        }"#;
+        let parsed: NotifyJob = serde_json::from_str(body).expect("alias must accept project_id");
+        assert_eq!(parsed.root_path, "/home/user/old-project");
+        assert_eq!(parsed.id, "job-legacy");
     }
 
     #[test]

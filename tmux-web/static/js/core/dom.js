@@ -77,9 +77,7 @@ export const $telescopeInstallHelp = document.getElementById('telescope-install-
 export const $telescopeInstallList = document.getElementById('telescope-install-list');
 export const $telescopeChannelBar = document.getElementById('telescope-channel-bar');
 
-// ---- Phase 6.B: Project bar ----
-export const $projectSelect = document.getElementById('project-select');
-export const $projectNew = document.getElementById('project-new');
+// ---- Settings bar ----
 export const $projectSettings = document.getElementById('project-settings');
 
 // ---- Phase 5: origin-табы (скрыты при remote_mode=false) ----

@@ -1,3 +1,3 @@
 # tmux-web/static/css/project-bar.css
 
-#project-bar — горизонтальная панель над основным контентом для выбора активного проекта. Содержит .project-pill (кнопка с именем проекта), активное состояние подсвечивается accent-цветом, hover увеличивает фон. 59 строк. Логика рендера — projects/render.js (если есть) или main.js.
+DELETED in Phase 5 (remove-projects-concept). CSS файл project-bar.css удалён вместе с #project-bar в index.html. Кнопка #project-settings (открытие глобального settings modal) перенесена в header. План: /Users/igorgerasimov/.claude/plans/remove-projects-concept.md (Phase 5).

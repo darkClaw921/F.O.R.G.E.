@@ -77,7 +77,6 @@ export function renderRemotesTable($remotesTbody) {
                     saveActiveOriginToStorage();
                 }
                 await fetchRemoteServers();
-                state.remoteProjects.delete(srv.id);
                 state.remoteSessions.delete(srv.id);
                 renderRemotesTable($remotesTbody);
                 renderSidebar();

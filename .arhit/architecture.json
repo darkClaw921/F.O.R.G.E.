@@ -1,6 +1,6 @@
 {
   "root": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E.",
-  "generatedAt": "2026-05-20T06:06:35.607Z",
+  "generatedAt": "2026-05-21T12:30:40.134Z",
   "nodes": [
     {
       "id": "tmux-web/static/app.js",
@@ -169,7 +169,7 @@
           "name": "bootstrap",
           "type": "function",
           "path": "tmux-web/static/js/core/bootstrap.js",
-          "line": 116,
+          "line": 114,
           "exports": [
             "bootstrap"
           ]
@@ -233,8 +233,6 @@
         "$telescopeInstallHelp",
         "$telescopeInstallList",
         "$telescopeChannelBar",
-        "$projectSelect",
-        "$projectNew",
         "$projectSettings",
         "$originTabs",
         "$tabEcho",
@@ -776,31 +774,11 @@
           ]
         },
         {
-          "id": "tmux-web/static/js/core/dom.js:$projectSelect",
-          "name": "$projectSelect",
-          "type": "variable",
-          "path": "tmux-web/static/js/core/dom.js",
-          "line": 81,
-          "exports": [
-            "$projectSelect"
-          ]
-        },
-        {
-          "id": "tmux-web/static/js/core/dom.js:$projectNew",
-          "name": "$projectNew",
-          "type": "variable",
-          "path": "tmux-web/static/js/core/dom.js",
-          "line": 82,
-          "exports": [
-            "$projectNew"
-          ]
-        },
-        {
           "id": "tmux-web/static/js/core/dom.js:$projectSettings",
           "name": "$projectSettings",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 83,
+          "line": 81,
           "exports": [
             "$projectSettings"
           ]
@@ -810,7 +788,7 @@
           "name": "$originTabs",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 86,
+          "line": 84,
           "exports": [
             "$originTabs"
           ]
@@ -820,7 +798,7 @@
           "name": "$tabEcho",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 94,
+          "line": 92,
           "exports": [
             "$tabEcho"
           ]
@@ -830,7 +808,7 @@
           "name": "$echoEl",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 95,
+          "line": 93,
           "exports": [
             "$echoEl"
           ]
@@ -840,7 +818,7 @@
           "name": "$echoSidebar",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 96,
+          "line": 94,
           "exports": [
             "$echoSidebar"
           ]
@@ -850,7 +828,7 @@
           "name": "$echoSidebarTabChats",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 97,
+          "line": 95,
           "exports": [
             "$echoSidebarTabChats"
           ]
@@ -860,7 +838,7 @@
           "name": "$echoSidebarTabAuto",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 98,
+          "line": 96,
           "exports": [
             "$echoSidebarTabAuto"
           ]
@@ -870,7 +848,7 @@
           "name": "$echoSidebarTabMemory",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 99,
+          "line": 97,
           "exports": [
             "$echoSidebarTabMemory"
           ]
@@ -880,7 +858,7 @@
           "name": "$echoConversations",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 100,
+          "line": 98,
           "exports": [
             "$echoConversations"
           ]
@@ -890,7 +868,7 @@
           "name": "$echoConversationsList",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 101,
+          "line": 99,
           "exports": [
             "$echoConversationsList"
           ]
@@ -900,7 +878,7 @@
           "name": "$echoNewChat",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 102,
+          "line": 100,
           "exports": [
             "$echoNewChat"
           ]
@@ -910,7 +888,7 @@
           "name": "$echoAutonomous",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 103,
+          "line": 101,
           "exports": [
             "$echoAutonomous"
           ]
@@ -920,7 +898,7 @@
           "name": "$echoAutonomousList",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 104,
+          "line": 102,
           "exports": [
             "$echoAutonomousList"
           ]
@@ -930,7 +908,7 @@
           "name": "$echoNewAuto",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 105,
+          "line": 103,
           "exports": [
             "$echoNewAuto"
           ]
@@ -940,7 +918,7 @@
           "name": "$echoMemory",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 106,
+          "line": 104,
           "exports": [
             "$echoMemory"
           ]
@@ -950,7 +928,7 @@
           "name": "$echoMemoryList",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 107,
+          "line": 105,
           "exports": [
             "$echoMemoryList"
           ]
@@ -960,7 +938,7 @@
           "name": "$echoMemoryRegen",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 108,
+          "line": 106,
           "exports": [
             "$echoMemoryRegen"
           ]
@@ -970,7 +948,7 @@
           "name": "$echoMain",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 109,
+          "line": 107,
           "exports": [
             "$echoMain"
           ]
@@ -980,7 +958,7 @@
           "name": "$echoHeader",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 110,
+          "line": 108,
           "exports": [
             "$echoHeader"
           ]
@@ -990,7 +968,7 @@
           "name": "$echoModelPicker",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 111,
+          "line": 109,
           "exports": [
             "$echoModelPicker"
           ]
@@ -1000,7 +978,7 @@
           "name": "$echoStatus",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 112,
+          "line": 110,
           "exports": [
             "$echoStatus"
           ]
@@ -1010,7 +988,7 @@
           "name": "$echoStatsCanvas",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 113,
+          "line": 111,
           "exports": [
             "$echoStatsCanvas"
           ]
@@ -1020,7 +998,7 @@
           "name": "$echoStatsText",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 114,
+          "line": 112,
           "exports": [
             "$echoStatsText"
           ]
@@ -1030,7 +1008,7 @@
           "name": "$echoMessages",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 115,
+          "line": 113,
           "exports": [
             "$echoMessages"
           ]
@@ -1040,7 +1018,7 @@
           "name": "$echoInputWrap",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 116,
+          "line": 114,
           "exports": [
             "$echoInputWrap"
           ]
@@ -1050,7 +1028,7 @@
           "name": "$echoInput",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 117,
+          "line": 115,
           "exports": [
             "$echoInput"
           ]
@@ -1060,7 +1038,7 @@
           "name": "$echoSend",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 118,
+          "line": 116,
           "exports": [
             "$echoSend"
           ]
@@ -1070,7 +1048,7 @@
           "name": "$echoToasts",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 119,
+          "line": 117,
           "exports": [
             "$echoToasts"
           ]
@@ -2499,70 +2477,6 @@
       ]
     },
     {
-      "id": "tmux-web/static/js/projects/new-project.js",
-      "name": "new-project.js",
-      "type": "file",
-      "path": "tmux-web/static/js/projects/new-project.js",
-      "exports": [
-        "openNewProjectModal"
-      ],
-      "children": [
-        {
-          "id": "tmux-web/static/js/projects/new-project.js:openNewProjectModal",
-          "name": "openNewProjectModal",
-          "type": "function",
-          "path": "tmux-web/static/js/projects/new-project.js",
-          "line": 8,
-          "exports": [
-            "openNewProjectModal"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "tmux-web/static/js/projects/projects.js",
-      "name": "projects.js",
-      "type": "file",
-      "path": "tmux-web/static/js/projects/projects.js",
-      "exports": [
-        "fetchProjects",
-        "renderProjectSelect",
-        "switchActiveProject"
-      ],
-      "children": [
-        {
-          "id": "tmux-web/static/js/projects/projects.js:fetchProjects",
-          "name": "fetchProjects",
-          "type": "function",
-          "path": "tmux-web/static/js/projects/projects.js",
-          "line": 22,
-          "exports": [
-            "fetchProjects"
-          ]
-        },
-        {
-          "id": "tmux-web/static/js/projects/projects.js:renderProjectSelect",
-          "name": "renderProjectSelect",
-          "type": "function",
-          "path": "tmux-web/static/js/projects/projects.js",
-          "line": 60,
-          "exports": [
-            "renderProjectSelect"
-          ]
-        },
-        {
-          "id": "tmux-web/static/js/projects/projects.js:switchActiveProject",
-          "name": "switchActiveProject",
-          "type": "function",
-          "path": "tmux-web/static/js/projects/projects.js",
-          "line": 81,
-          "exports": [
-            "switchActiveProject"
-          ]
-        }
-      ]
-    },
-    {
       "id": "tmux-web/static/js/remote/healthz.js",
       "name": "healthz.js",
       "type": "file",
@@ -2609,7 +2523,6 @@
       "path": "tmux-web/static/js/remote/servers.js",
       "exports": [
         "fetchRemoteServers",
-        "loadRemoteProjects",
         "loadRemoteSessions",
         "probeRemoteServer",
         "startRemoteHealthPoll",
@@ -2628,21 +2541,11 @@
           ]
         },
         {
-          "id": "tmux-web/static/js/remote/servers.js:loadRemoteProjects",
-          "name": "loadRemoteProjects",
-          "type": "function",
-          "path": "tmux-web/static/js/remote/servers.js",
-          "line": 50,
-          "exports": [
-            "loadRemoteProjects"
-          ]
-        },
-        {
           "id": "tmux-web/static/js/remote/servers.js:loadRemoteSessions",
           "name": "loadRemoteSessions",
           "type": "function",
           "path": "tmux-web/static/js/remote/servers.js",
-          "line": 71,
+          "line": 50,
           "exports": [
             "loadRemoteSessions"
           ]
@@ -2652,7 +2555,7 @@
           "name": "probeRemoteServer",
           "type": "function",
           "path": "tmux-web/static/js/remote/servers.js",
-          "line": 92,
+          "line": 71,
           "exports": [
             "probeRemoteServer"
           ]
@@ -2662,7 +2565,7 @@
           "name": "startRemoteHealthPoll",
           "type": "function",
           "path": "tmux-web/static/js/remote/servers.js",
-          "line": 145,
+          "line": 124,
           "exports": [
             "startRemoteHealthPoll"
           ]
@@ -2672,7 +2575,7 @@
           "name": "stopRemoteHealthPoll",
           "type": "function",
           "path": "tmux-web/static/js/remote/servers.js",
-          "line": 164,
+          "line": 143,
           "exports": [
             "stopRemoteHealthPoll"
           ]
@@ -2682,7 +2585,7 @@
           "name": "aggregateAllOrigins",
           "type": "function",
           "path": "tmux-web/static/js/remote/servers.js",
-          "line": 171,
+          "line": 150,
           "exports": [
             "aggregateAllOrigins"
           ]
@@ -2834,7 +2737,7 @@
           "name": "switchSession",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 246,
+          "line": 238,
           "exports": [
             "switchSession"
           ]
@@ -2953,7 +2856,7 @@
           "name": "openSettingsModal",
           "type": "function",
           "path": "tmux-web/static/js/settings/modal.js",
-          "line": 20,
+          "line": 18,
           "exports": [
             "openSettingsModal"
           ]
@@ -2966,28 +2869,39 @@
       "type": "file",
       "path": "tmux-web/static/js/settings/notifications-tab.js",
       "exports": [
-        "buildNotificationsForm",
-        "saveProjectSettings"
+        "fetchNotifierConfig",
+        "saveNotifierConfig",
+        "buildNotificationsForm"
       ],
       "children": [
+        {
+          "id": "tmux-web/static/js/settings/notifications-tab.js:fetchNotifierConfig",
+          "name": "fetchNotifierConfig",
+          "type": "function",
+          "path": "tmux-web/static/js/settings/notifications-tab.js",
+          "line": 16,
+          "exports": [
+            "fetchNotifierConfig"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/settings/notifications-tab.js:saveNotifierConfig",
+          "name": "saveNotifierConfig",
+          "type": "function",
+          "path": "tmux-web/static/js/settings/notifications-tab.js",
+          "line": 37,
+          "exports": [
+            "saveNotifierConfig"
+          ]
+        },
         {
           "id": "tmux-web/static/js/settings/notifications-tab.js:buildNotificationsForm",
           "name": "buildNotificationsForm",
           "type": "function",
           "path": "tmux-web/static/js/settings/notifications-tab.js",
-          "line": 10,
+          "line": 65,
           "exports": [
             "buildNotificationsForm"
-          ]
-        },
-        {
-          "id": "tmux-web/static/js/settings/notifications-tab.js:saveProjectSettings",
-          "name": "saveProjectSettings",
-          "type": "function",
-          "path": "tmux-web/static/js/settings/notifications-tab.js",
-          "line": 123,
-          "exports": [
-            "saveProjectSettings"
           ]
         }
       ]
@@ -3017,7 +2931,7 @@
           "name": "openEditRemoteRow",
           "type": "function",
           "path": "tmux-web/static/js/settings/remotes-tab.js",
-          "line": 95,
+          "line": 94,
           "exports": [
             "openEditRemoteRow"
           ]
@@ -3292,7 +3206,7 @@
           "name": "renderSidebarWithOrigin",
           "type": "function",
           "path": "tmux-web/static/js/sidebar/sidebar.js",
-          "line": 96,
+          "line": 35,
           "exports": [
             "renderSidebarWithOrigin"
           ]
@@ -3302,10 +3216,26 @@
           "name": "renderOriginSection",
           "type": "function",
           "path": "tmux-web/static/js/sidebar/sidebar.js",
-          "line": 154,
+          "line": 86,
           "exports": [
             "renderOriginSection"
           ]
+        },
+        {
+          "id": "tmux-web/static/js/sidebar/sidebar.js:renderFolderGroups",
+          "name": "renderFolderGroups",
+          "type": "function",
+          "path": "tmux-web/static/js/sidebar/sidebar.js",
+          "line": 156,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/sidebar/sidebar.js:ORPHAN_KEY",
+          "name": "ORPHAN_KEY",
+          "type": "variable",
+          "path": "tmux-web/static/js/sidebar/sidebar.js",
+          "line": 13,
+          "exports": []
         }
       ]
     },
@@ -3339,7 +3269,7 @@
         "createTuiTab",
         "initTuiTabs",
         "syncGitToCurrentSession",
-        "getActiveProject",
+        "syncTelescopeToCurrentSession",
         "mountGitTerm",
         "openLazygitForActiveProject",
         "connectGitWs",
@@ -3366,7 +3296,7 @@
           "name": "initTuiTabs",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 480,
+          "line": 474,
           "exports": [
             "initTuiTabs"
           ]
@@ -3376,7 +3306,7 @@
           "name": "sessionCwdOrNull",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 588,
+          "line": 586,
           "exports": []
         },
         {
@@ -3384,19 +3314,19 @@
           "name": "syncGitToCurrentSession",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 604,
+          "line": 602,
           "exports": [
             "syncGitToCurrentSession"
           ]
         },
         {
-          "id": "tmux-web/static/js/tabs/tui-tabs.js:getActiveProject",
-          "name": "getActiveProject",
+          "id": "tmux-web/static/js/tabs/tui-tabs.js:syncTelescopeToCurrentSession",
+          "name": "syncTelescopeToCurrentSession",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 613,
+          "line": 618,
           "exports": [
-            "getActiveProject"
+            "syncTelescopeToCurrentSession"
           ]
         },
         {
@@ -3404,7 +3334,7 @@
           "name": "_git",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 626,
+          "line": 627,
           "exports": []
         },
         {
@@ -3412,7 +3342,7 @@
           "name": "mountGitTerm",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 630,
+          "line": 631,
           "exports": [
             "mountGitTerm"
           ]
@@ -3422,7 +3352,7 @@
           "name": "openLazygitForActiveProject",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 635,
+          "line": 636,
           "exports": [
             "openLazygitForActiveProject"
           ]
@@ -3432,7 +3362,7 @@
           "name": "connectGitWs",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 640,
+          "line": 641,
           "exports": [
             "connectGitWs"
           ]
@@ -3442,7 +3372,7 @@
           "name": "closeGitWs",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 645,
+          "line": 646,
           "exports": [
             "closeGitWs"
           ]
@@ -3452,7 +3382,7 @@
           "name": "gitSwitchCwd",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 650,
+          "line": 651,
           "exports": [
             "gitSwitchCwd"
           ]
@@ -3462,7 +3392,7 @@
           "name": "showGitBanner",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 655,
+          "line": 656,
           "exports": [
             "showGitBanner"
           ]
@@ -3472,7 +3402,7 @@
           "name": "hideGitBanner",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 660,
+          "line": 661,
           "exports": [
             "hideGitBanner"
           ]
@@ -3482,7 +3412,7 @@
           "name": "retryGitConnection",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 665,
+          "line": 666,
           "exports": [
             "retryGitConnection"
           ]
@@ -3492,7 +3422,7 @@
           "name": "sendToActivePty",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 675,
+          "line": 676,
           "exports": [
             "sendToActivePty"
           ]
@@ -3502,7 +3432,7 @@
           "name": "LAZYGIT_INSTALL_ENTRIES",
           "type": "variable",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 453,
+          "line": 447,
           "exports": []
         },
         {
@@ -3510,7 +3440,7 @@
           "name": "LAZYDOCKER_INSTALL_ENTRIES",
           "type": "variable",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 464,
+          "line": 458,
           "exports": []
         },
         {
@@ -3518,7 +3448,7 @@
           "name": "TELESCOPE_INSTALL_ENTRIES",
           "type": "variable",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 472,
+          "line": 466,
           "exports": []
         }
       ]
@@ -3702,7 +3632,7 @@
           "name": "openEditModal",
           "type": "function",
           "path": "tmux-web/static/js/tasks/modals.js",
-          "line": 164,
+          "line": 165,
           "exports": [
             "openEditModal"
           ]
@@ -3712,7 +3642,7 @@
           "name": "openTodoEditModal",
           "type": "function",
           "path": "tmux-web/static/js/tasks/modals.js",
-          "line": 249,
+          "line": 250,
           "exports": [
             "openTodoEditModal"
           ]
@@ -3741,7 +3671,7 @@
       "type": "file",
       "path": "tmux-web/static/js/tasks/render.js",
       "exports": [
-        "currentTodosProjectId",
+        "currentTodosPath",
         "renderTasks",
         "compareIssues",
         "renderColumn",
@@ -3752,13 +3682,13 @@
       ],
       "children": [
         {
-          "id": "tmux-web/static/js/tasks/render.js:currentTodosProjectId",
-          "name": "currentTodosProjectId",
+          "id": "tmux-web/static/js/tasks/render.js:currentTodosPath",
+          "name": "currentTodosPath",
           "type": "function",
           "path": "tmux-web/static/js/tasks/render.js",
           "line": 30,
           "exports": [
-            "currentTodosProjectId"
+            "currentTodosPath"
           ]
         },
         {
@@ -3766,7 +3696,7 @@
           "name": "renderTasks",
           "type": "function",
           "path": "tmux-web/static/js/tasks/render.js",
-          "line": 34,
+          "line": 37,
           "exports": [
             "renderTasks"
           ]
@@ -3776,7 +3706,7 @@
           "name": "compareIssues",
           "type": "function",
           "path": "tmux-web/static/js/tasks/render.js",
-          "line": 69,
+          "line": 72,
           "exports": [
             "compareIssues"
           ]
@@ -3786,7 +3716,7 @@
           "name": "renderColumn",
           "type": "function",
           "path": "tmux-web/static/js/tasks/render.js",
-          "line": 79,
+          "line": 82,
           "exports": [
             "renderColumn"
           ]
@@ -3796,7 +3726,7 @@
           "name": "renderTodoCard",
           "type": "function",
           "path": "tmux-web/static/js/tasks/render.js",
-          "line": 224,
+          "line": 227,
           "exports": [
             "renderTodoCard"
           ]
@@ -3806,7 +3736,7 @@
           "name": "renderCard",
           "type": "function",
           "path": "tmux-web/static/js/tasks/render.js",
-          "line": 330,
+          "line": 333,
           "exports": [
             "renderCard"
           ]
@@ -4277,7 +4207,7 @@
           "name": "disconnectTasksWs",
           "type": "function",
           "path": "tmux-web/static/js/ws/tasks-ws.js",
-          "line": 112,
+          "line": 111,
           "exports": [
             "disconnectTasksWs"
           ]
@@ -4287,7 +4217,7 @@
           "name": "scheduleTasksWsReconnect",
           "type": "function",
           "path": "tmux-web/static/js/ws/tasks-ws.js",
-          "line": 124,
+          "line": 123,
           "exports": [
             "scheduleTasksWsReconnect"
           ]
@@ -4297,7 +4227,7 @@
           "name": "handleTasksWsMessage",
           "type": "function",
           "path": "tmux-web/static/js/ws/tasks-ws.js",
-          "line": 136,
+          "line": 135,
           "exports": [
             "handleTasksWsMessage"
           ]
@@ -4307,7 +4237,7 @@
           "name": "fetchTasks",
           "type": "function",
           "path": "tmux-web/static/js/ws/tasks-ws.js",
-          "line": 200,
+          "line": 199,
           "exports": [
             "fetchTasks"
           ]
@@ -4317,7 +4247,7 @@
           "name": "syncTasksToCurrentSession",
           "type": "function",
           "path": "tmux-web/static/js/ws/tasks-ws.js",
-          "line": 229,
+          "line": 228,
           "exports": [
             "syncTasksToCurrentSession"
           ]
@@ -4327,7 +4257,7 @@
           "name": "setTasksStatus",
           "type": "function",
           "path": "tmux-web/static/js/ws/tasks-ws.js",
-          "line": 241,
+          "line": 240,
           "exports": [
             "setTasksStatus"
           ]
@@ -4360,17 +4290,26 @@
         "startTodosPolling",
         "stopTodosPolling",
         "connectTodosWs",
+        "syncTodosToCurrentSession",
         "disconnectTodosWs",
         "scheduleTodosWsReconnect",
         "handleTodosWsMessage"
       ],
       "children": [
         {
+          "id": "tmux-web/static/js/ws/todos-ws.js:sessionPathOrNull",
+          "name": "sessionPathOrNull",
+          "type": "function",
+          "path": "tmux-web/static/js/ws/todos-ws.js",
+          "line": 15,
+          "exports": []
+        },
+        {
           "id": "tmux-web/static/js/ws/todos-ws.js:fetchTodos",
           "name": "fetchTodos",
           "type": "function",
           "path": "tmux-web/static/js/ws/todos-ws.js",
-          "line": 21,
+          "line": 23,
           "exports": [
             "fetchTodos"
           ]
@@ -4380,7 +4319,7 @@
           "name": "startTodosPolling",
           "type": "function",
           "path": "tmux-web/static/js/ws/todos-ws.js",
-          "line": 42,
+          "line": 44,
           "exports": [
             "startTodosPolling"
           ]
@@ -4390,7 +4329,7 @@
           "name": "stopTodosPolling",
           "type": "function",
           "path": "tmux-web/static/js/ws/todos-ws.js",
-          "line": 47,
+          "line": 49,
           "exports": [
             "stopTodosPolling"
           ]
@@ -4400,9 +4339,19 @@
           "name": "connectTodosWs",
           "type": "function",
           "path": "tmux-web/static/js/ws/todos-ws.js",
-          "line": 54,
+          "line": 56,
           "exports": [
             "connectTodosWs"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/ws/todos-ws.js:syncTodosToCurrentSession",
+          "name": "syncTodosToCurrentSession",
+          "type": "function",
+          "path": "tmux-web/static/js/ws/todos-ws.js",
+          "line": 118,
+          "exports": [
+            "syncTodosToCurrentSession"
           ]
         },
         {
@@ -4410,7 +4359,7 @@
           "name": "disconnectTodosWs",
           "type": "function",
           "path": "tmux-web/static/js/ws/todos-ws.js",
-          "line": 112,
+          "line": 128,
           "exports": [
             "disconnectTodosWs"
           ]
@@ -4420,7 +4369,7 @@
           "name": "scheduleTodosWsReconnect",
           "type": "function",
           "path": "tmux-web/static/js/ws/todos-ws.js",
-          "line": 124,
+          "line": 140,
           "exports": [
             "scheduleTodosWsReconnect"
           ]
@@ -4430,7 +4379,7 @@
           "name": "handleTodosWsMessage",
           "type": "function",
           "path": "tmux-web/static/js/ws/todos-ws.js",
-          "line": 139,
+          "line": 155,
           "exports": [
             "handleTodosWsMessage"
           ]
@@ -4440,7 +4389,7 @@
           "name": "TODOS_WS_BACKOFFS_MS",
           "type": "variable",
           "path": "tmux-web/static/js/ws/todos-ws.js",
-          "line": 18,
+          "line": 10,
           "exports": []
         },
         {
@@ -4448,7 +4397,7 @@
           "name": "TODOS_POLL_INTERVAL_MS",
           "type": "variable",
           "path": "tmux-web/static/js/ws/todos-ws.js",
-          "line": 19,
+          "line": 11,
           "exports": []
         }
       ]

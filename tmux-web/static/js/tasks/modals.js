@@ -110,14 +110,15 @@ export function openCreateModal(preset) {
         }
 
         if (isTodo) {
-            const projectId = state.activeProjectId;
-            if (!projectId) {
-                window.alert('Активный проект не выбран');
+            const sess = (state.sessions || []).find((s) => s && s.name === state.currentSession);
+            const path = sess && sess.path ? sess.path : null;
+            if (!path) {
+                window.alert('Нет активной сессии с cwd');
                 return;
             }
             const $planMode = card.querySelector('#tm-plan-mode');
             const todoPayload = {
-                project_id: projectId,
+                path,
                 title,
                 description: ($desc.value || '').trim() || undefined,
                 plan_mode: $planMode ? !!$planMode.checked : false,
@@ -254,12 +255,10 @@ export function openTodoEditModal(todo) {
 
     let defaultSession = state.currentSession || '';
     if (!defaultSession) {
-        const projectId = todo.project_id || state.activeProjectId || null;
-        const projectSessions = (state.sessions || [])
-            .filter((s) => projectId ? s.project_id === projectId : true)
+        const allSessions = (state.sessions || [])
             .map((s) => s.name)
             .sort((a, b) => String(a).localeCompare(String(b)));
-        if (projectSessions.length > 0) defaultSession = projectSessions[0];
+        if (allSessions.length > 0) defaultSession = allSessions[0];
     }
 
     const planChecked = todo.plan_mode ? ' checked' : '';

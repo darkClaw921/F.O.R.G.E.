@@ -1,3 +1,3 @@
 # tmux-web/static/js/projects/projects.js
 
-Phase 1. Multi-project: fetchProjects (GET /api/projects + restore projectFilter из localStorage forge.projectFilter; для активного проекта — re-open active TUI tab WS), renderProjectSelect (опция All projects + список), switchActiveProject (POST /api/projects/active + disconnectWs+fetchSessions+disconnectTasksWs/TodosWs+TUI switchCwd по newPath).
+DELETED in Phase 5 (remove-projects-concept). Файл tmux-web/static/js/projects/projects.js удалён вместе со всей директорией tmux-web/static/js/projects/. Концепция «проектов» в UI снята — sidebar группирует сессии только по folder-headers (см. tmux-web/static/js/sidebar/sidebar.js). Связанный state переименован: state.todosCurrentProjectId → state.todosCurrentPath; state.activeProjectId/projects/projectFilter/remoteProjects удалены. План: /Users/igorgerasimov/.claude/plans/remove-projects-concept.md (Phase 5).

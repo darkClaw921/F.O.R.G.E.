@@ -349,16 +349,15 @@ fn parse_remote_add(args: &[String]) -> Result<Mode> {
     Ok(Mode::Remote(RemoteCmd::Add(RemoteAddOptions { url, token, label })))
 }
 
-/// Каталог, в котором живут pid- и log-файлы daemon'а. Совпадает с папкой
-/// `projects.json` (`~/.config/forge/` на Linux/macOS), что упрощает clean
-/// uninstall и не плодит лишних мест.
+/// Каталог, в котором живут pid- и log-файлы daemon'а.
+/// `~/.config/forge/` на Linux/macOS — стандартный конфиг-путь F.O.R.G.E.
+///
+/// После Phase 4 (`remove-projects-concept`) больше нет `projects.json`,
+/// от которого ранее производился этот каталог; путь вычисляется напрямую
+/// из `HOME`.
 pub fn state_dir() -> Result<PathBuf> {
-    let registry = crate::projects::default_registry_path()?;
-    let parent = registry
-        .parent()
-        .context("registry path has no parent directory")?
-        .to_path_buf();
-    Ok(parent)
+    let home = std::env::var("HOME").context("HOME env var not set")?;
+    Ok(PathBuf::from(home).join(".config").join("forge"))
 }
 
 /// `~/.config/forge/devforge.pid`

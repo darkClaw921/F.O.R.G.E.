@@ -118,11 +118,12 @@
 - macOS: `⌥ Option + drag` для selection → `⌘ Cmd + C` для копирования
 - Linux/Windows: `Shift + drag` для selection → `Ctrl + Shift + C` для копирования
 
-### 📁 Projects
+### 📁 cwd-only модель
 
-- Несколько проектов, каждый со своим `.beads/`, `.forge/`, темой, настройками.
-- `POST /api/projects/init` — инициализация: создаёт `CLAUDE.md`, `TODO.md`, `.gitignore`, делает `git init`.
-- Активный проект сохраняется на сервере, переключение в один клик.
+- Источник истины — cwd сессии: TODO, beads-таски, notifier — всё резолвится по cwd.
+- Группировка в sidebar — только folder-headers (никаких project-разделов).
+- «Корень» для TODO/notifier ищется через `paths::resolve_root(cwd)`: первая папка вверх с `.beads/` → затем с `.git/` → fallback на сам cwd.
+- Глобальное хранилище: `~/.config/forge/todos.json`, `~/.config/forge/notifier.json` (один на пользователя).
 
 ### 🎨 Темы (9 пресетов + custom)
 
@@ -134,8 +135,8 @@
 ### 🔔 Notifications & Attention
 
 - `attention.rs` — детектор «требует внимания» в tmux-сессии (ANSI bell, кастомные триггеры).
-- `notifier.rs` — десктоп-нотификации с шаблонизатором сообщений.
-- Состояние в `.forge/notify_state.json`.
+- `notifier.rs` — нотификации promote TODO → bd-task через `tmux send-keys`. Глобальный конфиг в `~/.config/forge/notifier.json` (`notifier_config.rs`, REST `/api/notifier-config`).
+- Состояние pending-jobs: `~/.config/forge/notify_state.json`.
 
 ### ⌨️ UX
 
@@ -162,15 +163,17 @@
       │ (binary PTY / JSON events)                                     │
 ┌─────▼──────────────────────────────────────────────────────────────┐
 │  Rust server (axum 0.7 + tokio)                                    │
-│  REST: /api/sessions /api/tasks /api/todos /api/projects /api/themes │
+│  REST: /api/sessions /api/tasks /api/todos /api/themes /api/notifier-config │
 │                                                                    │
 │  pty.rs ── portable-pty ── tmux attach / lazygit / lazydocker / tv │
 │  ws.rs  ── generic handle_tui_socket<F> для всех TUI-табов        │
 │  tasks.rs ── shells out to `br` (beads_rust)                       │
 │  tasks_watcher.rs ── notify(6) ── .beads/issues.jsonl              │
-│  projects.rs ── .forge/projects.json + git init scaffolding        │
+│  paths.rs ── resolve_root(cwd): ближайший .beads/ → .git/ → cwd   │
+│  todos.rs ── ~/.config/forge/todos.json (by root_path)            │
+│  notifier.rs + notifier_config.rs ── send-keys + глобальный config │
 │  themes.rs   ── 9 presets + custom (atomic write)                  │
-│  attention.rs + notifier.rs ── desktop notifications               │
+│  attention.rs ── needs_attention/is_generating per session         │
 │  remote_proxy.rs ── прозрачный WS-proxy на upstream-серверы       │
 └────────────────────────────────────────────────────────────────────┘
 ```
@@ -184,10 +187,11 @@
 | `src/remote_proxy.rs`                    | Прозрачный WS-proxy для remote-режима (все `/ws/*` пути, включая TUI).                                         |
 | `src/tasks.rs`                           | REST `/api/tasks`, дёргает `br`.                                                                                                       |
 | `src/ws_tasks.rs` + `tasks_watcher.rs` | WS-стрим изменений `.beads/issues.jsonl`.                                                                                         |
-| `src/todos.rs` + `ws_todos.rs`         | TODO-конвейер с прокидыванием в tmux.                                                                                      |
-| `src/projects.rs`                        | Мульти-проекты, init, активный проект.                                                                                 |
-| `src/themes.rs`                          | 9 пресетов + custom темы.                                                                                                             |
-| `src/attention.rs` + `notifier.rs`     | Десктоп-нотификации.                                                                                                            |
+| `src/todos.rs` + `ws_todos.rs`         | TODO-конвейер по cwd: `~/.config/forge/todos.json` сгруппирован по `root_path`; WS `?path=<cwd>` через `paths::resolve_root`. |
+| `src/paths.rs`                           | `resolve_root(cwd)` — поиск корня (`.beads/` → `.git/` → cwd).                                                              |
+| `src/notifier_config.rs`                 | Глобальный конфиг notifier (template/delay/wait_previous/session) в `~/.config/forge/notifier.json`. REST `/api/notifier-config`. |
+| `src/themes.rs`                          | 9 пресетов + custom темы (глобально).                                                                                              |
+| `src/attention.rs` + `notifier.rs`     | needs_attention/is_generating per session + send-keys нотификации.                                                          |
 | `static/`                                | `index.html`, `app.js` (~4.5k), `style.css` (~2.2k), `hotkeys.js`.                                                                        |
 
 ---
@@ -247,7 +251,9 @@ devforge --help                # полный список опций
 
 - `devforge.pid` — PID запущенного daemon'а
 - `devforge.log` — append-only лог daemon'а (stdout + stderr)
-- `projects.json` — реестр проектов (общий с foreground-режимом)
+- `todos.json` — глобальные TODO, сгруппированные по `root_path` (cwd-derived)
+- `notifier.json` — глобальный конфиг notifier (template/delay/wait_previous/session)
+- `projects.json` — *legacy*, остаётся на диске для миграции; новой версией не читается (см. `tmux-web/MIGRATION_no_projects.md`)
 
 **Runtime-зависимости:**
 
@@ -318,9 +324,17 @@ curl http://127.0.0.1:7331/api/echo/healthz   # → 200 "ok"
 (`EchoHostAdapter`). См. план `plugins/echo/README.md` (появится в
 последующих фазах) и комментарии в `forge_echo::register_routes`.
 
-### Инициализация нового проекта в UI
+### Инициализация рабочего каталога
 
-`Sidebar → ⚙ Settings → New project → Init`. Создаёт `CLAUDE.md`, `TODO.md`, `.gitignore`, делает `git init`.
+После remove-projects-concept в UI больше нет «New project» — корень для TODO/notifier резолвится автоматически (`paths::resolve_root` ищет `.beads/` → `.git/`). Инициализация cwd-каталога теперь ручная:
+
+```bash
+cd /path/to/your/work
+git init
+br init                    # если хотите beads-таски
+```
+
+После этого все TODO и promote-нотификации, привязанные к сессии с этим cwd, будут группироваться под этим корнем.
 
 ### 🔁 Pre-commit hook (тесты + авто-бамп версии)
 
@@ -351,22 +365,19 @@ git config core.hooksPath .githooks
 | GET                         | `/healthz`                        | Health-check.                                      |
 | GET / POST                  | `/api/sessions`                   | Список / создание tmux-сессий. |
 | DELETE                      | `/api/sessions/:name`             | Убить сессию.                           |
-| GET / POST                  | `/api/tasks`                      | Канбан-задачи (`br`).                |
+| GET / POST                  | `/api/tasks?path=<cwd>`           | Канбан-задачи (`br`) для `.beads/` корня cwd. |
 | PATCH / DELETE              | `/api/tasks/:id`                  | Обновить / закрыть задачу.    |
 | POST                        | `/api/tasks/:id/reopen`           | Переоткрыть закрытую.           |
-| GET / POST                  | `/api/projects`                   | Проекты.                                    |
-| PATCH                       | `/api/projects/:id/settings`      | Настройки проекта.                 |
-| POST                        | `/api/projects/active`            | Сделать активным.                   |
-| POST                        | `/api/projects/init`              | Init (CLAUDE.md, TODO.md, git).                    |
-| GET / POST / PATCH / DELETE | `/api/todos[/:id]`                | TODO CRUD.                                         |
-| POST                        | `/api/todos/:id/promote`          | Промоут TODO → tmux.                       |
+| GET / POST / PATCH / DELETE | `/api/todos[/:id]?path=<cwd>`     | TODO CRUD. Резолвится через `paths::resolve_root(cwd)`. |
+| POST                        | `/api/todos/:id/promote`          | Промоут TODO → tmux (по cwd).             |
+| GET / PATCH                 | `/api/notifier-config`            | Глобальный конфиг notifier.        |
 | GET / PATCH                 | `/api/themes[/active]`            | Темы.                                          |
 | POST / PUT / DELETE         | `/api/themes/custom[/:id]`        | Custom-темы.                                   |
 | GET (WS)                    | `/ws/attach?session=&cols=&rows=` | tmux attach.                                       |
-| GET (WS)                    | `/ws/lazygit?cwd=&cols=&rows=`    | lazygit TUI в cwd проекта.                 |
-| GET (WS)                    | `/ws/lazydocker?cwd=&cols=&rows=` | lazydocker TUI в cwd проекта.              |
+| GET (WS)                    | `/ws/lazygit?cwd=&cols=&rows=`    | lazygit TUI в cwd сессии.                 |
+| GET (WS)                    | `/ws/lazydocker?cwd=&cols=&rows=` | lazydocker TUI в cwd сессии.              |
 | GET (WS)                    | `/ws/telescope?cwd=&cols=&rows=`  | television (`tv`) fuzzy-finder.                  |
-| GET (WS)                    | `/ws/tasks` / `/ws/todos`       | Live-стримы JSON.                            |
+| GET (WS)                    | `/ws/tasks?path=<cwd>` / `/ws/todos?path=<cwd>` | Live-стримы JSON по cwd. |
 
 ---
 
@@ -399,11 +410,12 @@ git config core.hooksPath .githooks
 
 State-файлы:
 
-- `.beads/issues.jsonl` — задачи (под git).
-- `.forge/todos.json` — TODO-стейт.
-- `.forge/notify_state.json` — нотификации.
+- `.beads/issues.jsonl` — задачи (под git, в корне проекта).
+- `<data_dir>/todos.json` — глобальные TODO, сгруппированы по `root_path` (cwd-derived).
+- `<data_dir>/notify_state.json` — pending-jobs notifier'а.
+- `<data_dir>/notifier.json` — глобальный конфиг notifier (template/delay/wait_previous/session).
 - `<data_dir>/themes.json` — темы.
-- `<data_dir>/projects.json` — проекты.
+- `<data_dir>/projects.json` — *legacy* (только для миграции, новой версией не читается).
 
 ---
 

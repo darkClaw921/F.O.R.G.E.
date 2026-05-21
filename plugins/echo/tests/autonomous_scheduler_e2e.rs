@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use echo_host_api::{HostApi, ProjectInfo, SessionInfo};
+use echo_host_api::{HostApi, SessionInfo};
 use forge_echo::claude::ClaudeRunner;
 use forge_echo::db::repo::{autonomous, stats};
 use forge_echo::db::Db;
@@ -40,12 +40,6 @@ impl HostApi for StubHost {
     }
     async fn capture_pane_full(&self, _s: &str, _l: i32) -> anyhow::Result<String> {
         Ok(String::new())
-    }
-    async fn list_projects(&self) -> anyhow::Result<Vec<ProjectInfo>> {
-        Ok(Vec::new())
-    }
-    async fn active_project_id(&self) -> Option<String> {
-        None
     }
     fn auth_token(&self) -> Option<String> {
         None

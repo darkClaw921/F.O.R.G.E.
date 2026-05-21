@@ -1,24 +1,20 @@
-// tmux-web — Sidebar render (Phase 1 ES Modules refactor)
+// tmux-web — Sidebar render
 //
-// 1:1 копии из IIFE `tmux-web/static/app.js`:
-//   - renderSidebar           (app.js:563)
-//   - renderSidebarWithOrigin (app.js:1017)
-//   - renderOriginSection     (app.js:1101)
+// Группировка только по folder_id/folder_label (без projects).
+// В remote-mode добавляются origin-секции (local + remote-серверы).
 
 import { state } from '../core/state.js';
 import { $sidebar } from '../core/dom.js';
 import { isRemoteMode } from '../remote/healthz.js';
 import { renderOriginTabs, isOriginCollapsed, toggleOriginCollapsed } from './origin-tabs.js';
-import { loadRemoteProjects, loadRemoteSessions } from '../remote/servers.js';
+import { loadRemoteSessions } from '../remote/servers.js';
 import { buildSessionItem, groupSessionsByFolder } from '../sessions/sessions.js';
 
+const ORPHAN_KEY = '__orphan__';
+
 export function renderSidebar() {
-    // Phase 5: в remote-mode рендерим origin-табы (или прячем UI, если не).
     renderOriginTabs();
 
-    // Phase 5: в remote-mode используем двухуровневую группировку
-    // Origin → Project → Sessions. В legacy режиме — поведение Phase 6.B
-    // (project-grouping) сохраняется побитово.
     if (isRemoteMode()) {
         renderSidebarWithOrigin();
         return;
@@ -33,64 +29,7 @@ export function renderSidebar() {
         return;
     }
 
-    const ORPHAN_KEY = '__orphan__';
-    const projectFilter = state.projectFilter;
-    const visible = projectFilter === '__all__'
-        ? state.sessions
-        : state.sessions.filter((s) => s.project_id === projectFilter);
-
-    if (visible.length === 0) {
-        const li = document.createElement('li');
-        li.className = 'empty';
-        li.textContent = projectFilter === '__all__'
-            ? 'Нет активных сессий'
-            : 'Нет сессий в этом проекте';
-        $sidebar.appendChild(li);
-        return;
-    }
-
-    const groups = new Map();
-    for (const sess of visible) {
-        const key = sess.folder_id == null ? ORPHAN_KEY : sess.folder_id;
-        if (!groups.has(key)) groups.set(key, []);
-        groups.get(key).push(sess);
-    }
-    for (const arr of groups.values()) {
-        arr.sort((a, b) => a.name.localeCompare(b.name));
-    }
-
-    const nonOrphanKeys = [];
-    for (const key of groups.keys()) {
-        if (key !== ORPHAN_KEY) nonOrphanKeys.push(key);
-    }
-    nonOrphanKeys.sort((a, b) => {
-        const la = (groups.get(a)[0].folder_label || a).toLowerCase();
-        const lb = (groups.get(b)[0].folder_label || b).toLowerCase();
-        return la.localeCompare(lb);
-    });
-
-    for (const key of nonOrphanKeys) {
-        const arr = groups.get(key);
-        if (!arr || arr.length === 0) continue;
-        const keyDisplay = key.startsWith('__folder:') ? key.slice('__folder:'.length) : key;
-        const header = document.createElement('li');
-        header.className = 'session-group-header';
-        header.textContent = arr[0].folder_label || keyDisplay;
-        $sidebar.appendChild(header);
-        for (const sess of arr) {
-            $sidebar.appendChild(buildSessionItem(sess));
-        }
-    }
-    const orphans = groups.get(ORPHAN_KEY);
-    if (orphans && orphans.length > 0) {
-        const header = document.createElement('li');
-        header.className = 'session-group-header';
-        header.textContent = 'Orphan';
-        $sidebar.appendChild(header);
-        for (const sess of orphans) {
-            $sidebar.appendChild(buildSessionItem(sess));
-        }
-    }
+    renderFolderGroups(state.sessions);
 }
 
 export function renderSidebarWithOrigin() {
@@ -105,7 +44,7 @@ export function renderSidebarWithOrigin() {
     const isAllView = state.activeOrigin === 'all';
 
     if (showLocal) {
-        renderOriginSection('local', 'Local', 'local', state.projects, state.sessions, {
+        renderOriginSection('local', 'Local', 'local', state.sessions, {
             isRemote: false,
             isOffline: false,
         });
@@ -115,25 +54,18 @@ export function renderSidebarWithOrigin() {
         if (!srv) continue;
         const status = state.remoteOnline.get(sid) || 'unknown';
         const isOffline = status === 'offline';
-        const projects = state.remoteProjects.get(sid);
         const sessions = state.remoteSessions.get(sid);
 
         const shouldLazyLoad = !isOffline && (
             isAllView || !isOriginCollapsed(sid)
         );
-        if (shouldLazyLoad) {
-            if (projects === undefined) {
-                loadRemoteProjects(sid);
-            }
-            if (sessions === undefined) {
-                loadRemoteSessions(sid).then(() => renderSidebar());
-            }
+        if (shouldLazyLoad && sessions === undefined) {
+            loadRemoteSessions(sid).then(() => renderSidebar());
         }
         renderOriginSection(
             sid,
             srv.label || sid,
             status,
-            projects || [],
             sessions || [],
             {
                 isRemote: true,
@@ -151,7 +83,7 @@ export function renderSidebarWithOrigin() {
     }
 }
 
-export function renderOriginSection(originKey, label, dotKind, projects, sessions, opts) {
+export function renderOriginSection(originKey, label, dotKind, sessions, opts) {
     opts = opts || {};
     const collapsed = isOriginCollapsed(originKey);
     const isOffline = !!opts.isOffline;
@@ -218,23 +150,12 @@ export function renderOriginSection(originKey, label, dotKind, projects, session
         return;
     }
 
-    const ORPHAN_KEY = '__orphan__';
-    const pf = state.projectFilter;
-    const visible = (pf && pf !== '__all__')
-        ? sessions.filter((s) => s.project_id === pf)
-        : sessions;
+    renderFolderGroups(sessions, { inOrigin: true });
+}
 
-    if (visible.length === 0) {
-        const li = document.createElement('li');
-        li.className = 'empty';
-        li.textContent = (pf && pf !== '__all__')
-            ? 'Нет сессий в этом проекте'
-            : 'Нет активных сессий';
-        $sidebar.appendChild(li);
-        return;
-    }
-
-    const byFolder = groupSessionsByFolder(visible, ORPHAN_KEY);
+function renderFolderGroups(sessions, opts) {
+    const inOrigin = !!(opts && opts.inOrigin);
+    const byFolder = groupSessionsByFolder(sessions, ORPHAN_KEY);
 
     const nonOrphanKeys = [];
     for (const key of byFolder.keys()) {
@@ -246,29 +167,35 @@ export function renderOriginSection(originKey, label, dotKind, projects, session
         return la.localeCompare(lb);
     });
 
+    const orphans = byFolder.get(ORPHAN_KEY);
+    const hasFolders = nonOrphanKeys.length > 0;
+
     for (const key of nonOrphanKeys) {
         const arr = byFolder.get(key);
         if (!arr || arr.length === 0) continue;
         const keyDisplay = key.startsWith('__folder:') ? key.slice('__folder:'.length) : key;
         const ph = document.createElement('li');
-        ph.className = 'project-sub-header';
+        ph.className = inOrigin ? 'project-sub-header' : 'session-group-header';
         ph.textContent = arr[0].folder_label || keyDisplay;
         $sidebar.appendChild(ph);
         for (const sess of arr) {
             const li = buildSessionItem(sess);
-            li.classList.add('in-origin');
+            if (inOrigin) li.classList.add('in-origin');
             $sidebar.appendChild(li);
         }
     }
-    const orphans = byFolder.get(ORPHAN_KEY);
     if (orphans && orphans.length > 0) {
-        const ph = document.createElement('li');
-        ph.className = 'project-sub-header';
-        ph.textContent = 'Orphan';
-        $sidebar.appendChild(ph);
+        // Если есть folder-группы — рендерим заголовок "All sessions" / "Orphan";
+        // если folder'ов нет — выводим сессии плоско, без заголовка.
+        if (hasFolders) {
+            const ph = document.createElement('li');
+            ph.className = inOrigin ? 'project-sub-header' : 'session-group-header';
+            ph.textContent = 'All sessions';
+            $sidebar.appendChild(ph);
+        }
         for (const sess of orphans) {
             const li = buildSessionItem(sess);
-            li.classList.add('in-origin');
+            if (inOrigin) li.classList.add('in-origin');
             $sidebar.appendChild(li);
         }
     }

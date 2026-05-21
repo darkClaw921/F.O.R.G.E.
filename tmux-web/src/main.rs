@@ -1,10 +1,11 @@
 //! tmux-web — web-viewer для активных tmux-сессий.
 //!
-//! Phase 6.B: multi-project. AppState держит `Arc<RwLock<ProjectStore>>`,
-//! все эндпоинты получают активный проект (path + tmux_prefix) и работают
-//! в его контексте: tasks читаются из `active.path`, сессии фильтруются и
-//! префиксуются по `active.tmux_prefix`, новые сессии стартуют в
-//! `active.path` (`tmux new-session -c`).
+//! После Phase 4 (`remove-projects-concept`) понятие «проект» удалено
+//! полностью: концепция `ProjectStore`, REST-эндпоинты `/api/projects/*`,
+//! поля `SessionDto.project_id/project_name` и фильтрация по
+//! `tmux_prefix` сняты. Источник истины — cwd активной сессии; tasks/todos
+//! привязаны к корню (`paths::resolve_root` от cwd сессии). Группировка
+//! сессий — только folder-headers (`SessionDto.folder_id/folder_label`).
 
 mod attention;
 mod auth;
@@ -15,7 +16,14 @@ mod daemon;
 mod echo_host;
 #[allow(dead_code)] // публичный API используется в Phase 3 (POST /api/todos/:id/promote)
 mod notifier;
-mod projects;
+// Phase 3 — глобальный конфиг notifier'а (template/delay/wait_previous/session).
+// Снимает привязку notify-настроек к Project (см. план remove-projects-concept.md).
+mod notifier_config;
+// Резолв «корня» (.beads/ → .git/ → cwd) для cwd-only архитектуры
+// (см. план remove-projects-concept.md). Используется TodoStore (Phase 1+),
+// REST/WS API в Phase 2 и notifier в Phase 3.
+#[allow(dead_code)] // API будет вызываться из main.rs хендлеров в Phase 2
+mod paths;
 mod pty;
 mod qr_print;
 // Phase 3 — модуль HTTP-прокси на удалённые devforge. Публичные функции
@@ -39,7 +47,7 @@ mod ws_todos;
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -51,12 +59,11 @@ use axum::routing::{delete, get, patch, post, put};
 use axum::Router;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
-use tokio::process::Command as TokioCommand;
 use tokio::sync::{broadcast, watch, RwLock};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 
-use crate::projects::{ensure_prefixed, Project, ProjectStore};
+use crate::notifier_config::{NotifierConfig, NotifierConfigStore, PatchNotifierConfigReq};
 use crate::tasks::TaskEvent;
 use crate::themes::{Theme, ThemesState};
 use crate::tmux::SessionInfo;
@@ -66,22 +73,21 @@ use crate::ws_todos::TodoEvent;
 
 /// Глобальное состояние axum-приложения.
 ///
-/// `projects` под `Arc<RwLock<…>>` — чтения (GET /api/projects, GET
-/// /api/sessions, GET /api/tasks) идут параллельно, write (POST/DELETE)
-/// сериализуются. Disk persistence — через `ProjectStore::save()` под
-/// write-lock'ом.
+/// После Phase 4 (`remove-projects-concept`) поле `projects: ProjectStore`
+/// удалено — концепция проектов снята целиком. Tasks/todos берут cwd либо
+/// из явного query-параметра `?path=`, либо из `active_path_tx`
+/// (extension-point — обновляется хост-кодом, например при переключении
+/// активной сессии). Дефолтное начальное значение — cwd процесса.
 ///
-/// Phase 6.D:
 /// - `tasks_tx` — broadcast-sender, в который [`tasks_watcher::run_watcher`]
 ///   пушит [`TaskEvent`] при изменениях `.beads/issues.jsonl`. WS-handler
 ///   `/ws/tasks` делает `subscribe()` на каждое соединение.
 /// - `active_path_tx` — watch-sender для пересоздания watcher'а при смене
-///   активного проекта. Любой эндпоинт, меняющий active project, должен
-///   `state.active_path_tx.send(new_path)` сразу после `store.save()`.
+///   активного пути. Sender держится в state, изменение пути — опциональный
+///   extension-point (см. doc-string `tasks_watcher::run_watcher`).
 #[derive(Clone)]
 struct AppState {
-    projects: Arc<RwLock<ProjectStore>>,
-    /// Phase 6.D — broadcast-канал глобальных task-событий активного проекта.
+    /// broadcast-канал глобальных task-событий активного пути.
     /// Используется `notifier.rs` (subscribe в `main()` до создания AppState).
     /// `ws_tasks` больше не подписывается — у каждого WS свой per-conn watcher.
     /// Поле остаётся в state, чтобы newer endpoints могли получить subscribe()
@@ -113,9 +119,8 @@ struct AppState {
     /// [`themes::save`]. Чтение GET /api/themes* — read-lock; мутирующие
     /// PATCH/POST/PUT/DELETE — write-lock.
     themes: Arc<RwLock<ThemesState>>,
-    /// Phase wk7 — каталог для `themes.json` (тот же `~/.config/forge/`,
-    /// что и `projects.json`). Хранится в state, чтобы не пересчитывать
-    /// `default_registry_path` в каждом handler'е.
+    /// Phase wk7 — каталог для `themes.json` (типично `~/.config/forge/`).
+    /// Хранится в state, чтобы не пересчитывать его в каждом handler'е.
     themes_dir: PathBuf,
     /// Phase 1 — флаг remote-mode. True ⇒ сервер запущен с `--remote`
     /// (или с server_config.json, подразумевающим remote). Используется
@@ -145,6 +150,12 @@ struct AppState {
     /// (Arc<RwLock> внутри). Используется REST-handler'ами
     /// `/api/user-settings` и `promote_todo` (кастомный plan_mode_suffix).
     user_settings: UserSettingsStore,
+    /// Phase 3 — глобальный конфиг notifier'а
+    /// (`~/.config/forge/notifier.json`). Cheap-clonable (Arc<RwLock> внутри).
+    /// Используется `promote_todo` (template/delay/wait_previous/session) и
+    /// REST-эндпоинтами `/api/notifier-config`. Заменяет соответствующие
+    /// поля старого `Project` (см. план `remove-projects-concept.md`).
+    notifier_config: NotifierConfigStore,
 }
 
 #[tokio::main]
@@ -241,18 +252,7 @@ async fn main() -> anyhow::Result<()> {
         }))
         .init();
 
-    // Загрузка реестра проектов. При первом старте создастся
-    // ~/.config/forge/projects.json с дефолтным проектом forge.
-    let registry_path = projects::default_registry_path()?;
-    let store = ProjectStore::load(registry_path.clone())
-        .with_context(|| format!("failed to load project registry from {}", registry_path.display()))?;
-    tracing::info!(
-        path = %registry_path.display(),
-        active = %store.active().id,
-        count = store.list().len(),
-        "loaded project registry"
-    );
-    // Phase 6.D — каналы для realtime task-watcher.
+    // Каналы для realtime task-watcher.
     //
     // tasks_tx: broadcast(64) — глубина 64 сообщений достаточна для
     // короткого burst'а (`br sync` обычно даёт 1-3 события). При лагающем
@@ -261,8 +261,15 @@ async fn main() -> anyhow::Result<()> {
     //
     // active_path_tx: watch — последняя value-семантика, идеально для
     // «активный путь сейчас X». Watcher подписывается через .changed().
+    //
+    // После Phase 4 (`remove-projects-concept`) initial_path берётся из
+    // cwd процесса — раньше это был `store.active().path`. Если cwd
+    // получить не удалось (теоретический edge-case), используем `/`.
     let (tasks_tx, _) = broadcast::channel::<TaskEvent>(64);
-    let initial_path = store.active().path.clone();
+    let initial_path = std::env::current_dir().unwrap_or_else(|e| {
+        tracing::warn!(error = ?e, "failed to read current_dir; falling back to /");
+        PathBuf::from("/")
+    });
     let (active_path_tx, active_path_rx) = watch::channel(initial_path.clone());
     let active_path_tx = Arc::new(active_path_tx);
 
@@ -285,13 +292,22 @@ async fn main() -> anyhow::Result<()> {
         .with_context(|| format!("failed to init TodoStore at {}", initial_path.display()))?;
     let (todos_tx, _) = broadcast::channel::<TodoEvent>(64);
 
-    // Phase wk7 — Themes state. Каталог = parent registry_path (типично
-    // `~/.config/forge/`). Если файла нет или он повреждён — `themes::load`
-    // вернёт ThemesState::default() (active="default", custom=[]) без паники.
-    let themes_dir = registry_path
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| PathBuf::from("."));
+    // Phase wk7 — Themes state. Каталог `~/.config/forge/` — стандартное
+    // место для всех глобальных конфигов F.O.R.G.E. После удаления
+    // ProjectStore (Phase 4 remove-projects-concept) computed напрямую из
+    // HOME. Если файла нет или он повреждён — `themes::load` вернёт
+    // ThemesState::default() (active="default", custom=[]) без паники.
+    let themes_dir = match std::env::var("HOME") {
+        Ok(home) => PathBuf::from(home).join(".config").join("forge"),
+        Err(_) => PathBuf::from("."),
+    };
+    if let Err(e) = std::fs::create_dir_all(&themes_dir) {
+        tracing::warn!(
+            path = %themes_dir.display(),
+            error = ?e,
+            "failed to create themes parent dir; first theme save may fail"
+        );
+    }
     let themes_state = themes::load(&themes_dir);
     tracing::info!(
         dir = %themes_dir.display(),
@@ -364,8 +380,26 @@ async fn main() -> anyhow::Result<()> {
         "user_settings store initialized"
     );
 
+    // Phase 3 — глобальный notifier-config: `~/.config/forge/notifier.json`.
+    // Файл создаётся лениво при первом PATCH/PUT. parent-каталог создаём
+    // eagerly, чтобы первая запись не падала из-за отсутствия `~/.config/forge/`.
+    let notifier_cfg_path = notifier_config::default_config_path();
+    if let Some(parent) = notifier_cfg_path.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            tracing::warn!(
+                path = %parent.display(),
+                error = ?e,
+                "failed to create notifier-config parent dir; first patch may fail"
+            );
+        }
+    }
+    let notifier_config_store = NotifierConfigStore::new(notifier_cfg_path.clone());
+    tracing::info!(
+        path = %notifier_cfg_path.display(),
+        "notifier-config store initialized"
+    );
+
     let app_state = AppState {
-        projects: Arc::new(RwLock::new(store)),
         tasks_tx: tasks_tx.clone(),
         active_path_tx: active_path_tx.clone(),
         attention: Arc::new(attention::AttentionState::new()),
@@ -382,6 +416,7 @@ async fn main() -> anyhow::Result<()> {
         // на дефолты reqwest 0.12, где connect timeout не задан, общий — 30s).
         http: reqwest::Client::new(),
         user_settings: user_settings_store,
+        notifier_config: notifier_config_store,
     };
 
     // Spawn фоновый watcher. Живёт всю жизнь процесса; завершится только
@@ -428,12 +463,6 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/tasks/:id", patch(patch_task).delete(close_task))
         .route("/api/tasks/:id/reopen", post(reopen_task))
         .route("/api/tasks/:id/purge", post(purge_task))
-        // Projects API (Phase 6.B).
-        .route("/api/projects", get(get_projects).post(create_project))
-        .route("/api/projects/:id", delete(delete_project))
-        .route("/api/projects/:id/settings", patch(patch_project_settings))
-        .route("/api/projects/active", post(set_active_project))
-        .route("/api/projects/init", post(init_project))
         // Todos API (Phase 3).
         .route("/api/todos", get(get_todos).post(create_todo))
         .route("/api/todos/:id", patch(patch_todo).delete(delete_todo))
@@ -453,6 +482,16 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/user-settings",
             get(get_user_settings).patch(patch_user_settings),
+        )
+        // Phase 3 — глобальный конфиг notifier'а
+        // (`~/.config/forge/notifier.json`). PUT — полная замена;
+        // PATCH — частичный update. Используется фронтом Phase 5 (Settings
+        // modal — глобальный notifier-template без project-вкладки).
+        .route(
+            "/api/notifier-config",
+            get(get_notifier_config)
+                .put(put_notifier_config)
+                .patch(patch_notifier_config),
         )
         // WebSocket-attach в tmux-сессию.
         .route("/ws/attach", get(ws::attach))
@@ -903,19 +942,25 @@ struct SessionDto {
     info: SessionInfo,
     needs_attention: bool,
     /// `true` если за прошедший тик watcher'а (1.5с) содержимое последних
-    /// 30 строк pane менялось — индикатор активной генерации Claude или любого
-    /// другого процесса, рисующего в pane. Сигнал независим от
-    /// `needs_attention`: оба флага могут гореть одновременно.
-    /// См. [`attention::AttentionState::update_generation`].
+    /// 50 строк pane изменилось (prev≠current по `gen_hash50`) — индикатор
+    /// активной генерации Claude или любого другого процесса, рисующего в pane.
+    ///
+    /// Дополнительно применяется per-tick дедупликация
+    /// ([`attention::deduplicate_generating`]): среди сессий с одинаковым
+    /// `session_group`+`gen_hash50` `true` остаётся только у одной primary
+    /// (правило выбора зеркалит [`attention::pick_primary`] для
+    /// `needs_attention`). Это устраняет ложные подсветки на «зрителях»
+    /// `attach`нутого pane (например, при `switch-client` / `resize`).
+    ///
+    /// Сигнал независим от `needs_attention`: оба флага могут гореть
+    /// одновременно. См. [`attention::AttentionState::update_generation`] и
+    /// [`attention::AttentionState::set_generating`].
     is_generating: bool,
-    project_id: Option<String>,
-    project_name: Option<String>,
     /// Идентификатор папочно-ориентированной группы для sidebar-группировки.
-    /// Формат: `"__folder:<absolute_path>"`. Префикс `__folder:` гарантирует
-    /// отсутствие коллизий с `project_id` (формы `<uuid>` / `__path__:<cwd>` /
-    /// tmux-префикс). `None` только для сессий с пустым или некорректным
-    /// `path` (file_name отсутствует). Сериализуется всегда — фронт ожидает
-    /// унифицированный формат.
+    /// Формат: `"__folder:<absolute_path>"`. Префикс `__folder:` —
+    /// стабильный namespace для UI-группировки. `None` только для сессий
+    /// с пустым или некорректным `path` (file_name отсутствует).
+    /// Сериализуется всегда — фронт ожидает унифицированный формат.
     folder_id: Option<String>,
     /// Человекочитаемая метка папочной группы — basename последней папки
     /// `session.path`. Отображается в group-header sidebar. `None` зеркалит
@@ -929,18 +974,16 @@ struct SessionDto {
     origin: String,
 }
 
-/// `GET /api/sessions` — JSON-массив ВСЕХ активных tmux-сессий (без фильтра
-/// по активному проекту). Каждая сессия обогащается `project_id`/`project_name`
-/// — id и имя проекта, чей `tmux_prefix` матчит имя сессии через
-/// [`projects::session_belongs`]. Если совпадений нет — оба поля `None`
-/// (orphan-сессия, созданная вне tmux-web).
+/// `GET /api/sessions` — JSON-массив ВСЕХ активных tmux-сессий. Каждая
+/// сессия отдаётся как [`SessionDto`] = `SessionInfo` + флаг
+/// `needs_attention` из snapshot'а `state.attention` + folder-группировка.
 ///
-/// Каждая сессия отдаётся как [`SessionDto`] = `SessionInfo` + флаг
-/// `needs_attention` из snapshot'а `state.attention` + `project_id` /
-/// `project_name`. Snapshot attention снимается один раз на запрос
-/// (под коротким read-lock'ом) и не блокирует watcher. Snapshot проектов
-/// тоже снимается один раз (через `ProjectStore::list`) — это копия
-/// `Vec<Project>`, по которой матчинг идёт без удержания lock'а.
+/// Snapshot attention снимается один раз на запрос (под коротким
+/// read-lock'ом) и не блокирует watcher.
+///
+/// После Phase 4 (`remove-projects-concept`) поля `project_id`/`project_name`
+/// и фильтрация по `tmux_prefix` удалены — все сессии всегда возвращаются
+/// одинаково. Группировка в UI — через `folder_id`/`folder_label`.
 ///
 /// Если tmux-сервер не запущен — возвращает `[]` (а не 500).
 async fn get_sessions(
@@ -961,7 +1004,6 @@ async fn get_sessions(
         return result;
     }
 
-    let projects_snap = state.projects.read().await.list();
     match tmux::list_sessions().await {
         Ok(list) => {
             let attention = state.attention.snapshot().await;
@@ -971,13 +1013,10 @@ async fn get_sessions(
                 .map(|s| {
                     let needs_attention = attention.get(&s.name).copied().unwrap_or(false);
                     let is_generating = generating.get(&s.name).copied().unwrap_or(false);
-                    let (project_id, project_name) = resolve_project(&s, &projects_snap);
                     let (folder_id, folder_label) = resolve_folder(&s);
                     SessionDto {
                         needs_attention,
                         is_generating,
-                        project_id,
-                        project_name,
                         folder_id,
                         folder_label,
                         info: s,
@@ -1000,8 +1039,13 @@ struct CreateSessionReq {
     name: String,
 }
 
-/// `POST /api/sessions` — создаёт detached-сессию в cwd активного проекта.
-/// Имя автопрефиксуется по `active.tmux_prefix` если ещё не префиксовано.
+/// `POST /api/sessions` — создаёт detached-сессию в cwd «активного пути»
+/// (`state.active_path_tx.borrow()` — после Phase 4 это инициализированный
+/// cwd процесса либо последнее значение, проставленное хост-кодом).
+///
+/// После удаления проектов авто-префикс по `tmux_prefix` больше не
+/// применяется: имя используется как ввёл пользователь (с trim пробелов
+/// и базовой валидацией внутри `tmux::new_session`).
 ///
 /// - 201 Created при успехе.
 /// - 400 Bad Request при невалидном имени или duplicate.
@@ -1027,12 +1071,8 @@ async fn create_session(
     let req: CreateSessionReq = serde_json::from_slice(&body)
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid body: {e}")))?;
 
-    let (name, cwd) = {
-        let store = state.projects.read().await;
-        let active = store.active();
-        let prefixed = ensure_prefixed(&active.tmux_prefix, &req.name);
-        (prefixed, active.path.clone())
-    };
+    let name = req.name.trim().to_string();
+    let cwd = state.active_path_tx.borrow().clone();
 
     match tmux::new_session(&name, &cwd).await {
         Ok(()) => {
@@ -1090,10 +1130,8 @@ struct RenameSessionReq {
 
 /// `PATCH /api/sessions/:name` — переименовывает существующую сессию.
 /// Имя используется **ровно как ввёл пользователь** (с trim пробелов).
-/// Автопрефикса по `active.tmux_prefix` здесь нет: при rename пользователь
-/// явно задаёт желаемое имя, и навязывать `forge-…` было бы сюрпризом.
-/// При новом `POST /api/sessions` префикс применяется — там это нужно,
-/// чтобы сессия попала в активный проект.
+/// После Phase 4 (`remove-projects-concept`) tmux-prefix auto-применение
+/// снято и в `POST /api/sessions` — концепция проектов удалена.
 ///
 /// - 200 OK + `{ "name": "<new>" }` при успехе.
 /// - 400 Bad Request при невалидном теле/имени, если сессии нет или новое имя занято.
@@ -1420,7 +1458,7 @@ async fn get_tasks(
 
     // Tasks следуют за cwd текущей сессии (как git-вкладка): если фронт
     // передал ?path=<abs>, берём его как cwd для list_tasks, иначе fallback
-    // на active project.
+    // на текущее значение state.active_path_tx.
     let cwd = if let Some(p) = q
         .get("path")
         .map(|s| s.trim())
@@ -1428,8 +1466,7 @@ async fn get_tasks(
     {
         PathBuf::from(p)
     } else {
-        let store = state.projects.read().await;
-        store.active().path.clone()
+        state.active_path_tx.borrow().clone()
     };
     match tasks::list_tasks(&cwd).await {
         Ok(mut value) => {
@@ -1511,10 +1548,7 @@ async fn create_task(
         return Err((StatusCode::BAD_REQUEST, "title is required".to_string()));
     }
 
-    let cwd = {
-        let store = state.projects.read().await;
-        store.active().path.clone()
-    };
+    let cwd = state.active_path_tx.borrow().clone();
 
     // Собираем аргументы динамически — у `br create` все флаги «ключ значение»,
     // удобно держать всё в `Vec<String>` и в конце передать как `Vec<&str>`.
@@ -1607,10 +1641,7 @@ async fn patch_task(
     let req: PatchTaskReq = serde_json::from_slice(&body)
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid body: {e}")))?;
 
-    let cwd = {
-        let store = state.projects.read().await;
-        store.active().path.clone()
-    };
+    let cwd = state.active_path_tx.borrow().clone();
 
     let mut args: Vec<String> = vec!["update".to_string(), "--json".to_string(), id.clone()];
     let mut any = false;
@@ -1683,10 +1714,7 @@ async fn close_task(
         return result;
     }
 
-    let cwd = {
-        let store = state.projects.read().await;
-        store.active().path.clone()
-    };
+    let cwd = state.active_path_tx.borrow().clone();
 
     let reason = q.get("reason").map(|s| s.as_str()).unwrap_or("");
     let mut args: Vec<String> = vec!["close".to_string(), "--json".to_string(), id.clone()];
@@ -1734,10 +1762,7 @@ async fn reopen_task(
         return result;
     }
 
-    let cwd = {
-        let store = state.projects.read().await;
-        store.active().path.clone()
-    };
+    let cwd = state.active_path_tx.borrow().clone();
     let args = ["reopen", "--json", id.as_str()];
     match tasks::run_br(&args, &cwd).await {
         Ok(value) => {
@@ -1774,10 +1799,7 @@ async fn purge_task(
         return result;
     }
 
-    let cwd = {
-        let store = state.projects.read().await;
-        store.active().path.clone()
-    };
+    let cwd = state.active_path_tx.borrow().clone();
     let args = [
         "delete",
         "--hard",
@@ -1805,102 +1827,15 @@ async fn purge_task(
 }
 
 // =============================================================================
-// Projects endpoints (Phase 6.B)
+// Folder-resolution helper (Phase 4 — единственный остаток от удалённого
+// project-блока, нужен для группировки сессий в sidebar).
 // =============================================================================
-
-/// JSON-форма проекта во фронтенд. Дополнительно к полям `Project` —
-/// `active: bool` для быстрого рендера в `<select>`.
-///
-/// Phase 3: добавлены `notify_template`, `notify_delay_minutes`,
-/// `notify_wait_previous`, `notify_session` — для секции «Notifications»
-/// в Settings modal на фронтенде. Эти же поля принимаются роутом
-/// `PATCH /api/projects/:id/settings`.
-#[derive(Debug, Serialize)]
-struct ProjectDto {
-    id: String,
-    name: String,
-    path: String,
-    tmux_prefix: String,
-    active: bool,
-    notify_template: String,
-    notify_delay_minutes: u32,
-    notify_wait_previous: bool,
-    notify_session: Option<String>,
-    /// Phase 3 — источник записи. Для локального проекта — `"local"`. См.
-    /// комментарий у [`SessionDto::origin`] про унификацию формата.
-    origin: String,
-}
-
-impl ProjectDto {
-    fn new(p: &Project, active_id: &str) -> Self {
-        Self {
-            id: p.id.clone(),
-            name: folder_name(p),
-            path: p.path.display().to_string(),
-            tmux_prefix: p.tmux_prefix.clone(),
-            active: p.id == active_id,
-            notify_template: p.notify_template.clone(),
-            notify_delay_minutes: p.notify_delay_minutes,
-            notify_wait_previous: p.notify_wait_previous,
-            notify_session: p.notify_session.clone(),
-            origin: "local".to_string(),
-        }
-    }
-}
-
-/// Имя проекта = имя последней папки в `project.path`.
-/// Fallback на `Project::name` если path не содержит file_name (root, пустой и т.п.).
-fn folder_name(p: &Project) -> String {
-    p.path
-        .file_name()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_else(|| p.name.clone())
-}
-
-/// Резолвит проект для сессии. Стратегия в порядке приоритета:
-/// 1. Зарегистрированный проект, чей `path` совпадает или является префиксом
-///    `session.path` (берём самое длинное совпадение для вложенных путей).
-/// 2. Зарегистрированный проект по `tmux_prefix` имени сессии.
-/// 3. Авто-группа из basename(`session.path`) — даёт стабильное имя для
-///    несзарегистрированных папок.
-/// Возвращает `(None, None)` только если `session.path` пуст и ничего не нашли.
-fn resolve_project(
-    s: &tmux::SessionInfo,
-    projects: &[Project],
-) -> (Option<String>, Option<String>) {
-    let sess_path = std::path::Path::new(&s.path);
-
-    let by_path = projects
-        .iter()
-        .filter(|p| sess_path.starts_with(&p.path))
-        .max_by_key(|p| p.path.as_os_str().len());
-    if let Some(p) = by_path {
-        return (Some(p.id.clone()), Some(folder_name(p)));
-    }
-
-    let by_prefix = projects
-        .iter()
-        .find(|p| projects::session_belongs(&p.tmux_prefix, &s.name));
-    if let Some(p) = by_prefix {
-        return (Some(p.id.clone()), Some(folder_name(p)));
-    }
-
-    if let Some(name) = sess_path.file_name() {
-        let folder = name.to_string_lossy().into_owned();
-        let id = format!("__path__:{}", s.path);
-        return (Some(id), Some(folder));
-    }
-
-    (None, None)
-}
 
 /// Резолвит папочно-ориентированную группу для сессии.
 ///
 /// Возвращает кортеж `(folder_id, folder_label)`:
 /// - `folder_id` — стабильный ключ группы вида `"__folder:<absolute_path>"`.
-///   Префикс `__folder:` исключает коллизии с `project_id` (формы registered-uuid,
-///   `__path__:<cwd>`, tmux-префикс), используемыми в `switchActiveProject`
-///   и фильтрах TODO/`.beads`.
+///   Префикс `__folder:` — стабильный namespace для UI-группировки.
 /// - `folder_label` — basename последней папки `session.path` для отображения
 ///   в заголовке группы sidebar.
 ///
@@ -1908,9 +1843,8 @@ fn resolve_project(
 /// пустая строка — оба значения `None` (orphan-ветка sidebar отрисует через
 /// `ORPHAN_KEY`).
 ///
-/// В отличие от [`resolve_project`], НЕ учитывает зарегистрированные проекты
-/// и tmux-префиксы — это чисто файловая группировка для UI, независимая от
-/// семантики `project_id`.
+/// Это чисто файловая группировка для UI — единственный способ
+/// группировать сессии после удаления проектов (Phase 4 remove-projects-concept).
 fn resolve_folder(s: &tmux::SessionInfo) -> (Option<String>, Option<String>) {
     let p = std::path::Path::new(&s.path);
     match p.file_name().and_then(|os| os.to_str()) {
@@ -1921,350 +1855,18 @@ fn resolve_folder(s: &tmux::SessionInfo) -> (Option<String>, Option<String>) {
         _ => (None, None),
     }
 }
-
-/// `GET /api/projects` — массив всех проектов с пометкой `active`.
-async fn get_projects(
-    State(state): State<AppState>,
-    Query(q): Query<HashMap<String, String>>,
-) -> Result<Response, (StatusCode, String)> {
-    if let Some(result) = try_proxy_to_remote(
-        &state,
-        &q,
-        reqwest::Method::GET,
-        "/api/projects",
-        None,
-        None,
-        true,
-    )
-    .await
-    {
-        return result;
-    }
-
-    let store = state.projects.read().await;
-    let active = store.active_id().to_string();
-    let dtos: Vec<ProjectDto> = store
-        .list()
-        .iter()
-        .map(|p| ProjectDto::new(p, &active))
-        .collect();
-    Ok(Json(dtos).into_response())
-}
-
-/// Тело запроса `POST /api/projects`.
-#[derive(Debug, Deserialize)]
-struct CreateProjectReq {
-    name: String,
-    path: String,
-    #[serde(default)]
-    tmux_prefix: Option<String>,
-}
-
-/// `POST /api/projects` — добавляет проект в реестр (без mkdir / git init).
-///
-/// - 201 + Project DTO.
-/// - 400 при дубликате id или пустом имени.
-async fn create_project(
-    State(state): State<AppState>,
-    Json(req): Json<CreateProjectReq>,
-) -> Result<(StatusCode, Json<ProjectDto>), (StatusCode, String)> {
-    let mut store = state.projects.write().await;
-    let path = PathBuf::from(&req.path);
-    match store.add(req.name, path, req.tmux_prefix) {
-        Ok(p) => {
-            if let Err(e) = store.save() {
-                tracing::error!(error = ?e, "projects save failed");
-                return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("save: {e:#}")));
-            }
-            let active = store.active_id().to_string();
-            tracing::info!(id = %p.id, "project added");
-            Ok((StatusCode::CREATED, Json(ProjectDto::new(&p, &active))))
-        }
-        Err(e) => {
-            tracing::warn!(error = ?e, "create_project failed");
-            Err((StatusCode::BAD_REQUEST, format!("{e:#}")))
-        }
-    }
-}
-
-/// `DELETE /api/projects/:id` — удаление. Активный — 409.
-async fn delete_project(
-    State(state): State<AppState>,
-    AxumPath(id): AxumPath<String>,
-) -> Result<StatusCode, (StatusCode, String)> {
-    let mut store = state.projects.write().await;
-    // Сравниваем с registered active (не transient), иначе пока активен
-    // synthetic transient-проект, можно случайно удалить тот registered,
-    // что станет активным после clear_transient.
-    if id == store.registered_active_id() {
-        return Err((
-            StatusCode::CONFLICT,
-            format!("cannot remove the active project `{id}`"),
-        ));
-    }
-    match store.remove(&id) {
-        Ok(true) => {
-            if let Err(e) = store.save() {
-                return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("save: {e:#}")));
-            }
-            tracing::info!(%id, "project removed");
-            Ok(StatusCode::NO_CONTENT)
-        }
-        Ok(false) => Err((
-            StatusCode::NOT_FOUND,
-            format!("no project with id `{id}`"),
-        )),
-        Err(e) => Err((StatusCode::CONFLICT, format!("{e:#}"))),
-    }
-}
-
-/// Тело запроса `PATCH /api/projects/:id/settings`.
-///
-/// Все поля опциональны. Семантика `notify_session`:
-/// - отсутствие поля → не трогать;
-/// - `null` → стереть (записать None);
-/// - строка → записать значение.
-///
-/// Текущая deserialize-стратегия: serde с `Option<Option<...>>` не различает
-/// `null` и отсутствие поля без custom-кода. Здесь используем тот же
-/// `deserialize_optional_optional_string`, что и в [`PatchTodoReq`].
-#[derive(Debug, Deserialize)]
-struct PatchProjectSettingsReq {
-    #[serde(default)]
-    notify_template: Option<String>,
-    #[serde(default)]
-    notify_delay_minutes: Option<u32>,
-    #[serde(default)]
-    notify_wait_previous: Option<bool>,
-    #[serde(default, deserialize_with = "deserialize_optional_optional_string")]
-    notify_session: Option<Option<String>>,
-}
-
-/// `PATCH /api/projects/:id/settings` — обновляет notify-настройки проекта.
-///
-/// 404 если проекта нет. После апдейта — atomic save через `ProjectStore::save`.
-/// Поля, отсутствующие в body, не перезаписываются (см. doc-string на
-/// [`ProjectStore::update_settings`]).
-async fn patch_project_settings(
-    State(state): State<AppState>,
-    AxumPath(id): AxumPath<String>,
-    Json(req): Json<PatchProjectSettingsReq>,
-) -> Result<Json<ProjectDto>, (StatusCode, String)> {
-    let mut store = state.projects.write().await;
-    let updated = match store.update_settings(
-        &id,
-        req.notify_template,
-        req.notify_delay_minutes,
-        req.notify_wait_previous,
-        req.notify_session,
-    ) {
-        Some(p) => p,
-        None => {
-            return Err((
-                StatusCode::NOT_FOUND,
-                format!("no project with id `{id}`"),
-            ));
-        }
-    };
-    if let Err(e) = store.save() {
-        tracing::error!(error = ?e, "projects save failed");
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("save: {e:#}")));
-    }
-    let active = store.active_id().to_string();
-    tracing::info!(%id, "project settings updated");
-    Ok(Json(ProjectDto::new(&updated, &active)))
-}
-
-/// Тело запроса `POST /api/projects/active`.
-#[derive(Debug, Deserialize)]
-struct SetActiveReq {
-    id: String,
-}
-
-/// `POST /api/projects/active` — переключает активный проект.
-///
-/// Phase 6.D: после сохранения отправляет новый `active.path` в
-/// `state.active_path_tx`, чтобы фоновый tasks-watcher пересоздал
-/// notify-watcher на новый `.beads/`. Подписчики `/ws/tasks` дополнительно
-/// получат от клиента `{kind:"reload"}`-инициативу через JS-логику.
-async fn set_active_project(
-    State(state): State<AppState>,
-    Json(req): Json<SetActiveReq>,
-) -> Result<StatusCode, (StatusCode, String)> {
-    // Transient form: id вида `__path__:<absolute-cwd>`. Устанавливаем
-    // synthetic active project без записи в реестр. Используется для
-    // auto-group сессий из нерегистрированных папок.
-    if let Some(raw_path) = req.id.strip_prefix("__path__:") {
-        let path = PathBuf::from(raw_path);
-        if !path.is_absolute() {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                format!("transient project path must be absolute: {raw_path}"),
-            ));
-        }
-        if !path.exists() {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                format!("path does not exist: {raw_path}"),
-            ));
-        }
-        let new_path = {
-            let mut store = state.projects.write().await;
-            store.set_transient_active(path.clone());
-            store.active().path.clone()
-        };
-        if let Err(e) = state.active_path_tx.send(new_path) {
-            tracing::warn!(error = ?e, "active_path_tx.send failed; watcher may be dead");
-        }
-        tracing::info!(path = %path.display(), "active project switched (transient)");
-        return Ok(StatusCode::NO_CONTENT);
-    }
-
-    let new_path = {
-        let mut store = state.projects.write().await;
-        // Сначала чистим transient — иначе set_active не отразится в active().
-        store.clear_transient_active();
-        if let Err(e) = store.set_active(&req.id) {
-            return Err((StatusCode::BAD_REQUEST, format!("{e:#}")));
-        }
-        if let Err(e) = store.save() {
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("save: {e:#}")));
-        }
-        store.active().path.clone()
-    };
-    if let Err(e) = state.active_path_tx.send(new_path) {
-        tracing::warn!(error = ?e, "active_path_tx.send failed; watcher may be dead");
-    }
-    tracing::info!(id = %req.id, "active project switched");
-    Ok(StatusCode::NO_CONTENT)
-}
-
-/// Тело запроса `POST /api/projects/init`.
-#[derive(Debug, Deserialize)]
-struct InitProjectReq {
-    name: String,
-    path: String,
-    #[serde(default)]
-    tmux_prefix: Option<String>,
-}
-
-/// `POST /api/projects/init` — bootstrap новой папки + регистрация.
-///
-/// Что делает:
-/// 1. `mkdir -p path`.
-/// 2. `touch CLAUDE.md`, `TODO.md`.
-/// 3. Создаёт `.gitignore` со стандартом (target/, .DS_Store, node_modules,
-///    .beads/*.db, .beads/*.db-*).
-/// 4. `git init` (если ещё нет `.git`).
-/// 5. `br init` (если ещё нет `.beads`).
-/// 6. Добавляет в реестр через `store.add()` + сохраняет на диск.
-///
-/// При любом фейле инициализации каталога — 500 + сообщение. При ошибке
-/// `add` (например, дубликат id) — 400. Идемпотентность: если каталог уже
-/// существует и в нём есть файлы — touch не перезатирает, git/br init —
-/// пропускаются.
-async fn init_project(
-    State(state): State<AppState>,
-    Json(req): Json<InitProjectReq>,
-) -> Result<(StatusCode, Json<ProjectDto>), (StatusCode, String)> {
-    let path = PathBuf::from(&req.path);
-
-    // 1) mkdir -p
-    if let Err(e) = std::fs::create_dir_all(&path) {
-        tracing::error!(error = ?e, path = %path.display(), "mkdir failed");
-        return Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("mkdir {}: {e}", path.display()),
-        ));
-    }
-
-    // 2) touch CLAUDE.md / TODO.md (idempotent — не трогаем содержимое если есть).
-    if let Err(e) = touch_if_missing(&path.join("CLAUDE.md"), b"") {
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("CLAUDE.md: {e}")));
-    }
-    if let Err(e) = touch_if_missing(&path.join("TODO.md"), b"") {
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("TODO.md: {e}")));
-    }
-
-    // 3) .gitignore — стандартный набор.
-    let gitignore = b"target/\n.DS_Store\nnode_modules/\n.beads/*.db\n.beads/*.db-*\n";
-    if let Err(e) = touch_if_missing(&path.join(".gitignore"), gitignore) {
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!(".gitignore: {e}")));
-    }
-
-    // 4) git init если нет .git/.
-    if !path.join(".git").exists() {
-        if let Err(e) = run_in(&path, "git", &["init"]).await {
-            tracing::error!(error = ?e, "git init failed");
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("git init: {e}")));
-        }
-    }
-
-    // 5) br init если нет .beads/.
-    if !path.join(".beads").exists() {
-        if let Err(e) = run_in(&path, "br", &["init"]).await {
-            // Если br недоступен — это soft-fail: проект всё равно регистрируем,
-            // но возвращаем 500 чтобы пользователь увидел проблему. Beads
-            // нужен для tasks-таба, без него UI работать не будет.
-            tracing::error!(error = ?e, "br init failed");
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("br init: {e}")));
-        }
-    }
-
-    // 6) registry add + save.
-    let mut store = state.projects.write().await;
-    let added = match store.add(req.name, path, req.tmux_prefix) {
-        Ok(p) => p,
-        Err(e) => {
-            return Err((StatusCode::BAD_REQUEST, format!("{e:#}")));
-        }
-    };
-    if let Err(e) = store.save() {
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("save: {e:#}")));
-    }
-    let active = store.active_id().to_string();
-    tracing::info!(id = %added.id, path = %added.path.display(), "project initialized");
-    Ok((StatusCode::CREATED, Json(ProjectDto::new(&added, &active))))
-}
-
-/// Создаёт файл с заданным содержимым, если он ещё не существует. Если файл
-/// уже есть — оставляет его как есть (touch-семантика без перезаписи).
-fn touch_if_missing(p: &Path, contents: &[u8]) -> std::io::Result<()> {
-    if p.exists() {
-        return Ok(());
-    }
-    std::fs::write(p, contents)
-}
-
-/// Запускает `cmd args...` в `cwd` и возвращает Err при non-zero exit или
-/// невозможности spawn (например, бинарь не в PATH).
-async fn run_in(cwd: &Path, cmd: &str, args: &[&str]) -> anyhow::Result<()> {
-    let output = TokioCommand::new(cmd)
-        .args(args)
-        .current_dir(cwd)
-        .output()
-        .await
-        .with_context(|| format!("failed to spawn `{cmd}`"))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!(
-            "`{cmd} {}` failed (exit {:?}): {}",
-            args.join(" "),
-            output.status.code(),
-            stderr.trim()
-        );
-    }
-    Ok(())
-}
-
 // =============================================================================
 // TODOs endpoints (Phase 3)
 // =============================================================================
 
-/// `GET /api/todos?project_id=...` — JSON-массив TODO-карточек проекта.
+/// `GET /api/todos?path=<cwd>` — JSON-массив TODO-карточек корня.
 ///
-/// Если `project_id` не задан — используем активный проект. Возвращает
-/// пустой массив (не 404), если в проекте нет TODO.
+/// Query-параметр `path` обязателен. На бэкенде значение прогоняется через
+/// [`paths::resolve_root`] (`.beads/` → `.git/` → сам cwd), результат
+/// используется как ключ в `TodoStore`. Возвращает пустой массив (не 404),
+/// если для этого корня нет TODO.
+///
+/// Если `path` отсутствует или пустой — 400 Bad Request.
 async fn get_todos(
     State(state): State<AppState>,
     Query(q): Query<HashMap<String, String>>,
@@ -2283,18 +1885,27 @@ async fn get_todos(
         return result;
     }
 
-    let pid = match q.get("project_id").map(String::as_str) {
-        Some(s) if !s.is_empty() => s.to_string(),
-        _ => state.projects.read().await.active().id.clone(),
+    let cwd = match q.get("path").map(String::as_str) {
+        Some(s) if !s.trim().is_empty() => s.to_string(),
+        _ => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "missing required query parameter `path`".to_string(),
+            ));
+        }
     };
-    Ok(Json(state.todos.list(&pid)).into_response())
+    let root = paths::resolve_root(std::path::Path::new(&cwd));
+    let root_key = root.to_string_lossy().to_string();
+    Ok(Json(state.todos.list(&root_key)).into_response())
 }
 
 /// Тело запроса `POST /api/todos`.
+///
+/// `path` — обязателен, представляет cwd сессии-инициатора. Сервер делает
+/// `paths::resolve_root(&path)` и привязывает TODO к получившемуся корню.
 #[derive(Debug, Deserialize)]
 struct CreateTodoReq {
-    #[serde(default)]
-    project_id: Option<String>,
+    path: String,
     title: String,
     #[serde(default)]
     description: Option<String>,
@@ -2306,8 +1917,9 @@ struct CreateTodoReq {
 
 /// `POST /api/todos` — создаёт новую TODO-карточку.
 ///
-/// `project_id` опционален: если не задан — берём активный проект.
-/// Валидация: title после trim не должен быть пустым → 400.
+/// `path` в body обязателен — сервер резолвит из него корень через
+/// [`paths::resolve_root`] и сохраняет TODO в этот корень.
+/// Валидация: `path` и `title` после trim не должны быть пустыми → 400.
 /// После создания → broadcast `TodoEvent::Upsert` всем подписчикам WS.
 async fn create_todo(
     State(state): State<AppState>,
@@ -2334,15 +1946,17 @@ async fn create_todo(
     if title.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "title is required".to_string()));
     }
-    let pid = match req.project_id.as_deref() {
-        Some(s) if !s.is_empty() => s.to_string(),
-        _ => state.projects.read().await.active().id.clone(),
-    };
-    match state.todos.create(&pid, title, req.description.clone(), req.plan_mode) {
+    let cwd = req.path.trim();
+    if cwd.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "path is required".to_string()));
+    }
+    let root = paths::resolve_root(std::path::Path::new(cwd));
+    let root_key = root.to_string_lossy().to_string();
+    match state.todos.create(&root_key, title, req.description.clone(), req.plan_mode) {
         Ok(t) => {
             // Broadcast — игнорируем Err (нет подписчиков, ОК).
             let _ = state.todos_tx.send(ws_todos::upsert(t.clone()));
-            tracing::info!(id = %t.id, project = %pid, "todo created");
+            tracing::info!(id = %t.id, root = %root_key, "todo created");
             Ok((StatusCode::CREATED, Json(t)).into_response())
         }
         Err(e) => {
@@ -2358,6 +1972,9 @@ async fn create_todo(
 /// - отсутствие поля → не трогать;
 /// - `description: null` → стирает описание;
 /// - `description: "..."` → записать строку.
+///
+/// Поле `path` опционально: если задано — TODO переезжает в корень,
+/// получающийся из `paths::resolve_root(path)`. Это move между корнями.
 #[derive(Debug, Deserialize)]
 struct PatchTodoReq {
     #[serde(default)]
@@ -2367,6 +1984,10 @@ struct PatchTodoReq {
     /// `None` (поля нет) → не трогать. `Some(true|false)` → перезаписать.
     #[serde(default)]
     plan_mode: Option<bool>,
+    /// Опциональный move TODO в другой корень. Резолвится через
+    /// `paths::resolve_root`. Если пустая строка после trim — игнорируется.
+    #[serde(default)]
+    path: Option<String>,
 }
 
 /// Custom deserializer: различает «отсутствие поля» и «null».
@@ -2419,24 +2040,62 @@ async fn patch_todo(
             ));
         }
     }
-    match state
+    // 1) Поля title/description/plan_mode — обычный update.
+    let updated = match state
         .todos
         .update(&id, req.title.clone(), req.description.clone(), req.plan_mode)
     {
-        Ok(Some(t)) => {
-            let _ = state.todos_tx.send(ws_todos::upsert(t.clone()));
-            tracing::info!(%id, "todo updated");
-            Ok(Json(t).into_response())
+        Ok(Some(t)) => t,
+        Ok(None) => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                format!("no todo with id `{id}`"),
+            ));
         }
-        Ok(None) => Err((
-            StatusCode::NOT_FOUND,
-            format!("no todo with id `{id}`"),
-        )),
         Err(e) => {
             tracing::warn!(%id, error = ?e, "todo update failed");
-            Err((StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")))
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")));
         }
-    }
+    };
+    // 2) Если в body есть path — выполнить move в новый корень.
+    let final_todo = if let Some(raw_path) = req.path.as_deref() {
+        let p = raw_path.trim();
+        if p.is_empty() {
+            updated
+        } else {
+            let new_root = paths::resolve_root(std::path::Path::new(p));
+            let new_root_key = new_root.to_string_lossy().to_string();
+            if new_root_key == updated.root_path {
+                updated
+            } else {
+                let old_root = updated.root_path.clone();
+                match state.todos.move_to_root(&id, &new_root_key) {
+                    Ok(Some(t)) => {
+                        // Уведомить старый корень об удалении и новый корень о появлении.
+                        let _ = state
+                            .todos_tx
+                            .send(ws_todos::removed(old_root, id.clone()));
+                        t
+                    }
+                    Ok(None) => {
+                        // Гонка с delete — маловероятно. Логируем и возвращаем
+                        // updated (он же бывший).
+                        tracing::warn!(%id, "todo move_to_root: id disappeared between update and move");
+                        updated
+                    }
+                    Err(e) => {
+                        tracing::warn!(%id, error = ?e, "todo move_to_root failed");
+                        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")));
+                    }
+                }
+            }
+        }
+    } else {
+        updated
+    };
+    let _ = state.todos_tx.send(ws_todos::upsert(final_todo.clone()));
+    tracing::info!(%id, "todo updated");
+    Ok(Json(final_todo).into_response())
 }
 
 /// `DELETE /api/todos/:id` — удаляет TODO.
@@ -2462,8 +2121,8 @@ async fn delete_todo(
         return result;
     }
 
-    let project_id = match state.todos.get(&id) {
-        Some(t) => t.project_id,
+    let root_path = match state.todos.get(&id) {
+        Some(t) => t.root_path,
         None => {
             return Err((
                 StatusCode::NOT_FOUND,
@@ -2473,7 +2132,7 @@ async fn delete_todo(
     };
     match state.todos.delete(&id) {
         Ok(true) => {
-            let _ = state.todos_tx.send(ws_todos::removed(project_id, id.clone()));
+            let _ = state.todos_tx.send(ws_todos::removed(root_path, id.clone()));
             tracing::info!(%id, "todo deleted");
             Ok(StatusCode::NO_CONTENT.into_response())
         }
@@ -2488,9 +2147,13 @@ async fn delete_todo(
     }
 }
 
-/// Дефолтный шаблон уведомления, если у проекта `notify_template` пуст.
-/// Поддерживает плейсхолдеры `{id}`, `{title}`, `{description}`, `{priority}`,
-/// `{type}`. Используется как в [`promote_todo`], так и для UI-настроек.
+/// Дефолтный шаблон уведомления (fallback для UI-настроек на случай, если
+/// фронт хочет показать «дефолтный текст»). В `promote_todo` Phase 3 НЕ
+/// используется: если `NotifierConfig.template` пуст — notify-job просто
+/// не планируется (см. P3.3).
+///
+/// Плейсхолдеры: `{id}`, `{title}`, `{description}`, `{priority}`, `{type}`.
+#[allow(dead_code)]
 const DEFAULT_NOTIFY_TEMPLATE: &str =
     "Новая задача [{id}]: {title} — нужно сделать";
 
@@ -2527,34 +2190,35 @@ fn format_notify_template(
 
 /// Тело запроса `POST /api/todos/:id/promote`.
 ///
-/// `session` — опциональный override tmux-сессии для уведомления. Если пусто —
-/// берём `project.notify_session`, иначе fallback на `<tmux_prefix>-main`
-/// или сам `tmux_prefix` (если префикс пуст — 400, нет куда слать).
+/// Phase 3: `session` опционален. Если задан — переопределяет
+/// `NotifierConfig.session`. Если не задан, и в global config session=None —
+/// notify не отправляется (но bd-задача всё равно создаётся).
 #[derive(Debug, Deserialize)]
 struct PromoteTodoReq {
     #[serde(default)]
     session: Option<String>,
 }
 
-/// `POST /api/todos/:id/promote` — конвертирует TODO в bd-задачу и ставит
-/// уведомление в очередь.
+/// `POST /api/todos/:id/promote` — конвертирует TODO в bd-задачу и (если
+/// заданы template + session) планирует notify-job в очередь.
 ///
-/// Алгоритм:
+/// Алгоритм (Phase 3 — global NotifierConfig, без Project):
 /// 1. Найти TODO (`todos.get`) → 404 если нет.
-/// 2. Найти проект (`projects.get`) → 500 если пропал (TODO ссылается на
-///    несуществующий проект — состояние нарушено).
-/// 3. Создать bd-issue: `br create --json --title <todo.title> --description
+/// 2. Создать bd-issue: `br create --json --title <todo.title> --description
 ///    <todo.description> -t <todo.issue_type> -p <todo.priority>` в
-///    `project.path`. Получаем JSON → извлекаем `.id` (string).
-/// 4. Удалить TODO + broadcast Removed.
-/// 5. Сформировать NotifyJob:
-///    - text = format_notify_template(...)
-///    - session: req.session || project.notify_session || <tmux_prefix>-main
-///    - mode: WaitPrevious если notify_wait_previous; иначе Delayed если
-///      notify_delay_minutes>0; иначе Immediate.
-///    - валидация session: 400 при отсутствии (resolve_target_session возвр. None).
-/// 6. `notifier.enqueue(job).await`.
-/// 7. Ответ 200 `{ promoted: true, task_id: "<bd-id>" }`.
+///    `todo.root_path`. Получаем JSON → извлекаем `.id` (string).
+/// 3. Удалить TODO + broadcast Removed (с root_path).
+/// 4. Прочитать `state.notifier_config.get()`:
+///    - target session = `body.session` (если задан) else `cfg.session`.
+///    - template из `cfg.template`.
+///    - mode из `cfg.delay_minutes` + `cfg.wait_previous`:
+///        - wait_previous=true ⇒ NotifyMode::WaitPrevious
+///        - delay_minutes>0  ⇒ NotifyMode::Delayed
+///        - иначе            ⇒ NotifyMode::Immediate
+/// 5. Если `template` пуст ИЛИ target session пуст ⇒ skip notify (200 OK,
+///    но `notify_scheduled = false` в ответе).
+/// 6. Иначе — `notifier.enqueue(job).await`.
+/// 7. Ответ 200 `{ promoted: true, task_id: "<bd-id>", notify_scheduled: bool }`.
 async fn promote_todo(
     State(state): State<AppState>,
     AxumPath(id): AxumPath<String>,
@@ -2594,34 +2258,26 @@ async fn promote_todo(
         }
     };
 
-    // 2) Загружаем проект (snapshot полей под read-lock'ом).
-    let project_snap = {
-        let store = state.projects.read().await;
-        match store.find_any(&todo.project_id) {
-            Some(p) => p.clone(),
-            None => {
-                return Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("project `{}` for todo `{}` is gone", todo.project_id, id),
-                ));
-            }
-        }
-    };
+    // 2) Phase 3: глобальный NotifierConfig — источник template/delay/
+    //    wait_previous/session. body.session (если задан) переопределяет
+    //    cfg.session. Если оба пустые — notify не планируется (bd-задача
+    //    всё равно создаётся: пункт 3-4 ниже).
+    let cfg = state.notifier_config.get();
+    let target_session: Option<String> = req
+        .session
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            cfg.session
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        });
 
-    // 3) Резолвим целевую tmux-сессию заранее — чтобы НЕ создавать
-    //    bd-задачу, если кидать уведомление некуда. Иначе — orphan-задача.
-    let target_session = match resolve_notify_session(&req.session, &project_snap) {
-        Some(s) => s,
-        None => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                "no tmux session configured (set project.notify_session or pass `session` in body)"
-                    .to_string(),
-            ));
-        }
-    };
-
-    // 4) Создаём bd-задачу.
+    // 3) Создаём bd-задачу. Рабочая директория для `br` = root_path TODO.
     let priority_str = todo.priority.to_string();
     let mut br_args: Vec<String> = vec![
         "create".to_string(),
@@ -2641,7 +2297,8 @@ async fn promote_todo(
     br_args.push(priority_str);
 
     let arg_refs: Vec<&str> = br_args.iter().map(String::as_str).collect();
-    let created = match tasks::run_br(&arg_refs, &project_snap.path).await {
+    let root_path_buf = std::path::PathBuf::from(&todo.root_path);
+    let created = match tasks::run_br(&arg_refs, &root_path_buf).await {
         Ok(v) => v,
         Err(e) => {
             tracing::warn!(error = ?e, "br create failed during promote");
@@ -2667,24 +2324,41 @@ async fn promote_todo(
         tracing::warn!(?created, "br create returned no id field");
     }
 
-    // 5) Удаляем TODO + broadcast.
+    // 4) Удаляем TODO + broadcast.
     if let Err(e) = state.todos.delete(&id) {
         tracing::warn!(%id, error = ?e, "todo delete after promote failed (bd task already created)");
     } else {
         let _ = state
             .todos_tx
-            .send(ws_todos::removed(todo.project_id.clone(), id.clone()));
+            .send(ws_todos::removed(todo.root_path.clone(), id.clone()));
     }
 
-    // 6) Формируем NotifyJob и enqueue.
-    let template = if project_snap.notify_template.trim().is_empty() {
-        DEFAULT_NOTIFY_TEMPLATE
-    } else {
-        project_snap.notify_template.as_str()
-    };
+    // 5) Если template пуст или target_session не определён — notify не
+    //    планируется. bd-задача уже создана и TODO удалён — возвращаем 200
+    //    с `notify_scheduled: false`. Это валидное состояние «zero-config».
+    let template_trimmed = cfg.template.trim();
+    if template_trimmed.is_empty() || target_session.is_none() {
+        tracing::info!(
+            todo_id = %id,
+            task_id = %task_id,
+            root = %todo.root_path,
+            template_empty = template_trimmed.is_empty(),
+            session_missing = target_session.is_none(),
+            "todo promoted (notify skipped)"
+        );
+        return Ok(Json(serde_json::json!({
+            "promoted": true,
+            "task_id": task_id,
+            "notify_scheduled": false,
+        }))
+        .into_response());
+    }
+    let target_session = target_session.expect("checked is_none above");
+
+    // 6) Формируем текст по cfg.template + plan-mode suffix (если применимо).
     let description = todo.description.clone().unwrap_or_default();
     let mut text = format_notify_template(
-        template,
+        &cfg.template,
         &task_id,
         &todo.title,
         &description,
@@ -2708,25 +2382,29 @@ async fn promote_todo(
         text.push_str(suffix_str);
     }
 
-    let mode = if project_snap.notify_wait_previous {
+    // 7) Резолвим NotifyMode по cfg.wait_previous / cfg.delay_minutes.
+    //    Приоритет: wait_previous > delayed > immediate. previous_task_id =
+    //    None — notifier сам подберёт last_promoted_open_id по root_path.
+    let mode = if cfg.wait_previous {
         notifier::NotifyMode::WaitPrevious {
             previous_task_id: None,
         }
-    } else if project_snap.notify_delay_minutes > 0 {
-        let delay_ms = project_snap.notify_delay_minutes as u64 * 60_000;
-        let now = std::time::SystemTime::now()
+    } else if cfg.delay_minutes > 0 {
+        let fire_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
+            .unwrap_or(0)
+            + (cfg.delay_minutes as u64) * 60_000;
         notifier::NotifyMode::Delayed {
-            fire_at_unix_ms: now + delay_ms,
+            fire_at_unix_ms: fire_at,
         }
     } else {
         notifier::NotifyMode::Immediate
     };
 
+    // 8) NotifyJob.root_path = todo.root_path (cwd-only ключ для wait_queues).
     let job = notifier::new_job(
-        todo.project_id.clone(),
+        todo.root_path.clone(),
         task_id.clone(),
         target_session,
         text,
@@ -2740,6 +2418,7 @@ async fn promote_todo(
         return Ok(Json(serde_json::json!({
             "promoted": true,
             "task_id": task_id,
+            "notify_scheduled": false,
             "notify_warning": format!("{e:#}"),
         }))
         .into_response());
@@ -2748,40 +2427,15 @@ async fn promote_todo(
     tracing::info!(
         todo_id = %id,
         task_id = %task_id,
-        project = %todo.project_id,
+        root = %todo.root_path,
         "todo promoted"
     );
     Ok(Json(serde_json::json!({
         "promoted": true,
         "task_id": task_id,
+        "notify_scheduled": true,
     }))
     .into_response())
-}
-
-/// Резолвит целевую tmux-сессию для уведомления.
-///
-/// Приоритет:
-/// 1. Override из request body (если непустой trim).
-/// 2. `project.notify_session` (если непустой).
-/// 3. Fallback `<tmux_prefix>-main` если `tmux_prefix` непустой.
-/// 4. Иначе `None` → 400 в caller'е.
-fn resolve_notify_session(override_session: &Option<String>, project: &Project) -> Option<String> {
-    if let Some(s) = override_session.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-        return Some(s.to_string());
-    }
-    if let Some(s) = project
-        .notify_session
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        return Some(s.to_string());
-    }
-    let prefix = project.tmux_prefix.trim();
-    if prefix.is_empty() {
-        return None;
-    }
-    Some(format!("{prefix}-main"))
 }
 
 // =============================================================================
@@ -3038,6 +2692,74 @@ async fn patch_user_settings(
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("user_settings patch failed: {e:#}"),
+            ))
+        }
+    }
+}
+
+// =============================================================================
+// Notifier-config endpoints (~/.config/forge/notifier.json) — Phase 3
+// =============================================================================
+
+/// `GET /api/notifier-config` — текущий глобальный конфиг notifier'а.
+///
+/// Если файл `~/.config/forge/notifier.json` отсутствует или повреждён,
+/// возвращаются дефолты [`NotifierConfig::default`] (template="",
+/// delay_minutes=0, wait_previous=false, session=None) — это нормальное
+/// «zero-config» состояние: notify не отправляется до явного PATCH'а.
+async fn get_notifier_config(State(state): State<AppState>) -> Json<NotifierConfig> {
+    Json(state.notifier_config.get())
+}
+
+/// `PUT /api/notifier-config` — полная замена конфига.
+///
+/// Тело: целиком [`NotifierConfig`]. Все поля обязательны. После записи
+/// возвращает финальный снимок. При ошибке записи на диск — 500.
+async fn put_notifier_config(
+    State(state): State<AppState>,
+    Json(payload): Json<NotifierConfig>,
+) -> Result<Json<NotifierConfig>, (StatusCode, String)> {
+    match state.notifier_config.put(payload) {
+        Ok(updated) => {
+            tracing::info!(
+                template_len = updated.template.len(),
+                delay = updated.delay_minutes,
+                wait_previous = updated.wait_previous,
+                session = ?updated.session,
+                "notifier_config replaced (PUT)"
+            );
+            Ok(Json(updated))
+        }
+        Err(e) => {
+            tracing::error!(error = ?e, "notifier_config PUT failed");
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("notifier_config put failed: {e:#}"),
+            ))
+        }
+    }
+}
+
+/// `PATCH /api/notifier-config` — частичное обновление конфига.
+///
+/// Тело: [`PatchNotifierConfigReq`] — все поля опциональные, применяются
+/// только `Some(..)`-варианты. Семантика `session`: пустая строка после
+/// trim ⇒ сброс в `None` (sentinel «убрать дефолтную сессию»). При успехе —
+/// 200 + JSON с обновлённым [`NotifierConfig`].
+async fn patch_notifier_config(
+    State(state): State<AppState>,
+    Json(payload): Json<PatchNotifierConfigReq>,
+) -> Result<Json<NotifierConfig>, (StatusCode, String)> {
+    match state.notifier_config.patch(payload) {
+        Ok(updated) => {
+            tracing::info!("notifier_config patched (PATCH)");
+            Ok(Json(updated))
+        }
+        Err(e) => {
+            tracing::error!(error = ?e, "notifier_config PATCH failed");
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("notifier_config patch failed: {e:#}"),
             ))
         }
     }

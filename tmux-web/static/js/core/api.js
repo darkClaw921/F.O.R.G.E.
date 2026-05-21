@@ -75,7 +75,7 @@ export function withServerParam(path, origin) {
 
 /**
  * Centralized fetch helper для остальных API-вызовов. Используется ТОЛЬКО
- * там, где запрос может уходить на remote (sessions/projects/tasks/todos).
+ * там, где запрос может уходить на remote (sessions/tasks/todos).
  * Не трогает /healthz, /api/themes, /api/remote-servers (они только local).
  *
  * Origin определяется так:

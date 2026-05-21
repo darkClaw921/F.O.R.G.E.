@@ -1,7 +1,7 @@
-//! Phase 3 — WebSocket-handler `/ws/todos` для realtime TODO-стрима.
+//! WebSocket-handler `/ws/todos` для realtime TODO-стрима.
 //!
 //! Клиент подключается → сервер отправляет полный `{kind:"snapshot",todos:[...]}`
-//! (то же, что вернул бы `GET /api/todos?project_id=...`) → дальше шлёт
+//! (то же, что вернул бы `GET /api/todos?path=...`) → дальше шлёт
 //! `{kind:"upsert",todo:...}` / `{kind:"removed",id:"..."}` / `{kind:"reload"}`
 //! по мере мутаций через REST `/api/todos*`.
 //!
@@ -15,12 +15,17 @@
 //! - `{kind:"reload"}` — клиенту следует сделать `fetchTodos()`
 //!   (используется при переполнении broadcast-канала).
 //!
-//! ### Фильтрация по project_id
+//! ### Фильтрация по cwd (root_path)
 //!
-//! WS-handler принимает query-параметр `project_id`. Если он указан —
-//! сервер фильтрует входящие [`TodoEvent`] и форвардит клиенту только те,
-//! что относятся к этому проекту. Если `project_id` пуст — берём активный
-//! проект из `state.projects` на момент connect.
+//! WS-handler принимает query-параметр `path` (cwd сессии). При connect
+//! сервер делает `paths::resolve_root(path)` и сохраняет результат как
+//! подписной `root_path`. События [`TodoEvent`] несут поле `root_path`;
+//! handler форвардит клиенту только те, у которых `event.root_path()`
+//! совпадает с подписным.
+//!
+//! Если `path` не передан — клиент получает поток без фильтра (admin/debug
+//! режим): подписывается на ВСЕ события. Snapshot в этом режиме пустой
+//! (нет «дефолтного» корня).
 //!
 //! Snapshot отдаётся по тому же фильтру, что и последующие события.
 //!
@@ -61,8 +66,8 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 ///
 /// Сериализуется через `serde(tag = "kind", rename_all = "snake_case")` —
 /// итоговый JSON совместим с фронтенд-протоколом `/ws/todos`:
-/// `{"kind":"upsert","todo":{...}}`, `{"kind":"removed","id":"..."}`,
-/// `{"kind":"reload"}`.
+/// `{"kind":"upsert","todo":{...}}`, `{"kind":"removed","root_path":"...","id":"..."}`,
+/// `{"kind":"reload","root_path":"..."}`.
 ///
 /// `Snapshot` — отдельный «синтетический» вариант, **не** идущий в broadcast:
 /// формируется на стороне handler'а при connect и шлётся напрямую клиенту,
@@ -70,41 +75,45 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TodoEvent {
-    /// TODO создана/обновлена. Несёт `project_id` (для фильтрации) и `todo`.
+    /// TODO создана/обновлена. `root_path` достаётся из `todo.root_path`.
     Upsert { todo: Todo },
-    /// TODO удалена. Несёт `project_id` (для фильтрации) и `id`.
-    Removed { project_id: String, id: String },
+    /// TODO удалена. Несёт `root_path` (для фильтрации) и `id`.
+    Removed { root_path: String, id: String },
     /// Сигнал клиентам: ресинхронизироваться через `fetchTodos()`.
-    Reload { project_id: String },
+    Reload { root_path: String },
 }
 
 impl TodoEvent {
-    /// Возвращает `project_id`, к которому относится событие. Используется
-    /// сервером для фильтрации broadcast-стрима по `project_id` подписчика.
-    pub fn project_id(&self) -> &str {
+    /// Возвращает `root_path`, к которому относится событие. Используется
+    /// сервером для фильтрации broadcast-стрима по `root_path` подписчика.
+    pub fn root_path(&self) -> &str {
         match self {
-            TodoEvent::Upsert { todo } => &todo.project_id,
-            TodoEvent::Removed { project_id, .. } => project_id,
-            TodoEvent::Reload { project_id } => project_id,
+            TodoEvent::Upsert { todo } => &todo.root_path,
+            TodoEvent::Removed { root_path, .. } => root_path,
+            TodoEvent::Reload { root_path } => root_path,
         }
     }
 }
 
-/// Query-параметры WS-handler'а. `project_id` опционален — если пуст,
-/// берём активный проект из `state.projects` на момент connect.
+/// Query-параметры WS-handler'а. `path` — cwd сессии. Если не задан, клиент
+/// получает все события (admin/debug режим), но snapshot пустой.
 ///
-/// Phase 4: handler перешёл на `Query<HashMap<String,String>>` для поддержки
-/// `?server=<id>`-прокси; struct сохранён как документация контракта query.
+/// Handler фактически использует `Query<HashMap<String,String>>` для поддержки
+/// `?server=<id>`-прокси; struct оставлен как документация контракта query.
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct TodoWsQuery {
     #[serde(default)]
-    pub project_id: Option<String>,
+    pub path: Option<String>,
 }
 
-/// `GET /ws/todos?project_id=...` — upgrade в WebSocket, далее [`handle_socket`].
+/// `GET /ws/todos?path=<cwd>` — upgrade в WebSocket, далее [`handle_socket`].
 ///
-/// ### Phase 4 — поддержка `?server=<id>` (remote proxy)
+/// Если `path` задан — сервер делает `paths::resolve_root(path)` и
+/// форвардит клиенту только события с таким же `root_path`. Без `path` —
+/// клиент получает все события (admin/debug режим) без фильтрации.
+///
+/// ### Поддержка `?server=<id>` (remote proxy)
 ///
 /// При `?server=<id>` делегирует в [`remote_proxy::proxy_websocket`] на
 /// upstream `/ws/todos` (с query без `server`). При `server` + `remote_mode=false`
@@ -114,7 +123,7 @@ pub async fn todos_ws(
     State(state): State<AppState>,
     Query(raw): Query<HashMap<String, String>>,
 ) -> Response {
-    // Phase 4 — remote-proxy ветка.
+    // Remote-proxy ветка.
     if let Some(server_id) = extract_server_id(&raw) {
         if !state.remote_mode {
             tracing::warn!(server_id, "ws/todos: ?server requested in non-remote mode");
@@ -137,21 +146,31 @@ pub async fn todos_ws(
         });
     }
 
-    let project_id = match raw.get("project_id").map(|s| s.as_str()) {
-        Some(s) if !s.is_empty() => s.to_string(),
-        _ => state.projects.read().await.active().id.clone(),
+    // cwd-based фильтр: если path задан — резолвим до root, иначе None (без фильтра).
+    let subscribed_root: Option<String> = match raw.get("path").map(|s| s.as_str()) {
+        Some(s) if !s.trim().is_empty() => {
+            let root = crate::paths::resolve_root(std::path::Path::new(s.trim()));
+            Some(root.to_string_lossy().to_string())
+        }
+        _ => None,
     };
-    tracing::info!(%project_id, "ws/todos upgrade");
-    ws.on_upgrade(move |socket| handle_socket(socket, state, project_id))
+    tracing::info!(root = ?subscribed_root, "ws/todos upgrade");
+    ws.on_upgrade(move |socket| handle_socket(socket, state, subscribed_root))
 }
 
 /// Основной обработчик одного WS-соединения.
-async fn handle_socket(socket: WebSocket, state: AppState, project_id: String) {
+///
+/// `subscribed_root` = `Some(root)` — клиент получает только события этого
+/// корня; `None` — все события (admin/debug режим), snapshot пустой.
+async fn handle_socket(socket: WebSocket, state: AppState, subscribed_root: Option<String>) {
     let (ws_tx, mut ws_rx) = socket.split();
     let ws_tx = Arc::new(Mutex::new(ws_tx));
 
-    // 1) Snapshot текущего состояния TODO для project_id.
-    let todos = state.todos.list(&project_id);
+    // 1) Snapshot текущего состояния TODO для подписного root (или [] если без фильтра).
+    let todos = match subscribed_root.as_deref() {
+        Some(root) => state.todos.list(root),
+        None => Vec::new(),
+    };
     let snapshot_msg = serde_json::json!({
         "kind": "snapshot",
         "todos": todos,
@@ -174,12 +193,14 @@ async fn handle_socket(socket: WebSocket, state: AppState, project_id: String) {
         tokio::select! {
             biased;
 
-            // Broadcast: TodoEvent → JSON Text (с фильтром по project_id).
+            // Broadcast: TodoEvent → JSON Text (с фильтром по root_path).
             ev = rx.recv() => {
                 match ev {
                     Ok(event) => {
-                        if event.project_id() != project_id {
-                            continue;
+                        if let Some(ref root) = subscribed_root {
+                            if event.root_path() != root {
+                                continue;
+                            }
                         }
                         let json = match serde_json::to_string(&event) {
                             Ok(s) => s,
@@ -261,18 +282,18 @@ pub fn upsert(todo: Todo) -> TodoEvent {
 }
 
 /// Helper: сформировать `Removed` событие.
-pub fn removed(project_id: impl Into<String>, id: impl Into<String>) -> TodoEvent {
+pub fn removed(root_path: impl Into<String>, id: impl Into<String>) -> TodoEvent {
     TodoEvent::Removed {
-        project_id: project_id.into(),
+        root_path: root_path.into(),
         id: id.into(),
     }
 }
 
 /// Helper: сформировать `Reload` событие.
 #[allow(dead_code)]
-pub fn reload(project_id: impl Into<String>) -> TodoEvent {
+pub fn reload(root_path: impl Into<String>) -> TodoEvent {
     TodoEvent::Reload {
-        project_id: project_id.into(),
+        root_path: root_path.into(),
     }
 }
 
@@ -334,7 +355,7 @@ mod tests {
     fn upsert_serialization() {
         let todo = Todo {
             id: "t1".into(),
-            project_id: "forge".into(),
+            root_path: "forge".into(),
             title: "x".into(),
             description: None,
             priority: 2,
@@ -349,7 +370,8 @@ mod tests {
         let s = serde_json::to_string(&ev).unwrap();
         assert!(s.contains("\"kind\":\"upsert\""));
         assert!(s.contains("\"todo\""));
-        assert!(s.contains("\"project_id\":\"forge\""));
+        // Phase 1 — поле переименовано в root_path; project_id больше не пишется.
+        assert!(s.contains("\"root_path\":\"forge\""));
         // Phase 3 — origin сериализуется ВСЕГДА, фронт получает унифицированный формат.
         assert!(s.contains("\"origin\":\"local\""));
     }
@@ -357,30 +379,30 @@ mod tests {
     #[test]
     fn removed_serialization() {
         let ev = TodoEvent::Removed {
-            project_id: "forge".into(),
+            root_path: "/abs/forge".into(),
             id: "t1".into(),
         };
         let s = serde_json::to_string(&ev).unwrap();
         assert!(s.contains("\"kind\":\"removed\""));
-        assert!(s.contains("\"project_id\":\"forge\""));
+        assert!(s.contains("\"root_path\":\"/abs/forge\""));
         assert!(s.contains("\"id\":\"t1\""));
     }
 
     #[test]
     fn reload_serialization() {
         let ev = TodoEvent::Reload {
-            project_id: "forge".into(),
+            root_path: "/abs/forge".into(),
         };
         let s = serde_json::to_string(&ev).unwrap();
         assert!(s.contains("\"kind\":\"reload\""));
-        assert!(s.contains("\"project_id\":\"forge\""));
+        assert!(s.contains("\"root_path\":\"/abs/forge\""));
     }
 
     #[test]
-    fn project_id_extraction() {
+    fn root_path_extraction() {
         let todo = Todo {
             id: "t1".into(),
-            project_id: "p1".into(),
+            root_path: "/abs/p1".into(),
             title: "x".into(),
             description: None,
             priority: 2,
@@ -391,21 +413,21 @@ mod tests {
             updated_at: "2026-05-10T00:00:00.000Z".into(),
             origin: crate::todos::default_origin_local(),
         };
-        assert_eq!(TodoEvent::Upsert { todo }.project_id(), "p1");
+        assert_eq!(TodoEvent::Upsert { todo }.root_path(), "/abs/p1");
         assert_eq!(
             TodoEvent::Removed {
-                project_id: "p2".into(),
+                root_path: "/abs/p2".into(),
                 id: "x".into(),
             }
-            .project_id(),
-            "p2"
+            .root_path(),
+            "/abs/p2"
         );
         assert_eq!(
             TodoEvent::Reload {
-                project_id: "p3".into(),
+                root_path: "/abs/p3".into(),
             }
-            .project_id(),
-            "p3"
+            .root_path(),
+            "/abs/p3"
         );
     }
 }
