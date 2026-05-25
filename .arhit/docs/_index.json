@@ -387,9 +387,9 @@
     "element": "main::SessionDto",
     "path": "",
     "type": "unknown",
-    "content": "DTO в tmux-web/src/main.rs, сериализуемый в JSON для GET /api/sessions. После remove-projects-concept (Phase 4) поля project_id/project_name удалены — SessionDto не содержит привязки к понятию project. Структура: name, attached, windows и прочее из tmux::SessionInfo через #[serde(flatten)] + needs_attention: bool + is_generating: bool + folder_id/folder_label: Option<String> + origin: String.\n\n## Поля\n\n### needs_attention: bool\nЗаполняется из snapshot'а AppState.attention в хендлере: attention.snapshot().await.get(&s.name).copied().unwrap_or(false). Snapshot снимается ОДИН РАЗ за вызов хендлера, чтобы все сессии в ответе видели согласованное состояние watcher'а.\n\nСемантика: true когда в pane сессии обнаружен Claude prompt (permission/plan/question) И сессия является primary в дедупе группы. См. attention::deduplicate_attention.\n\n### is_generating: bool\nЗаполняется из generating_snapshot() аналогично needs_attention.\n\nСемантика:\n- true когда за прошедший тик watcher'а (1500мс) содержимое ПОСЛЕДНИХ 50 СТРОК pane изменилось (gen_hash50 prev≠current) И сессия выбрана primary в дедупе по ключу (session_group, gen_hash50).\n- Per-tick дедуп через attention::deduplicate_generating оставляет true только у primary в группе.\n\n### folder_id / folder_label: Option<String>\nПапочная группировка для sidebar в формате __folder:<path>. Источник истины — cwd сессии (session.path). Вычисляется в resolve_folder() в main.rs (единственный сохранившийся хелпер из удалённого projects-блока).\n\n### origin: String\nВсегда 'local' для локально-сгенерированных DTO. Remote-сессии прокидываются через remote_proxy::enrich_with_origin, минуя SessionDto.\n\n## Использование\n\nФронтендом sessions.js при polling GET /api/sessions каждые 3с. is_generating рендерится индикатором генерации, needs_attention — оранжевой подсветкой вкладки. Sidebar группировка идёт только по folder_id/folder_label (project-headers удалены в Phase 5).\n\n## Файл\n\ntmux-web/src/main.rs, struct SessionDto.",
+    "content": "DTO в tmux-web/src/main.rs, сериализуемый в JSON для GET /api/sessions. Поля: name/attached/windows и прочее из tmux::SessionInfo через #[serde(flatten)] + needs_attention: bool + is_generating: bool + generating_since_secs: Option<u64> + folder_id/folder_label: Option<String> + origin: String. needs_attention: true когда в pane Claude prompt И сессия primary в дедупе. is_generating: true когда за тик watcher'а (1.5с) изменились последние 50 строк pane (gen_hash50 prev≠current) И сессия primary в дедупе по (session_group, gen_hash50). generating_since_secs (новое): длительность ТЕКУЩЕЙ непрерывной серии генерации в секундах из attention::generating_age_snapshot(); заполняется только если is_generating==true, иначе None (#[serde(skip_serializing_if=Option::is_none)]); чисто информационное поле для tooltip синего индикатора работы на фронте (sessions.js::generatingTooltip). folder_id/folder_label: папочная группировка __folder:<path> из cwd сессии. origin: всегда 'local' для локальных DTO.",
     "createdAt": "2026-05-10T09:17:54.504Z",
-    "updatedAt": "2026-05-21T12:23:53.161Z"
+    "updatedAt": "2026-05-25T08:51:21.112Z"
   },
   {
     "element": "tmux-web/src/todos.rs",
@@ -877,9 +877,9 @@
     "element": "tmux-web/src/tmux.rs::capture_pane",
     "path": "",
     "type": "unknown",
-    "content": "Захватывает только видимую часть активной панели tmux-сессии (без scrollback). Команда: tmux capture-pane -p -t <session>. Используется attention::watcher_loop для детекции Claude permission prompt. Раньше использовался флаг -S -30 (последние 30 строк history), что давало false-positive: старый prompt из scrollback продолжал срабатывать после ответа юзера. Гонка list_sessions ↔ capture_pane обработана: 'no server running' и 'can't find session' в stderr → Ok(String::new()), watcher продолжает loop. Прочие сбои tmux → Err.",
+    "content": "Захват видимой части активной панели tmux-сессии (tmux capture-pane -p -J -t <session>:). КРИТИЧНО: target формируется как format!(\"{session}:\") с суффиксом-двоеточием — без него tmux для ЧИСЛОВЫХ имён сессий (0,1,2,…) резолвит -t 1 как ОКНО №1 текущей активной сессии, а не как сессию с именем '1'. Этот баг приводил к дублированию индикатора работы (✶) и оранжевого свечения needs_attention: watcher сессии '1' захватывал чужой pane (окно сессии '0', у которой 2 окна) и детектил то же содержимое. Симметрично исправлено в capture_pane_full. Используется attention::watcher_loop.",
     "createdAt": "2026-05-10T16:00:34.664Z",
-    "updatedAt": "2026-05-10T16:00:34.664Z"
+    "updatedAt": "2026-05-25T09:12:04.566Z"
   },
   {
     "element": "tmux-web/src/attention.rs",
@@ -2684,9 +2684,9 @@
     "element": "buildSessionItem",
     "path": "tmux-web/static/js/sessions/sessions.js",
     "type": "function",
-    "content": "Создаёт DOM <li class='session-item'> для одной сессии (tmux-web/static/js/sessions/sessions.js):\n- .active при s.name === state.currentSession.\n- .needs-attention при s.needs_attention (оранжевая подсветка, Claude permission/plan/question prompt).\n- dataset.session=s.name.\n- .session-meta: имя + подстрока 'N windows · attached(K)'.\n- .session-actions: кнопка rename (stopPropagation + renameSession) + кнопка kill (stopPropagation + killSession).\n- При s.is_generating добавляет отдельный <span class='claude-spark' title='Claude генерирует'>✶</span> ПОСЛЕ .session-actions. Span позиционируется CSS-классом absolute в правом нижнем углу li (см. sidebar.css). Кнопки rename/kill при этом остаются на своих местах — span поверх них в углу, не сдвигает flex-row.\n- click-обработчик на li → openSession(s.name, sessOrigin).\n\nВынесена из renderSidebar чтобы переиспользовать рендер строки в обоих режимах фильтра (all-projects / single-project).\n\ndtoOrigin(s) → 'local' | <remote-server-id>: пробрасывается во все session-actions для корректной маршрутизации API-запросов через apiFetch.",
+    "content": "Создаёт DOM <li class='session-item'> для одной сессии (tmux-web/static/js/sessions/sessions.js). .active при currentSession; .needs-attention при s.needs_attention (оранжевая подсветка); dataset.session=s.name; .session-meta (имя + 'N windows · attached(K)'); .session-actions (rename + kill, оба stopPropagation). При s.is_generating добавляет <span class='claude-spark'>✶</span> ПОСЛЕ actions — синий пульсирующий индикатор работы (CSS color var(--accent)=#2a7fff). Tooltip спарка строится generatingTooltip(s): объясняет ПОЧЕМУ горит индикатор — в этой сессии содержимое терминала (последние 50 строк pane) меняется; если есть s.generating_since_secs показывает длительность серии через formatDuration (5 с / 1 мин 20 с / 2 ч 3 мин). Для работы tooltip CSS .claude-spark переведён с pointer-events:none на pointer-events:auto + cursor:help (клик по ✶ всплывает на li → openSession, т.к. свой обработчик отсутствует). click-обработчик li → openSession(s.name, dtoOrigin(s)).",
     "createdAt": "2026-05-19T14:13:29.791Z",
-    "updatedAt": "2026-05-19T14:13:29.791Z"
+    "updatedAt": "2026-05-25T08:51:13.199Z"
   },
   {
     "element": "syncGitToCurrentSession",
@@ -2935,5 +2935,25 @@
     "content": "tmux.rs::capture_pane — async, эквивалент 'tmux capture-pane -p -J -t <session>': захват видимой части pane (без scrollback) для attention::detect_claude_prompt. Флаг -J (join wrapped lines, добавлен 2026-05-25) склеивает перенесённые tmux строки, чтобы длинный footer prompt не разрывался посередине маркера — defense-in-depth к нормализации whitespace в detect_claude_prompt. Исчезнувшая сессия / упавший tmux-сервер ('no server running', 'cant find session') → Ok(empty), прочие сбои → Err. Парная capture_pane_full(session, lines) — захват N строк истории через -S -<lines> для gen_hash (is_generating), -J там НЕ применяется.",
     "createdAt": "2026-05-25T06:55:30.615Z",
     "updatedAt": "2026-05-25T06:55:30.615Z"
+  },
+  {
+    "element": "attention::AttentionState::generating_age_snapshot",
+    "path": "",
+    "type": "unknown",
+    "content": "Метод AttentionState (tmux-web/src/attention.rs): возвращает HashMap<session_name, u64> — длительность текущей непрерывной серии генерации в секундах для каждой сессии, у которой is_generating сейчас активен. Источник — поле gen_started_at: Arc<RwLock<HashMap<String, Instant>>>, которое set_generating заводит при фронте флага false→true (Instant::now()), держит пока флаг true (true→true не сбрасывает отметку), и удаляет при →false. watcher_loop дополнительно прунит gen_started_at в cleanup-фазе для исчезнувших сессий. Используется хендлером GET /api/sessions для заполнения SessionDto::generating_since_secs, на основе которого фронтенд (sessions.js::generatingTooltip) строит tooltip синего индикатора работы ✶: «в сессии X содержимое терминала меняется — генерация идёт уже N с». На дедуп/детект логику не влияет, поле чисто информационное.",
+    "createdAt": "2026-05-25T08:51:12.935Z",
+    "updatedAt": "2026-05-25T08:51:12.935Z"
+  },
+  {
+    "element": "ui-tooltip",
+    "path": "",
+    "type": "page",
+    "content": "Кастомный tooltip (tmux-web/static/js/ui/tooltip.js) — замена нативному title. Singleton <div class='forge-tooltip'> на body (стили в base.css, z-index 100001 выше всех overlay). Показывается для любого элемента с атрибутом data-tooltip='<текст>'. Логика навешана через ДЕЛЕГИРОВАНИЕ на document (mouseover/mouseout/focusin/focusout + scroll/resize→hide) — поэтому работает для динамически перерисовываемых элементов (sidebar пересобирается каждые 3с) без переподписки. position: fixed, над целью по центру с зажимом в viewport (fallback вниз если не влезает сверху). Текст читается из data-tooltip в момент показа → всегда актуальный. Экспортирует initTooltips() (идемпотентна), вызывается из core/bootstrap.js. Первый потребитель — синий индикатор работы ✶ (.claude-spark в sessions.js::buildSessionItem): spark.dataset.tooltip = generatingTooltip(s).",
+    "createdAt": "2026-05-25T08:56:33.101Z",
+    "updatedAt": "2026-05-25T08:56:33.627Z",
+    "aliases": [
+      "кастомная подсказка",
+      "tooltip hover индикатор"
+    ]
   }
 ]

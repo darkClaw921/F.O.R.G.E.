@@ -1,14 +1,3 @@
 # buildSessionItem
 
-Создаёт DOM <li class='session-item'> для одной сессии (tmux-web/static/js/sessions/sessions.js):
-- .active при s.name === state.currentSession.
-- .needs-attention при s.needs_attention (оранжевая подсветка, Claude permission/plan/question prompt).
-- dataset.session=s.name.
-- .session-meta: имя + подстрока 'N windows · attached(K)'.
-- .session-actions: кнопка rename (stopPropagation + renameSession) + кнопка kill (stopPropagation + killSession).
-- При s.is_generating добавляет отдельный <span class='claude-spark' title='Claude генерирует'>✶</span> ПОСЛЕ .session-actions. Span позиционируется CSS-классом absolute в правом нижнем углу li (см. sidebar.css). Кнопки rename/kill при этом остаются на своих местах — span поверх них в углу, не сдвигает flex-row.
-- click-обработчик на li → openSession(s.name, sessOrigin).
-
-Вынесена из renderSidebar чтобы переиспользовать рендер строки в обоих режимах фильтра (all-projects / single-project).
-
-dtoOrigin(s) → 'local' | <remote-server-id>: пробрасывается во все session-actions для корректной маршрутизации API-запросов через apiFetch.
+Создаёт DOM <li class='session-item'> для одной сессии (tmux-web/static/js/sessions/sessions.js). .active при currentSession; .needs-attention при s.needs_attention (оранжевая подсветка); dataset.session=s.name; .session-meta (имя + 'N windows · attached(K)'); .session-actions (rename + kill, оба stopPropagation). При s.is_generating добавляет <span class='claude-spark'>✶</span> ПОСЛЕ actions — синий пульсирующий индикатор работы (CSS color var(--accent)=#2a7fff). Tooltip спарка строится generatingTooltip(s): объясняет ПОЧЕМУ горит индикатор — в этой сессии содержимое терминала (последние 50 строк pane) меняется; если есть s.generating_since_secs показывает длительность серии через formatDuration (5 с / 1 мин 20 с / 2 ч 3 мин). Для работы tooltip CSS .claude-spark переведён с pointer-events:none на pointer-events:auto + cursor:help (клик по ✶ всплывает на li → openSession, т.к. свой обработчик отсутствует). click-обработчик li → openSession(s.name, dtoOrigin(s)).

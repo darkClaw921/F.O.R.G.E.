@@ -956,6 +956,15 @@ struct SessionDto {
     /// одновременно. См. [`attention::AttentionState::update_generation`] и
     /// [`attention::AttentionState::set_generating`].
     is_generating: bool,
+    /// Сколько секунд длится ТЕКУЩАЯ непрерывная серия генерации (та, что
+    /// сейчас зажигает `is_generating`). `None` когда сессия не генерирует.
+    ///
+    /// Источник — [`attention::AttentionState::generating_age_snapshot`]:
+    /// отсчёт ведётся от фронта `false→true` финального флага. Поле чисто
+    /// информационное — фронтенд использует его в tooltip синего индикатора
+    /// работы («терминал обновляется уже N с»), на дедуп/детект не влияет.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    generating_since_secs: Option<u64>,
     /// Идентификатор папочно-ориентированной группы для sidebar-группировки.
     /// Формат: `"__folder:<absolute_path>"`. Префикс `__folder:` —
     /// стабильный namespace для UI-группировки. `None` только для сессий
@@ -1008,15 +1017,22 @@ async fn get_sessions(
         Ok(list) => {
             let attention = state.attention.snapshot().await;
             let generating = state.attention.generating_snapshot().await;
+            let gen_ages = state.attention.generating_age_snapshot().await;
             let dtos: Vec<SessionDto> = list
                 .into_iter()
                 .map(|s| {
                     let needs_attention = attention.get(&s.name).copied().unwrap_or(false);
                     let is_generating = generating.get(&s.name).copied().unwrap_or(false);
+                    let generating_since_secs = if is_generating {
+                        gen_ages.get(&s.name).copied()
+                    } else {
+                        None
+                    };
                     let (folder_id, folder_label) = resolve_folder(&s);
                     SessionDto {
                         needs_attention,
                         is_generating,
+                        generating_since_secs,
                         folder_id,
                         folder_label,
                         info: s,

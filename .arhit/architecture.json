@@ -1,6 +1,6 @@
 {
   "root": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E.",
-  "generatedAt": "2026-05-25T08:32:58.418Z",
+  "generatedAt": "2026-05-25T09:12:08.441Z",
   "nodes": [
     {
       "id": "tmux-web/static/app.js",
@@ -157,7 +157,7 @@
           "name": "bootstrap",
           "type": "function",
           "path": "tmux-web/static/js/core/bootstrap.js",
-          "line": 114,
+          "line": 115,
           "signature": "bootstrap()",
           "exports": [
             "bootstrap"
@@ -2818,11 +2818,29 @@
           ]
         },
         {
+          "id": "tmux-web/static/js/sessions/sessions.js:formatDuration",
+          "name": "formatDuration",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/sessions.js",
+          "line": 38,
+          "signature": "formatDuration(totalSecs)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/sessions/sessions.js:generatingTooltip",
+          "name": "generatingTooltip",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/sessions.js",
+          "line": 55,
+          "signature": "generatingTooltip(s)",
+          "exports": []
+        },
+        {
           "id": "tmux-web/static/js/sessions/sessions.js:buildSessionItem",
           "name": "buildSessionItem",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 37,
+          "line": 63,
           "signature": "buildSessionItem(s)",
           "exports": [
             "buildSessionItem"
@@ -2833,7 +2851,7 @@
           "name": "groupSessionsByFolder",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 110,
+          "line": 136,
           "signature": "groupSessionsByFolder(sessions, orphanKey)",
           "exports": [
             "groupSessionsByFolder"
@@ -2844,7 +2862,7 @@
           "name": "startPolling",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 124,
+          "line": 150,
           "signature": "startPolling()",
           "exports": [
             "startPolling"
@@ -2855,7 +2873,7 @@
           "name": "stopPolling",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 129,
+          "line": 155,
           "signature": "stopPolling()",
           "exports": [
             "stopPolling"
@@ -2866,7 +2884,7 @@
           "name": "createSessionPrompt",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 136,
+          "line": 162,
           "signature": "createSessionPrompt()",
           "exports": [
             "createSessionPrompt"
@@ -2877,7 +2895,7 @@
           "name": "renameSession",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 159,
+          "line": 185,
           "signature": "renameSession(oldName, origin)",
           "exports": [
             "renameSession"
@@ -2888,7 +2906,7 @@
           "name": "killSession",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 195,
+          "line": 221,
           "signature": "killSession(name, origin)",
           "exports": [
             "killSession"
@@ -2899,7 +2917,7 @@
           "name": "openSession",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 217,
+          "line": 243,
           "signature": "openSession(name, origin)",
           "exports": [
             "openSession"
@@ -2910,7 +2928,7 @@
           "name": "switchSession",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 239,
+          "line": 265,
           "signature": "switchSession(name)",
           "exports": [
             "switchSession"
@@ -4360,6 +4378,89 @@
           "exports": [
             "buildThemeCard"
           ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/ui/tooltip.js",
+      "name": "tooltip.js",
+      "type": "file",
+      "path": "tmux-web/static/js/ui/tooltip.js",
+      "exports": [
+        "initTooltips"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/ui/tooltip.js:ensureTip",
+          "name": "ensureTip",
+          "type": "function",
+          "path": "tmux-web/static/js/ui/tooltip.js",
+          "line": 20,
+          "signature": "ensureTip()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/ui/tooltip.js:position",
+          "name": "position",
+          "type": "function",
+          "path": "tmux-web/static/js/ui/tooltip.js",
+          "line": 31,
+          "signature": "position(target)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/ui/tooltip.js:show",
+          "name": "show",
+          "type": "function",
+          "path": "tmux-web/static/js/ui/tooltip.js",
+          "line": 55,
+          "signature": "show(target)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/ui/tooltip.js:hide",
+          "name": "hide",
+          "type": "function",
+          "path": "tmux-web/static/js/ui/tooltip.js",
+          "line": 66,
+          "signature": "hide()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/ui/tooltip.js:closestTip",
+          "name": "closestTip",
+          "type": "function",
+          "path": "tmux-web/static/js/ui/tooltip.js",
+          "line": 73,
+          "signature": "closestTip(node)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/ui/tooltip.js:initTooltips",
+          "name": "initTooltips",
+          "type": "function",
+          "path": "tmux-web/static/js/ui/tooltip.js",
+          "line": 81,
+          "signature": "initTooltips()",
+          "exports": [
+            "initTooltips"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/ui/tooltip.js:tipEl",
+          "name": "tipEl",
+          "type": "variable",
+          "path": "tmux-web/static/js/ui/tooltip.js",
+          "line": 17,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/ui/tooltip.js:inited",
+          "name": "inited",
+          "type": "variable",
+          "path": "tmux-web/static/js/ui/tooltip.js",
+          "line": 78,
+          "exports": []
         }
       ]
     },

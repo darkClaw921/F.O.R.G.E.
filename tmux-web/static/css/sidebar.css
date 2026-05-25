@@ -161,7 +161,13 @@
     font-size: 0.75rem;
     line-height: 1;
     color: var(--accent);
-    pointer-events: none;
+    /* pointer-events: auto (вместо none) нужен, чтобы ✶ ловил mouseover и
+     * показывал кастомный tooltip (js/ui/tooltip.js по data-tooltip) с
+     * объяснением, почему индикатор горит. У ✶ нет своего click-обработчика,
+     * поэтому клик по нему всё равно всплывает на .session-item → openSession.
+     * cursor: help намекает на наличие подсказки. */
+    pointer-events: auto;
+    cursor: help;
     animation: claude-spark-pulse 1.5s ease-in-out infinite;
 }
 

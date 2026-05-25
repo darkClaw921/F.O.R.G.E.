@@ -30,6 +30,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 
 use tokio::sync::RwLock;
 
@@ -57,6 +58,14 @@ pub struct AttentionState {
     /// нет точки сравнения. Это сознательное решение, чтобы избежать ложного
     /// срабатывания на самой первой итерации watcher'а.
     last_gen_hash: Arc<RwLock<HashMap<String, u64>>>,
+    /// Момент начала текущей непрерывной серии генерации на сессию.
+    ///
+    /// Ставится при переходе финального флага `is_generating` `false→true`
+    /// (см. `set_generating`) и удаляется когда флаг гаснет. Используется
+    /// только для UI-tooltip синего индикатора работы: по нему вычисляется
+    /// «генерация идёт уже N секунд» через [`AttentionState::generating_age_snapshot`].
+    /// На саму логику дедупа/детекта не влияет.
+    gen_started_at: Arc<RwLock<HashMap<String, Instant>>>,
 }
 
 impl AttentionState {
@@ -66,6 +75,7 @@ impl AttentionState {
             map: Arc::new(RwLock::new(HashMap::new())),
             generating: Arc::new(RwLock::new(HashMap::new())),
             last_gen_hash: Arc::new(RwLock::new(HashMap::new())),
+            gen_started_at: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -118,8 +128,40 @@ impl AttentionState {
     /// различать «никогда не видели сессию» (нет ключа) и «видели, флаг
     /// потушен» (есть ключ со значением `false`).
     pub async fn set_generating(&self, name: &str, flag: bool) {
-        let mut map = self.generating.write().await;
-        map.insert(name.to_string(), flag);
+        let prev = {
+            let mut map = self.generating.write().await;
+            map.insert(name.to_string(), flag).unwrap_or(false)
+        };
+
+        // Поддерживаем `gen_started_at` строго по фронтам флага:
+        // `false→true` — фиксируем начало серии «сейчас»; `*→false` —
+        // удаляем отметку (серия закончилась). Пока флаг непрерывно `true`,
+        // отметку НЕ трогаем, чтобы tooltip показывал реальную длительность,
+        // а не сбрасывал её каждый тик watcher'а.
+        let mut started = self.gen_started_at.write().await;
+        if flag {
+            if !prev {
+                started.insert(name.to_string(), Instant::now());
+            }
+        } else {
+            started.remove(name);
+        }
+    }
+
+    /// Возвращает длительность текущей серии генерации (в секундах) для всех
+    /// сессий, у которых она сейчас идёт.
+    ///
+    /// Ключ — имя сессии, значение — `Instant::elapsed().as_secs()` от момента
+    /// начала серии (см. `gen_started_at`). Сессии без активной генерации в
+    /// карту не попадают. Используется хендлером `/api/sessions` для поля
+    /// `SessionDto::generating_since_secs`, на основе которого фронтенд строит
+    /// tooltip синего индикатора работы.
+    pub async fn generating_age_snapshot(&self) -> HashMap<String, u64> {
+        let started = self.gen_started_at.read().await;
+        started
+            .iter()
+            .map(|(name, t)| (name.clone(), t.elapsed().as_secs()))
+            .collect()
     }
 
     /// Возвращает «сырой» сигнал `changed = prev != current` по pane-хэшу
@@ -429,6 +471,38 @@ Do you want to make this edit?
         s1.set("a", true).await;
         let snap = s2.snapshot().await;
         assert_eq!(snap.get("a"), Some(&true));
+    }
+
+    #[tokio::test]
+    async fn generating_age_tracks_streak_fronts() {
+        // gen_started_at заводится при false→true, держится пока true,
+        // удаляется при →false. Это питает SessionDto::generating_since_secs
+        // и tooltip синего индикатора работы.
+        let s = AttentionState::new();
+
+        // Нет генерации — снапшот длительностей пуст.
+        assert!(s.generating_age_snapshot().await.is_empty());
+
+        // false→true: серия началась, отметка появилась (0+ секунд).
+        s.set_generating("forge", true).await;
+        assert!(
+            s.generating_age_snapshot().await.contains_key("forge"),
+            "после false→true должна появиться отметка начала серии"
+        );
+
+        // true→true: отметка НЕ сбрасывается (длительность продолжает расти).
+        s.set_generating("forge", true).await;
+        assert!(
+            s.generating_age_snapshot().await.contains_key("forge"),
+            "повторный true не должен ронять серию"
+        );
+
+        // →false: серия закончилась, отметка удалена.
+        s.set_generating("forge", false).await;
+        assert!(
+            !s.generating_age_snapshot().await.contains_key("forge"),
+            "после →false отметка должна исчезнуть"
+        );
     }
 
     #[tokio::test]
@@ -973,6 +1047,11 @@ pub async fn watcher_loop(attention: Arc<AttentionState>) {
                 .retain(|k, _| live.contains(k.as_str()));
             attention
                 .generating
+                .write()
+                .await
+                .retain(|k, _| live.contains(k.as_str()));
+            attention
+                .gen_started_at
                 .write()
                 .await
                 .retain(|k, _| live.contains(k.as_str()));

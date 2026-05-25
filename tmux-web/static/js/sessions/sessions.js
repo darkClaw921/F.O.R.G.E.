@@ -34,6 +34,32 @@ export async function fetchSessions() {
     }
 }
 
+// Человекочитаемая длительность из секунд: «5 с», «1 мин 20 с», «2 ч 3 мин».
+function formatDuration(totalSecs) {
+    const secs = Math.max(0, Math.floor(totalSecs));
+    if (secs < 60) return `${secs} с`;
+    const mins = Math.floor(secs / 60);
+    const rem = secs % 60;
+    if (mins < 60) return rem ? `${mins} мин ${rem} с` : `${mins} мин`;
+    const hours = Math.floor(mins / 60);
+    const remMin = mins % 60;
+    return remMin ? `${hours} ч ${remMin} мин` : `${hours} ч`;
+}
+
+// Текст кастомного tooltip синего индикатора работы (✶), кладётся в
+// data-tooltip спарка и показывается через js/ui/tooltip.js. Объясняет,
+// ПОЧЕМУ индикатор горит: в этой сессии содержимое терминала (последние 50
+// строк pane) изменилось за последний тик watcher'а (1.5 с) — Claude печатает,
+// идёт вывод процесса и т.п. generating_since_secs (если есть) показывает,
+// как давно началась текущая непрерывная серия генерации.
+function generatingTooltip(s) {
+    const base = `Индикатор работы: в сессии «${s.name}» содержимое терминала меняется`;
+    if (typeof s.generating_since_secs === 'number') {
+        return `${base} — генерация идёт уже ${formatDuration(s.generating_since_secs)}`;
+    }
+    return `${base} прямо сейчас`;
+}
+
 export function buildSessionItem(s) {
     const li = document.createElement('li');
     li.className = 'session-item';
@@ -97,7 +123,7 @@ export function buildSessionItem(s) {
     if (s.is_generating) {
         const spark = document.createElement('span');
         spark.className = 'claude-spark';
-        spark.title = 'Claude генерирует';
+        spark.dataset.tooltip = generatingTooltip(s);
         spark.textContent = '✶';
         li.appendChild(spark);
     }

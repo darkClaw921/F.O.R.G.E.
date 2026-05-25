@@ -38,6 +38,7 @@ import {
     fetchTodos, connectTodosWs, disconnectTodosWs, stopTodosPolling,
 } from '../ws/todos-ws.js';
 import { openSettingsModal } from '../settings/modal.js';
+import { initTooltips } from '../ui/tooltip.js';
 import { fetchUserSettings } from '../settings/user-settings-api.js';
 import { openCreateModal } from '../tasks/modals.js';
 import {
@@ -130,6 +131,7 @@ export async function bootstrap() {
 
     initTuiTabs();
     applyTerminalFontSize();
+    initTooltips();
 
     if ($tabGit) $tabGit.addEventListener('click', () => switchTab('git'));
     if ($tabDocker) $tabDocker.addEventListener('click', () => switchTab('docker'));

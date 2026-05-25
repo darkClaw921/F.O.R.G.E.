@@ -202,8 +202,15 @@ pub async fn new_session(name: &str, cwd: &std::path::Path) -> anyhow::Result<()
 /// Прочие сбои tmux (например, отсутствие бинаря в PATH) — `Err`.
 #[allow(dead_code)]
 pub async fn capture_pane(session: &str) -> anyhow::Result<String> {
+    // Двоеточие в конце таргета указывает tmux, что это session-target, а не
+    // target-window. Критично для числовых имён сессий (`0`, `1`, …): без `:`
+    // tmux резолвит `-t 1` как ОКНО с индексом 1 в текущей активной сессии, а
+    // не как сессию с именем `1`. На практике это приводило к тому, что
+    // watcher захватывал чужой pane (окно соседней сессии) → индикатор работы
+    // и оранжевое свечение «дублировались» в неправильную сессию.
+    let target = format!("{session}:");
     let output = Command::new("tmux")
-        .args(["capture-pane", "-p", "-J", "-t", session])
+        .args(["capture-pane", "-p", "-J", "-t", &target])
         .output()
         .await
         .context("failed to spawn `tmux capture-pane` (is tmux installed?)")?;
@@ -252,12 +259,16 @@ pub async fn capture_pane_full(session: &str, lines: i32) -> anyhow::Result<Stri
     // число, иначе синтаксис не подходит. Формируем строку явно.
     let start_arg = format!("-{clamped}");
 
+    // См. `capture_pane`: суффикс `:` делает таргет session-target, иначе для
+    // числовых имён сессий tmux захватывает окно с тем же индексом в текущей
+    // активной сессии вместо нужной сессии.
+    let target = format!("{session}:");
     let output = Command::new("tmux")
         .args([
             "capture-pane",
             "-p",
             "-t",
-            session,
+            &target,
             "-S",
             &start_arg,
         ])

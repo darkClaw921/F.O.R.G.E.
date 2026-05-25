@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-25T08:32:58.927Z",
+  "generatedAt": "2026-05-25T09:12:08.917Z",
   "dependencies": [
     {
       "from": "tmux-web/static/hotkeys.js",
@@ -1301,6 +1301,12 @@
     },
     {
       "from": "tmux-web/static/js/core/bootstrap.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "import",
+      "toElement": "initTooltips"
+    },
+    {
+      "from": "tmux-web/static/js/core/bootstrap.js",
       "to": "tmux-web/static/js/settings/user-settings-api.js",
       "type": "import",
       "toElement": "fetchUserSettings"
@@ -1563,6 +1569,13 @@
       "type": "call",
       "fromElement": "bootstrap",
       "toElement": "applyTerminalFontSize"
+    },
+    {
+      "from": "tmux-web/static/js/core/bootstrap.js",
+      "to": "tmux-web/static/js/core/bootstrap.js",
+      "type": "call",
+      "fromElement": "bootstrap",
+      "toElement": "initTooltips"
     },
     {
       "from": "tmux-web/static/js/core/bootstrap.js",
@@ -7897,6 +7910,41 @@
       "from": "tmux-web/static/js/sessions/sessions.js",
       "to": "tmux-web/static/js/sessions/sessions.js",
       "type": "call",
+      "fromElement": "formatDuration",
+      "toElement": "Math.max"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "formatDuration",
+      "toElement": "Math.floor"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "formatDuration",
+      "toElement": "Math.floor"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "formatDuration",
+      "toElement": "Math.floor"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "generatingTooltip",
+      "toElement": "formatDuration"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
       "fromElement": "buildSessionItem",
       "toElement": "document.createElement"
     },
@@ -8053,6 +8101,13 @@
       "type": "call",
       "fromElement": "buildSessionItem",
       "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "buildSessionItem",
+      "toElement": "generatingTooltip"
     },
     {
       "from": "tmux-web/static/js/sessions/sessions.js",
@@ -18209,6 +18264,244 @@
       "type": "call",
       "fromElement": "buildThemeCard",
       "toElement": "card.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "ensureTip",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "ensureTip",
+      "toElement": "tipEl.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "ensureTip",
+      "toElement": "tipEl.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "ensureTip",
+      "toElement": "document.body.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "position",
+      "toElement": "ensureTip"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "position",
+      "toElement": "target.getBoundingClientRect"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "position",
+      "toElement": "tip.getBoundingClientRect"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "position",
+      "toElement": "Math.max"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "position",
+      "toElement": "Math.min"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "position",
+      "toElement": "Math.round"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "position",
+      "toElement": "Math.round"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "show",
+      "toElement": "target.getAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "show",
+      "toElement": "ensureTip"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "show",
+      "toElement": "tip.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "show",
+      "toElement": "tip.classList.add"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "show",
+      "toElement": "position"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "hide",
+      "toElement": "tipEl.classList.remove"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "hide",
+      "toElement": "tipEl.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "closestTip",
+      "toElement": "node.closest"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "initTooltips",
+      "toElement": "ensureTip"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "initTooltips",
+      "toElement": "document.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "initTooltips",
+      "toElement": "closestTip"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "initTooltips",
+      "toElement": "show"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "initTooltips",
+      "toElement": "document.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "initTooltips",
+      "toElement": "closestTip"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "initTooltips",
+      "toElement": "target.contains"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "initTooltips",
+      "toElement": "hide"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "initTooltips",
+      "toElement": "document.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "initTooltips",
+      "toElement": "closestTip"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "initTooltips",
+      "toElement": "show"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "initTooltips",
+      "toElement": "document.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "initTooltips",
+      "toElement": "hide"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "initTooltips",
+      "toElement": "window.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/ui/tooltip.js",
+      "to": "tmux-web/static/js/ui/tooltip.js",
+      "type": "call",
+      "fromElement": "initTooltips",
+      "toElement": "window.addEventListener"
     },
     {
       "from": "tmux-web/static/js/ws/attach.js",

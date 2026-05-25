@@ -126,3 +126,33 @@ body {
     overflow: hidden;
 }
 
+/* ===== Кастомный tooltip (см. js/ui/tooltip.js) =====
+ *
+ * Замена нативному title: мгновенный показ, стилизация под тему, текст из
+ * атрибута data-tooltip. Singleton-элемент на body, position: fixed,
+ * позиционируется JS-ом над целью. z-index выше всех overlay (модалки 1000,
+ * tui-channels 100000) — подсказка не должна перекрываться. */
+.forge-tooltip {
+    position: fixed;
+    z-index: 100001;
+    max-width: 320px;
+    padding: 6px 9px;
+    border-radius: 6px;
+    background: var(--bg-elev);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    box-shadow: 0 4px 16px var(--overlay-shadow);
+    font-size: 0.72rem;
+    line-height: 1.35;
+    white-space: normal;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(2px);
+    transition: opacity 90ms ease, transform 90ms ease;
+}
+
+.forge-tooltip.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
