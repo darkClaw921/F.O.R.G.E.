@@ -1,26 +1,14 @@
 # promote_todo
 
-POST /api/todos/:id/promote — конвертирует TODO в bd-задачу + опциональный notify.
+POST /api/todos/:id/promote — конвертирует TODO-карточку в bd-задачу и (если есть целевая сессия) отправляет её текст в активную tmux-сессию через notifier.
 
-## Phase 3 алгоритм
+Алгоритм:
+1. Найти TODO (404 если нет).
+2. Создать bd-issue через 'br create' в todo.root_path, извлечь id из JSON.
+3. Удалить TODO + broadcast Removed.
+4. Резолвить target_session: body.session > cfg.session (NotifierConfig).
+5. Если target_session не определён — skip notify (200, notify_scheduled=false). bd-задача всё равно создана.
+6. Сформировать текст: если cfg.template ПУСТ — используется DEFAULT_PROMOTE_TEMPLATE ('{title}'), а непустое описание дописывается отдельной строкой (заголовок\nописание). Если template задан — рендерится через format_notify_template. При todo.plan_mode дописывается plan-mode suffix.
+7. mode: wait_previous > delay_minutes>0 > Immediate. enqueue в notifier.
 
-1. todos.get(id) — 404 если нет TODO.
-2. br create --json в todo.root_path → bd-issue с task_id.
-3. todos.delete + broadcast TodoEvent::Removed (root_path scoped).
-4. cfg = state.notifier_config.get().
-   - target_session = body.session OR cfg.session. Если оба пусты → skip notify.
-   - template = cfg.template. Если пусто → skip notify.
-5. Если skip: 200 OK { promoted: true, task_id, notify_scheduled: false }.
-6. Иначе: text = format_notify_template(cfg.template, ...) + plan_mode_suffix.
-7. mode по приоритету: cfg.wait_previous → WaitPrevious{None}; cfg.delay_minutes>0 → Delayed; иначе Immediate.
-8. notifier.enqueue(NotifyJob{ root_path: todo.root_path, ... }).
-9. 200 OK { promoted: true, task_id, notify_scheduled: true }.
-
-## Отличия от Phase 2
-- Нет lookup'а Project — ни в , ни в .
-- body.session больше не обязателен (если задана cfg.session — она используется).
-- Notify может не запланироваться (если template/session пусты) — bd-задача всё равно создаётся.
-- NotifyJob.root_path = todo.root_path (cwd-only ключ).
-
-## Plan-mode suffix
-Если todo.plan_mode=true, к тексту прикрепляется через  суффикс. Источник: user_settings.todo_plan_mode_suffix; если пуст — константа PLAN_MODE_SUFFIX.
+ВАЖНО (фикс бага 'текст не уходит в сессию'): пустой template НЕ блокирует отправку — раньше ранний return срабатывал при template_trimmed.is_empty(), теперь только при target_session.is_none(). Это сохраняет zero-config: перенос TODO→open сразу шлёт текст задачи в активную сессию.

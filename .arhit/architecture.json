@@ -1,6 +1,6 @@
 {
   "root": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E.",
-  "generatedAt": "2026-05-25T06:55:31.422Z",
+  "generatedAt": "2026-05-25T08:32:58.418Z",
   "nodes": [
     {
       "id": "tmux-web/static/app.js",
@@ -37,6 +37,8 @@
           "type": "function",
           "path": "tmux-web/static/js/core/api.js",
           "line": 36,
+          "signature": "parseGlobalId(s)",
+          "docComment": "Phase 5 — глобальный id и origin parsing.\n\nГлобальный id в remote-mode имеет формат `<origin>::<local-id>`, где\n`origin` — 'local' либо `<server_id>`. Local-id (без префикса) — это id,\nкоторым оперирует бэкенд target'а (локальный devforge или remote).\n\nВ legacy-режиме id всегда «простой» (без префикса) и parseGlobalId\nвозвращает { origin: 'local', id }.\n\nВозвращает { origin: string, id: string }.",
           "exports": [
             "parseGlobalId"
           ]
@@ -47,6 +49,8 @@
           "type": "function",
           "path": "tmux-web/static/js/core/api.js",
           "line": 48,
+          "signature": "formatGlobalId(origin, id)",
+          "docComment": "Собирает глобальный id из origin + local. В remote-mode используем\nвезде, где id уходит на сервер ИЛИ хранится в state (тогда отдельные\nhelper'ы знают, как из него вырезать local-id обратно).",
           "exports": [
             "formatGlobalId"
           ]
@@ -57,6 +61,8 @@
           "type": "function",
           "path": "tmux-web/static/js/core/api.js",
           "line": 58,
+          "signature": "dtoOrigin(dto)",
+          "docComment": "Origin DTO-объекта. Бэкенд проставляет поле `origin` в Session/Project/\nTask/Todo DTO начиная с Phase 3 (см. remote_proxy::enrich_with_origin).\nFallback на 'local' если поле отсутствует.",
           "exports": [
             "dtoOrigin"
           ]
@@ -67,6 +73,8 @@
           "type": "function",
           "path": "tmux-web/static/js/core/api.js",
           "line": 70,
+          "signature": "withServerParam(path, origin)",
+          "docComment": "Добавляет `?server=<origin>` к path если origin !== 'local'. Path может\nуже содержать query — корректно подклеит через `&`.\n\nOrigin='local' либо falsy → возвращает path без изменений (это покрывает\nи legacy-режим, где origin всегда 'local').",
           "exports": [
             "withServerParam"
           ]
@@ -77,6 +85,8 @@
           "type": "function",
           "path": "tmux-web/static/js/core/api.js",
           "line": 87,
+          "signature": "apiFetch(path, init, origin)",
+          "docComment": "Centralized fetch helper для остальных API-вызовов. Используется ТОЛЬКО\nтам, где запрос может уходить на remote (sessions/tasks/todos).\nНе трогает /healthz, /api/themes, /api/remote-servers (они только local).\n\nOrigin определяется так:\n  1) Явный аргумент `origin` (если передан и !== 'local');\n  2) Иначе path остаётся как есть.\n\nВ legacy-режиме (remoteMode=false) — игнорирует origin (всё локально).",
           "exports": [
             "apiFetch"
           ]
@@ -99,6 +109,7 @@
           "type": "function",
           "path": "tmux-web/static/js/core/auth.js",
           "line": 58,
+          "signature": "getAuthToken()",
           "exports": [
             "getAuthToken"
           ]
@@ -109,6 +120,7 @@
           "type": "function",
           "path": "tmux-web/static/js/core/auth.js",
           "line": 91,
+          "signature": "withWsToken(wsUrl)",
           "exports": [
             "withWsToken"
           ]
@@ -146,6 +158,7 @@
           "type": "function",
           "path": "tmux-web/static/js/core/bootstrap.js",
           "line": 114,
+          "signature": "bootstrap()",
           "exports": [
             "bootstrap"
           ]
@@ -1073,6 +1086,8 @@
           "type": "function",
           "path": "tmux-web/static/js/core/utils.js",
           "line": 19,
+          "signature": "escapeHtml(s)",
+          "docComment": "Phase 5 — Безопасное экранирование строки для вставки в innerHTML\n(используется в openEditRemoteRow для подстановки label в input value).",
           "exports": [
             "escapeHtml"
           ]
@@ -1083,6 +1098,7 @@
           "type": "function",
           "path": "tmux-web/static/js/core/utils.js",
           "line": 28,
+          "signature": "escapeAttr(s)",
           "exports": [
             "escapeAttr"
           ]
@@ -1093,6 +1109,7 @@
           "type": "function",
           "path": "tmux-web/static/js/core/utils.js",
           "line": 32,
+          "signature": "escapeText(s)",
           "exports": [
             "escapeText"
           ]
@@ -1103,6 +1120,8 @@
           "type": "function",
           "path": "tmux-web/static/js/core/utils.js",
           "line": 39,
+          "signature": "buildModalOverlay()",
+          "docComment": "Создаёт overlay + базовый style hook. CSS — в style.css секция Modals.",
           "exports": [
             "buildModalOverlay"
           ]
@@ -1113,6 +1132,8 @@
           "type": "function",
           "path": "tmux-web/static/js/core/utils.js",
           "line": 49,
+          "signature": "detectClientOS()",
+          "docComment": "Определение клиентской ОС по navigator.platform + userAgent.\nВозвращает 'mac' | 'windows' | 'linux' | null.",
           "exports": [
             "detectClientOS"
           ]
@@ -1123,6 +1144,8 @@
           "type": "function",
           "path": "tmux-web/static/js/core/utils.js",
           "line": 64,
+          "signature": "copyToClipboardSafe(text)",
+          "docComment": "Копирует строку в буфер. Использует Clipboard API если доступен,\nfallback — скрытый textarea + execCommand. Возвращает Promise<boolean>.",
           "exports": [
             "copyToClipboardSafe"
           ]
@@ -1133,6 +1156,7 @@
           "type": "function",
           "path": "tmux-web/static/js/core/utils.js",
           "line": 71,
+          "signature": "fallbackCopy(text)",
           "exports": [
             "fallbackCopy"
           ]
@@ -1158,6 +1182,7 @@
           "type": "function",
           "path": "tmux-web/static/js/core/viewport.js",
           "line": 26,
+          "signature": "isMobileViewport()",
           "exports": [
             "isMobileViewport"
           ]
@@ -1168,6 +1193,8 @@
           "type": "function",
           "path": "tmux-web/static/js/core/viewport.js",
           "line": 46,
+          "signature": "applyTerminalFontSize()",
+          "docComment": "Применяет нужный fontSize ко всем существующим xterm-инстансам и делает\nfit(). Безопасен на любом этапе bootstrap — пропускает несуществующие\nлибо ещё не attached терминалы (FitAddon бросает, если term._core === undefined).",
           "exports": [
             "applyTerminalFontSize"
           ]
@@ -1220,6 +1247,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/action-buttons.js",
           "line": 18,
+          "signature": "getButtonsContainer(messageEl)",
+          "docComment": "Найти или создать контейнер кнопок под сообщением.",
           "exports": []
         },
         {
@@ -1228,6 +1257,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/action-buttons.js",
           "line": 38,
+          "signature": "renderActionButtons(messageEl, descriptors, invokeCb)",
+          "docComment": "Отрендерить кнопки.",
           "exports": [
             "renderActionButtons"
           ]
@@ -1238,6 +1269,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/action-buttons.js",
           "line": 46,
+          "signature": "buildButton(descriptor, invokeCb)",
           "exports": []
         },
         {
@@ -1246,6 +1278,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/action-buttons.js",
           "line": 82,
+          "signature": "showConfirmationModal(descriptor)",
+          "docComment": "Confirmation modal для system-actions.",
           "exports": [
             "showConfirmationModal"
           ]
@@ -1291,6 +1325,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/api.js",
           "line": 21,
+          "signature": "call(path, init)",
+          "docComment": "Универсальный helper — отправляет запрос через apiFetch и парсит JSON.\nПри не-2xx статусе бросает Error со status'ом и текстом ответа.",
           "exports": []
         },
         {
@@ -1299,6 +1335,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/api.js",
           "line": 44,
+          "signature": "jsonInit(method, payload)",
           "exports": []
         },
         {
@@ -1307,6 +1344,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/api.js",
           "line": 54,
+          "signature": "listConversations(projectId)",
           "exports": [
             "listConversations"
           ]
@@ -1317,6 +1355,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/api.js",
           "line": 59,
+          "signature": "createConversation({ title, projectId, model })",
           "exports": [
             "createConversation"
           ]
@@ -1327,6 +1366,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/api.js",
           "line": 67,
+          "signature": "deleteConversation(id)",
           "exports": [
             "deleteConversation"
           ]
@@ -1337,6 +1377,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/api.js",
           "line": 73,
+          "signature": "listMessages(conversationId, opts)",
           "exports": [
             "listMessages"
           ]
@@ -1347,6 +1388,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/api.js",
           "line": 85,
+          "signature": "listMemories({ scope, projectId, day } = {})",
           "exports": [
             "listMemories"
           ]
@@ -1357,6 +1399,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/api.js",
           "line": 95,
+          "signature": "createMemory({ scope, projectId, day, content, source })",
           "exports": [
             "createMemory"
           ]
@@ -1367,6 +1410,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/api.js",
           "line": 105,
+          "signature": "patchMemory(id, content)",
           "exports": [
             "patchMemory"
           ]
@@ -1377,6 +1421,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/api.js",
           "line": 109,
+          "signature": "deleteMemory(id)",
           "exports": [
             "deleteMemory"
           ]
@@ -1387,6 +1432,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/api.js",
           "line": 113,
+          "signature": "regenerateMemory({ scope, projectId, day })",
           "exports": [
             "regenerateMemory"
           ]
@@ -1397,6 +1443,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/api.js",
           "line": 123,
+          "signature": "listAutonomousTasks()",
           "exports": [
             "listAutonomousTasks"
           ]
@@ -1407,6 +1454,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/api.js",
           "line": 127,
+          "signature": "createAutonomousTask(payload)",
           "exports": [
             "createAutonomousTask"
           ]
@@ -1417,6 +1465,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/api.js",
           "line": 131,
+          "signature": "patchAutonomousTask(id, patch)",
           "exports": [
             "patchAutonomousTask"
           ]
@@ -1427,6 +1476,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/api.js",
           "line": 135,
+          "signature": "deleteAutonomousTask(id)",
           "exports": [
             "deleteAutonomousTask"
           ]
@@ -1437,6 +1487,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/api.js",
           "line": 139,
+          "signature": "runAutonomousNow(id)",
           "exports": [
             "runAutonomousNow"
           ]
@@ -1447,6 +1498,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/api.js",
           "line": 143,
+          "signature": "listAutonomousRuns(id, limit)",
           "exports": [
             "listAutonomousRuns"
           ]
@@ -1457,6 +1509,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/api.js",
           "line": 154,
+          "signature": "getStats(range)",
+          "docComment": "range: 'minute' | 'hour' | 'day' (что поддерживает /api/echo/stats).\nЕсли бэкенд игнорирует параметр — это всё равно безопасный no-op.",
           "exports": [
             "getStats"
           ]
@@ -1467,6 +1521,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/api.js",
           "line": 161,
+          "signature": "cancelRun(runId)",
           "exports": [
             "cancelRun"
           ]
@@ -1489,6 +1544,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/autonomous.js",
           "line": 32,
+          "signature": "initAutonomousPane()",
           "exports": [
             "initAutonomousPane"
           ]
@@ -1499,6 +1555,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/autonomous.js",
           "line": 41,
+          "signature": "refreshAutonomous()",
           "exports": [
             "refreshAutonomous"
           ]
@@ -1509,6 +1566,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/autonomous.js",
           "line": 61,
+          "signature": "buildTaskNode(t)",
           "exports": []
         },
         {
@@ -1517,6 +1575,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/autonomous.js",
           "line": 123,
+          "signature": "makeBtn(label, fn, cls)",
           "exports": []
         },
         {
@@ -1525,6 +1584,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/autonomous.js",
           "line": 132,
+          "signature": "formatInterval(secs)",
           "exports": []
         },
         {
@@ -1533,6 +1593,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/autonomous.js",
           "line": 139,
+          "signature": "escapeHtml(s)",
           "exports": []
         },
         {
@@ -1541,6 +1602,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/autonomous.js",
           "line": 147,
+          "signature": "openCreateModal()",
           "exports": []
         },
         {
@@ -1549,6 +1611,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/autonomous.js",
           "line": 164,
+          "signature": "openEditModal(t)",
           "exports": []
         },
         {
@@ -1557,6 +1620,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/autonomous.js",
           "line": 175,
+          "signature": "openTaskModal({ title, initial, onSubmit })",
           "exports": []
         },
         {
@@ -1565,6 +1629,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/autonomous.js",
           "line": 236,
+          "signature": "openRunsModal(t)",
           "exports": []
         },
         {
@@ -1573,6 +1638,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/autonomous.js",
           "line": 276,
+          "signature": "attachOverlayClose(overlay)",
           "exports": []
         },
         {
@@ -1581,6 +1647,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/autonomous.js",
           "line": 282,
+          "signature": "buildErrorBlock(msg)",
           "exports": []
         },
         {
@@ -1589,6 +1656,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/autonomous.js",
           "line": 289,
+          "signature": "labelInput(label, type, name, value)",
           "exports": []
         },
         {
@@ -1597,6 +1665,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/autonomous.js",
           "line": 303,
+          "signature": "labelTextarea(label, name, value)",
           "exports": []
         },
         {
@@ -1605,6 +1674,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/autonomous.js",
           "line": 317,
+          "signature": "labelSelect(label, name, opts, selected)",
           "exports": []
         },
         {
@@ -1646,6 +1716,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/chat.js",
           "line": 25,
+          "signature": "renderConversation(messages)",
+          "docComment": "Полная перерисовка истории. Используется при открытии чата / переключении.",
           "exports": [
             "renderConversation"
           ]
@@ -1656,6 +1728,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/chat.js",
           "line": 42,
+          "signature": "appendMessage(msg)",
+          "docComment": "Добавить одно сообщение (для optimistic insert при отправке user_message).",
           "exports": [
             "appendMessage"
           ]
@@ -1666,6 +1740,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/chat.js",
           "line": 61,
+          "signature": "appendChunk(runId, kind, delta)",
+          "docComment": "Принимает стрим-дельту от сервера. `runId` идентифицирует stream —\nпо нему мы группируем чанки одного assistant-ответа. Если для runId\nещё нет сообщения — создаём pending-карточку (без id, добавим при\n`finalizeMessage`).",
           "exports": [
             "appendChunk"
           ]
@@ -1676,6 +1752,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/chat.js",
           "line": 105,
+          "signature": "_scheduleTypewriter(buf, kind)",
           "exports": []
         },
         {
@@ -1684,6 +1761,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/chat.js",
           "line": 137,
+          "signature": "_flushAllPending(buf)",
           "exports": []
         },
         {
@@ -1692,6 +1770,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/chat.js",
           "line": 156,
+          "signature": "finalizeMessage(runId, messageId, usage)",
+          "docComment": "Завершить streaming-сообщение: проставить реальный messageId, отрендерить\nmarkdown для text-чанков, показать usage stats.",
           "exports": [
             "finalizeMessage"
           ]
@@ -1702,6 +1782,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/chat.js",
           "line": 193,
+          "signature": "showThinking(runId)",
+          "docComment": "Показать индикатор «thinking» — пока стрим не пришёл первым чанком.\nВызывается после отправки user_message, удаляется при appendChunk/finalizeMessage.",
           "exports": [
             "showThinking"
           ]
@@ -1712,6 +1794,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/chat.js",
           "line": 219,
+          "signature": "bindInput(sendCb)",
+          "docComment": "Привязать input + кнопку отправки. `sendCb(text)` вызывается при Enter\n(без Shift). Возвращает функцию для cleanup.",
           "exports": [
             "bindInput"
           ]
@@ -1722,6 +1806,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/chat.js",
           "line": 253,
+          "signature": "clearMessages()",
+          "docComment": "Полностью очистить рендер (используется при переключении чата).",
           "exports": [
             "clearMessages"
           ]
@@ -1732,6 +1818,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/chat.js",
           "line": 261,
+          "signature": "buildMessageNode(msg)",
           "exports": []
         },
         {
@@ -1740,6 +1827,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/chat.js",
           "line": 287,
+          "signature": "scrollToBottom()",
           "exports": []
         },
         {
@@ -1748,6 +1836,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/chat.js",
           "line": 303,
+          "signature": "renderMarkdownInto(container, text)",
+          "docComment": "Минимальный markdown-renderer: code fences (```...```), inline `code`,\n**bold**, *italic*, заголовки (#, ##, ###), bullet-списки, ссылки [text](url).\nНе XSS-safe для произвольного HTML — мы строим DOM, не innerHTML, поэтому\nпользовательские data не уходят в innerHTML кроме внутри <code>/<pre>.",
           "exports": []
         },
         {
@@ -1756,6 +1846,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/chat.js",
           "line": 375,
+          "signature": "appendInline(parent, text)",
           "exports": []
         },
         {
@@ -1803,6 +1894,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/main.js",
           "line": 51,
+          "signature": "initEcho()",
+          "docComment": "Singleton init. Безопасно вызывать многократно.",
           "exports": [
             "initEcho"
           ]
@@ -1813,6 +1906,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/main.js",
           "line": 113,
+          "signature": "bindSidebarTabs()",
           "exports": []
         },
         {
@@ -1821,6 +1915,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/main.js",
           "line": 134,
+          "signature": "refreshChatsList()",
           "exports": []
         },
         {
@@ -1829,6 +1924,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/main.js",
           "line": 172,
+          "signature": "openChat(conversationId)",
           "exports": []
         },
         {
@@ -1837,6 +1933,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/main.js",
           "line": 192,
+          "signature": "createAndOpenChat()",
           "exports": []
         },
         {
@@ -1845,6 +1942,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/main.js",
           "line": 210,
+          "signature": "connectEchoWs(conversationId)",
+          "docComment": "Подключить WS к указанной conversation; регистрирует handlers.",
           "exports": [
             "connectEchoWs"
           ]
@@ -1855,6 +1954,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/main.js",
           "line": 215,
+          "signature": "disconnectEchoWs()",
           "exports": [
             "disconnectEchoWs"
           ]
@@ -1865,6 +1965,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/main.js",
           "line": 220,
+          "signature": "teardownEcho()",
+          "docComment": "Cleanup для beforeunload — снимает поллинги, WS.",
           "exports": [
             "teardownEcho"
           ]
@@ -1875,6 +1977,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/main.js",
           "line": 229,
+          "signature": "buildHandlers()",
           "exports": []
         },
         {
@@ -1883,6 +1986,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/main.js",
           "line": 275,
+          "signature": "cssEscape(s)",
           "exports": []
         },
         {
@@ -1891,6 +1995,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/main.js",
           "line": 281,
+          "signature": "_debugState()",
+          "docComment": "Тестовый exporter — текущее состояние.",
           "exports": [
             "_debugState"
           ]
@@ -1922,6 +2028,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/memory.js",
           "line": 25,
+          "signature": "initMemoryPane()",
           "exports": [
             "initMemoryPane"
           ]
@@ -1932,6 +2039,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/memory.js",
           "line": 49,
+          "signature": "setMemoryFilters(projectId, day)",
+          "docComment": "Обновить активный project / day для memory pane (вызывается из main.js\n при переключении project-filter).",
           "exports": [
             "setMemoryFilters"
           ]
@@ -1942,6 +2051,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/memory.js",
           "line": 55,
+          "signature": "refreshMemory()",
           "exports": [
             "refreshMemory"
           ]
@@ -1952,6 +2062,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/memory.js",
           "line": 80,
+          "signature": "buildMemoryNode(m)",
           "exports": []
         },
         {
@@ -1960,6 +2071,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/memory.js",
           "line": 118,
+          "signature": "beginEdit(li, m)",
           "exports": []
         },
         {
@@ -1968,6 +2080,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/memory.js",
           "line": 138,
+          "signature": "formatHeading(m)",
           "exports": []
         },
         {
@@ -1976,6 +2089,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/memory.js",
           "line": 145,
+          "signature": "runRegenerate()",
           "exports": []
         },
         {
@@ -1984,6 +2098,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/memory.js",
           "line": 179,
+          "signature": "makeBtn(label, fn, cls)",
           "exports": []
         },
         {
@@ -1992,6 +2107,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/memory.js",
           "line": 188,
+          "signature": "escapeHtml(s)",
           "exports": []
         },
         {
@@ -2053,6 +2169,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/model-picker.js",
           "line": 22,
+          "signature": "getSelectedModel()",
+          "docComment": "Текущая выбранная модель (читается из LS, fallback — первая в списке).",
           "exports": [
             "getSelectedModel"
           ]
@@ -2063,6 +2181,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/model-picker.js",
           "line": 31,
+          "signature": "listModels()",
+          "docComment": "Список моделей для UI. Возвращает копию массива.",
           "exports": [
             "listModels"
           ]
@@ -2073,6 +2193,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/model-picker.js",
           "line": 39,
+          "signature": "initModelPicker(onChange)",
+          "docComment": "Заполнить <select> и навесить change-handler.\nИдемпотентен: повторный init очищает existing options и наполняет заново.",
           "exports": [
             "initModelPicker"
           ]
@@ -2112,6 +2234,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/notifications.js",
           "line": 27,
+          "signature": "isEchoNotificationsEnabled()",
+          "docComment": "Проверяет user-settings: показывать ли Echo-нотификации.\n\nДефолт (settings не загружены / поле отсутствует) — `true`, чтобы\nнулевая конфигурация поведение не меняла. Только явный `false`\nприглушает toast'ы.",
           "exports": []
         },
         {
@@ -2120,6 +2244,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/notifications.js",
           "line": 42,
+          "signature": "notify(opts)",
+          "docComment": "Показать toast.",
           "exports": [
             "notify"
           ]
@@ -2130,6 +2256,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/notifications.js",
           "line": 92,
+          "signature": "dismiss(toast)",
           "exports": []
         },
         {
@@ -2138,6 +2265,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/notifications.js",
           "line": 104,
+          "signature": "clearToasts()",
+          "docComment": "Очистить все активные toasts (для тестов / переключения вкладки).",
           "exports": [
             "clearToasts"
           ]
@@ -2148,6 +2277,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/notifications.js",
           "line": 115,
+          "signature": "notifyFromServerMsg(msg)",
+          "docComment": "Маппинг serverMsg уровня (info/warn/error) → toast level. Используется\nhandlers.notification в main.js.",
           "exports": [
             "notifyFromServerMsg"
           ]
@@ -2194,6 +2325,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/settings.js",
           "line": 38,
+          "signature": "buildEchoSettingsForm(settings, onSaved)",
+          "docComment": "Строит DOM-узел формы. settings может быть null — тогда используются дефолты.\nonSaved(updatedSettings) — callback после успешного PATCH.",
           "exports": [
             "buildEchoSettingsForm"
           ]
@@ -2204,6 +2337,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/settings.js",
           "line": 175,
+          "signature": "renderEchoSettingsTab(containerEl, currentSettings, onSaved)",
+          "docComment": "Удобная обёртка для модального диспетчера: рендерит форму внутрь\nпереданного контейнера, очищая его содержимое.",
           "exports": [
             "renderEchoSettingsTab"
           ]
@@ -2235,6 +2370,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/stats.js",
           "line": 22,
+          "signature": "initStats(pollMs)",
           "exports": [
             "initStats"
           ]
@@ -2245,6 +2381,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/stats.js",
           "line": 29,
+          "signature": "stopStats()",
           "exports": [
             "stopStats"
           ]
@@ -2255,6 +2392,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/stats.js",
           "line": 36,
+          "signature": "pollOnce()",
           "exports": []
         },
         {
@@ -2263,6 +2401,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/stats.js",
           "line": 63,
+          "signature": "updateFromWs(payload)",
+          "docComment": "Принимает один update от WS — добавляет в текущий bucket. Pусть просто\nдвигает последний bucket — фронт не пытается синхронизироваться с\nserver-tz, поскольку точное время минуты не критично для sparkline.",
           "exports": [
             "updateFromWs"
           ]
@@ -2273,6 +2413,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/stats.js",
           "line": 73,
+          "signature": "padLeft(arr, n, fill)",
           "exports": []
         },
         {
@@ -2281,6 +2422,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/stats.js",
           "line": 79,
+          "signature": "updateSummary(sumIn, sumOut)",
           "exports": []
         },
         {
@@ -2289,6 +2431,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/stats.js",
           "line": 84,
+          "signature": "formatK(n)",
           "exports": []
         },
         {
@@ -2297,6 +2440,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/stats.js",
           "line": 90,
+          "signature": "redraw()",
           "exports": []
         },
         {
@@ -2305,6 +2449,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/stats.js",
           "line": 126,
+          "signature": "drawSeries(ctx, arr, W, H, dx, maxV, color)",
           "exports": []
         },
         {
@@ -2346,6 +2491,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/ws.js",
           "line": 38,
+          "signature": "connectEchoWs(conversationId, handlers)",
+          "docComment": "Подключиться к /ws/echo для указанной conversation.",
           "exports": [
             "connectEchoWs"
           ]
@@ -2356,6 +2503,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/ws.js",
           "line": 76,
+          "signature": "disconnectEchoWs()",
+          "docComment": "Закрыть соединение. После disconnectEchoWs автоматическая реконнектация\nне происходит — нужно явно вызвать connectEchoWs.",
           "exports": [
             "disconnectEchoWs"
           ]
@@ -2366,6 +2515,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/ws.js",
           "line": 95,
+          "signature": "sendClientMsg(msg)",
+          "docComment": "Отправить ClientMsg. Возвращает true, если фрейм был отправлен,\nfalse — если соединение не открыто.",
           "exports": [
             "sendClientMsg"
           ]
@@ -2376,6 +2527,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/ws.js",
           "line": 111,
+          "signature": "open()",
           "exports": []
         },
         {
@@ -2384,6 +2536,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/ws.js",
           "line": 155,
+          "signature": "scheduleReconnect()",
           "exports": []
         },
         {
@@ -2392,6 +2545,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/ws.js",
           "line": 169,
+          "signature": "handleFrame(raw)",
           "exports": []
         },
         {
@@ -2400,6 +2554,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/ws.js",
           "line": 205,
+          "signature": "sendUserMessage(payload)",
+          "docComment": "Отправить user_message в текущую открытую conversation.",
           "exports": [
             "sendUserMessage"
           ]
@@ -2410,6 +2566,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/ws.js",
           "line": 216,
+          "signature": "sendCancel(runId)",
           "exports": [
             "sendCancel"
           ]
@@ -2420,6 +2577,7 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/ws.js",
           "line": 220,
+          "signature": "sendActionInvoke(actionId, params)",
           "exports": [
             "sendActionInvoke"
           ]
@@ -2430,6 +2588,8 @@
           "type": "function",
           "path": "tmux-web/static/js/echo/ws.js",
           "line": 231,
+          "signature": "_debugState()",
+          "docComment": "Для тестов / диагностики — возвращает текущий conversation_id и состояние.",
           "exports": [
             "_debugState"
           ]
@@ -2484,6 +2644,8 @@
           "type": "function",
           "path": "tmux-web/static/js/remote/healthz.js",
           "line": 21,
+          "signature": "loadHealthz()",
+          "docComment": "Phase 5 — GET /healthz; пишет state.remoteMode и state.serverVersion.\n\nКонтракт: эндпоинт доступен без Bearer-auth (см. auth::is_path_excluded\nна бэке) и отдаёт { status, remote_mode, version }. Если запрос упал —\nсчитаем remote_mode=false (legacy-friendly fallback), но всё равно\nвыставляем healthzLoaded=true чтобы остальной bootstrap продолжился.",
           "exports": [
             "loadHealthz"
           ]
@@ -2494,6 +2656,8 @@
           "type": "function",
           "path": "tmux-web/static/js/remote/healthz.js",
           "line": 48,
+          "signature": "isRemoteMode()",
+          "docComment": "Phase 5 — true если frontend должен рендерить новый UI (origin-табы,\nSettings → Remote servers tab, кнопка add-remote, и т.п.).\nИспользуется как guard в renderSidebar, openSettingsModal и API-helper'ах.\nПри false поведение фронта побитово совпадает с legacy.",
           "exports": [
             "isRemoteMode"
           ]
@@ -2504,6 +2668,8 @@
           "type": "function",
           "path": "tmux-web/static/js/remote/healthz.js",
           "line": 56,
+          "signature": "renderAppVersion()",
+          "docComment": "Отрисовывает версию приложения в footer'е сайдбара (слева снизу).\nБерёт значение из state.serverVersion (заполняется loadHealthz из /healthz).",
           "exports": []
         }
       ]
@@ -2528,6 +2694,7 @@
           "type": "function",
           "path": "tmux-web/static/js/remote/servers.js",
           "line": 30,
+          "signature": "fetchRemoteServers()",
           "exports": [
             "fetchRemoteServers"
           ]
@@ -2538,6 +2705,7 @@
           "type": "function",
           "path": "tmux-web/static/js/remote/servers.js",
           "line": 50,
+          "signature": "loadRemoteSessions(serverId)",
           "exports": [
             "loadRemoteSessions"
           ]
@@ -2548,6 +2716,7 @@
           "type": "function",
           "path": "tmux-web/static/js/remote/servers.js",
           "line": 71,
+          "signature": "probeRemoteServer(serverId)",
           "exports": [
             "probeRemoteServer"
           ]
@@ -2558,6 +2727,7 @@
           "type": "function",
           "path": "tmux-web/static/js/remote/servers.js",
           "line": 124,
+          "signature": "startRemoteHealthPoll()",
           "exports": [
             "startRemoteHealthPoll"
           ]
@@ -2568,6 +2738,7 @@
           "type": "function",
           "path": "tmux-web/static/js/remote/servers.js",
           "line": 143,
+          "signature": "stopRemoteHealthPoll()",
           "exports": [
             "stopRemoteHealthPoll"
           ]
@@ -2578,6 +2749,7 @@
           "type": "function",
           "path": "tmux-web/static/js/remote/servers.js",
           "line": 150,
+          "signature": "aggregateAllOrigins()",
           "exports": [
             "aggregateAllOrigins"
           ]
@@ -2640,6 +2812,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
           "line": 23,
+          "signature": "fetchSessions()",
           "exports": [
             "fetchSessions"
           ]
@@ -2650,6 +2823,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
           "line": 37,
+          "signature": "buildSessionItem(s)",
           "exports": [
             "buildSessionItem"
           ]
@@ -2660,6 +2834,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
           "line": 110,
+          "signature": "groupSessionsByFolder(sessions, orphanKey)",
           "exports": [
             "groupSessionsByFolder"
           ]
@@ -2670,6 +2845,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
           "line": 124,
+          "signature": "startPolling()",
           "exports": [
             "startPolling"
           ]
@@ -2680,6 +2856,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
           "line": 129,
+          "signature": "stopPolling()",
           "exports": [
             "stopPolling"
           ]
@@ -2690,6 +2867,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
           "line": 136,
+          "signature": "createSessionPrompt()",
           "exports": [
             "createSessionPrompt"
           ]
@@ -2700,6 +2878,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
           "line": 159,
+          "signature": "renameSession(oldName, origin)",
           "exports": [
             "renameSession"
           ]
@@ -2710,6 +2889,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
           "line": 195,
+          "signature": "killSession(name, origin)",
           "exports": [
             "killSession"
           ]
@@ -2720,6 +2900,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
           "line": 217,
+          "signature": "openSession(name, origin)",
           "exports": [
             "openSession"
           ]
@@ -2730,6 +2911,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
           "line": 239,
+          "signature": "switchSession(name)",
           "exports": [
             "switchSession"
           ]
@@ -2758,6 +2940,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sessions/windows.js",
           "line": 16,
+          "signature": "fetchWindows()",
           "exports": [
             "fetchWindows"
           ]
@@ -2768,6 +2951,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sessions/windows.js",
           "line": 44,
+          "signature": "renderWindowBar()",
           "exports": [
             "renderWindowBar"
           ]
@@ -2778,6 +2962,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sessions/windows.js",
           "line": 97,
+          "signature": "selectWindow(index)",
           "exports": [
             "selectWindow"
           ]
@@ -2788,6 +2973,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sessions/windows.js",
           "line": 118,
+          "signature": "createWindow()",
           "exports": [
             "createWindow"
           ]
@@ -2798,6 +2984,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sessions/windows.js",
           "line": 147,
+          "signature": "killWindow(index, name)",
           "exports": [
             "killWindow"
           ]
@@ -2808,6 +2995,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sessions/windows.js",
           "line": 169,
+          "signature": "renameWindow(index, oldName)",
           "exports": [
             "renameWindow"
           ]
@@ -2818,6 +3006,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sessions/windows.js",
           "line": 198,
+          "signature": "startWindowsPolling()",
           "exports": [
             "startWindowsPolling"
           ]
@@ -2828,6 +3017,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sessions/windows.js",
           "line": 204,
+          "signature": "stopWindowsPolling()",
           "exports": [
             "stopWindowsPolling"
           ]
@@ -2849,6 +3039,7 @@
           "type": "function",
           "path": "tmux-web/static/js/settings/modal.js",
           "line": 18,
+          "signature": "openSettingsModal(initialTab)",
           "exports": [
             "openSettingsModal"
           ]
@@ -2872,6 +3063,8 @@
           "type": "function",
           "path": "tmux-web/static/js/settings/notifications-tab.js",
           "line": 16,
+          "signature": "fetchNotifierConfig()",
+          "docComment": "Загружает текущий глобальный notifier-config с бэкенда.\nПри ошибке возвращает дефолты (template=\"\", delay_minutes=0,\nwait_previous=false, session=null) и пишет warning в console.",
           "exports": [
             "fetchNotifierConfig"
           ]
@@ -2882,6 +3075,8 @@
           "type": "function",
           "path": "tmux-web/static/js/settings/notifications-tab.js",
           "line": 37,
+          "signature": "saveNotifierConfig(patch)",
+          "docComment": "Сохраняет частичное обновление notifier-config через PATCH.\nСемантика `session`: пустая строка после trim сбрасывает session в None\nна бэкенде (см. patch_notifier_config / PatchNotifierConfigReq).",
           "exports": [
             "saveNotifierConfig"
           ]
@@ -2892,6 +3087,8 @@
           "type": "function",
           "path": "tmux-web/static/js/settings/notifications-tab.js",
           "line": 65,
+          "signature": "buildNotificationsForm(config, onSaved)",
+          "docComment": "Строит форму глобальных notifier-настроек. Принимает текущий снапшот\nconfig (или пустой объект) и опционально callback onSaved(updated).\n\nПоддерживаемые поля:\n  - template          (textarea)\n  - delay_minutes     (number, ≥0)\n  - wait_previous     (checkbox)\n  - session           (text; пустая строка ⇒ сброс в None)",
           "exports": [
             "buildNotificationsForm"
           ]
@@ -2914,6 +3111,7 @@
           "type": "function",
           "path": "tmux-web/static/js/settings/remotes-tab.js",
           "line": 16,
+          "signature": "renderRemotesTable($remotesTbody)",
           "exports": [
             "renderRemotesTable"
           ]
@@ -2924,6 +3122,7 @@
           "type": "function",
           "path": "tmux-web/static/js/settings/remotes-tab.js",
           "line": 94,
+          "signature": "openEditRemoteRow(tr, srv, $remotesTbody)",
           "exports": [
             "openEditRemoteRow"
           ]
@@ -2945,6 +3144,7 @@
           "type": "function",
           "path": "tmux-web/static/js/settings/todo-tab.js",
           "line": 47,
+          "signature": "buildTodoBehaviorForm(settings, onSaved)",
           "exports": [
             "buildTodoBehaviorForm"
           ]
@@ -2991,6 +3191,7 @@
           "type": "function",
           "path": "tmux-web/static/js/settings/user-settings-api.js",
           "line": 27,
+          "signature": "fetchUserSettings()",
           "exports": [
             "fetchUserSettings"
           ]
@@ -3001,6 +3202,7 @@
           "type": "function",
           "path": "tmux-web/static/js/settings/user-settings-api.js",
           "line": 52,
+          "signature": "updateUserSettings(payload)",
           "exports": [
             "updateUserSettings"
           ]
@@ -3011,6 +3213,7 @@
           "type": "function",
           "path": "tmux-web/static/js/settings/user-settings-api.js",
           "line": 83,
+          "signature": "deepClone(obj)",
           "exports": []
         },
         {
@@ -3041,6 +3244,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sidebar/mobile.js",
           "line": 14,
+          "signature": "applySidebarCollapsed(collapsed)",
           "exports": [
             "applySidebarCollapsed"
           ]
@@ -3051,6 +3255,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sidebar/mobile.js",
           "line": 35,
+          "signature": "setMobileSidebarOpen(open)",
           "exports": [
             "setMobileSidebarOpen"
           ]
@@ -3061,6 +3266,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sidebar/mobile.js",
           "line": 44,
+          "signature": "toggleSidebar()",
           "exports": [
             "toggleSidebar"
           ]
@@ -3071,6 +3277,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sidebar/mobile.js",
           "line": 56,
+          "signature": "restoreSidebarState()",
           "exports": [
             "restoreSidebarState"
           ]
@@ -3098,6 +3305,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sidebar/origin-tabs.js",
           "line": 20,
+          "signature": "loadActiveOriginFromStorage()",
           "exports": [
             "loadActiveOriginFromStorage"
           ]
@@ -3108,6 +3316,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sidebar/origin-tabs.js",
           "line": 35,
+          "signature": "saveActiveOriginToStorage()",
           "exports": [
             "saveActiveOriginToStorage"
           ]
@@ -3118,6 +3327,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sidebar/origin-tabs.js",
           "line": 42,
+          "signature": "getCollapsedOrigins()",
           "exports": [
             "getCollapsedOrigins"
           ]
@@ -3128,6 +3338,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sidebar/origin-tabs.js",
           "line": 56,
+          "signature": "persistCollapsedOrigins()",
           "exports": [
             "persistCollapsedOrigins"
           ]
@@ -3138,6 +3349,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sidebar/origin-tabs.js",
           "line": 64,
+          "signature": "isOriginCollapsed(key)",
           "exports": [
             "isOriginCollapsed"
           ]
@@ -3148,6 +3360,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sidebar/origin-tabs.js",
           "line": 67,
+          "signature": "toggleOriginCollapsed(key)",
           "exports": [
             "toggleOriginCollapsed"
           ]
@@ -3158,6 +3371,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sidebar/origin-tabs.js",
           "line": 77,
+          "signature": "renderOriginTabs()",
           "exports": [
             "renderOriginTabs"
           ]
@@ -3189,6 +3403,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sidebar/sidebar.js",
           "line": 15,
+          "signature": "renderSidebar()",
           "exports": [
             "renderSidebar"
           ]
@@ -3199,6 +3414,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sidebar/sidebar.js",
           "line": 35,
+          "signature": "renderSidebarWithOrigin()",
           "exports": [
             "renderSidebarWithOrigin"
           ]
@@ -3209,6 +3425,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sidebar/sidebar.js",
           "line": 86,
+          "signature": "renderOriginSection(originKey, label, dotKind, sessions, opts)",
           "exports": [
             "renderOriginSection"
           ]
@@ -3219,6 +3436,7 @@
           "type": "function",
           "path": "tmux-web/static/js/sidebar/sidebar.js",
           "line": 156,
+          "signature": "renderFolderGroups(sessions, opts)",
           "exports": []
         },
         {
@@ -3246,6 +3464,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tabs/tabs.js",
           "line": 21,
+          "signature": "switchTab(name)",
           "exports": [
             "switchTab"
           ]
@@ -3280,6 +3499,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
           "line": 30,
+          "signature": "createTuiTab(opts)",
           "exports": [
             "createTuiTab"
           ]
@@ -3290,6 +3510,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
           "line": 474,
+          "signature": "initTuiTabs()",
           "exports": [
             "initTuiTabs"
           ]
@@ -3300,6 +3521,8 @@
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
           "line": 591,
+          "signature": "sessionCwdOrNull()",
+          "docComment": "Возвращает cwd текущей tmux-сессии (`state.currentSession.path`) или null,\nесли сессия не выбрана / не найдена в state.sessions / не имеет path.\n\nИспользуется git-вкладкой как resolveCwd: lazygit показывает репо\nименно той сессии, в которой юзер сейчас работает, а не корень проекта.\nЭто важно для:\n  1) Разных сессий одного проекта в разных подпапках.\n  2) сессий без cwd (sess.path=null), для которых resolveCwd не даёт path.",
           "exports": []
         },
         {
@@ -3308,6 +3531,8 @@
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
           "line": 607,
+          "signature": "syncGitToCurrentSession()",
+          "docComment": "Синхронизирует git-WS с cwd текущей сессии. Вызывается из openSession /\nswitchSession сразу после установки state.currentSession. Логика:\n  - Если git-WS открыт и cwd сессии отличается от текущего — switchCwd\n    (на бэке lazygit перезапускается под новым cwd).\n  - Если git-WS не открыт — ничего не делаем; resolveCwd подхватит свежий\n    session.path при первом openForActiveProject (т.е. при клике на вкладку).",
           "exports": [
             "syncGitToCurrentSession"
           ]
@@ -3318,6 +3543,8 @@
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
           "line": 623,
+          "signature": "syncTelescopeToCurrentSession()",
+          "docComment": "Синхронизирует telescope-WS (Find) с cwd текущей сессии. По образцу\nsyncGitToCurrentSession: если WS открыт и сессия сменила cwd —\nswitchCwd (на бэке tv перезапускается под новым cwd). Если WS не\nоткрыт — ничего не делаем; resolveCwd подхватит свежий session.path\nпри следующем openForActiveProject.",
           "exports": [
             "syncTelescopeToCurrentSession"
           ]
@@ -3328,6 +3555,8 @@
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
           "line": 640,
+          "signature": "syncDockerToCurrentSession()",
+          "docComment": "Синхронизирует docker-WS (lazydocker) с cwd текущей сессии. По образцу\nsyncGitToCurrentSession. Если WS открыт и сессия сменила cwd —\nswitchCwd (на бэке lazydocker перезапускается под новым cwd, что\nподхватывает локальный docker-compose.yml текущего проекта). Если WS\nне открыт — resolveCwd подхватит свежий session.path при следующем\nopenForActiveProject.",
           "exports": [
             "syncDockerToCurrentSession"
           ]
@@ -3338,6 +3567,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
           "line": 649,
+          "signature": "_git()",
           "exports": []
         },
         {
@@ -3346,6 +3576,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
           "line": 653,
+          "signature": "mountGitTerm()",
           "exports": [
             "mountGitTerm"
           ]
@@ -3356,6 +3587,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
           "line": 658,
+          "signature": "openLazygitForActiveProject()",
           "exports": [
             "openLazygitForActiveProject"
           ]
@@ -3366,6 +3598,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
           "line": 663,
+          "signature": "connectGitWs(cwd)",
           "exports": [
             "connectGitWs"
           ]
@@ -3376,6 +3609,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
           "line": 668,
+          "signature": "closeGitWs(reason)",
           "exports": [
             "closeGitWs"
           ]
@@ -3386,6 +3620,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
           "line": 673,
+          "signature": "gitSwitchCwd(newCwd)",
           "exports": [
             "gitSwitchCwd"
           ]
@@ -3396,6 +3631,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
           "line": 678,
+          "signature": "showGitBanner(message, opts)",
           "exports": [
             "showGitBanner"
           ]
@@ -3406,6 +3642,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
           "line": 683,
+          "signature": "hideGitBanner()",
           "exports": [
             "hideGitBanner"
           ]
@@ -3416,6 +3653,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
           "line": 688,
+          "signature": "retryGitConnection()",
           "exports": [
             "retryGitConnection"
           ]
@@ -3426,6 +3664,8 @@
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
           "line": 698,
+          "signature": "sendToActivePty(text)",
+          "docComment": "sendToActivePty(text) — отправляет произвольный текст в WS активной\nвкладки (terminal / git / docker / telescope). Используется\nquick-cmd.js для отправки команд из quick-command bar и spec-keys.",
           "exports": [
             "sendToActivePty"
           ]
@@ -3482,6 +3722,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
           "line": 17,
+          "signature": "getIssueIndex(id)",
           "exports": [
             "getIssueIndex"
           ]
@@ -3492,6 +3733,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
           "line": 22,
+          "signature": "applyOptimisticPatch(id, patch)",
           "exports": [
             "applyOptimisticPatch"
           ]
@@ -3502,6 +3744,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
           "line": 32,
+          "signature": "rollbackIssue(id, prev)",
           "exports": [
             "rollbackIssue"
           ]
@@ -3512,6 +3755,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
           "line": 43,
+          "signature": "createTask(payload)",
           "exports": [
             "createTask"
           ]
@@ -3522,6 +3766,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
           "line": 99,
+          "signature": "updateTask(id, payload)",
           "exports": [
             "updateTask"
           ]
@@ -3532,6 +3777,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
           "line": 140,
+          "signature": "taskOriginById(id)",
           "exports": [
             "taskOriginById"
           ]
@@ -3542,6 +3788,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
           "line": 146,
+          "signature": "closeTask(id, reason, opts)",
           "exports": [
             "closeTask"
           ]
@@ -3552,6 +3799,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
           "line": 168,
+          "signature": "purgeTask(id, opts)",
           "exports": [
             "purgeTask"
           ]
@@ -3562,6 +3810,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
           "line": 201,
+          "signature": "deleteTodoLocal(id, opts)",
           "exports": [
             "deleteTodoLocal"
           ]
@@ -3572,6 +3821,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
           "line": 236,
+          "signature": "cleanColumn(status, ids)",
           "exports": [
             "cleanColumn"
           ]
@@ -3582,6 +3832,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
           "line": 258,
+          "signature": "reopenTask(id)",
           "exports": [
             "reopenTask"
           ]
@@ -3592,6 +3843,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
           "line": 279,
+          "signature": "promoteTodo(id, sessionOverride)",
           "exports": [
             "promoteTodo"
           ]
@@ -3616,6 +3868,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tasks/modals.js",
           "line": 24,
+          "signature": "buildTaskFormHtml(initial, isEdit)",
           "exports": [
             "buildTaskFormHtml"
           ]
@@ -3626,6 +3879,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tasks/modals.js",
           "line": 53,
+          "signature": "openCreateModal(preset)",
           "exports": [
             "openCreateModal"
           ]
@@ -3636,6 +3890,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tasks/modals.js",
           "line": 165,
+          "signature": "openEditModal(issue)",
           "exports": [
             "openEditModal"
           ]
@@ -3646,6 +3901,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tasks/modals.js",
           "line": 250,
+          "signature": "openTodoEditModal(todo)",
           "exports": [
             "openTodoEditModal"
           ]
@@ -3690,6 +3946,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tasks/render.js",
           "line": 30,
+          "signature": "currentTodosPath()",
           "exports": [
             "currentTodosPath"
           ]
@@ -3700,6 +3957,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tasks/render.js",
           "line": 37,
+          "signature": "renderTasks()",
           "exports": [
             "renderTasks"
           ]
@@ -3710,6 +3968,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tasks/render.js",
           "line": 72,
+          "signature": "compareIssues(a, b)",
           "exports": [
             "compareIssues"
           ]
@@ -3720,6 +3979,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tasks/render.js",
           "line": 82,
+          "signature": "renderColumn(status, items)",
           "exports": [
             "renderColumn"
           ]
@@ -3730,6 +3990,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tasks/render.js",
           "line": 227,
+          "signature": "renderTodoCard(todo)",
           "exports": [
             "renderTodoCard"
           ]
@@ -3740,6 +4001,7 @@
           "type": "function",
           "path": "tmux-web/static/js/tasks/render.js",
           "line": 333,
+          "signature": "renderCard(issue)",
           "exports": [
             "renderCard"
           ]
@@ -3781,6 +4043,8 @@
           "type": "function",
           "path": "tmux-web/static/js/terminal/theme-mapper.js",
           "line": 16,
+          "signature": "mapTermTheme(t)",
+          "docComment": "Маппит нашу TermColors-палитру в xterm.js ITheme.\nВозвращает новый объект, безопасно присваиваемый в term.options.theme.",
           "exports": [
             "mapTermTheme"
           ]
@@ -3806,6 +4070,8 @@
           "type": "function",
           "path": "tmux-web/static/js/terminal/xterm.js",
           "line": 33,
+          "signature": "initTerminal(termTheme)",
+          "docComment": "Инициализация xterm.js Terminal.",
           "exports": [
             "initTerminal"
           ]
@@ -3816,6 +4082,7 @@
           "type": "function",
           "path": "tmux-web/static/js/terminal/xterm.js",
           "line": 113,
+          "signature": "sendResize(cols, rows)",
           "exports": [
             "sendResize"
           ]
@@ -3826,6 +4093,7 @@
           "type": "function",
           "path": "tmux-web/static/js/terminal/xterm.js",
           "line": 125,
+          "signature": "scheduleResizeFromTerm()",
           "exports": [
             "scheduleResizeFromTerm"
           ]
@@ -3836,6 +4104,7 @@
           "type": "function",
           "path": "tmux-web/static/js/terminal/xterm.js",
           "line": 134,
+          "signature": "setStatus(kind, text)",
           "exports": [
             "setStatus"
           ]
@@ -3846,6 +4115,7 @@
           "type": "function",
           "path": "tmux-web/static/js/terminal/xterm.js",
           "line": 143,
+          "signature": "showPlaceholder(visible)",
           "exports": [
             "showPlaceholder"
           ]
@@ -3878,6 +4148,7 @@
           "type": "function",
           "path": "tmux-web/static/js/themes/api.js",
           "line": 17,
+          "signature": "applyTheme(theme)",
           "exports": [
             "applyTheme"
           ]
@@ -3888,6 +4159,7 @@
           "type": "function",
           "path": "tmux-web/static/js/themes/api.js",
           "line": 50,
+          "signature": "switchTheme(id)",
           "exports": [
             "switchTheme"
           ]
@@ -3898,6 +4170,7 @@
           "type": "function",
           "path": "tmux-web/static/js/themes/api.js",
           "line": 74,
+          "signature": "loadActiveThemeOrNull()",
           "exports": [
             "loadActiveThemeOrNull"
           ]
@@ -3908,6 +4181,7 @@
           "type": "function",
           "path": "tmux-web/static/js/themes/api.js",
           "line": 134,
+          "signature": "normalizeHex(value, fallback)",
           "exports": [
             "normalizeHex"
           ]
@@ -3918,6 +4192,7 @@
           "type": "function",
           "path": "tmux-web/static/js/themes/api.js",
           "line": 141,
+          "signature": "cloneThemeColors(theme)",
           "exports": [
             "cloneThemeColors"
           ]
@@ -3928,6 +4203,7 @@
           "type": "function",
           "path": "tmux-web/static/js/themes/api.js",
           "line": 155,
+          "signature": "validateDraft(draft)",
           "exports": [
             "validateDraft"
           ]
@@ -3938,6 +4214,7 @@
           "type": "function",
           "path": "tmux-web/static/js/themes/api.js",
           "line": 173,
+          "signature": "buildThemePayload(draft, isEdit)",
           "exports": [
             "buildThemePayload"
           ]
@@ -4011,6 +4288,7 @@
           "type": "function",
           "path": "tmux-web/static/js/themes/editor.js",
           "line": 17,
+          "signature": "openThemeEditor(themeOrNull)",
           "exports": [
             "openThemeEditor"
           ]
@@ -4021,6 +4299,7 @@
           "type": "function",
           "path": "tmux-web/static/js/themes/editor.js",
           "line": 273,
+          "signature": "buildColorPickerRow(def, initialHex, onChange, compact)",
           "exports": [
             "buildColorPickerRow"
           ]
@@ -4031,6 +4310,7 @@
           "type": "function",
           "path": "tmux-web/static/js/themes/editor.js",
           "line": 337,
+          "signature": "buildLivePreviewContainer()",
           "exports": [
             "buildLivePreviewContainer"
           ]
@@ -4054,6 +4334,7 @@
           "type": "function",
           "path": "tmux-web/static/js/themes/panel.js",
           "line": 12,
+          "signature": "loadThemesIntoPanel(panel, themesState)",
           "exports": [
             "loadThemesIntoPanel"
           ]
@@ -4064,6 +4345,7 @@
           "type": "function",
           "path": "tmux-web/static/js/themes/panel.js",
           "line": 44,
+          "signature": "renderThemesPanel(panel, themesState)",
           "exports": [
             "renderThemesPanel"
           ]
@@ -4074,6 +4356,7 @@
           "type": "function",
           "path": "tmux-web/static/js/themes/panel.js",
           "line": 167,
+          "signature": "buildThemeCard(theme, isActive, onClick)",
           "exports": [
             "buildThemeCard"
           ]
@@ -4098,6 +4381,7 @@
           "type": "function",
           "path": "tmux-web/static/js/ws/attach.js",
           "line": 17,
+          "signature": "connectWs(sessionName, origin)",
           "exports": [
             "connectWs"
           ]
@@ -4108,6 +4392,7 @@
           "type": "function",
           "path": "tmux-web/static/js/ws/attach.js",
           "line": 106,
+          "signature": "scheduleAttachWsReconnect()",
           "exports": [
             "scheduleAttachWsReconnect"
           ]
@@ -4118,6 +4403,7 @@
           "type": "function",
           "path": "tmux-web/static/js/ws/attach.js",
           "line": 127,
+          "signature": "handleControlFromServer(msg)",
           "exports": [
             "handleControlFromServer"
           ]
@@ -4128,6 +4414,7 @@
           "type": "function",
           "path": "tmux-web/static/js/ws/attach.js",
           "line": 134,
+          "signature": "disconnectWs()",
           "exports": [
             "disconnectWs"
           ]
@@ -4173,6 +4460,7 @@
           "type": "function",
           "path": "tmux-web/static/js/ws/tasks-ws.js",
           "line": 24,
+          "signature": "sessionCwdOrNull()",
           "exports": []
         },
         {
@@ -4181,6 +4469,7 @@
           "type": "function",
           "path": "tmux-web/static/js/ws/tasks-ws.js",
           "line": 32,
+          "signature": "startTasksPolling()",
           "exports": [
             "startTasksPolling"
           ]
@@ -4191,6 +4480,7 @@
           "type": "function",
           "path": "tmux-web/static/js/ws/tasks-ws.js",
           "line": 37,
+          "signature": "stopTasksPolling()",
           "exports": [
             "stopTasksPolling"
           ]
@@ -4201,6 +4491,7 @@
           "type": "function",
           "path": "tmux-web/static/js/ws/tasks-ws.js",
           "line": 44,
+          "signature": "connectTasksWs()",
           "exports": [
             "connectTasksWs"
           ]
@@ -4211,6 +4502,7 @@
           "type": "function",
           "path": "tmux-web/static/js/ws/tasks-ws.js",
           "line": 111,
+          "signature": "disconnectTasksWs()",
           "exports": [
             "disconnectTasksWs"
           ]
@@ -4221,6 +4513,7 @@
           "type": "function",
           "path": "tmux-web/static/js/ws/tasks-ws.js",
           "line": 123,
+          "signature": "scheduleTasksWsReconnect()",
           "exports": [
             "scheduleTasksWsReconnect"
           ]
@@ -4231,6 +4524,7 @@
           "type": "function",
           "path": "tmux-web/static/js/ws/tasks-ws.js",
           "line": 135,
+          "signature": "handleTasksWsMessage(raw)",
           "exports": [
             "handleTasksWsMessage"
           ]
@@ -4241,6 +4535,7 @@
           "type": "function",
           "path": "tmux-web/static/js/ws/tasks-ws.js",
           "line": 199,
+          "signature": "fetchTasks()",
           "exports": [
             "fetchTasks"
           ]
@@ -4251,6 +4546,7 @@
           "type": "function",
           "path": "tmux-web/static/js/ws/tasks-ws.js",
           "line": 228,
+          "signature": "syncTasksToCurrentSession()",
           "exports": [
             "syncTasksToCurrentSession"
           ]
@@ -4261,6 +4557,7 @@
           "type": "function",
           "path": "tmux-web/static/js/ws/tasks-ws.js",
           "line": 240,
+          "signature": "setTasksStatus(_kind, text)",
           "exports": [
             "setTasksStatus"
           ]
@@ -4305,6 +4602,7 @@
           "type": "function",
           "path": "tmux-web/static/js/ws/todos-ws.js",
           "line": 15,
+          "signature": "sessionPathOrNull()",
           "exports": []
         },
         {
@@ -4313,6 +4611,7 @@
           "type": "function",
           "path": "tmux-web/static/js/ws/todos-ws.js",
           "line": 23,
+          "signature": "fetchTodos(path)",
           "exports": [
             "fetchTodos"
           ]
@@ -4323,6 +4622,7 @@
           "type": "function",
           "path": "tmux-web/static/js/ws/todos-ws.js",
           "line": 44,
+          "signature": "startTodosPolling()",
           "exports": [
             "startTodosPolling"
           ]
@@ -4333,6 +4633,7 @@
           "type": "function",
           "path": "tmux-web/static/js/ws/todos-ws.js",
           "line": 49,
+          "signature": "stopTodosPolling()",
           "exports": [
             "stopTodosPolling"
           ]
@@ -4343,6 +4644,7 @@
           "type": "function",
           "path": "tmux-web/static/js/ws/todos-ws.js",
           "line": 56,
+          "signature": "connectTodosWs()",
           "exports": [
             "connectTodosWs"
           ]
@@ -4353,6 +4655,7 @@
           "type": "function",
           "path": "tmux-web/static/js/ws/todos-ws.js",
           "line": 118,
+          "signature": "syncTodosToCurrentSession()",
           "exports": [
             "syncTodosToCurrentSession"
           ]
@@ -4363,6 +4666,7 @@
           "type": "function",
           "path": "tmux-web/static/js/ws/todos-ws.js",
           "line": 128,
+          "signature": "disconnectTodosWs()",
           "exports": [
             "disconnectTodosWs"
           ]
@@ -4373,6 +4677,7 @@
           "type": "function",
           "path": "tmux-web/static/js/ws/todos-ws.js",
           "line": 140,
+          "signature": "scheduleTodosWsReconnect()",
           "exports": [
             "scheduleTodosWsReconnect"
           ]
@@ -4383,6 +4688,7 @@
           "type": "function",
           "path": "tmux-web/static/js/ws/todos-ws.js",
           "line": 155,
+          "signature": "handleTodosWsMessage(raw)",
           "exports": [
             "handleTodosWsMessage"
           ]

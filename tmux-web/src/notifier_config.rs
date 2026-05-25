@@ -18,8 +18,9 @@
 //!
 //! ### Дефолты
 //!
-//! - `template: ""` (пустая строка → notify не отправляется в
-//!   `promote_todo`, см. P3.3).
+//! - `template: ""` (пустая строка → в `promote_todo` используется
+//!   `DEFAULT_PROMOTE_TEMPLATE` — заголовок задачи + описание; notify всё
+//!   равно скипается, только если не определена целевая сессия).
 //! - `delay_minutes: 0` (Immediate).
 //! - `wait_previous: false` (без FIFO-очереди по предыдущему promote).
 //! - `session: None` (целевая сессия должна приходить из body запроса).
@@ -52,8 +53,8 @@ use serde::{Deserialize, Serialize};
 pub struct NotifierConfig {
     /// Шаблон notify-сообщения. Поддерживаемые плейсхолдеры — см.
     /// `format_notify_template` в `main.rs`: `{id}`, `{title}`,
-    /// `{description}`, `{priority}`, `{type}`. Пустая строка ⇒
-    /// notify не планируется при promote (см. P3.3).
+    /// `{description}`, `{priority}`, `{type}`. Пустая строка ⇒ в `promote_todo`
+    /// используется `DEFAULT_PROMOTE_TEMPLATE` (заголовок + описание задачи).
     #[serde(default)]
     pub template: String,
     /// Задержка перед отправкой notify в минутах. `0` ⇒ Immediate.

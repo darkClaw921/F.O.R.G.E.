@@ -2162,6 +2162,12 @@ const DEFAULT_NOTIFY_TEMPLATE: &str =
 /// Точный текст согласован с UI: чекбокс "Включить план мод" в модалке TODO.
 const PLAN_MODE_SUFFIX: &str = "Создай план для этой задачи";
 
+/// Дефолтный notify-шаблон для promote, когда `NotifierConfig.template` пуст.
+/// Сохраняет инвариант «zero-config = рабочий перенос»: в активную сессию
+/// уходит заголовок задачи (а при наличии — и описание, дописывается отдельно
+/// в `promote_todo`). Плейсхолдеры — как в [`format_notify_template`].
+const DEFAULT_PROMOTE_TEMPLATE: &str = "{title}";
+
 /// Подставляет значения TODO/issue в template-строку.
 ///
 /// Поддерживаемые плейсхолдеры:
@@ -2210,13 +2216,14 @@ struct PromoteTodoReq {
 /// 3. Удалить TODO + broadcast Removed (с root_path).
 /// 4. Прочитать `state.notifier_config.get()`:
 ///    - target session = `body.session` (если задан) else `cfg.session`.
-///    - template из `cfg.template`.
+///    - template из `cfg.template`; если пуст — `DEFAULT_PROMOTE_TEMPLATE`
+///      (заголовок задачи + описание отдельной строкой).
 ///    - mode из `cfg.delay_minutes` + `cfg.wait_previous`:
 ///        - wait_previous=true ⇒ NotifyMode::WaitPrevious
 ///        - delay_minutes>0  ⇒ NotifyMode::Delayed
 ///        - иначе            ⇒ NotifyMode::Immediate
-/// 5. Если `template` пуст ИЛИ target session пуст ⇒ skip notify (200 OK,
-///    но `notify_scheduled = false` в ответе).
+/// 5. Если target session пуст ⇒ skip notify (200 OK, `notify_scheduled =
+///    false`). Пустой `template` НЕ блокирует отправку — см. п.4 (fallback).
 /// 6. Иначе — `notifier.enqueue(job).await`.
 /// 7. Ответ 200 `{ promoted: true, task_id: "<bd-id>", notify_scheduled: bool }`.
 async fn promote_todo(
@@ -2333,17 +2340,16 @@ async fn promote_todo(
             .send(ws_todos::removed(todo.root_path.clone(), id.clone()));
     }
 
-    // 5) Если template пуст или target_session не определён — notify не
-    //    планируется. bd-задача уже создана и TODO удалён — возвращаем 200
-    //    с `notify_scheduled: false`. Это валидное состояние «zero-config».
-    let template_trimmed = cfg.template.trim();
-    if template_trimmed.is_empty() || target_session.is_none() {
+    // 5) Если target_session не определён — notify не планируется (некуда
+    //    слать). bd-задача уже создана и TODO удалён — возвращаем 200 с
+    //    `notify_scheduled: false`. Пустой `template` НЕ блокирует отправку:
+    //    в этом случае используется DEFAULT_PROMOTE_TEMPLATE (см. п.6).
+    if target_session.is_none() {
         tracing::info!(
             todo_id = %id,
             task_id = %task_id,
             root = %todo.root_path,
-            template_empty = template_trimmed.is_empty(),
-            session_missing = target_session.is_none(),
+            session_missing = true,
             "todo promoted (notify skipped)"
         );
         return Ok(Json(serde_json::json!({
@@ -2355,16 +2361,32 @@ async fn promote_todo(
     }
     let target_session = target_session.expect("checked is_none above");
 
-    // 6) Формируем текст по cfg.template + plan-mode suffix (если применимо).
+    // 6) Формируем текст. Если cfg.template пуст — используем дефолтный
+    //    fallback (заголовок задачи); описание дописываем отдельно, чтобы не
+    //    слать висящую пустую строку при отсутствии описания. Затем —
+    //    plan-mode suffix (если применимо).
     let description = todo.description.clone().unwrap_or_default();
+    let template_empty = cfg.template.trim().is_empty();
+    let template_str: &str = if template_empty {
+        DEFAULT_PROMOTE_TEMPLATE
+    } else {
+        cfg.template.as_str()
+    };
     let mut text = format_notify_template(
-        &cfg.template,
+        template_str,
         &task_id,
         &todo.title,
         &description,
         todo.priority,
         &todo.issue_type,
     );
+    // При дефолтном шаблоне дописываем описание отдельной строкой.
+    if template_empty && !description.is_empty() {
+        if !text.is_empty() && !text.ends_with('\n') {
+            text.push('\n');
+        }
+        text.push_str(&description);
+    }
     if todo.plan_mode {
         // Кастомный suffix из user-level настроек (~/.forge/user_settings.json).
         // Если в настройках пусто (после trim — строки из одних пробелов тоже
