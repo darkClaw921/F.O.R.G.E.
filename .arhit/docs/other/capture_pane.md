@@ -1,0 +1,3 @@
+# capture_pane
+
+tmux.rs::capture_pane — async, эквивалент 'tmux capture-pane -p -J -t <session>': захват видимой части pane (без scrollback) для attention::detect_claude_prompt. Флаг -J (join wrapped lines, добавлен 2026-05-25) склеивает перенесённые tmux строки, чтобы длинный footer prompt не разрывался посередине маркера — defense-in-depth к нормализации whitespace в detect_claude_prompt. Исчезнувшая сессия / упавший tmux-сервер ('no server running', 'cant find session') → Ok(empty), прочие сбои → Err. Парная capture_pane_full(session, lines) — захват N строк истории через -S -<lines> для gen_hash (is_generating), -J там НЕ применяется.

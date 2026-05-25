@@ -164,9 +164,18 @@ pub async fn new_session(name: &str, cwd: &std::path::Path) -> anyhow::Result<()
 
 /// Захватывает содержимое **видимой** части активной панели сессии.
 ///
-/// Эквивалент `tmux capture-pane -p -t <session>` — только current visible
+/// Эквивалент `tmux capture-pane -p -J -t <session>` — только current visible
 /// pane без scrollback. Используется `attention::watcher_loop` для детекции
 /// Claude permission prompt.
+///
+/// ### Почему `-J`
+///
+/// Флаг `-J` (join wrapped lines) склеивает строки, перенесённые самим tmux,
+/// в одну логическую — чтобы длинный footer prompt'а (`Enter to select ·
+/// Tab/Arrow keys to navigate · Esc to cancel`) не разрывался посередине
+/// маркера. Это defense-in-depth к нормализации whitespace в
+/// `attention::detect_claude_prompt` (которая покрывает word-wrap от самого
+/// Claude TUI, не помеченный tmux как wrapped).
 ///
 /// ### Почему без `-S -30`
 ///
@@ -194,7 +203,7 @@ pub async fn new_session(name: &str, cwd: &std::path::Path) -> anyhow::Result<()
 #[allow(dead_code)]
 pub async fn capture_pane(session: &str) -> anyhow::Result<String> {
     let output = Command::new("tmux")
-        .args(["capture-pane", "-p", "-t", session])
+        .args(["capture-pane", "-p", "-J", "-t", session])
         .output()
         .await
         .context("failed to spawn `tmux capture-pane` (is tmux installed?)")?;

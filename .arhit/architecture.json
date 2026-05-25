@@ -1,6 +1,6 @@
 {
   "root": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E.",
-  "generatedAt": "2026-05-21T12:30:40.134Z",
+  "generatedAt": "2026-05-25T06:55:31.422Z",
   "nodes": [
     {
       "id": "tmux-web/static/app.js",
@@ -15,30 +15,6 @@
       "name": "hotkeys.js",
       "type": "file",
       "path": "tmux-web/static/hotkeys.js",
-      "exports": [],
-      "children": []
-    },
-    {
-      "id": "tmux-web/static/quick-cmd.js",
-      "name": "quick-cmd.js",
-      "type": "file",
-      "path": "tmux-web/static/quick-cmd.js",
-      "exports": [],
-      "children": []
-    },
-    {
-      "id": "tmux-web/static/js/main.js",
-      "name": "main.js",
-      "type": "file",
-      "path": "tmux-web/static/js/main.js",
-      "exports": [],
-      "children": []
-    },
-    {
-      "id": "tmux-web/static/js/public-api.js",
-      "name": "public-api.js",
-      "type": "file",
-      "path": "tmux-web/static/js/public-api.js",
       "exports": [],
       "children": []
     },
@@ -2477,6 +2453,22 @@
       ]
     },
     {
+      "id": "tmux-web/static/js/main.js",
+      "name": "main.js",
+      "type": "file",
+      "path": "tmux-web/static/js/main.js",
+      "exports": [],
+      "children": []
+    },
+    {
+      "id": "tmux-web/static/js/public-api.js",
+      "name": "public-api.js",
+      "type": "file",
+      "path": "tmux-web/static/js/public-api.js",
+      "exports": [],
+      "children": []
+    },
+    {
       "id": "tmux-web/static/js/remote/healthz.js",
       "name": "healthz.js",
       "type": "file",
@@ -2737,7 +2729,7 @@
           "name": "switchSession",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 238,
+          "line": 239,
           "exports": [
             "switchSession"
           ]
@@ -3270,6 +3262,7 @@
         "initTuiTabs",
         "syncGitToCurrentSession",
         "syncTelescopeToCurrentSession",
+        "syncDockerToCurrentSession",
         "mountGitTerm",
         "openLazygitForActiveProject",
         "connectGitWs",
@@ -3306,7 +3299,7 @@
           "name": "sessionCwdOrNull",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 586,
+          "line": 591,
           "exports": []
         },
         {
@@ -3314,7 +3307,7 @@
           "name": "syncGitToCurrentSession",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 602,
+          "line": 607,
           "exports": [
             "syncGitToCurrentSession"
           ]
@@ -3324,9 +3317,19 @@
           "name": "syncTelescopeToCurrentSession",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 618,
+          "line": 623,
           "exports": [
             "syncTelescopeToCurrentSession"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/tabs/tui-tabs.js:syncDockerToCurrentSession",
+          "name": "syncDockerToCurrentSession",
+          "type": "function",
+          "path": "tmux-web/static/js/tabs/tui-tabs.js",
+          "line": 640,
+          "exports": [
+            "syncDockerToCurrentSession"
           ]
         },
         {
@@ -3334,7 +3337,7 @@
           "name": "_git",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 627,
+          "line": 649,
           "exports": []
         },
         {
@@ -3342,7 +3345,7 @@
           "name": "mountGitTerm",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 631,
+          "line": 653,
           "exports": [
             "mountGitTerm"
           ]
@@ -3352,7 +3355,7 @@
           "name": "openLazygitForActiveProject",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 636,
+          "line": 658,
           "exports": [
             "openLazygitForActiveProject"
           ]
@@ -3362,7 +3365,7 @@
           "name": "connectGitWs",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 641,
+          "line": 663,
           "exports": [
             "connectGitWs"
           ]
@@ -3372,7 +3375,7 @@
           "name": "closeGitWs",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 646,
+          "line": 668,
           "exports": [
             "closeGitWs"
           ]
@@ -3382,7 +3385,7 @@
           "name": "gitSwitchCwd",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 651,
+          "line": 673,
           "exports": [
             "gitSwitchCwd"
           ]
@@ -3392,7 +3395,7 @@
           "name": "showGitBanner",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 656,
+          "line": 678,
           "exports": [
             "showGitBanner"
           ]
@@ -3402,7 +3405,7 @@
           "name": "hideGitBanner",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 661,
+          "line": 683,
           "exports": [
             "hideGitBanner"
           ]
@@ -3412,7 +3415,7 @@
           "name": "retryGitConnection",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 666,
+          "line": 688,
           "exports": [
             "retryGitConnection"
           ]
@@ -3422,7 +3425,7 @@
           "name": "sendToActivePty",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tui-tabs.js",
-          "line": 676,
+          "line": 698,
           "exports": [
             "sendToActivePty"
           ]
@@ -4401,6 +4404,14 @@
           "exports": []
         }
       ]
+    },
+    {
+      "id": "tmux-web/static/quick-cmd.js",
+      "name": "quick-cmd.js",
+      "type": "file",
+      "path": "tmux-web/static/quick-cmd.js",
+      "exports": [],
+      "children": []
     }
   ]
 }

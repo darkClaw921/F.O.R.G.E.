@@ -92,10 +92,11 @@ impl AttentionState {
     ///
     /// Семантика `is_generating`: за прошедший тик watcher'а (1.5с) содержимое
     /// последних 50 строк pane изменилось, и этот сырой сигнал прошёл через
-    /// дедупликацию `deduplicate_generating` (group by `gen_hash` +
-    /// `session_group`). Только primary linked-сессии получает `true`,
-    /// остальные — `false`, чтобы индикатор не дублировался во всех вкладках
-    /// одной группы. На практике это означает, что что-то рисуется на экране
+    /// дедупликацию `deduplicate_generating` (group by `session_group`).
+    /// Только primary linked-сессии получает `true`, остальные — `false`,
+    /// чтобы индикатор не дублировался во всех вкладках одной группы.
+    /// Независимые сессии (`session_group=None`) не группируются и светятся
+    /// каждая сама. На практике это означает, что что-то рисуется на экране
     /// — Claude печатает, выводится stream tool output, идёт `tail -f`, и т.п.
     /// Frontend подсвечивает такие сессии пульсирующим значком.
     pub async fn generating_snapshot(&self) -> HashMap<String, bool> {
@@ -108,7 +109,7 @@ impl AttentionState {
     /// финальное значение попадает в наблюдаемое состояние (что видят
     /// `generating_snapshot` и `/api/sessions`). Сюда пишет дедуп-фаза
     /// `watcher_loop` уже после того, как сырые `changed`-сигналы от
-    /// `update_generation` свёрнуты с учётом `pane_hash`/`session_group`
+    /// `update_generation` свёрнуты с учётом `session_group`
     /// (linked-сессии меняются одновременно и должны давать общий флаг,
     /// иначе индикатор горит во всех вкладках одной группы).
     ///
@@ -131,7 +132,7 @@ impl AttentionState {
     ///
     /// **НЕ пишет** в `self.generating` — это критично. Финальный флаг
     /// `is_generating` определяется отдельно: watcher собирает `changed` со
-    /// всех сессий, применяет дедупликацию по `pane_hash`/`session_group`
+    /// всех сессий, применяет дедупликацию по `session_group`
     /// (linked-сессии меняются одновременно и не должны давать множественные
     /// сигналы) и затем пишет результат через [`AttentionState::set_generating`].
     ///
@@ -187,8 +188,30 @@ impl AttentionState {
 /// Для permission используется AND-семантика по трём маркерам, чтобы избежать
 /// ложных срабатываний на обычный вывод. Plan и question prompt'ы детектятся
 /// по уникальной footer-строке, которая в обычном shell-выводе не встречается.
+///
+/// ### Нормализация whitespace
+///
+/// Перед поиском маркеров pane прогоняется через [`normalize_ws`] — все
+/// последовательности whitespace (включая переносы строк) схлопываются в один
+/// пробел. Это нужно, потому что Claude Code — full-screen TUI: в недостаточно
+/// широком терминале он переносит длинный footer (`Enter to select · Tab/Arrow
+/// keys to navigate · Esc to cancel`, ~60 символов) по словам на несколько
+/// строк. Без нормализации `contains("Tab/Arrow keys to navigate")` не находил
+/// бы разорванный переносом маркер → оранжевое свечение не загоралось на
+/// detached-сессиях с plan/question prompt (короткие маркеры permission-prompt
+/// не переносятся, поэтому раньше работал только он). Нормализация покрывает
+/// word-wrap (перенос по границам слов — штатное поведение TUI).
 pub fn detect_claude_prompt(pane: &str) -> bool {
-    detect_permission_prompt(pane) || detect_plan_prompt(pane) || detect_question_prompt(pane)
+    let norm = normalize_ws(pane);
+    detect_permission_prompt(&norm) || detect_plan_prompt(&norm) || detect_question_prompt(&norm)
+}
+
+/// Схлопывает все последовательности whitespace (пробелы, табы, переносы
+/// строк) в один пробел. См. раздел «Нормализация whitespace» в
+/// [`detect_claude_prompt`] — нужно для устойчивости детекции к переносу
+/// длинного footer в узких терминалах.
+fn normalize_ws(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Permission prompt: `❯ 1. Yes` + `2. Yes,` + `3. No`.
@@ -255,6 +278,37 @@ Which approach do you prefer?
 Enter to select · ↑/↓ to navigate · Esc to cancel
 ";
 
+    /// Фикстура — plan prompt в УЗКОМ терминале: Claude TUI перенёс footer
+    /// по словам на несколько строк. Без нормализации whitespace маркер
+    /// `Tab/Arrow keys to navigate` разорван и не детектится.
+    const PLAN_WRAPPED_FIXTURE: &str = "\
+Here is my plan:
+  ❯ Approve
+    Edit
+Enter to select · Tab/Arrow
+keys to navigate · Esc to
+cancel
+";
+
+    /// Фикстура — question prompt в узком терминале с перенесённым footer.
+    const QUESTION_WRAPPED_FIXTURE: &str = "\
+Which approach do you prefer?
+  ❯ Option A
+    Option B
+Enter to select · ↑/↓ to
+navigate · Esc to cancel
+";
+
+    /// Фикстура — permission prompt с лишними пробелами и переносом внутри
+    /// блока опций (нормализация должна схлопнуть whitespace).
+    const PERMISSION_WRAPPED_FIXTURE: &str = "\
+Do you want to make this edit?
+  ❯ 1. Yes
+    2. Yes, and don't ask
+       again this session
+    3. No
+";
+
     #[test]
     fn detects_full_prompt() {
         assert!(detect_claude_prompt(PROMPT_FIXTURE));
@@ -287,6 +341,39 @@ Enter to select · ↑/↓ to navigate · Esc to cancel
         // Не должен путаться с plan prompt.
         assert!(!detect_plan_prompt(QUESTION_FIXTURE));
         assert!(!detect_permission_prompt(QUESTION_FIXTURE));
+    }
+
+    /// Регрессия: plan prompt с перенесённым по словам footer (узкий терминал)
+    /// должен детектиться благодаря нормализации whitespace в
+    /// `detect_claude_prompt`. Это главный кейс бага «свечение не срабатывает
+    /// на такой тип» — раньше разорванный `Tab/Arrow keys to navigate` не
+    /// находился через `contains`.
+    #[test]
+    fn detects_wrapped_plan_prompt() {
+        // Без нормализации сырой footer разорван — суб-детектор не сработал бы.
+        assert!(
+            !detect_plan_prompt(PLAN_WRAPPED_FIXTURE),
+            "sanity: на сыром (ненормализованном) тексте маркер разорван"
+        );
+        // detect_claude_prompt нормализует whitespace → маркер целый.
+        assert!(detect_claude_prompt(PLAN_WRAPPED_FIXTURE));
+    }
+
+    /// Регрессия: question prompt с перенесённым footer.
+    #[test]
+    fn detects_wrapped_question_prompt() {
+        assert!(
+            !detect_question_prompt(QUESTION_WRAPPED_FIXTURE),
+            "sanity: на сыром тексте маркер `↑/↓ to navigate` разорван"
+        );
+        assert!(detect_claude_prompt(QUESTION_WRAPPED_FIXTURE));
+    }
+
+    /// Permission prompt с лишними пробелами/переносом внутри опций —
+    /// нормализация whitespace не должна ломать детекцию.
+    #[test]
+    fn detects_permission_with_extra_whitespace() {
+        assert!(detect_claude_prompt(PERMISSION_WRAPPED_FIXTURE));
     }
 
     #[test]
@@ -421,15 +508,12 @@ Enter to select · ↑/↓ to navigate · Esc to cancel
     /// Поля, не значимые для конкретного кейса, выставляются дефолтами:
     /// - `id` собирается как `"$<name>"` чтобы быть уникальным и
     ///   воспроизводимым (нужно для tie-break по id).
-    /// - `pane_hash` параметризуется отдельно для имитации совпадающего/
-    ///   разного содержимого панели.
     /// - `detected` параметризуется — это исходный результат
     ///   `detect_claude_prompt`, который дедуп будет нормализовать.
     fn mk_session(
         name: &str,
         attached: u32,
         group: Option<&str>,
-        pane_hash: u64,
         detected: bool,
     ) -> SessionAttention {
         SessionAttention {
@@ -437,7 +521,6 @@ Enter to select · ↑/↓ to navigate · Esc to cancel
             id: format!("${}", name),
             attached,
             session_group: group.map(|s| s.to_string()),
-            pane_hash,
             detected,
         }
     }
@@ -450,56 +533,54 @@ Enter to select · ↑/↓ to navigate · Esc to cancel
             .unwrap_or_else(|| panic!("session {name} not found in dedup output"))
     }
 
-    /// Кейс 1: две сессии с одинаковым `pane_hash`, обе `detected=true` —
-    /// после дедупа ровно одна сохраняет флаг, обе detached → tie-break
-    /// по наибольшему id (правило `pick_primary`).
+    /// Кейс 1: две сессии с одинаковым `pane_hash`, обе `detected=true`, но
+    /// БЕЗ `session_group` (None) — после удаления оси `pane_hash` дедуп их
+    /// больше НЕ объединяет, обе остаются с `needs_attention=true`.
+    ///
+    /// Это регрессия на баг «вкладка не светится оранжевым, пока в неё не
+    /// перейдёшь»: раньше совпавший `pane_hash` гасил одну из двух
+    /// независимых сессий с реальным Claude-prompt'ом.
     #[test]
-    fn dedup_same_pane_hash_keeps_only_primary() {
-        // Оба detached (attached=0), session_group=None → группа собирается
-        // по pane_hash. Идентичный pane_hash объединяет их.
+    fn dedup_same_pane_hash_no_grouping_without_group() {
+        // Оба detached (attached=0), session_group=None. Раньше совпадавший
+        // pane_hash их объединял и гасил одну — теперь ось pane_hash убрана,
+        // значит это две разные независимые сессии и обе светятся.
         let items = vec![
-            mk_session("alpha", 0, None, 42, true),
-            mk_session("beta", 0, None, 42, true),
-        ];
-
-        let out = deduplicate_attention(&items);
-
-        let primary_count = out.iter().filter(|(_, f)| *f).count();
-        assert_eq!(
-            primary_count, 1,
-            "ровно одна сессия должна остаться с needs_attention=true (out={out:?})"
-        );
-
-        // Tie-break: id это `$<name>` → `$beta` > `$alpha` лексикографически
-        // (символ 'b' > 'a'), значит beta становится primary.
-        assert!(
-            flag_of(&out, "beta"),
-            "beta должна быть primary по наибольшему id ($beta > $alpha)"
-        );
-        assert!(
-            !flag_of(&out, "alpha"),
-            "alpha должна быть подавлена дедупом"
-        );
-    }
-
-    /// Кейс 2: две сессии БЕЗ session_group (None) и с РАЗНЫМИ `pane_hash` —
-    /// дедуп их не объединяет, обе остаются с `needs_attention=true`.
-    #[test]
-    fn dedup_different_pane_hash_no_grouping() {
-        let items = vec![
-            mk_session("alpha", 0, None, 11, true),
-            mk_session("beta", 0, None, 22, true),
+            mk_session("alpha", 0, None, true),
+            mk_session("beta", 0, None, true),
         ];
 
         let out = deduplicate_attention(&items);
 
         assert!(
             flag_of(&out, "alpha"),
-            "alpha сохраняет флаг (своя группа по pane_hash=11)"
+            "alpha сохраняет флаг — независимая сессия (out={out:?})"
         );
         assert!(
             flag_of(&out, "beta"),
-            "beta сохраняет флаг (своя группа по pane_hash=22)"
+            "beta сохраняет флаг — независимая сессия (out={out:?})"
+        );
+    }
+
+    /// Кейс 2: две сессии БЕЗ session_group (None) — дедуп их не объединяет
+    /// (единственная ось — session_group), обе остаются с
+    /// `needs_attention=true`.
+    #[test]
+    fn dedup_no_group_keeps_each_independent() {
+        let items = vec![
+            mk_session("alpha", 0, None, true),
+            mk_session("beta", 0, None, true),
+        ];
+
+        let out = deduplicate_attention(&items);
+
+        assert!(
+            flag_of(&out, "alpha"),
+            "alpha сохраняет флаг (независимая сессия, group=None)"
+        );
+        assert!(
+            flag_of(&out, "beta"),
+            "beta сохраняет флаг (независимая сессия, group=None)"
         );
     }
 
@@ -511,8 +592,8 @@ Enter to select · ↑/↓ to navigate · Esc to cancel
         // id будет $alpha vs $beta. Без правила attached primary стал бы
         // beta (наибольший id). Но attached=1 у alpha → она primary.
         let items = vec![
-            mk_session("alpha", 1, Some("grp1"), 100, true),
-            mk_session("beta", 0, Some("grp1"), 200, true),
+            mk_session("alpha", 1, Some("grp1"), true),
+            mk_session("beta", 0, Some("grp1"), true),
         ];
 
         let out = deduplicate_attention(&items);
@@ -527,14 +608,14 @@ Enter to select · ↑/↓ to navigate · Esc to cancel
         );
     }
 
-    /// Кейс 4: совпадает `session_group`, но `pane_hash` РАЗНЫЕ — дедуп
-    /// всё равно срабатывает по группе (linked-сессии с лёгкой
-    /// расходимостью рендеринга, например cursor-blink).
+    /// Кейс 4: совпадает `session_group` — дедуп срабатывает по группе
+    /// (linked-сессии должны давать одного primary независимо от содержимого
+    /// панелей).
     #[test]
-    fn dedup_same_group_unifies_even_with_different_pane_hash() {
+    fn dedup_same_group_unifies() {
         let items = vec![
-            mk_session("alpha", 0, Some("grp7"), 1, true),
-            mk_session("beta", 0, Some("grp7"), 2, true),
+            mk_session("alpha", 0, Some("grp7"), true),
+            mk_session("beta", 0, Some("grp7"), true),
         ];
 
         let out = deduplicate_attention(&items);
@@ -554,9 +635,9 @@ Enter to select · ↑/↓ to navigate · Esc to cancel
     #[test]
     fn dedup_no_detection_keeps_all_false() {
         let items = vec![
-            mk_session("alpha", 1, Some("grp1"), 50, false),
-            mk_session("beta", 0, Some("grp1"), 50, false),
-            mk_session("gamma", 0, None, 99, false),
+            mk_session("alpha", 1, Some("grp1"), false),
+            mk_session("beta", 0, Some("grp1"), false),
+            mk_session("gamma", 0, None, false),
         ];
 
         let out = deduplicate_attention(&items);
@@ -576,9 +657,9 @@ Enter to select · ↑/↓ to navigate · Esc to cancel
     #[test]
     fn dedup_three_detached_picks_largest_id() {
         let items = vec![
-            mk_session("alpha", 0, Some("g"), 5, true),
-            mk_session("beta", 0, Some("g"), 5, true),
-            mk_session("gamma", 0, Some("g"), 5, true),
+            mk_session("alpha", 0, Some("g"), true),
+            mk_session("beta", 0, Some("g"), true),
+            mk_session("gamma", 0, Some("g"), true),
         ];
 
         let out = deduplicate_attention(&items);
@@ -600,14 +681,15 @@ Enter to select · ↑/↓ to navigate · Esc to cancel
     /// Edge case: одиночная detected-сессия — без изменений, флаг остаётся true.
     #[test]
     fn dedup_single_detected_session_unchanged() {
-        let items = vec![mk_session("solo", 0, None, 7, true)];
+        let items = vec![mk_session("solo", 0, None, true)];
         let out = deduplicate_attention(&items);
         assert!(flag_of(&out, "solo"));
     }
 
     /// Регрессионный тест на `hash_pane`: одинаковый текст → одинаковый хэш,
     /// разный текст → (с очень высокой вероятностью) разный хэш. Это контракт,
-    /// на котором держится dedup-ось «по pane_hash».
+    /// на котором держится сигнал `is_generating` (`update_generation`
+    /// сравнивает хэши последних 50 строк pane между тиками).
     #[test]
     fn hash_pane_is_deterministic_and_collision_free_for_distinct_inputs() {
         let h1 = hash_pane("hello world");
@@ -621,22 +703,19 @@ Enter to select · ↑/↓ to navigate · Esc to cancel
     // Юнит-тесты дедуп-логики is_generating (deduplicate_generating).
     //
     // Структурно-парные тестам `dedup_*` для attention, но работают с другим
-    // снимком (`GenSnapshot`) и другой осью группировки (`gen_hash` вместо
-    // `pane_hash`, `changed` вместо `detected`).
+    // снимком (`GenSnapshot`) и сырым сигналом `changed` вместо `detected`.
     // ===========================================================================
 
     /// Вспомогательный конструктор `GenSnapshot` для тестов.
     ///
     /// Аналогично `mk_session`: `id` собирается как `"$<name>"` чтобы быть
     /// уникальным и воспроизводимым (нужно для tie-break по id в
-    /// `pick_primary_gen`). `gen_hash` параметризуется для имитации
-    /// совпадающего/разного содержимого 50 последних строк панели. `changed`
-    /// — сырой сигнал от `update_generation` (prev != current).
+    /// `pick_primary_gen`). `changed` — сырой сигнал от `update_generation`
+    /// (prev != current).
     fn mk_gen(
         name: &str,
         attached: u32,
         group: Option<&str>,
-        gen_hash: u64,
         changed: bool,
     ) -> GenSnapshot {
         GenSnapshot {
@@ -644,7 +723,6 @@ Enter to select · ↑/↓ to navigate · Esc to cancel
             id: format!("${}", name),
             attached,
             session_group: group.map(|s| s.to_string()),
-            gen_hash,
             changed,
         }
     }
@@ -658,52 +736,50 @@ Enter to select · ↑/↓ to navigate · Esc to cancel
     }
 
     /// Кейс 1: две сессии без session_group с одинаковым `gen_hash`, обе
-    /// `changed=true` → после дедупа ровно одна сохраняет флаг (primary).
-    /// Обе detached → tie-break по наибольшему id (правило `pick_primary_gen`).
+    /// `changed=true` — после удаления оси `gen_hash` дедуп их больше НЕ
+    /// объединяет, обе остаются с `is_generating=true`.
+    ///
+    /// Симметрично `dedup_same_pane_hash_no_grouping_without_group`: без
+    /// linked-сессий совпавший `gen_hash` — лишь случайное совпадение двух
+    /// независимых сессий, гасить индикатор у одной из них нельзя.
     #[test]
-    fn dedup_generating_same_gen_hash_keeps_only_primary() {
+    fn dedup_generating_same_gen_hash_no_grouping_without_group() {
         let items = vec![
-            mk_gen("alpha", 0, None, 42, true),
-            mk_gen("beta", 0, None, 42, true),
-        ];
-
-        let out = deduplicate_generating(&items);
-
-        let primary_count = out.iter().filter(|(_, f)| *f).count();
-        assert_eq!(
-            primary_count, 1,
-            "ровно одна сессия должна остаться с is_generating=true (out={out:?})"
-        );
-
-        // Tie-break: id это `$<name>` → `$beta` > `$alpha` лексикографически.
-        assert!(
-            gen_flag_of(&out, "beta"),
-            "beta должна быть primary по наибольшему id ($beta > $alpha)"
-        );
-        assert!(
-            !gen_flag_of(&out, "alpha"),
-            "alpha должна быть подавлена дедупом"
-        );
-    }
-
-    /// Кейс 2: две сессии БЕЗ session_group и с РАЗНЫМИ `gen_hash` —
-    /// дедуп их не объединяет, обе остаются с `is_generating=true`.
-    #[test]
-    fn dedup_generating_different_hash_no_grouping() {
-        let items = vec![
-            mk_gen("alpha", 0, None, 11, true),
-            mk_gen("beta", 0, None, 22, true),
+            mk_gen("alpha", 0, None, true),
+            mk_gen("beta", 0, None, true),
         ];
 
         let out = deduplicate_generating(&items);
 
         assert!(
             gen_flag_of(&out, "alpha"),
-            "alpha сохраняет флаг (своя группа по gen_hash=11)"
+            "alpha сохраняет флаг — независимая сессия (out={out:?})"
         );
         assert!(
             gen_flag_of(&out, "beta"),
-            "beta сохраняет флаг (своя группа по gen_hash=22)"
+            "beta сохраняет флаг — независимая сессия (out={out:?})"
+        );
+    }
+
+    /// Кейс 2: две сессии БЕЗ session_group — дедуп их не объединяет
+    /// (единственная ось — session_group), обе остаются с
+    /// `is_generating=true`.
+    #[test]
+    fn dedup_generating_no_group_keeps_each_independent() {
+        let items = vec![
+            mk_gen("alpha", 0, None, true),
+            mk_gen("beta", 0, None, true),
+        ];
+
+        let out = deduplicate_generating(&items);
+
+        assert!(
+            gen_flag_of(&out, "alpha"),
+            "alpha сохраняет флаг (независимая сессия, group=None)"
+        );
+        assert!(
+            gen_flag_of(&out, "beta"),
+            "beta сохраняет флаг (независимая сессия, group=None)"
         );
     }
 
@@ -715,8 +791,8 @@ Enter to select · ↑/↓ to navigate · Esc to cancel
         // Без правила attached primary стал бы beta (наибольший id). Но
         // attached=1 у alpha → она primary.
         let items = vec![
-            mk_gen("alpha", 1, Some("grp1"), 100, true),
-            mk_gen("beta", 0, Some("grp1"), 200, true),
+            mk_gen("alpha", 1, Some("grp1"), true),
+            mk_gen("beta", 0, Some("grp1"), true),
         ];
 
         let out = deduplicate_generating(&items);
@@ -731,15 +807,14 @@ Enter to select · ↑/↓ to navigate · Esc to cancel
         );
     }
 
-    /// Кейс 4: совпадает `session_group`, но `gen_hash` РАЗНЫЕ — дедуп
-    /// всё равно срабатывает по группе (linked-сессии с лёгкой
-    /// расходимостью рендеринга, например cursor-blink в 50-строчном
-    /// окне). Только primary получает `true`.
+    /// Кейс 4: совпадает `session_group` — дедуп срабатывает по группе
+    /// (linked-сессии должны давать одного primary). Только primary получает
+    /// `true`.
     #[test]
-    fn dedup_generating_same_group_unifies_even_with_different_hash() {
+    fn dedup_generating_same_group_unifies() {
         let items = vec![
-            mk_gen("alpha", 0, Some("grp7"), 1, true),
-            mk_gen("beta", 0, Some("grp7"), 2, true),
+            mk_gen("alpha", 0, Some("grp7"), true),
+            mk_gen("beta", 0, Some("grp7"), true),
         ];
 
         let out = deduplicate_generating(&items);
@@ -759,9 +834,9 @@ Enter to select · ↑/↓ to navigate · Esc to cancel
     #[test]
     fn dedup_generating_no_change_keeps_all_false() {
         let items = vec![
-            mk_gen("alpha", 1, Some("grp1"), 50, false),
-            mk_gen("beta", 0, Some("grp1"), 50, false),
-            mk_gen("gamma", 0, None, 99, false),
+            mk_gen("alpha", 1, Some("grp1"), false),
+            mk_gen("beta", 0, Some("grp1"), false),
+            mk_gen("gamma", 0, None, false),
         ];
 
         let out = deduplicate_generating(&items);
@@ -858,7 +933,6 @@ pub async fn watcher_loop(attention: Arc<AttentionState>) {
                 id: s.id.clone(),
                 attached: s.attached,
                 session_group: s.session_group.clone(),
-                pane_hash,
                 detected,
             });
             gens.push(GenSnapshot {
@@ -866,7 +940,6 @@ pub async fn watcher_loop(attention: Arc<AttentionState>) {
                 id: s.id.clone(),
                 attached: s.attached,
                 session_group: s.session_group.clone(),
-                gen_hash,
                 changed,
             });
         }
@@ -929,15 +1002,15 @@ pub async fn watcher_loop(attention: Arc<AttentionState>) {
 ///
 /// Содержит всё, что нужно для выбора primary в группе: имя (ключ итогового
 /// флага), tmux id (`$0`), attached (число прикреплённых клиентов),
-/// `session_group` (имя tmux session-group), `pane_hash` (DefaultHasher по
-/// содержимому pane) и `detected` (исходный результат `detect_claude_prompt`).
+/// `session_group` (имя tmux session-group — единственная ось группировки
+/// после удаления `pane_hash`) и `detected` (исходный результат
+/// `detect_claude_prompt`).
 #[derive(Debug, Clone)]
 struct SessionAttention {
     name: String,
     id: String,
     attached: u32,
     session_group: Option<String>,
-    pane_hash: u64,
     detected: bool,
 }
 
@@ -952,9 +1025,8 @@ struct SessionAttention {
 ///   лексикографически);
 /// - `attached` — число прикреплённых клиентов (приоритет в pick_primary_gen);
 /// - `session_group` — имя tmux session-group (`Some(_)` означает linked-
-///   сессии, которые меняются одновременно и должны давать общий флаг);
-/// - `gen_hash` — DefaultHasher по последним 50 строкам pane (включая
-///   scrollback), используется как ось группировки в `deduplicate_generating`;
+///   сессии, которые меняются одновременно и должны давать общий флаг) —
+///   единственная ось группировки после удаления `gen_hash`;
 /// - `changed` — «сырой» сигнал от `AttentionState::update_generation`:
 ///   `prev != current` хэш pane. Это исходное состояние ДО дедупа, которое
 ///   `deduplicate_generating` свернёт по группам (linked-сессии должны
@@ -966,7 +1038,6 @@ struct GenSnapshot {
     id: String,
     attached: u32,
     session_group: Option<String>,
-    gen_hash: u64,
     changed: bool,
 }
 
@@ -990,13 +1061,19 @@ fn hash_pane(pane: &str) -> u64 {
 ///
 /// ### Алгоритм
 ///
-/// Сессии группируются по двум осям:
-/// 1. **pane_hash** — точное совпадение содержимого видимой панели.
-/// 2. **session_group** — `Some(g)` означает linked-сессии tmux: они делят
-///    окна, но рендеринг может отличаться на пару символов (cursor),
-///    поэтому дедуп нужен независимо от pane_hash.
+/// Сессии группируются по **одной** оси:
+/// - **session_group** — `Some(g)` означает linked-сессии tmux (`new-session
+///   -t`): они делят окна и рендерят одно и то же, поэтому `needs_attention`
+///   должен подсвечиваться только у одной из них.
 ///
-/// Группы объединяются (union-find по обеим осям). Внутри каждой
+/// Ось `pane_hash` (совпадение содержимого видимой панели) **убрана**:
+/// текущий `spawn_tmux_attach` делает прямой `tmux attach -t`, а не
+/// `new-session -t`, поэтому linked-сессий нет и `session_group` всегда
+/// `None`. Совпавший `pane_hash` означал бы лишь случайное совпадение
+/// содержимого двух НЕЗАВИСИМЫХ сессий — гасить у одной из них реальный
+/// Claude-prompt неверно (вкладка не светилась, пока в неё не перейдёшь).
+///
+/// Группы объединяются (union-find по `session_group`). Внутри каждой
 /// объединённой группы:
 /// - если ни одна сессия не имеет `detected=true` — все остаются `false`;
 /// - если хотя бы одна имеет `detected=true` — выбирается **primary**:
@@ -1041,20 +1118,12 @@ fn deduplicate_attention(items: &[SessionAttention]) -> Vec<(String, bool)> {
         }
     }
 
-    // Объединяем по pane_hash.
-    {
-        let mut by_hash: std::collections::HashMap<u64, usize> = std::collections::HashMap::new();
-        for (i, it) in items.iter().enumerate() {
-            match by_hash.get(&it.pane_hash) {
-                Some(&j) => union(&mut parent, i, j),
-                None => {
-                    by_hash.insert(it.pane_hash, i);
-                }
-            }
-        }
-    }
-
-    // Объединяем по session_group (только для Some(_)).
+    // Объединяем ТОЛЬКО по session_group (для Some(_)). Ось pane_hash
+    // убрана сознательно: linked-сессий больше нет (`spawn_tmux_attach`
+    // делает прямой `tmux attach -t`, а не `new-session -t`), поэтому
+    // совпавший pane_hash означал лишь случайное совпадение содержимого
+    // двух НЕЗАВИСИМЫХ сессий — гасить у одной из них реальный prompt
+    // неверно. См. deduplicate_attention doc-комментарий.
     {
         let mut by_group: std::collections::HashMap<&str, usize> =
             std::collections::HashMap::new();
@@ -1209,21 +1278,22 @@ fn pick_primary_gen(items: &[GenSnapshot], members: &[usize]) -> Option<usize> {
 /// Возвращает вектор `(session_name, final_flag)` — по одной записи на каждую
 /// входную сессию (в т.ч. явный `false` для тех, кто не получил primary).
 ///
-/// Структурно-парная функция к `deduplicate_attention`, но работает с другим
-/// сырым сигналом (`changed` вместо `detected`) и другой осью группировки
-/// (`gen_hash` вместо `pane_hash`).
+/// Структурно-парная функция к `deduplicate_attention`, работает с сырым
+/// сигналом `changed` (вместо `detected`).
 ///
 /// ### Алгоритм
 ///
-/// Сессии группируются по двум осям:
-/// 1. **gen_hash** — точное совпадение содержимого последних 50 строк pane
-///    (включая scrollback). Linked-сессии, рендерящие одно и то же,
-///    объединяются.
-/// 2. **session_group** — `Some(g)` означает linked-сессии tmux: они делят
-///    окна и должны давать общий сигнал «генерации», даже если рендеринг
-///    немного разошёлся (cursor blink и т.п.).
+/// Сессии группируются по **одной** оси:
+/// - **session_group** — `Some(g)` означает linked-сессии tmux: они делят
+///   окна и должны давать общий сигнал «генерации».
 ///
-/// Группы объединяются (union-find по обеим осям). Внутри каждой
+/// Ось `gen_hash` (совпадение последних 50 строк pane) **убрана**
+/// симметрично `deduplicate_attention`: без linked-сессий (`spawn_tmux_attach`
+/// делает прямой `tmux attach -t`, `session_group` всегда `None`) совпавший
+/// `gen_hash` — лишь случайное совпадение содержимого двух НЕЗАВИСИМЫХ сессий,
+/// и гасить индикатор «генерации» у одной из них неверно.
+///
+/// Группы объединяются (union-find по `session_group`). Внутри каждой
 /// объединённой группы:
 /// - если ни одна сессия не имеет `changed=true` — все остаются `false`;
 /// - если хотя бы одна имеет `changed=true` — выбирается **primary** через
@@ -1264,20 +1334,10 @@ fn deduplicate_generating(items: &[GenSnapshot]) -> Vec<(String, bool)> {
         }
     }
 
-    // Объединяем по gen_hash.
-    {
-        let mut by_hash: std::collections::HashMap<u64, usize> = std::collections::HashMap::new();
-        for (i, it) in items.iter().enumerate() {
-            match by_hash.get(&it.gen_hash) {
-                Some(&j) => union(&mut parent, i, j),
-                None => {
-                    by_hash.insert(it.gen_hash, i);
-                }
-            }
-        }
-    }
-
-    // Объединяем по session_group (только для Some(_)).
+    // Объединяем ТОЛЬКО по session_group (для Some(_)). Ось gen_hash убрана
+    // симметрично deduplicate_attention: без linked-сессий совпавший gen_hash
+    // — лишь случайное совпадение последних 50 строк двух НЕЗАВИСИМЫХ сессий,
+    // и гасить индикатор «генерации» у одной из них неверно.
     {
         let mut by_group: std::collections::HashMap<&str, usize> =
             std::collections::HashMap::new();
