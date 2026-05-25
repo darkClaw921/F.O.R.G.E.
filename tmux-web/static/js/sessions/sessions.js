@@ -16,7 +16,7 @@ import { apiFetch, dtoOrigin } from '../core/api.js';
 import { showPlaceholder, scheduleResizeFromTerm } from '../terminal/xterm.js';
 import { renderSidebar } from '../sidebar/sidebar.js';
 import { connectWs, disconnectWs } from '../ws/attach.js';
-import { syncGitToCurrentSession, syncTelescopeToCurrentSession } from '../tabs/tui-tabs.js';
+import { syncGitToCurrentSession, syncTelescopeToCurrentSession, syncDockerToCurrentSession } from '../tabs/tui-tabs.js';
 import { syncTasksToCurrentSession } from '../ws/tasks-ws.js';
 import { syncTodosToCurrentSession } from '../ws/todos-ws.js';
 
@@ -233,6 +233,7 @@ export async function openSession(name, origin) {
     syncTasksToCurrentSession();
     syncTodosToCurrentSession();
     syncTelescopeToCurrentSession();
+    syncDockerToCurrentSession();
 }
 
 export function switchSession(name) {
@@ -246,6 +247,7 @@ export function switchSession(name) {
         syncTasksToCurrentSession();
         syncTodosToCurrentSession();
         syncTelescopeToCurrentSession();
+        syncDockerToCurrentSession();
     } catch (e) {
         console.warn('switch failed', e);
         disconnectWs();

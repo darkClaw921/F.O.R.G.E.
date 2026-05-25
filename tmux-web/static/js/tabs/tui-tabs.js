@@ -518,6 +518,11 @@ export function initTuiTabs() {
             notFoundMsg: 'lazydocker not found in PATH. Install it using one of the commands below:',
             entries: LAZYDOCKER_INSTALL_ENTRIES,
         },
+        // lazydocker привязан к cwd текущей tmux-сессии — `docker compose`
+        // / `docker-compose.yml` обычно лежат в каталоге проекта, который
+        // совпадает с cwd сессии. Без resolveCwd placeholder остаётся
+        // навсегда (Phase 4 убрала fallback на activeProject.path).
+        resolveCwd: () => sessionCwdOrNull(),
     });
 
     state.telescopeTerm = createTuiTab({
@@ -617,6 +622,23 @@ export function syncGitToCurrentSession() {
  */
 export function syncTelescopeToCurrentSession() {
     const t = state.telescopeTerm;
+    if (!t || !t.ws) return;
+    const cwd = sessionCwdOrNull();
+    if (!cwd) return;
+    if (t.currentCwd === cwd) return;
+    t.switchCwd(cwd);
+}
+
+/**
+ * Синхронизирует docker-WS (lazydocker) с cwd текущей сессии. По образцу
+ * syncGitToCurrentSession. Если WS открыт и сессия сменила cwd —
+ * switchCwd (на бэке lazydocker перезапускается под новым cwd, что
+ * подхватывает локальный docker-compose.yml текущего проекта). Если WS
+ * не открыт — resolveCwd подхватит свежий session.path при следующем
+ * openForActiveProject.
+ */
+export function syncDockerToCurrentSession() {
+    const t = state.dockerTerm;
     if (!t || !t.ws) return;
     const cwd = sessionCwdOrNull();
     if (!cwd) return;

@@ -415,9 +415,38 @@ pub fn spawn_lazydocker(cwd: &Path, cols: u16, rows: u16) -> Result<PtyHandle> {
         })
         .context("openpty failed")?;
 
+    // lazydocker 0.25.2 имеет баг: при наличии нескольких running compose
+    // projects на демоне он путает их в [1] Project панели (показывает
+    // соседний project вместо того что в cwd) — даже когда `CommandBuilder::cwd`
+    // задан верно и lazydocker запускается из правильной папки. Воспроизводится
+    // и при `tmux new-session -c <cwd> 'lazydocker'`, то есть это **bug
+    // lazydocker**, не наш PTY-spawn.
+    //
+    // Workaround: передаём `-p <project>` явно. Compose project name по
+    // умолчанию = basename(cwd), нормализованный по правилам docker compose:
+    // lowercase + only `[a-z0-9_-]` (остальное → `_`). Если у compose-файла
+    // в cwd задано `name:` — он переопределит наш `-p` через `COMPOSE_PROJECT_NAME`
+    // ниже.
+    let cwd_str = cwd.to_string_lossy();
+    let project = cwd
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|n| {
+            n.to_lowercase()
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+                .collect::<String>()
+        })
+        .unwrap_or_default();
+
     let mut cmd = CommandBuilder::new("lazydocker");
+    if !project.is_empty() {
+        cmd.arg("-p");
+        cmd.arg(&project);
+    }
     cmd.cwd(cwd);
     cmd.env("TERM", "xterm-256color");
+    cmd.env("PWD", cwd_str.as_ref());
 
     let child = pair.slave.spawn_command(cmd).with_context(|| {
         format!(
