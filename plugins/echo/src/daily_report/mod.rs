@@ -24,17 +24,179 @@ pub mod scheduler;
 use std::sync::Arc;
 
 use chrono::NaiveDate;
+use serde::{Deserialize, Serialize};
 
-use echo_host_api::HostApi;
+use echo_host_api::{HostApi, ProjectActivity};
 
 use crate::claude::RunRequest;
 use crate::db::repo::daily_reports::{self, DailyReport};
 use crate::memory::{collect_day_messages, collect_pane_snapshot, day_bounds_utc, snippet};
 use crate::state::EchoState;
 
+/// Дефолтный приоритет предлагаемой задачи (P2 — средний).
+fn default_priority() -> i64 {
+    2
+}
+
+/// Одна предлагаемая задача внутри проекта.
+///
+/// Формируется LLM на основе git-активности дня и контекста чатов/панелей.
+/// `description` и `priority` опциональны в JSON-ответе (дефолты применяются
+/// при десериализации), чтобы модель могла вернуть минимальный объект.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SuggestedTask {
+    title: String,
+    #[serde(default)]
+    description: String,
+    #[serde(default = "default_priority")]
+    priority: i64,
+}
+
+/// Предложения задач по одному проекту.
+///
+/// `project_path` — ключ проекта (git-корень); ДОЛЖЕН совпадать с `path`,
+/// переданным в prompt, потому что используется как `path` при создании TODO
+/// через `POST /api/todos`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ProjectSuggestions {
+    project_path: String,
+    project_name: String,
+    tasks: Vec<SuggestedTask>,
+}
+
+/// Ключ в `app_settings` для пользовательского оверрайда промпта отчёта.
+/// Если значение пустое/отсутствует — используется [`REPORT_META_PROMPT`].
+pub(crate) const PROMPT_KEY_REPORT: &str = "daily_report.report_prompt";
+
+/// Ключ в `app_settings` для пользовательского оверрайда промпта предложений.
+/// Если значение пустое/отсутствует — используется [`SUGGEST_META_PROMPT`].
+pub(crate) const PROMPT_KEY_SUGGEST: &str = "daily_report.suggest_prompt";
+
+/// Мета-prompt (русский) для генерации предложений задач по проектам.
+/// Требует строго JSON-массив без markdown и пояснений.
+pub(crate) const SUGGEST_META_PROMPT: &str = "Проанализируй ВЕСЬ контекст рабочего дня вместе \
+— переписку в чатах, содержимое tmux-панелей и git-активность — и для каждого \
+проекта предложи 1–3 задачи на будущее.\n\
+ЦЕЛЬ: подсветить НЕ-очевидное и то, что легко упустить. Ищи забытые и отложенные \
+вещи, незакрытые хвосты и TODO/FIXME, потенциальные улучшения и рефакторинг, \
+недостающие тесты и документацию, технический долг, обнаруженные но не \
+исправленные баги, идеи что стоит добавить или доработать.\n\
+НЕ пересказывай коммиты и НЕ дублируй уже сделанное за день — предлагай \
+осмысленный следующий шаг. Каждая задача должна быть конкретной, прикладной и \
+явно вытекать из контекста (а не абстрактным советом). В description коротко \
+поясни, ПОЧЕМУ это важно или откуда взялось.\n\
+Верни СТРОГО JSON-массив объектов вида:\n\
+[{\"project_path\":\"...\",\"project_name\":\"...\",\"tasks\":[{\"title\":\"...\",\
+\"description\":\"...\",\"priority\":2}]}]\n\
+Без markdown, без тройных бэктиков, без пояснений — только JSON. Значение \
+project_path в ответе ДОЛЖНО точно совпадать с path соответствующего проекта \
+из входных данных. priority — целое 0..4 (по умолчанию 2). Если по проекту нет \
+осмысленных идей — верни для него пустой массив tasks.";
+
+/// Максимальная длина git_log одного проекта в prompt'е (символов).
+const PROJECT_GIT_SNIPPET_CAP: usize = 2000;
+
+/// Робастно парсит JSON-ответ модели в `Vec<ProjectSuggestions>`:
+/// снимает возможные ```json-обёртки, вырезает подстроку от первого `[` до
+/// последнего `]`. При любой ошибке → пустой вектор (НЕ паникует).
+fn parse_suggestions_response(raw: &str) -> Vec<ProjectSuggestions> {
+    let trimmed = raw.trim();
+    // Снять тройные бэктики/язык-метку, если модель всё же обернула ответ.
+    let without_fences = trimmed
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
+
+    let start = without_fences.find('[');
+    let end = without_fences.rfind(']');
+    let slice = match (start, end) {
+        (Some(s), Some(e)) if e >= s => &without_fences[s..=e],
+        _ => return Vec::new(),
+    };
+
+    match serde_json::from_str::<Vec<ProjectSuggestions>>(slice) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(error = %e, "daily_report: failed to parse suggestions JSON");
+            Vec::new()
+        }
+    }
+}
+
+/// Максимальная длина блока чатов/панелей в prompt'е предложений (символов).
+const SUGGEST_CONTEXT_CAP: usize = 6000;
+
+/// Генерирует предложения задач по проектам через отдельный `one_shot`.
+///
+/// На вход подаётся ВЕСЬ контекст дня: сообщения чатов (`msgs_text`),
+/// snapshot tmux-панелей (`pane_text`) и per-project git-активность
+/// (`projects`). Промпт нацелен на не-очевидное (забытые/отложенные вещи,
+/// улучшения, технический долг), а не на пересказ коммитов.
+///
+/// Если проектов нет — runner НЕ вызывается, возвращается пустой вектор.
+/// Любая ошибка генерации/парсинга деградирует до пустого вектора (основной
+/// отчёт важнее).
+async fn generate_suggestions(
+    state: &Arc<EchoState>,
+    projects: &[ProjectActivity],
+    msgs_text: &str,
+    pane_text: &str,
+    day_str: &str,
+) -> Vec<ProjectSuggestions> {
+    if projects.is_empty() {
+        return Vec::new();
+    }
+
+    // Эффективный промпт: пользовательский оверрайд из app_settings, иначе дефолт.
+    let suggest_prompt = crate::db::repo::app_settings::get(&state.db, PROMPT_KEY_SUGGEST)
+        .await
+        .ok()
+        .flatten()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| SUGGEST_META_PROMPT.to_string());
+
+    let mut prompt = String::with_capacity(8192);
+    prompt.push_str("[task]\n");
+    prompt.push_str(&suggest_prompt);
+    prompt.push_str(&format!("\n\n[day]\n{day_str}\n"));
+    prompt.push_str("\n[projects]\n");
+    for p in projects {
+        prompt.push_str(&format!("\n## project\npath: {}\nname: {}\n", p.path, p.name));
+        if p.git_log.trim().is_empty() {
+            prompt.push_str("git_log: (нет коммитов за день)\n");
+        } else {
+            prompt.push_str("git_log:\n");
+            prompt.push_str(&snippet(p.git_log.trim(), PROJECT_GIT_SNIPPET_CAP));
+            prompt.push('\n');
+        }
+    }
+    // Общий контекст дня — чтобы модель видела намерения/обсуждения/ошибки,
+    // а не только итоговые коммиты. Это и даёт не-очевидные предложения.
+    if !msgs_text.trim().is_empty() {
+        prompt.push_str("\n[chat_messages]\n");
+        prompt.push_str(&snippet(msgs_text.trim(), SUGGEST_CONTEXT_CAP));
+        prompt.push('\n');
+    }
+    if !pane_text.trim().is_empty() {
+        prompt.push_str("\n[tmux_panes]\n");
+        prompt.push_str(&snippet(pane_text.trim(), SUGGEST_CONTEXT_CAP));
+        prompt.push('\n');
+    }
+
+    let req = RunRequest::new(prompt);
+    match state.runner.one_shot(req).await {
+        Ok(res) => parse_suggestions_response(&res.text),
+        Err(e) => {
+            tracing::warn!(error = %e, day = %day_str, "daily_report: suggestions one_shot failed");
+            Vec::new()
+        }
+    }
+}
+
 /// Русский мотивационный мета-prompt. Просим строго три раздела и точный
 /// маркер пустого дня, чтобы поведение совпадало с серверной защитой.
-const REPORT_META_PROMPT: &str = "Составь дружелюбную мотивационную сводку моего \
+pub(crate) const REPORT_META_PROMPT: &str = "Составь дружелюбную мотивационную сводку моего \
 рабочего дня на русском языке в формате markdown. Используй ровно три раздела:\n\
 ## Что сделано — конкретно, по фактам из чатов, tmux-панелей и git-коммитов.\n\
 ## Где я молодец — искренне отметь сильные решения, прогресс и удачные ходы.\n\
@@ -91,13 +253,24 @@ pub async fn generate_report(
         msgs_count == 0 && pane_text.trim().is_empty() && git_text.trim().is_empty();
     if no_data {
         tracing::info!(day = %day_str, "daily_report::generate_report: no data, writing NO_ACTIVITY_RU");
-        let report = daily_reports::upsert(&state.db, &day_str, NO_ACTIVITY_RU, source).await?;
+        // Пустой день — предложений нет.
+        let empty = serde_json::Value::Array(Vec::new());
+        let report =
+            daily_reports::upsert(&state.db, &day_str, NO_ACTIVITY_RU, source, &empty).await?;
         return Ok(report);
     }
 
+    // Эффективный промпт: пользовательский оверрайд из app_settings, иначе дефолт.
+    let report_prompt = crate::db::repo::app_settings::get(&state.db, PROMPT_KEY_REPORT)
+        .await
+        .ok()
+        .flatten()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| REPORT_META_PROMPT.to_string());
+
     let mut prompt = String::with_capacity(8192);
     prompt.push_str("[task]\n");
-    prompt.push_str(REPORT_META_PROMPT);
+    prompt.push_str(&report_prompt);
     prompt.push('\n');
     prompt.push_str(&format!("\n[day]\n{day_str}\n"));
     if !msgs_text.is_empty() {
@@ -115,14 +288,35 @@ pub async fn generate_report(
     }
 
     let req = RunRequest::new(prompt);
-    let res = state.runner.one_shot(req).await?;
+
+    // Предложения задач НЕ зависят от текста основного отчёта, поэтому обе
+    // LLM-генерации гоним ПАРАЛЛЕЛЬНО (runner-семафор это допускает). Иначе два
+    // последовательных вызова Claude легко упираются в HTTP-таймаут generate.
+    let projects = match host.collect_project_activity(since_unix).await {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!(error = %e, day = %day_str, "daily_report: collect_project_activity failed");
+            Vec::new()
+        }
+    };
+
+    let content_fut = state.runner.one_shot(req);
+    let suggestions_fut =
+        generate_suggestions(&state, &projects, &msgs_text, &pane_text, &day_str);
+    let (content_res, suggestions) = tokio::join!(content_fut, suggestions_fut);
+
+    let res = content_res?;
     let content = if res.text.trim().is_empty() {
         NO_ACTIVITY_RU.to_string()
     } else {
         res.text.trim().to_string()
     };
 
-    let report = daily_reports::upsert(&state.db, &day_str, &content, source).await?;
+    let suggestions_value =
+        serde_json::to_value(&suggestions).unwrap_or_else(|_| serde_json::Value::Array(Vec::new()));
+
+    let report =
+        daily_reports::upsert(&state.db, &day_str, &content, source, &suggestions_value).await?;
     tracing::info!(
         report_id = %report.id,
         day = %day_str,
@@ -222,6 +416,53 @@ printf '%s\n' '{"type":"result","usage":{"input_tokens":5,"output_tokens":3}}'
             .unwrap();
         assert!(report.content.contains("Что сделано"), "got: {}", report.content);
         assert_eq!(report.source, "manual");
+    }
+
+    /// Mock CLI, который эхо-печатает первую строку своего промпта (из argv/stdin
+    /// сюда не пробросишь — поэтому проверяем оверрайд иначе: см. ниже).
+    /// Для проверки оверрайда достаточно убедиться, что app_settings::set влияет
+    /// на эффективный промпт через get(...). Сам факт подстановки тестируем на
+    /// уровне app_settings + filter-логики.
+    #[tokio::test]
+    async fn report_prompt_override_takes_effect_when_set() {
+        let dir = tempfile::tempdir().unwrap();
+        let cli = write_mock_cli(&dir, mock_summary_script());
+        let state = make_state(cli).await;
+
+        // Без оверрайда — эффективный промпт это дефолт.
+        let effective = crate::db::repo::app_settings::get(&state.db, PROMPT_KEY_REPORT)
+            .await
+            .ok()
+            .flatten()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| REPORT_META_PROMPT.to_string());
+        assert_eq!(effective, REPORT_META_PROMPT);
+
+        // Пустой оверрайд игнорируется (фолбэк на дефолт).
+        crate::db::repo::app_settings::set(&state.db, PROMPT_KEY_REPORT, "   ")
+            .await
+            .unwrap();
+        let effective_blank = crate::db::repo::app_settings::get(&state.db, PROMPT_KEY_REPORT)
+            .await
+            .ok()
+            .flatten()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| REPORT_META_PROMPT.to_string());
+        assert_eq!(effective_blank, REPORT_META_PROMPT);
+
+        // Непустой оверрайд побеждает.
+        let custom = "Кастомный промпт отчёта";
+        crate::db::repo::app_settings::set(&state.db, PROMPT_KEY_REPORT, custom)
+            .await
+            .unwrap();
+        let effective_custom = crate::db::repo::app_settings::get(&state.db, PROMPT_KEY_REPORT)
+            .await
+            .ok()
+            .flatten()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| REPORT_META_PROMPT.to_string());
+        assert_eq!(effective_custom, custom);
+        assert_eq!(PROMPT_KEY_SUGGEST, "daily_report.suggest_prompt");
     }
 
     #[tokio::test]

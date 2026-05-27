@@ -1,0 +1,3 @@
+# app_settings
+
+KV-репозиторий над таблицей app_settings (миграция V004_app_settings.sql: key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER). Простое key/value-хранилище рантайм-редактируемых настроек Echo (например, пользовательские оверрайды промптов «Сводки дня»). Значения — строковые; интерпретация (plain text/JSON) на стороне вызывающего кода. API: get(db,key)->Option<String> (None если ключа нет); set(db,key,value) — upsert через INSERT ... ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at; delete(db,key) — удаление ключа (сброс к дефолту, отсутствие ключа не ошибка). updated_at — unix-время (chrono::Utc::now().timestamp()). Файл: plugins/echo/src/db/repo/app_settings.rs, зарегистрирован в db/repo/mod.rs.

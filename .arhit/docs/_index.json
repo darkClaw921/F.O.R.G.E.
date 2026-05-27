@@ -3057,9 +3057,9 @@
     "element": "generate_report",
     "path": "",
     "type": "unknown",
-    "content": "Генерация «Сводки дня» (daily_report) в plugins/echo/src/daily_report/mod.rs. generate_report(state, host, day: NaiveDate, source) -> Result<DailyReport>. Собирает за день: chat-messages (memory::collect_day_messages), tmux-panes (memory::collect_pane_snapshot), git-активность (HostApi::collect_git_activity, since=начало дня). Если все три пусты — upsert content='Сегодня активности не было' без вызова Claude. Иначе строит русский мотивационный prompt с 3 разделами (## Что сделано / ## Где я молодец / ## На завтра), прогоняет через state.runner.one_shot и upsert'ит результат в daily_reports по ключу day. source: 'auto' (scheduler) | 'manual' (кнопка). id стабилен между перегенерациями за один день.",
+    "content": "Генерирует «Сводку дня» за указанную дату (NaiveDate) и upsert'ит её в daily_reports под ключом YYYY-MM-DD. Собирает контекст дня (Echo-чаты, tmux-панели, git-активность). Если все три источника пусты — пишет маркер NO_ACTIVITY_RU без вызова Claude. Иначе строит prompt из мета-prompt'а и блоков данных, прогоняет через state.runner.one_shot. Эффективный промпт отчёта читается из app_settings по ключу PROMPT_KEY_REPORT (daily_report.report_prompt): пользовательский оверрайд используется только если он непустой (filter по trim), иначе фолбэк на дефолтную константу REPORT_META_PROMPT. Отдельным проходом вызывает generate_suggestions для предложений задач (деградирует до пустого массива при ошибках). Возвращает DailyReport со стабильным id благодаря upsert.",
     "createdAt": "2026-05-27T07:22:30.299Z",
-    "updatedAt": "2026-05-27T07:22:30.299Z"
+    "updatedAt": "2026-05-27T10:16:39.100Z"
   },
   {
     "element": "collect_git_activity",
@@ -3153,9 +3153,9 @@
     "element": "renderDailySummaryTab",
     "path": "tmux-web/static/js/settings/daily-summary-tab.js",
     "type": "function",
-    "content": "Фабрика вкладки «Сводка дня» в settings modal (tmux-web/static/js/settings/daily-summary-tab.js). Сигнатура: renderDailySummaryTab(container, { onClose }). Наполняет переданный контейнер DOM-узлами: fieldset .notify-fieldset с легендой/подсказкой и двумя кнопками в .notify-actions. Кнопка .ds-generate «Сгенерировать сводку за сегодня» вызывает generateDailyReport() из echo/api.js без day (= сегодня), показывает статус в .ds-status со сменой классов pending/ok/error (паттерн как «Test connection» в remotes-tab); на время запроса кнопка disabled. Кнопка .ds-open «Открыть страницу» вызывает onClose() (закрытие модалки) и window.ForgeApp.showDailySummary() — точка интеграции из Phase 4. Зависит от generateDailyReport (echo/api.js) и глобального window.ForgeApp. Вкладка не хранит user-settings, рендерится лениво один раз при первом показе.",
+    "content": "tmux-web/static/js/settings/daily-summary-tab.js: вкладка настроек «Сводка дня». Кнопка «Сгенерировать сводку за сегодня» запускает generateDailyReport() в ФОНЕ — промис не блокирует UI (модалку можно закрыть), по завершении показывается glass-уведомление справа (notify({glass:true})): успех «Сводка дня готова» или ошибка. Флаг модуля _bgGenerating защищает от параллельных запусков. Кнопка «Открыть страницу» → window.ForgeApp.showDailySummary(). Секция «Промпты генерации»: два textarea (report/suggest) + Сохранить + по кнопке «↺ дефолт», через getDailyReportPrompts/saveDailyReportPrompts.",
     "createdAt": "2026-05-27T07:35:14.849Z",
-    "updatedAt": "2026-05-27T07:35:14.849Z"
+    "updatedAt": "2026-05-27T12:20:42.287Z"
   },
   {
     "element": "daily-summary-settings-tab",
@@ -3185,9 +3185,9 @@
     "element": "plugins/echo/src/db/repo/daily_reports.rs",
     "path": "plugins/echo/src/db/repo/daily_reports.rs",
     "type": "file",
-    "content": "Repo-слой таблицы daily_reports (forge-echo, миграция V002). DailyReport{id (UUID), day (TEXT YYYY-MM-DD UNIQUE), content (markdown), source ('auto'|'manual'), created_at, updated_at (unix epoch)}. API: upsert(db, day, content, source) — INSERT ... ON CONFLICT(day) DO UPDATE, id и created_at стабильны между перегенерациями за один день, updated_at обновляется; get_by_day(db, day) -> Option; get(db, id) -> Option; list(db, limit) -> Vec, отсортировано day DESC. Один отчёт на день (UNIQUE day). Unit-тесты: upsert не дублирует и сохраняет id/created_at, get_by_day/get_by_id, list orders by day desc + limit.",
+    "content": "Репозиторий таблицы daily_reports (plugins/echo/src/db/repo/daily_reports.rs) — хранилище «Сводок дня» Echo.\n\nDailyReport struct (Serialize/Deserialize): id, day (YYYY-MM-DD, уникальный ключ), content (markdown), source (\"auto\"/\"manual\"), created_at, updated_at, и suggestions: serde_json::Value (serde default = empty_suggestions).\n\nПоле suggestions (добавлено миграцией V003): JSON-массив предложений задач по проектам (формат ProjectSuggestions: project_path, project_name, tasks из объектов title/description/priority). В SQLite хранится в TEXT-колонке suggestions как JSON-строка. empty_suggestions() -> пустой JSON-массив (дефолт). parse_suggestions(Option<String>) парсит TEXT-колонку в serde_json::Value; при NULL/ошибке парса -> пустой массив.\n\nupsert(db, day, content, source, suggestions: &serde_json::Value) -> DailyReport: insert-or-update по day. Если запись есть — UPDATE content+source+suggestions+updated_at, id сохраняется; иначе INSERT с новым id. suggestions сериализуется в JSON-строку (при ошибке -> \"[]\"). Возвращает итоговую запись с уже распарсенным suggestions.\n\nЧтение: get(db, id), get_by_day(db, day), list(db, limit) — все SELECT'ят колонку suggestions и пропускают строку через row_to_report, который вызывает parse_suggestions для колонки suggestions.\n\nТесты: suggestions_round_trip проверяет, что suggestions сохраняется и читается через upsert/get_by_day/get, а пустой массив корректно перезаписывает непустой.\n\nСвязи: пишется из daily_report::generate_report; читается REST-роутом /api/echo/daily-reports, который отдаёт suggestions фронту (renderSuggestions).",
     "createdAt": "2026-05-27T07:39:49.028Z",
-    "updatedAt": "2026-05-27T07:39:49.028Z"
+    "updatedAt": "2026-05-27T09:42:49.592Z"
   },
   {
     "element": "tmux-web/static/js/daily-summary/daily-summary.js",
@@ -3239,5 +3239,135 @@
     "content": "Вью «Сводка дня» (#daily-summary). showDailySummary(day?) показывает страницу, грузит GET /api/echo/daily-reports/:day (404 → пустое состояние с кнопкой генерации), рендерит markdown через renderContent (чистый renderMarkdownInto, без карточек/чипов). Стиль — минималистичный Notion: нейтральная палитра, читаемая колонка max-width 760px, тихие ghost-кнопки, заголовок-страница (eyebrow + дата как h1); вся стилизация в css/daily-summary.css через .daily-summary-content .echo-md-* (перебивает echo.css по specificity). Кнопка «← Назад» (closeDailySummary) скрывает вью и вызывает fetchSessions() для возврата к основному экрану. Навигация по датам ←/Сегодня/→ (запрет будущего), кнопка пересоздания. XSS-safe: createElement/textContent.",
     "createdAt": "2026-05-27T07:55:04.514Z",
     "updatedAt": "2026-05-27T08:00:13.955Z"
+  },
+  {
+    "element": "ProjectActivity",
+    "path": "",
+    "type": "unknown",
+    "content": "ProjectActivity — DTO plugin boundary (plugins/echo-host-api/src/lib.rs). Derive: Debug, Clone, Serialize, Deserialize. Описывает активность одного проекта (git-репозитория) за день, возвращается из HostApi::collect_project_activity.\n\nПоля:\n- path: String — git-корень репозитория (абсолютный путь). Стабильный ключ проекта; используется как path при создании TODO через POST /api/todos, поэтому значение должно сохраняться неизменным по всему потоку данных.\n- name: String — basename git-корня для отображения в UI (заголовок группы предложений).\n- git_log: String — коммиты репозитория с начала дня в виде markdown-списка (- %h %s). Может быть пустым: проект считается активным (кандидатом на задачи) уже потому, что присутствует в tmux-сессии, даже если за день в нём не было коммитов.\n\nСвязи: создаётся в EchoHostAdapter::collect_project_activity (tmux-web/src/echo_host.rs); потребляется daily_report::generate_suggestions, где из списка ProjectActivity строится промпт второго one_shot для генерации предложений задач. project_path в JSON-ответе модели должен совпадать с ProjectActivity.path.",
+    "createdAt": "2026-05-27T09:32:54.974Z",
+    "updatedAt": "2026-05-27T09:42:03.906Z"
+  },
+  {
+    "element": "collect_project_activity",
+    "path": "",
+    "type": "unknown",
+    "content": "HostApi::collect_project_activity (plugin boundary, объявлен в plugins/echo-host-api/src/lib.rs; реализация EchoHostAdapter в tmux-web/src/echo_host.rs).\n\nНазначение: собирает СТРУКТУРИРОВАННУЮ активность проектов хоста с момента since_unix (unix seconds) для генерации предложений задач в «Сводке дня». В отличие от collect_git_activity (склеивает всё в единый markdown-блок для grounding раздела «Что сделано»), возвращает Vec<ProjectActivity> — по одному элементу на уникальный git-корень рабочих директорий tmux-сессий.\n\nСигнатура: async fn collect_project_activity(&self, since_unix: i64) -> anyhow::Result<Vec<ProjectActivity>>. В trait есть default-реализация, возвращающая пустой вектор (для тестовых stub'ов и прочих impl'ов).\n\nРеализация (echo_host.rs): обходит tmux-сессии (list_sessions); при ошибке логирует warn и возвращает пусто. Для каждой сессии резолвит git-корень рабочей директории, дедуплицирует корни, для каждого выполняет git log --since=<since_unix> и формирует ProjectActivity { path: git-корень, name: basename, git_log: markdown-список коммитов }. Не-git каталоги и ошибки отдельных репозиториев тихо пропускаются. collect_git_activity реализован поверх collect_project_activity.\n\nКонтракт: один элемент на уникальный git-корень; проект включается даже с пустым git_log (активен в сессии — кандидат на задачи); нет сессий → пустой вектор.\n\nСвязи: вызывается из daily_report::generate_report; результат уходит в generate_suggestions → промпт второго one_shot. path служит стабильным ключом проекта и используется как path при создании TODO через POST /api/todos.",
+    "createdAt": "2026-05-27T09:32:55.235Z",
+    "updatedAt": "2026-05-27T09:41:57.965Z"
+  },
+  {
+    "element": "daily-report-suggestions",
+    "path": "",
+    "type": "page",
+    "content": "Фича forge-meoa Phase 1: предлагаемые задачи по проектам в «Сводке дня».\n\nМиграция V003_daily_report_suggestions.sql: ALTER TABLE daily_reports ADD COLUMN suggestions TEXT (nullable).\n\nRepo plugins/echo/src/db/repo/daily_reports.rs: DailyReport получил поле suggestions: serde_json::Value (default []). upsert принимает доп. параметр suggestions: &serde_json::Value (сериализуется в JSON-строку для TEXT-колонки). row_to_report читает индекс 6 и парсит робастно (NULL/невалидный JSON в []). API отдаёт уже распарсенный массив.\n\nГенерация plugins/echo/src/daily_report/mod.rs: структуры SuggestedTask (title, description default, priority default 2) и ProjectSuggestions (project_path, project_name, tasks). После основного markdown-отчёта вызывается host.collect_project_activity(since_unix); если есть проекты, отдельный state.runner.one_shot с русским промптом SUGGEST_META_PROMPT, требующим строго JSON-массив. parse_suggestions_response снимает fenced-обёртки, берёт срез от первого [ до последнего ], парсит в Vec ProjectSuggestions; при любой ошибке пустой вектор (основной отчёт важнее, warn в лог). project_path в ответе совпадает с path проекта (ключ для POST /api/todos). Пустой день (NO_ACTIVITY_RU) в suggestions = [].\n\nТесты счётчика миграций обновлены 2 в 3: db/mod.rs, tests/db_init.rs, tests/phase6_repos_and_parsers.rs. Добавлен round-trip тест suggestions в daily_reports.rs.",
+    "createdAt": "2026-05-27T09:33:18.385Z",
+    "updatedAt": "2026-05-27T09:33:18.385Z"
+  },
+  {
+    "element": "generate",
+    "path": "",
+    "type": "unknown",
+    "content": "Handler POST /api/echo/daily-reports/generate в plugins/echo/src/routes/daily_reports.rs. Синхронно генерирует сводку дня через daily_report::generate_report (source=manual) с таймаутом GENERATE_TIMEOUT (90с). При успехе возвращает 200 с ПОЛНЫМ отчётом DailyReport через serde_json::to_value(report) — включая поле suggestions (массив предлагаемых задач по проектам); тот же формат, что и GET /daily-reports/:day. 400 на невалидный day, 504 при таймауте, 500 если отсутствует host adapter.",
+    "createdAt": "2026-05-27T09:35:45.548Z",
+    "updatedAt": "2026-05-27T09:35:45.548Z"
+  },
+  {
+    "element": "createTodoForPath",
+    "path": "tmux-web/static/js/tasks/crud.js",
+    "type": "function",
+    "content": "createTodoForPath(path, title, description) — создаёт TODO-задачу в проекте по абсолютному пути (tmux-web/static/js/tasks/crud.js, экспортируется).\n\nНазначение: добавить задачу в TODO нужного проекта, идентифицируемого абсолютным путём (git-корнем). Используется блоком «Предлагаемые задачи» в «Сводке дня» (renderSuggestions) для добавления выбранных LLM-предложений в TODO проекта.\n\nСигнатура: async function createTodoForPath(path, title, description). path — абсолютный путь проекта (project_path из предложения = ProjectActivity.path = git-корень); сервер сам делает resolve_root(path) для привязки к проекту. description опционально (пустая строка по умолчанию).\n\nПоведение: POST /api/todos с JSON { path, title, description }. При не-2xx ответе бросает Error (текст тела или 'HTTP <код>'). При успехе возвращает r.json() (созданная задача).\n\nСвязи: вызывается из обработчика кнопки «Добавить выбранные в TODO» в renderSuggestions для каждой выбранной карточки; общий REST-эндпоинт POST /api/todos того же бэкенда что и TODO-канбан.",
+    "createdAt": "2026-05-27T09:40:04.701Z",
+    "updatedAt": "2026-05-27T09:43:11.780Z"
+  },
+  {
+    "element": "renderSuggestions",
+    "path": "tmux-web/static/js/daily-summary/daily-summary.js",
+    "type": "function",
+    "content": "Рендер блока «Предлагаемые задачи по проектам» под markdown-сводкой (tmux-web/static/js/daily-summary/daily-summary.js). Карточки получают class='kanban-card suggestion-card' + data-status='todo' → фирменный TODO-вид (фиолетовый бордер, стилизованные .desc/.p-pill). Внутри: чекбокс-индикатор .suggestion-check (заливается галочкой при выборе) + .suggestion-body (.title, .desc до 140 символов, .meta-row с .p-pill 'P{priority}' и type-tag 'todo'). Клик тоглит class 'selected' и aria-pressed, обновляет Set выбранных и disabled кнопки. Кнопка «Добавить выбранные в TODO» последовательно вызывает createTodoForPath(project_path,...) для выбранных; успешные → class 'added' + пометка '✓ добавлено', снимаются с выбора. Под заголовком — подсказка .daily-summary-suggestions-hint. XSS-safe (createElement/textContent).",
+    "createdAt": "2026-05-27T09:40:04.961Z",
+    "updatedAt": "2026-05-27T10:01:46.486Z"
+  },
+  {
+    "element": "daily-summary-suggestions",
+    "path": "",
+    "type": "page",
+    "content": "# Сводка дня: предлагаемые задачи по проектам (forge-meoa)\n\nИнкремент к фиче «Сводка дня» (forge-b4q). Внизу страницы сводки появляется блок «Предлагаемые задачи»: LLM-сгенерированные задачи, сгруппированные по проектам, в том же формате карточек что и в TODO-канбане, с возможностью выбрать какие добавить в TODO проекта. Существующее поведение не переписывается — только расширяется (таблица daily_reports, generate_report, REST /api/echo/daily-reports, фронт #daily-summary).\n\n## Поток данных\n\ncollect_project_activity (HostApi) -> второй one_shot (JSON) в generate_suggestions -> колонка suggestions (daily_reports) -> REST /api/echo/daily-reports -> renderSuggestions (фронт).\n\n1. HostApi::collect_project_activity(since_unix) (plugin boundary echo-host-api; реализация EchoHostAdapter в tmux-web/src/echo_host.rs) обходит tmux-сессии, дедуплицирует git-корни рабочих директорий и для каждого формирует ProjectActivity { path: git-корень, name: basename, git_log: коммиты дня }. Проект включается даже без коммитов (активен в сессии). В отличие от collect_git_activity (единый markdown для раздела «Что сделано»), здесь структурированный список.\n\n2. daily_report::generate_report после основного markdown-отчёта вызывает collect_project_activity и передаёт результат в generate_suggestions — ОТДЕЛЬНЫЙ (второй) state.runner.one_shot с русским SUGGEST_META_PROMPT, требующим строго JSON-массив ProjectSuggestions { project_path, project_name, tasks[{title, description, priority}] }. project_path в ответе ДОЛЖЕН совпадать с ProjectActivity.path (ключ для POST /api/todos). git_log усекается до 2000 символов на проект. Любая ошибка (сбор/one_shot/парс) деградирует до пустого массива — основной отчёт важнее. parse_suggestions_response робастно снимает fenced-обёртки и берёт срез массива. Пустой день (NO_ACTIVITY_RU) -> suggestions = [].\n\n3. Хранилище: миграция V003_daily_report_suggestions.sql добавляет TEXT-колонку suggestions (nullable) в daily_reports. daily_reports repo: поле suggestions: serde_json::Value (default []); upsert(db, day, content, source, suggestions) сериализует в JSON-строку; row_to_report парсит обратно (NULL/невалидный JSON -> []). get/get_by_day/list возвращают уже распарсенный массив.\n\n4. REST /api/echo/daily-reports отдаёт suggestions как часть DailyReport.\n\n5. Фронт renderSuggestions(suggestions) (daily-summary.js): для каждой группы — подзаголовок project_name, карточки задач (.kanban-card как в TODO: title, desc усечён до 140, P-pill приоритета) и кнопка «Добавить выбранные в TODO». Клик по карточке тоглит выбор (.selected); кнопка для каждой выбранной вызывает createTodoForPath(project_path, title, description) -> POST /api/todos (сервер делает resolve_root(path)). Успешные карточки помечаются .added + «✓ добавлено». Весь пользовательский контент рендерится через textContent (XSS-safe). Стили — daily-summary.css (.daily-summary-suggestions-*).\n\n## Ключевые элементы\n\n- ProjectActivity, HostApi::collect_project_activity (plugins/echo-host-api/src/lib.rs); реализация tmux-web/src/echo_host.rs.\n- daily_report::generate_report, generate_suggestions, parse_suggestions_response, SuggestedTask, ProjectSuggestions (plugins/echo/src/daily_report/mod.rs).\n- daily_reports repo + миграция V003 (plugins/echo/src/db/repo/daily_reports.rs).\n- renderSuggestions (tmux-web/static/js/daily-summary/daily-summary.js), createTodoForPath (tmux-web/static/js/tasks/crud.js).\n\n## Фазы\n\nPhase 1 — backend: DTO + collect_project_activity, миграция V003, поле suggestions, генерация. Phase 2 — REST отдаёт suggestions. Phase 3 — фронт renderSuggestions + createTodoForPath + стили. Phase 4 — документация.",
+    "createdAt": "2026-05-27T09:43:40.653Z",
+    "updatedAt": "2026-05-27T09:43:41.239Z",
+    "aliases": [
+      "предлагаемые задачи по проектам",
+      "suggestions сводка дня"
+    ]
+  },
+  {
+    "element": "generate_suggestions",
+    "path": "",
+    "type": "unknown",
+    "content": "Генерирует предложения задач по проектам через отдельный one_shot. Вход: весь контекст дня (сообщения чатов, snapshot tmux-панелей, per-project git-активность). Если проектов нет — runner не вызывается, возвращается пустой вектор. Эффективный промпт предложений читается из app_settings по ключу PROMPT_KEY_SUGGEST (daily_report.suggest_prompt): пользовательский оверрайд используется только если непустой (filter по trim), иначе фолбэк на дефолтную константу SUGGEST_META_PROMPT. Любая ошибка генерации/парсинга деградирует до пустого вектора (основной отчёт важнее). Константы REPORT_META_PROMPT/SUGGEST_META_PROMPT и ключи PROMPT_KEY_REPORT/PROMPT_KEY_SUGGEST имеют видимость pub(crate) — нужны REST-слою (Phase 3) для отдачи дефолтов и чтения/записи оверрайдов.",
+    "createdAt": "2026-05-27T10:01:46.753Z",
+    "updatedAt": "2026-05-27T10:16:39.371Z"
+  },
+  {
+    "element": "app_settings",
+    "path": "",
+    "type": "unknown",
+    "content": "KV-репозиторий над таблицей app_settings (миграция V004_app_settings.sql: key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER). Простое key/value-хранилище рантайм-редактируемых настроек Echo (например, пользовательские оверрайды промптов «Сводки дня»). Значения — строковые; интерпретация (plain text/JSON) на стороне вызывающего кода. API: get(db,key)->Option<String> (None если ключа нет); set(db,key,value) — upsert через INSERT ... ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at; delete(db,key) — удаление ключа (сброс к дефолту, отсутствие ключа не ошибка). updated_at — unix-время (chrono::Utc::now().timestamp()). Файл: plugins/echo/src/db/repo/app_settings.rs, зарегистрирован в db/repo/mod.rs.",
+    "createdAt": "2026-05-27T10:14:10.131Z",
+    "updatedAt": "2026-05-27T10:14:10.414Z",
+    "aliases": [
+      "app settings kv хранилище настроек"
+    ]
+  },
+  {
+    "element": "get_prompts",
+    "path": "",
+    "type": "unknown",
+    "content": "GET /api/echo/daily-reports/prompts (plugins/echo/src/routes/daily_reports.rs). Возвращает JSON { report_prompt, suggest_prompt, report_prompt_default, suggest_prompt_default }. report_prompt/suggest_prompt — текущие ЭФФЕКТИВНЫЕ промпты: app_settings::get(PROMPT_KEY_REPORT/SUGGEST) с фильтром непустоты после trim, иначе дефолт-константа daily_report::REPORT_META_PROMPT/SUGGEST_META_PROMPT. *_default — всегда соответствующие константы (для UI-кнопки сброса к дефолту). Хелперы effective_prompt() и prompts_payload() инкапсулируют логику. Ошибки через ApiError/internal (500 на сбой БД).",
+    "createdAt": "2026-05-27T10:19:50.127Z",
+    "updatedAt": "2026-05-27T10:19:50.127Z"
+  },
+  {
+    "element": "put_prompts",
+    "path": "",
+    "type": "unknown",
+    "content": "PUT /api/echo/daily-reports/prompts (plugins/echo/src/routes/daily_reports.rs). Body PutPromptsBody { report_prompt?: Option<String>, suggest_prompt?: Option<String> } — оба поля #[serde(default)]. Для каждого ПРИСУТСТВУЮЩЕГО поля: trim; пустая строка → app_settings::delete(ключ) (сброс к дефолту); иначе app_settings::set(ключ, trimmed). Отсутствующее поле не трогается. После записи возвращает актуальное состояние тем же JSON, что get_prompts (через prompts_payload). 200 OK, ошибки через internal.",
+    "createdAt": "2026-05-27T10:19:50.395Z",
+    "updatedAt": "2026-05-27T10:19:50.395Z"
+  },
+  {
+    "element": "getDailyReportPrompts",
+    "path": "tmux-web/static/js/echo/api.js",
+    "type": "function",
+    "content": "API-клиент Echo (tmux-web/static/js/echo/api.js): GET /api/echo/daily-reports/prompts. Возвращает {report_prompt, suggest_prompt, report_prompt_default, suggest_prompt_default} — эффективные кастомные промпты генерации сводки дня (report) и предложений задач (suggest) вместе с встроенными дефолтами. Тонкий wrapper над call(). Используется renderDailySummaryTab для заполнения textarea при рендере вкладки «Сводка дня».",
+    "createdAt": "2026-05-27T10:22:34.089Z",
+    "updatedAt": "2026-05-27T10:22:34.089Z"
+  },
+  {
+    "element": "saveDailyReportPrompts",
+    "path": "tmux-web/static/js/echo/api.js",
+    "type": "function",
+    "content": "API-клиент Echo (tmux-web/static/js/echo/api.js): PUT /api/echo/daily-reports/prompts через jsonInit('PUT', body). body = {report_prompt?, suggest_prompt?}; пустая строка в поле сбрасывает оверрайд к дефолту на бэкенде. Отвечает актуальным состоянием (как getDailyReportPrompts). Используется кнопками «Сохранить промпты» и «↺ дефолт» во вкладке настроек «Сводка дня».",
+    "createdAt": "2026-05-27T10:22:34.352Z",
+    "updatedAt": "2026-05-27T10:22:34.352Z"
+  },
+  {
+    "element": "daily-report-editable-prompts",
+    "path": "",
+    "type": "page",
+    "content": "Фича: редактируемые промпты «Сводки дня».\n\nНАЗНАЧЕНИЕ\nПозволяет пользователю переопределять промпты генерации «Сводки дня» прямо из UI настроек, не пересобирая бинарь. Базовое поведение фичи «Сводка дня» не меняется — это аддитивное расширение поверх рабочей фичи (см. эпик forge-lssb).\n\nХРАНЕНИЕ ПРОМПТОВ\nОверрайды лежат в KV-таблице app_settings (миграция V004_app_settings.sql; репозиторий plugins/echo/src/db/repo/app_settings.rs: get/set/delete). Ключи:\n- daily_report.report_prompt — константа PROMPT_KEY_REPORT (plugins/echo/src/daily_report/mod.rs)\n- daily_report.suggest_prompt — константа PROMPT_KEY_SUGGEST\nЗначения — строковый текст промпта.\n\nФОЛБЭК НА ДЕФОЛТ\nЕсли ключ отсутствует ИЛИ значение пустое после trim — используется дефолтная константа (REPORT_META_PROMPT / SUGGEST_META_PROMPT в daily_report/mod.rs, видимость pub(crate)). Таким образом «эффективный» промпт = непустой оверрайд из app_settings, иначе константа. Пустое значение = сброс к дефолту.\n\nПОТОК ДАННЫХ\n1. UI: вкладка настроек «Сводка дня» (renderDailySummaryTab, tmux-web/static/js/settings/daily-summary-tab.js) — fieldset «Промпты генерации» с двумя textarea (report_prompt / suggest_prompt) и кнопками «Сохранить промпты» и «↺ дефолт» у каждого поля.\n2. При рендере: GET /api/echo/daily-reports/prompts через getDailyReportPrompts() (api.js) → заполняет textarea эффективными значениями; *_default из ответа хранятся в замыкании для кнопок сброса.\n3. Сохранение: saveDailyReportPrompts({report_prompt, suggest_prompt}) → PUT /api/echo/daily-reports/prompts (put_prompts в plugins/echo/src/routes/daily_reports.rs). Для каждого присутствующего поля: trim; пустая строка → app_settings::delete (сброс к дефолту), иначе app_settings::set. PUT возвращает актуальное состояние тем же payload, что GET.\n4. Чтение при генерации: generate_report и generate_suggestions (daily_report/mod.rs) читают app_settings::get по соответствующему ключу с фильтром непустоты после trim, иначе фолбэк на константу. Следующая генерация «Сводки дня» сразу использует обновлённый промпт.\n\nREST-КОНТРАКТ\n- GET /api/echo/daily-reports/prompts (get_prompts) → { report_prompt, suggest_prompt, report_prompt_default, suggest_prompt_default }. report_prompt/suggest_prompt — эффективные значения; *_default — всегда дефолтные константы (для кнопки сброса в UI).\n- PUT /api/echo/daily-reports/prompts (put_prompts) — body { report_prompt?, suggest_prompt? } (оба #[serde(default)]); отсутствующее поле не трогается, пустая строка сбрасывает оверрайд. Хелперы effective_prompt()/prompts_payload() инкапсулируют логику.\n\nСВЯЗАННЫЕ ЭЛЕМЕНТЫ\napp_settings (repo), get_prompts, put_prompts, generate_report, generate_suggestions, renderDailySummaryTab, getDailyReportPrompts, saveDailyReportPrompts.",
+    "createdAt": "2026-05-27T10:24:24.769Z",
+    "updatedAt": "2026-05-27T10:24:28.787Z",
+    "aliases": [
+      "редактируемые промпты сводки дня"
+    ]
+  },
+  {
+    "element": "notify",
+    "path": "tmux-web/static/js/echo/notifications.js",
+    "type": "function",
+    "content": "tmux-web/static/js/echo/notifications.js: общий toast-компонент. notify({level:'info'|'warn'|'error', title, body, ttl, glass}). glass:true добавляет класс .echo-toast-glass — стиль «жидкое стекло» (полупрозрачный backdrop-filter blur + saturate, внутренняя подсветка), css/echo-notifications.css. Контейнер #echo-toasts — глобальный (fixed справа сверху, z-index 2000), виден независимо от активной вкладки. Очередь до MAX_TOASTS, slide-in справа.",
+    "createdAt": "2026-05-27T12:20:42.004Z",
+    "updatedAt": "2026-05-27T12:20:42.004Z"
   }
 ]

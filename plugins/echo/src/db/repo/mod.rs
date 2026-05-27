@@ -5,6 +5,7 @@
 //! update / delete`. Repo-слой ничего не знает про axum-handler'ы — он
 //! принимает `&Db`.
 
+pub mod app_settings;
 pub mod autonomous;
 pub mod chats;
 pub mod daily_reports;

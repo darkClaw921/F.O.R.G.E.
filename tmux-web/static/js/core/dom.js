@@ -103,6 +103,7 @@ export const $dailySummaryDay = document.getElementById('daily-summary-day');
 export const $dailySummaryRegen = document.getElementById('daily-summary-regen');
 export const $dailySummaryStatus = document.getElementById('daily-summary-status');
 export const $dailySummaryContent = document.getElementById('daily-summary-content');
+export const $dailySummarySuggestions = document.getElementById('daily-summary-suggestions');
 export const $dailySummaryEmpty = document.getElementById('daily-summary-empty');
 export const $dailySummaryGenerate = document.getElementById('daily-summary-generate');
 

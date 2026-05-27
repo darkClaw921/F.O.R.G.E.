@@ -27,11 +27,13 @@ import { getDailyReport, generateDailyReport } from '../echo/api.js';
 import { renderMarkdownInto } from '../core/markdown.js';
 import { showPlaceholder } from '../terminal/xterm.js';
 import { fetchSessions } from '../sessions/sessions.js';
+import { createTodoForPath } from '../tasks/crud.js';
 import { $home } from '../core/dom.js';
 import {
     $dailySummary, $dailySummaryBack, $dailySummaryPrev, $dailySummaryToday,
     $dailySummaryNext, $dailySummaryDay, $dailySummaryRegen, $dailySummaryStatus,
-    $dailySummaryContent, $dailySummaryEmpty, $dailySummaryGenerate,
+    $dailySummaryContent, $dailySummarySuggestions, $dailySummaryEmpty,
+    $dailySummaryGenerate,
 } from '../core/dom.js';
 
 // Текущий выбранный день (YYYY-MM-DD). null до первого showDailySummary.
@@ -96,12 +98,193 @@ function renderContent(content) {
     if ($dailySummaryEmpty) $dailySummaryEmpty.hidden = true;
 }
 
+/** Прячет и очищает блок «Предлагаемые задачи». */
+function hideSuggestions() {
+    if (!$dailySummarySuggestions) return;
+    $dailySummarySuggestions.innerHTML = '';
+    $dailySummarySuggestions.hidden = true;
+}
+
+/**
+ * Рендерит блок «Предлагаемые задачи по проектам» под markdown-сводкой.
+ *
+ * @param {Array<{project_path:string, project_name:string,
+ *   tasks:Array<{title:string, description?:string, priority?:number}>}>} suggestions
+ *
+ * Каждый проект — отдельная группа: подзаголовок (project_name), карточки задач
+ * (визуально как TODO-карточки `.kanban-card`) и кнопка «Добавить выбранные в
+ * TODO». Клик по карточке тоглит выбор (класс `selected`); кнопка создаёт TODO
+ * через createTodoForPath(project_path, ...) для каждой выбранной задачи.
+ * Успешные карточки помечаются `added` и становятся некликабельными.
+ *
+ * XSS-безопасность: весь пользовательский контент уходит через textContent,
+ * innerHTML используется только для очистки контейнера ('').
+ */
+function renderSuggestions(suggestions) {
+    if (!$dailySummarySuggestions) return;
+    if (!Array.isArray(suggestions) || suggestions.length === 0) {
+        hideSuggestions();
+        return;
+    }
+    $dailySummarySuggestions.innerHTML = '';
+    $dailySummarySuggestions.hidden = false;
+
+    const heading = document.createElement('div');
+    heading.className = 'daily-summary-suggestions-title';
+    heading.textContent = 'Предлагаемые задачи';
+    $dailySummarySuggestions.appendChild(heading);
+
+    const hint = document.createElement('div');
+    hint.className = 'daily-summary-suggestions-hint';
+    hint.textContent = 'Выберите карточки и добавьте их в TODO проекта.';
+    $dailySummarySuggestions.appendChild(hint);
+
+    for (const group of suggestions) {
+        if (!group || !Array.isArray(group.tasks) || group.tasks.length === 0) continue;
+
+        const groupEl = document.createElement('div');
+        groupEl.className = 'daily-summary-suggestions-group';
+
+        const projTitle = document.createElement('div');
+        projTitle.className = 'daily-summary-suggestions-project';
+        projTitle.textContent = group.project_name || group.project_path || 'Проект';
+        groupEl.appendChild(projTitle);
+
+        const cardsEl = document.createElement('div');
+        cardsEl.className = 'daily-summary-suggestions-cards';
+        groupEl.appendChild(cardsEl);
+
+        const addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.className = 'daily-summary-generate daily-summary-suggestions-add';
+        addBtn.textContent = 'Добавить выбранные в TODO';
+        addBtn.disabled = true;
+
+        // Выбор задач в этой группе: Set индексов задач.
+        const selected = new Set();
+        // Карты index → {card, task} для тех, что ещё не добавлены.
+        const cardByIndex = new Map();
+
+        const refreshBtn = () => { addBtn.disabled = selected.size === 0; };
+
+        group.tasks.forEach((task, idx) => {
+            if (!task) return;
+            const prio = (typeof task.priority === 'number') ? task.priority : 3;
+
+            // data-status="todo" → фирменный TODO-вид (фиолетовый бордер,
+            // стиль .desc/.p-pill из tasks.css) — карточка читается как TODO.
+            const card = document.createElement('div');
+            card.className = 'kanban-card suggestion-card';
+            card.setAttribute('data-priority', String(prio));
+            card.setAttribute('data-status', 'todo');
+            card.setAttribute('role', 'button');
+            card.setAttribute('aria-pressed', 'false');
+
+            // Явный чекбокс-индикатор слева — однозначная аффорданс выбора.
+            const checkEl = document.createElement('span');
+            checkEl.className = 'suggestion-check';
+            checkEl.setAttribute('aria-hidden', 'true');
+
+            const bodyEl = document.createElement('div');
+            bodyEl.className = 'suggestion-body';
+
+            const titleEl = document.createElement('div');
+            titleEl.className = 'title';
+            titleEl.textContent = task.title || '(без названия)';
+            bodyEl.appendChild(titleEl);
+
+            if (task.description) {
+                const descEl = document.createElement('div');
+                // Без обрезки: пользователю нужно прочитать всё описание задачи,
+                // чтобы решить, добавлять ли её. Перенос — в CSS (.suggestion-card .desc).
+                descEl.className = 'desc';
+                descEl.textContent = String(task.description);
+                bodyEl.appendChild(descEl);
+            }
+
+            const metaRow = document.createElement('div');
+            metaRow.className = 'meta-row';
+            const pPill = document.createElement('span');
+            pPill.className = 'p-pill';
+            pPill.textContent = 'P' + prio;
+            metaRow.appendChild(pPill);
+            const typeTag = document.createElement('span');
+            typeTag.className = 'type-tag';
+            typeTag.textContent = 'todo';
+            metaRow.appendChild(typeTag);
+            bodyEl.appendChild(metaRow);
+
+            card.appendChild(checkEl);
+            card.appendChild(bodyEl);
+
+            cardByIndex.set(idx, { card, task });
+
+            card.addEventListener('click', () => {
+                if (card.classList.contains('added')) return;
+                if (selected.has(idx)) {
+                    selected.delete(idx);
+                    card.classList.remove('selected');
+                    card.setAttribute('aria-pressed', 'false');
+                } else {
+                    selected.add(idx);
+                    card.classList.add('selected');
+                    card.setAttribute('aria-pressed', 'true');
+                }
+                refreshBtn();
+            });
+
+            cardsEl.appendChild(card);
+        });
+
+        addBtn.addEventListener('click', async () => {
+            if (selected.size === 0 || addBtn.disabled) return;
+            addBtn.disabled = true;
+            const indices = Array.from(selected);
+            const errors = [];
+
+            for (const idx of indices) {
+                const entry = cardByIndex.get(idx);
+                if (!entry) continue;
+                try {
+                    await createTodoForPath(
+                        group.project_path,
+                        entry.task.title || '',
+                        entry.task.description || '',
+                    );
+                    selected.delete(idx);
+                    entry.card.classList.remove('selected');
+                    entry.card.classList.add('added');
+                    entry.card.setAttribute('aria-pressed', 'false');
+                    const mark = document.createElement('span');
+                    mark.className = 'daily-summary-suggestions-added-mark';
+                    mark.textContent = '✓ добавлено';
+                    (entry.card.querySelector('.suggestion-body') || entry.card)
+                        .appendChild(mark);
+                    cardByIndex.delete(idx);
+                } catch (e) {
+                    errors.push((entry.task.title || '(задача)') + ': '
+                        + (e && e.message ? e.message : 'неизвестно'));
+                }
+            }
+
+            refreshBtn();
+            if (errors.length > 0) {
+                window.alert('Не удалось добавить:\n' + errors.join('\n'));
+            }
+        });
+
+        groupEl.appendChild(addBtn);
+        $dailySummarySuggestions.appendChild(groupEl);
+    }
+}
+
 /** Показывает пустое состояние (нет сводки → кнопка «Сгенерировать»). */
 function showEmpty() {
     if ($dailySummaryContent) {
         $dailySummaryContent.innerHTML = '';
         $dailySummaryContent.hidden = true;
     }
+    hideSuggestions();
     if ($dailySummaryEmpty) $dailySummaryEmpty.hidden = false;
 }
 
@@ -148,6 +331,7 @@ async function loadCurrent() {
         const report = await getDailyReport(_currentDay);
         setStatus('');
         renderContent(report && report.content);
+        renderSuggestions(report && report.suggestions);
     } catch (e) {
         if (e && e.status === 404) {
             setStatus('');
@@ -173,6 +357,7 @@ async function generateCurrent() {
         const report = await generateDailyReport(_currentDay);
         setStatus('');
         renderContent(report && report.content);
+        renderSuggestions(report && report.suggestions);
     } catch (e) {
         setStatus('Не удалось сгенерировать: ' + (e && e.message ? e.message : 'неизвестно'));
     } finally {
@@ -225,6 +410,7 @@ function bindControls() {
  * #home (нет активных сессий) или активную сессию/placeholder.
  */
 function closeDailySummary() {
+    hideSuggestions();
     hideDailySummary();
     fetchSessions();
 }

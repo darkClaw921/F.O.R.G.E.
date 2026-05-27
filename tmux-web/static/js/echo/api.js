@@ -189,6 +189,25 @@ export async function generateDailyReport(day) {
     return call('/api/echo/daily-reports/generate', jsonInit('POST', day ? { day } : {}));
 }
 
+/**
+ * Текущие промпты генерации сводки дня + их дефолты. Возвращает
+ * {report_prompt, suggest_prompt, report_prompt_default, suggest_prompt_default}.
+ */
+export async function getDailyReportPrompts() {
+    return call('/api/echo/daily-reports/prompts');
+}
+
+/**
+ * Сохранить (или сбросить) оверрайды промптов генерации сводки дня.
+ * body = {report_prompt?, suggest_prompt?}; пустая строка в поле = сброс
+ * к дефолту. Отвечает актуальным состоянием (как getDailyReportPrompts).
+ *
+ * @param {{report_prompt?: string, suggest_prompt?: string}} body
+ */
+export async function saveDailyReportPrompts(body) {
+    return call('/api/echo/daily-reports/prompts', jsonInit('PUT', body));
+}
+
 // -------- runs --------
 
 export async function cancelRun(runId) {

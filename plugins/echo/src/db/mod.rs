@@ -178,6 +178,7 @@ mod tests {
             .unwrap();
 
         for required in [
+            "app_settings",
             "autonomous_tasks",
             "chat_sessions",
             "daily_reports",
@@ -210,8 +211,8 @@ mod tests {
             .unwrap();
         // Каждый V*.sql-файл регистрируется по имени один раз. Повторный
         // migrate() не должен добавлять дубли — поэтому count == число файлов
-        // (V001 + V002), а не растёт при повторных прогонах.
-        assert_eq!(applied, 2, "expected one entry per embedded migration file");
+        // (V001 + V002 + V003 + V004), а не растёт при повторных прогонах.
+        assert_eq!(applied, 4, "expected one entry per embedded migration file");
     }
 
     #[tokio::test]
@@ -231,7 +232,15 @@ mod tests {
             .await
             .unwrap();
         assert!(!cols.is_empty(), "daily_reports table must exist after migrate()");
-        for expected in ["id", "day", "content", "source", "created_at", "updated_at"] {
+        for expected in [
+            "id",
+            "day",
+            "content",
+            "source",
+            "created_at",
+            "updated_at",
+            "suggestions",
+        ] {
             assert!(
                 cols.iter().any(|c| c == expected),
                 "daily_reports must have column {expected}, got {cols:?}"

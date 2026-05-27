@@ -50,6 +50,19 @@
 .echo-toast-warn { border-left-color: var(--warn); }
 .echo-toast-error { border-left-color: var(--danger); }
 
+/* «Жидкое стекло» (glassmorphism): полупрозрачный размытый фон, мягкое
+   свечение по верхней кромке. Используется для фоновых уведомлений
+   (например, готовность сводки дня — notify({ glass: true })). */
+.echo-toast-glass {
+    background: color-mix(in srgb, var(--bg-elev) 50%, transparent);
+    -webkit-backdrop-filter: blur(16px) saturate(170%);
+    backdrop-filter: blur(16px) saturate(170%);
+    border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
+    box-shadow:
+        0 8px 32px var(--overlay-shadow),
+        inset 0 1px 0 color-mix(in srgb, #fff 14%, transparent);
+}
+
 .echo-toast-title {
     font-weight: 600;
     margin-bottom: 3px;

@@ -276,6 +276,19 @@ export async function reopenTask(id) {
     }
 }
 
+// Создаёт TODO в проекте по абсолютному пути. Сервер сам делает resolve_root(path).
+// Используется блоком «Предлагаемые задачи» в Сводке дня для добавления
+// предложенных задач в TODO нужного проекта. Бросает Error при не-2xx ответе.
+export async function createTodoForPath(path, title, description) {
+    const r = await fetch('/api/todos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, title, description: description || '' }),
+    });
+    if (!r.ok) throw new Error(await r.text() || ('HTTP ' + r.status));
+    return r.json();
+}
+
 export async function promoteTodo(id, sessionOverride) {
     if (!id) return;
 

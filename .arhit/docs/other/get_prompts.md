@@ -1,0 +1,3 @@
+# get_prompts
+
+GET /api/echo/daily-reports/prompts (plugins/echo/src/routes/daily_reports.rs). Возвращает JSON { report_prompt, suggest_prompt, report_prompt_default, suggest_prompt_default }. report_prompt/suggest_prompt — текущие ЭФФЕКТИВНЫЕ промпты: app_settings::get(PROMPT_KEY_REPORT/SUGGEST) с фильтром непустоты после trim, иначе дефолт-константа daily_report::REPORT_META_PROMPT/SUGGEST_META_PROMPT. *_default — всегда соответствующие константы (для UI-кнопки сброса к дефолту). Хелперы effective_prompt() и prompts_payload() инкапсулируют логику. Ошибки через ApiError/internal (500 на сбой БД).

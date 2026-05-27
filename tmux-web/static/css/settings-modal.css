@@ -424,6 +424,45 @@
 .rs-test-status.warn { color: var(--warn-icon-bg, #d4a04f); }
 .rs-test-status.pending { color: var(--fg-mute); font-style: italic; }
 
+/* «Сводка дня» — редактируемые промпты генерации */
+.ds-prompt-field {
+    margin-bottom: 14px;
+}
+
+.ds-prompt-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 2px;
+}
+
+.ds-prompt-reset {
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-family: inherit;
+    font-size: 0.7rem;
+    cursor: pointer;
+    transition: background 100ms ease, border-color 100ms ease;
+}
+
+.ds-prompt-reset:hover {
+    border-color: var(--accent);
+}
+
+textarea.ds-prompt-textarea {
+    width: 100%;
+    min-height: 140px;
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-size: 0.78rem;
+    line-height: 1.4;
+    resize: vertical;
+    box-sizing: border-box;
+}
+
 .rs-help {
     margin-top: 8px;
     font-size: 0.78rem;

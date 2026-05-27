@@ -236,3 +236,154 @@
     opacity: 0.5;
     cursor: default;
 }
+
+/* ---- Блок «Предлагаемые задачи по проектам» ---- */
+/* Центрированная колонка под markdown-сводкой; карточки используют глобальный
+   .kanban-card из tasks.css, здесь только модификаторы выбора/добавления. */
+.daily-summary-suggestions {
+    width: 100%;
+    max-width: 760px;
+    margin: 36px auto 0;
+}
+
+.daily-summary-suggestions[hidden] {
+    display: none;
+}
+
+.daily-summary-suggestions-title {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+    margin-bottom: 18px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border-input);
+}
+
+.daily-summary-suggestions-hint {
+    font-size: 0.82rem;
+    color: var(--fg-mute);
+    margin-bottom: 18px;
+}
+
+.daily-summary-suggestions-group {
+    margin-bottom: 28px;
+}
+
+.daily-summary-suggestions-project {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--fg-soft);
+    margin-bottom: 10px;
+}
+
+.daily-summary-suggestions-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+/* Карточка-предложение: чекбокс слева + тело. Наследует TODO-вид от
+   .kanban-card[data-status="todo"], здесь — раскладка и состояние выбора. */
+.daily-summary-suggestions-cards .suggestion-card {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 10px;
+    cursor: pointer;
+    transition: background 100ms ease, outline-color 100ms ease;
+}
+
+.daily-summary-suggestions-cards .suggestion-card .suggestion-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* Полный текст задачи без обрезки — переносим по словам, читаемый интервал. */
+.daily-summary-suggestions-cards .suggestion-card .title,
+.daily-summary-suggestions-cards .suggestion-card .desc {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.daily-summary-suggestions-cards .suggestion-card .desc {
+    font-size: 0.8rem;
+    line-height: 1.45;
+}
+
+/* Чекбокс-индикатор — пустой квадрат, при .selected заливается галочкой. */
+.daily-summary-suggestions-cards .suggestion-check {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    margin-top: 1px;
+    border: 1.5px solid var(--fg-dim);
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
+.daily-summary-suggestions-cards .suggestion-card.selected {
+    outline: 2px solid var(--agent-accent);
+    outline-offset: -1px;
+    background: var(--agent-bg-2);
+}
+
+.daily-summary-suggestions-cards .suggestion-card.selected .suggestion-check {
+    border-color: var(--agent-accent);
+    background: var(--agent-accent);
+    position: relative;
+}
+
+.daily-summary-suggestions-cards .suggestion-card.selected .suggestion-check::after {
+    content: '✓';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--fg-on-accent);
+}
+
+.daily-summary-suggestions-cards .suggestion-card.added {
+    opacity: 0.55;
+    cursor: default;
+    outline: none;
+}
+
+.daily-summary-suggestions-cards .suggestion-card.added .suggestion-check {
+    border-color: var(--agent-accent);
+    background: var(--agent-accent);
+    position: relative;
+}
+
+.daily-summary-suggestions-cards .suggestion-card.added .suggestion-check::after {
+    content: '✓';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--fg-on-accent);
+}
+
+.daily-summary-suggestions-added-mark {
+    font-size: 11px;
+    color: var(--fg-dim);
+    margin-top: 2px;
+}
+
+.daily-summary-suggestions-add:disabled {
+    opacity: 0.5;
+    cursor: default;
+}

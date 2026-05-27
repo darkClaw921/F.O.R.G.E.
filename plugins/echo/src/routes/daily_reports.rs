@@ -8,9 +8,15 @@
 //!   → синхронная генерация через [`crate::daily_report::generate_report`]
 //!   (`source = "manual"`) с таймаутом [`GENERATE_TIMEOUT`].
 //!   - `day` по умолчанию — сегодня по локальному времени.
-//!   - 200 `{ id, day, content }` при успехе.
+//!   - 200 — полный отчёт `DailyReport` (включая `suggestions`), тот же
+//!     формат, что и у `GET /daily-reports/:day`.
 //!   - 400 на невалидный формат `day`.
 //!   - 504 при превышении таймаута.
+//! - `GET  /api/echo/daily-reports/prompts` → текущие эффективные промпты
+//!   `{ report_prompt, suggest_prompt, report_prompt_default, suggest_prompt_default }`.
+//! - `PUT  /api/echo/daily-reports/prompts` body
+//!   `{ report_prompt?, suggest_prompt? }` → сохранить/сбросить оверрайды
+//!   промптов (пустая строка → сброс к дефолту), вернуть актуальное состояние.
 //!
 //! Ошибки сериализуются как `{ "error": "..." }` со статусом 400/404/500/504
 //! (та же конвенция [`ApiError`], что и в [`crate::routes::memory`]).
@@ -28,23 +34,30 @@ use axum::{
 use serde::Deserialize;
 
 use crate::daily_report;
-use crate::db::repo::daily_reports;
+use crate::db::repo::{app_settings, daily_reports};
 use crate::state::EchoState;
 
 /// Лимит по умолчанию для `GET /daily-reports`, когда `?limit=` не задан.
 const DEFAULT_LIMIT: i64 = 30;
 
 /// Таймаут на синхронную генерацию. Сводка дня собирает чаты, tmux-панели и
-/// git-активность и прогоняет их через Claude CLI — это может занять больше
-/// времени, чем обычный memory-rollover, поэтому даём 90с запаса. По
-/// превышении возвращаем 504; фронтенд может повторить или дождаться
+/// git-активность и прогоняет их через Claude CLI ДВУМЯ вызовами (основной
+/// отчёт + предложения задач), которые идут параллельно, но на медленной
+/// модели всё равно могут занять заметное время — поэтому даём 240с запаса.
+/// По превышении возвращаем 504; фронтенд может повторить или дождаться
 /// авто-генерации scheduler'ом.
-const GENERATE_TIMEOUT: Duration = Duration::from_secs(90);
+const GENERATE_TIMEOUT: Duration = Duration::from_secs(240);
 
 pub fn router() -> Router<Arc<EchoState>> {
     Router::new()
         .route("/api/echo/daily-reports", get(list))
         .route("/api/echo/daily-reports/generate", post(generate))
+        // Статический сегмент `prompts` регистрируем ДО динамического `/:day`,
+        // иначе axum матчит `prompts` как значение `:day`.
+        .route(
+            "/api/echo/daily-reports/prompts",
+            get(get_prompts).put(put_prompts),
+        )
         .route("/api/echo/daily-reports/:day", get(get_by_day))
 }
 
@@ -106,17 +119,101 @@ async fn generate(
     let fut = daily_report::generate_report(state.clone(), host, day, "manual");
 
     match tokio::time::timeout(GENERATE_TIMEOUT, fut).await {
-        Ok(Ok(report)) => Ok(Json(serde_json::json!({
-            "id": report.id,
-            "day": report.day,
-            "content": report.content,
-        }))),
+        // Возвращаем полный отчёт целиком (включая `suggestions`), а не
+        // выборочные поля — тот же формат, что и `GET /daily-reports/:day`.
+        Ok(Ok(report)) => Ok(Json(serde_json::to_value(report).unwrap_or_default())),
         Ok(Err(e)) => Err(internal(e)),
         Err(_) => Err(ApiError(
             StatusCode::GATEWAY_TIMEOUT,
             format!("generate exceeded {}s timeout", GENERATE_TIMEOUT.as_secs()),
         )),
     }
+}
+
+/// Текущий эффективный промпт: пользовательский оверрайд из `app_settings`
+/// (непустой после trim), иначе дефолт-константа. Та же логика, что и в
+/// [`crate::daily_report`] при генерации.
+async fn effective_prompt(
+    state: &Arc<EchoState>,
+    key: &str,
+    default: &str,
+) -> Result<String, ApiError> {
+    let value = app_settings::get(&state.db, key)
+        .await
+        .map_err(internal)?
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| default.to_string());
+    Ok(value)
+}
+
+/// Собирает текущее состояние промптов в JSON-ответ
+/// `{ report_prompt, suggest_prompt, report_prompt_default, suggest_prompt_default }`.
+async fn prompts_payload(state: &Arc<EchoState>) -> Result<serde_json::Value, ApiError> {
+    let report_prompt = effective_prompt(
+        state,
+        daily_report::PROMPT_KEY_REPORT,
+        daily_report::REPORT_META_PROMPT,
+    )
+    .await?;
+    let suggest_prompt = effective_prompt(
+        state,
+        daily_report::PROMPT_KEY_SUGGEST,
+        daily_report::SUGGEST_META_PROMPT,
+    )
+    .await?;
+    Ok(serde_json::json!({
+        "report_prompt": report_prompt,
+        "suggest_prompt": suggest_prompt,
+        "report_prompt_default": daily_report::REPORT_META_PROMPT,
+        "suggest_prompt_default": daily_report::SUGGEST_META_PROMPT,
+    }))
+}
+
+/// `GET /api/echo/daily-reports/prompts` → текущие эффективные промпты вместе
+/// с дефолтами (для UI-кнопки «сбросить к дефолту»).
+async fn get_prompts(
+    State(state): State<Arc<EchoState>>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    Ok(Json(prompts_payload(&state).await?))
+}
+
+#[derive(Debug, Deserialize)]
+struct PutPromptsBody {
+    #[serde(default)]
+    report_prompt: Option<String>,
+    #[serde(default)]
+    suggest_prompt: Option<String>,
+}
+
+/// `PUT /api/echo/daily-reports/prompts` body
+/// `{ report_prompt?: string, suggest_prompt?: string }`.
+///
+/// Для каждого ПРИСУТСТВУЮЩЕГО поля: trim; пустая строка → сброс оверрайда
+/// ([`app_settings::delete`]), иначе сохранение ([`app_settings::set`]).
+/// Отсутствующее поле не трогается. Возвращает актуальное состояние тем же
+/// JSON, что и [`get_prompts`].
+async fn put_prompts(
+    State(state): State<Arc<EchoState>>,
+    Json(b): Json<PutPromptsBody>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    for (value, key) in [
+        (b.report_prompt, daily_report::PROMPT_KEY_REPORT),
+        (b.suggest_prompt, daily_report::PROMPT_KEY_SUGGEST),
+    ] {
+        if let Some(raw) = value {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                app_settings::delete(&state.db, key)
+                    .await
+                    .map_err(internal)?;
+            } else {
+                app_settings::set(&state.db, key, trimmed)
+                    .await
+                    .map_err(internal)?;
+            }
+        }
+    }
+    Ok(Json(prompts_payload(&state).await?))
 }
 
 /// Простая JSON-ошибка с произвольным статусом (та же конвенция, что и
@@ -242,6 +339,35 @@ printf '%s\n' '{"type":"result","usage":{"input_tokens":2,"output_tokens":2}}'
     }
 
     #[tokio::test]
+    async fn generate_returns_suggestions_array() {
+        let state = make_app().await;
+        let app = build_router(state);
+        // StubHost::collect_project_activity → default (пустой вектор), второй
+        // one_shot не зовётся → suggestions == пустой массив, но ключ присутствует.
+        let body = serde_json::json!({ "day": "2026-05-14" }).to_string();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/echo/daily-reports/generate")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 64 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let suggestions = v["suggestions"]
+            .as_array()
+            .expect("response must contain `suggestions` array");
+        assert!(suggestions.is_empty());
+    }
+
+    #[tokio::test]
     async fn generate_default_day_today() {
         let state = make_app().await;
         let app = build_router(state);
@@ -357,5 +483,105 @@ printf '%s\n' '{"type":"result","usage":{"input_tokens":2,"output_tokens":2}}'
             .unwrap();
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["day"], "2026-05-15");
+    }
+
+    async fn get_prompts_json(state: Arc<EchoState>) -> serde_json::Value {
+        let app = build_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/echo/daily-reports/prompts")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 256 * 1024)
+            .await
+            .unwrap();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    async fn put_prompts_json(state: Arc<EchoState>, body: serde_json::Value) -> serde_json::Value {
+        let app = build_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/api/echo/daily-reports/prompts")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 256 * 1024)
+            .await
+            .unwrap();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    #[tokio::test]
+    async fn get_prompts_clean_db_returns_defaults() {
+        let state = make_app().await;
+        let v = get_prompts_json(state).await;
+        assert_eq!(v["report_prompt"], v["report_prompt_default"]);
+        assert_eq!(v["suggest_prompt"], v["suggest_prompt_default"]);
+        assert_eq!(v["report_prompt_default"], daily_report::REPORT_META_PROMPT);
+        assert_eq!(
+            v["suggest_prompt_default"],
+            daily_report::SUGGEST_META_PROMPT
+        );
+    }
+
+    #[tokio::test]
+    async fn put_set_then_get_returns_new_value() {
+        let state = make_app().await;
+        let custom = "Мой собственный промпт отчёта";
+        let put = put_prompts_json(state.clone(), serde_json::json!({ "report_prompt": custom }))
+            .await;
+        // PUT возвращает актуальное состояние.
+        assert_eq!(put["report_prompt"], custom);
+        // suggest не трогали → остаётся дефолтным.
+        assert_eq!(put["suggest_prompt"], put["suggest_prompt_default"]);
+
+        // Независимый GET видит сохранённое значение.
+        let v = get_prompts_json(state).await;
+        assert_eq!(v["report_prompt"], custom);
+        // Дефолт-константа неизменна.
+        assert_eq!(v["report_prompt_default"], daily_report::REPORT_META_PROMPT);
+    }
+
+    #[tokio::test]
+    async fn put_empty_string_resets_to_default() {
+        let state = make_app().await;
+        // Сначала задаём оверрайд.
+        put_prompts_json(
+            state.clone(),
+            serde_json::json!({ "suggest_prompt": "временный" }),
+        )
+        .await;
+        let after_set = get_prompts_json(state.clone()).await;
+        assert_eq!(after_set["suggest_prompt"], "временный");
+
+        // Пустая строка → сброс к дефолту.
+        let reset =
+            put_prompts_json(state.clone(), serde_json::json!({ "suggest_prompt": "" })).await;
+        assert_eq!(reset["suggest_prompt"], reset["suggest_prompt_default"]);
+
+        let v = get_prompts_json(state).await;
+        assert_eq!(v["suggest_prompt"], daily_report::SUGGEST_META_PROMPT);
+    }
+
+    #[tokio::test]
+    async fn prompts_route_not_shadowed_by_day() {
+        // Статический `prompts` не должен матчиться как `:day` (что дало бы 400
+        // на невалидный формат даты).
+        let state = make_app().await;
+        let v = get_prompts_json(state).await;
+        assert!(v["report_prompt"].is_string());
     }
 }

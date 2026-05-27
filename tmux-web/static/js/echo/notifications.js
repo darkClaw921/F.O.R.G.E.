@@ -36,7 +36,10 @@ function isEchoNotificationsEnabled() {
 /**
  * Показать toast.
  *
- * @param {{level?: string, title?: string, body?: string, ttl?: number}} opts
+ * @param {{level?: string, title?: string, body?: string, ttl?: number,
+ *   glass?: boolean}} opts
+ *   `glass` → стиль «жидкое стекло» (полупрозрачный blur-фон), см.
+ *   `.echo-toast-glass` в css/echo-notifications.css.
  * @returns {HTMLElement|null} элемент toast'а (для тестов / progress-обновления)
  */
 export function notify(opts) {
@@ -44,6 +47,7 @@ export function notify(opts) {
     const title = (opts && opts.title) || '';
     const body = (opts && opts.body) || '';
     const ttl = (opts && opts.ttl) || DEFAULT_TTL_MS;
+    const glass = !!(opts && opts.glass);
     if (!$echoToasts) {
         console.log(`[toast/${level}]`, title, body);
         return null;
@@ -54,7 +58,7 @@ export function notify(opts) {
         try { old.remove(); } catch (_) {}
     }
     const toast = document.createElement('div');
-    toast.className = `echo-toast echo-toast-${level}`;
+    toast.className = `echo-toast echo-toast-${level}${glass ? ' echo-toast-glass' : ''}`;
     toast.setAttribute('role', 'alert');
 
     if (title) {

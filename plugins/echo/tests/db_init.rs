@@ -19,7 +19,7 @@ async fn init_creates_db_file_and_tables() {
     let state = forge_echo::init(cfg).await.expect("init should succeed");
     assert!(db_path.exists(), "db file must be created at {db_path:?}");
 
-    // Проверяем что все 6 prod-таблиц + schema_migrations присутствуют.
+    // Проверяем что все prod-таблицы + schema_migrations присутствуют.
     let tables: Vec<String> = state
         .db
         .conn()
@@ -34,6 +34,7 @@ async fn init_creates_db_file_and_tables() {
         .unwrap();
 
     for required in [
+        "app_settings",
         "autonomous_tasks",
         "chat_sessions",
         "daily_reports",
@@ -79,10 +80,11 @@ async fn init_is_idempotent_across_runs() {
         })
         .await
         .unwrap();
-    // Один entry на каждый embedded V*.sql (V001_init + V002_daily_reports),
-    // не растёт при повторном init.
+    // Один entry на каждый embedded V*.sql (V001_init + V002_daily_reports +
+    // V003_daily_report_suggestions + V004_app_settings), не растёт при
+    // повторном init.
     assert_eq!(
-        n, 2,
+        n, 4,
         "each embedded migration applied exactly once across two inits"
     );
 }

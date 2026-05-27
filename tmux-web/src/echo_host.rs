@@ -12,7 +12,7 @@
 //! Echo WS-клиент сам себя авторизует при self-обращении к хост-API.
 
 use async_trait::async_trait;
-use echo_host_api::{HostApi, SessionInfo};
+use echo_host_api::{HostApi, ProjectActivity, SessionInfo};
 
 use crate::AppState;
 
@@ -65,23 +65,45 @@ impl HostApi for EchoHostAdapter {
     /// Собирает git-активность с момента `since_unix` по уникальным git-корням
     /// рабочих директорий tmux-сессий.
     ///
+    /// Реализован поверх [`collect_project_activity`](Self::collect_project_activity):
+    /// берём только проекты с непустым `git_log` и склеиваем их в markdown-блоки
+    /// `### <name>` + список коммитов (разделитель — пустая строка). Проекты без
+    /// коммитов за день в этот grounding-блок не попадают (важно «что сделано»,
+    /// а не «где можно поработать»).
+    async fn collect_git_activity(&self, since_unix: i64) -> anyhow::Result<String> {
+        let projects = self.collect_project_activity(since_unix).await?;
+        let blocks: Vec<String> = projects
+            .into_iter()
+            .filter(|p| !p.git_log.trim().is_empty())
+            .map(|p| format!("### {}\n{}", p.name, p.git_log.trim()))
+            .collect();
+        Ok(blocks.join("\n\n"))
+    }
+
+    /// Собирает активность проектов с момента `since_unix` по уникальным
+    /// git-корням рабочих директорий tmux-сессий.
+    ///
     /// Алгоритм:
     /// 1. `crate::tmux::list_sessions()` — берём `path` каждой сессии.
     /// 2. Для каждого пути ищем git-корень (`git rev-parse --show-toplevel`),
     ///    дедуплицируем корни (одна репа может быть открыта в нескольких сессиях).
-    /// 3. Для каждого уникального корня — `git log --since=<unix> --pretty=...`,
-    ///    собираем markdown-блок `### <repo>` + список коммитов.
-    /// 4. Не-git каталоги, отсутствие коммитов и ошибки отдельных репозиториев
-    ///    тихо пропускаются (без падения всего вызова).
-    async fn collect_git_activity(&self, since_unix: i64) -> anyhow::Result<String> {
+    /// 3. Для каждого уникального корня — `git log --since=<unix> --pretty=...`;
+    ///    формируем [`ProjectActivity`] { path: root, name: basename, git_log }.
+    /// 4. Проект включается даже с пустым `git_log` (активен в сессии — кандидат
+    ///    на задачи). Не-git каталоги и ошибки отдельных репозиториев тихо
+    ///    пропускаются. Если сессий нет — пустой вектор.
+    async fn collect_project_activity(
+        &self,
+        since_unix: i64,
+    ) -> anyhow::Result<Vec<ProjectActivity>> {
         use std::collections::BTreeSet;
         use tokio::process::Command;
 
         let sessions = match crate::tmux::list_sessions().await {
             Ok(s) => s,
             Err(e) => {
-                tracing::warn!(error = %e, "collect_git_activity: list_sessions failed");
-                return Ok(String::new());
+                tracing::warn!(error = %e, "collect_project_activity: list_sessions failed");
+                return Ok(Vec::new());
             }
         };
 
@@ -108,9 +130,10 @@ impl HostApi for EchoHostAdapter {
         }
 
         let since_arg = format!("@{since_unix}"); // unix timestamp понятен git --since.
-        let mut blocks: Vec<String> = Vec::new();
+        let mut projects: Vec<ProjectActivity> = Vec::new();
         for root in roots {
-            let out = Command::new("git")
+            // git_log может быть пустым — проект всё равно включаем (кандидат).
+            let git_log = match Command::new("git")
                 .args([
                     "-C",
                     &root,
@@ -119,23 +142,24 @@ impl HostApi for EchoHostAdapter {
                     "--pretty=format:- %h %s",
                 ])
                 .output()
-                .await;
-            let Ok(out) = out else { continue };
-            if !out.status.success() {
-                continue;
-            }
-            let log = String::from_utf8_lossy(&out.stdout);
-            let log = log.trim();
-            if log.is_empty() {
-                continue;
-            }
+                .await
+            {
+                Ok(out) if out.status.success() => {
+                    String::from_utf8_lossy(&out.stdout).trim().to_string()
+                }
+                _ => String::new(),
+            };
             let name = std::path::Path::new(&root)
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| root.clone());
-            blocks.push(format!("### {name}\n{log}"));
+            projects.push(ProjectActivity {
+                path: root,
+                name,
+                git_log,
+            });
         }
 
-        Ok(blocks.join("\n\n"))
+        Ok(projects)
     }
 }

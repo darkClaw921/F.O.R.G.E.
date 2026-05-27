@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-27T07:55:04.250Z",
+  "generatedAt": "2026-05-27T12:20:43.587Z",
   "dependencies": [
     {
       "from": "tmux-web/static/hotkeys.js",
@@ -2429,6 +2429,12 @@
       "toElement": "document.getElementById"
     },
     {
+      "from": "tmux-web/static/js/core/dom.js",
+      "to": "tmux-web/static/js/core/dom.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
       "from": "tmux-web/static/js/core/markdown.js",
       "to": "tmux-web/static/js/core/markdown.js",
       "type": "call",
@@ -2539,6 +2545,41 @@
       "type": "call",
       "fromElement": "renderMarkdownInto",
       "toElement": "ul.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/core/markdown.js",
+      "to": "tmux-web/static/js/core/markdown.js",
+      "type": "call",
+      "fromElement": "renderMarkdownInto",
+      "toElement": "container.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/core/markdown.js",
+      "to": "tmux-web/static/js/core/markdown.js",
+      "type": "call",
+      "fromElement": "renderMarkdownInto",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/core/markdown.js",
+      "to": "tmux-web/static/js/core/markdown.js",
+      "type": "call",
+      "fromElement": "renderMarkdownInto",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/core/markdown.js",
+      "to": "tmux-web/static/js/core/markdown.js",
+      "type": "call",
+      "fromElement": "renderMarkdownInto",
+      "toElement": "appendInline"
+    },
+    {
+      "from": "tmux-web/static/js/core/markdown.js",
+      "to": "tmux-web/static/js/core/markdown.js",
+      "type": "call",
+      "fromElement": "renderMarkdownInto",
+      "toElement": "ol.appendChild"
     },
     {
       "from": "tmux-web/static/js/core/markdown.js",
@@ -2990,6 +3031,12 @@
     },
     {
       "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "import",
+      "toElement": "createTodoForPath"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
       "to": "tmux-web/static/js/core/dom.js",
       "type": "import",
       "toElement": "$home"
@@ -3047,6 +3094,12 @@
       "to": "tmux-web/static/js/core/dom.js",
       "type": "import",
       "toElement": "$dailySummaryContent"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/core/dom.js",
+      "type": "import",
+      "toElement": "$dailySummarySuggestions"
     },
     {
       "from": "tmux-web/static/js/daily-summary/daily-summary.js",
@@ -3155,27 +3208,6 @@
       "from": "tmux-web/static/js/daily-summary/daily-summary.js",
       "to": "tmux-web/static/js/daily-summary/daily-summary.js",
       "type": "call",
-      "fromElement": "sectionStyle",
-      "toElement": "s.re.test"
-    },
-    {
-      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "type": "call",
-      "fromElement": "isHeading",
-      "toElement": "el.classList.contains"
-    },
-    {
-      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "type": "call",
       "fromElement": "renderContent",
       "toElement": "renderMarkdownInto"
     },
@@ -3183,204 +3215,463 @@
       "from": "tmux-web/static/js/daily-summary/daily-summary.js",
       "to": "tmux-web/static/js/daily-summary/daily-summary.js",
       "type": "call",
-      "fromElement": "renderContent",
+      "fromElement": "renderSuggestions",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "hideSuggestions"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "groupEl.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "groupEl.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "group.tasks.forEach"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "card.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "card.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "card.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "card.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "checkEl.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "bodyEl.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "bodyEl.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "metaRow.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "metaRow.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "bodyEl.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "card.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "card.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "cardByIndex.set"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "card.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "card.classList.contains"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "selected.has"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "selected.delete"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "card.classList.remove"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "card.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "selected.add"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "card.classList.add"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "card.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "refreshBtn"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "cardsEl.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
+      "toElement": "addBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
       "toElement": "Array.from"
     },
     {
       "from": "tmux-web/static/js/daily-summary/daily-summary.js",
       "to": "tmux-web/static/js/daily-summary/daily-summary.js",
       "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "isHeading"
+      "fromElement": "renderSuggestions",
+      "toElement": "cardByIndex.get"
     },
     {
       "from": "tmux-web/static/js/daily-summary/daily-summary.js",
       "to": "tmux-web/static/js/daily-summary/daily-summary.js",
       "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "sections.push"
+      "fromElement": "renderSuggestions",
+      "toElement": "createTodoForPath"
     },
     {
       "from": "tmux-web/static/js/daily-summary/daily-summary.js",
       "to": "tmux-web/static/js/daily-summary/daily-summary.js",
       "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "node.querySelectorAll"
+      "fromElement": "renderSuggestions",
+      "toElement": "selected.delete"
     },
     {
       "from": "tmux-web/static/js/daily-summary/daily-summary.js",
       "to": "tmux-web/static/js/daily-summary/daily-summary.js",
       "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "cur.body.push"
+      "fromElement": "renderSuggestions",
+      "toElement": "entry.card.classList.remove"
     },
     {
       "from": "tmux-web/static/js/daily-summary/daily-summary.js",
       "to": "tmux-web/static/js/daily-summary/daily-summary.js",
       "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "intro.push"
+      "fromElement": "renderSuggestions",
+      "toElement": "entry.card.classList.add"
     },
     {
       "from": "tmux-web/static/js/daily-summary/daily-summary.js",
       "to": "tmux-web/static/js/daily-summary/daily-summary.js",
       "type": "call",
-      "fromElement": "renderContent",
+      "fromElement": "renderSuggestions",
+      "toElement": "entry.card.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderSuggestions",
       "toElement": "document.createElement"
     },
     {
       "from": "tmux-web/static/js/daily-summary/daily-summary.js",
       "to": "tmux-web/static/js/daily-summary/daily-summary.js",
       "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "sectionStyle"
+      "fromElement": "renderSuggestions",
+      "toElement": "entry.card.querySelector"
     },
     {
       "from": "tmux-web/static/js/daily-summary/daily-summary.js",
       "to": "tmux-web/static/js/daily-summary/daily-summary.js",
       "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "document.createElement"
+      "fromElement": "renderSuggestions",
+      "toElement": "cardByIndex.delete"
     },
     {
       "from": "tmux-web/static/js/daily-summary/daily-summary.js",
       "to": "tmux-web/static/js/daily-summary/daily-summary.js",
       "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "document.createElement"
+      "fromElement": "renderSuggestions",
+      "toElement": "errors.push"
     },
     {
       "from": "tmux-web/static/js/daily-summary/daily-summary.js",
       "to": "tmux-web/static/js/daily-summary/daily-summary.js",
       "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "String"
+      "fromElement": "renderSuggestions",
+      "toElement": "refreshBtn"
     },
     {
       "from": "tmux-web/static/js/daily-summary/daily-summary.js",
       "to": "tmux-web/static/js/daily-summary/daily-summary.js",
       "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "document.createElement"
+      "fromElement": "renderSuggestions",
+      "toElement": "window.alert"
     },
     {
       "from": "tmux-web/static/js/daily-summary/daily-summary.js",
       "to": "tmux-web/static/js/daily-summary/daily-summary.js",
       "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "chip.append"
+      "fromElement": "renderSuggestions",
+      "toElement": "errors.join"
     },
     {
       "from": "tmux-web/static/js/daily-summary/daily-summary.js",
       "to": "tmux-web/static/js/daily-summary/daily-summary.js",
       "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "stats.appendChild"
+      "fromElement": "renderSuggestions",
+      "toElement": "groupEl.appendChild"
     },
     {
       "from": "tmux-web/static/js/daily-summary/daily-summary.js",
       "to": "tmux-web/static/js/daily-summary/daily-summary.js",
       "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "document.createElement"
+      "fromElement": "showEmpty",
+      "toElement": "hideSuggestions"
     },
     {
       "from": "tmux-web/static/js/daily-summary/daily-summary.js",
       "to": "tmux-web/static/js/daily-summary/daily-summary.js",
       "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "introBox.appendChild"
+      "fromElement": "humanDate",
+      "toElement": "dayStr.split"
     },
     {
       "from": "tmux-web/static/js/daily-summary/daily-summary.js",
       "to": "tmux-web/static/js/daily-summary/daily-summary.js",
       "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "sectionStyle"
+      "fromElement": "humanDate",
+      "toElement": "dt.toLocaleDateString"
     },
     {
       "from": "tmux-web/static/js/daily-summary/daily-summary.js",
       "to": "tmux-web/static/js/daily-summary/daily-summary.js",
       "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "titleRow.append"
-    },
-    {
-      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "String"
-    },
-    {
-      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "titleRow.appendChild"
-    },
-    {
-      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "card.appendChild"
-    },
-    {
-      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "body.appendChild"
-    },
-    {
-      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
-      "type": "call",
-      "fromElement": "renderContent",
-      "toElement": "card.appendChild"
+      "fromElement": "humanDate",
+      "toElement": "s.match"
     },
     {
       "from": "tmux-web/static/js/daily-summary/daily-summary.js",
@@ -3388,6 +3679,13 @@
       "type": "call",
       "fromElement": "renderDayLabel",
       "toElement": "todayStr"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "renderDayLabel",
+      "toElement": "humanDate"
     },
     {
       "from": "tmux-web/static/js/daily-summary/daily-summary.js",
@@ -3423,6 +3721,13 @@
       "type": "call",
       "fromElement": "loadCurrent",
       "toElement": "renderContent"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "loadCurrent",
+      "toElement": "renderSuggestions"
     },
     {
       "from": "tmux-web/static/js/daily-summary/daily-summary.js",
@@ -3493,6 +3798,13 @@
       "type": "call",
       "fromElement": "generateCurrent",
       "toElement": "renderContent"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "generateCurrent",
+      "toElement": "renderSuggestions"
     },
     {
       "from": "tmux-web/static/js/daily-summary/daily-summary.js",
@@ -3584,6 +3896,13 @@
       "type": "call",
       "fromElement": "bindControls",
       "toElement": "closeDailySummary"
+    },
+    {
+      "from": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "to": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "type": "call",
+      "fromElement": "closeDailySummary",
+      "toElement": "hideSuggestions"
     },
     {
       "from": "tmux-web/static/js/daily-summary/daily-summary.js",
@@ -4380,6 +4699,27 @@
       "to": "tmux-web/static/js/echo/api.js",
       "type": "call",
       "fromElement": "generateDailyReport",
+      "toElement": "jsonInit"
+    },
+    {
+      "from": "tmux-web/static/js/echo/api.js",
+      "to": "tmux-web/static/js/echo/api.js",
+      "type": "call",
+      "fromElement": "getDailyReportPrompts",
+      "toElement": "call"
+    },
+    {
+      "from": "tmux-web/static/js/echo/api.js",
+      "to": "tmux-web/static/js/echo/api.js",
+      "type": "call",
+      "fromElement": "saveDailyReportPrompts",
+      "toElement": "call"
+    },
+    {
+      "from": "tmux-web/static/js/echo/api.js",
+      "to": "tmux-web/static/js/echo/api.js",
+      "type": "call",
+      "fromElement": "saveDailyReportPrompts",
       "toElement": "jsonInit"
     },
     {
@@ -10336,6 +10676,24 @@
     },
     {
       "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/echo/api.js",
+      "type": "import",
+      "toElement": "getDailyReportPrompts"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/echo/api.js",
+      "type": "import",
+      "toElement": "saveDailyReportPrompts"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/echo/notifications.js",
+      "type": "import",
+      "toElement": "notify"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
       "to": "tmux-web/static/js/settings/daily-summary-tab.js",
       "type": "call",
       "fromElement": "renderDailySummaryTab",
@@ -10451,7 +10809,21 @@
       "to": "tmux-web/static/js/settings/daily-summary-tab.js",
       "type": "call",
       "fromElement": "renderDailySummaryTab",
-      "toElement": "String"
+      "toElement": "notify"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "renderDailySummaryTab",
+      "toElement": "notify"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "renderDailySummaryTab",
+      "toElement": "errMsg"
     },
     {
       "from": "tmux-web/static/js/settings/daily-summary-tab.js",
@@ -10473,6 +10845,356 @@
       "type": "call",
       "fromElement": "renderDailySummaryTab",
       "toElement": "window.ForgeApp.showDailySummary"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "renderDailySummaryTab",
+      "toElement": "container.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "renderDailySummaryTab",
+      "toElement": "buildPromptsFieldset"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "makePromptTextarea"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "makePromptTextarea"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "actions.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "actions.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "getDailyReportPrompts"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "applyState"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "errMsg"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "saveBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "saveDailyReportPrompts"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "applyState"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "errMsg"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "reportTa.resetBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "resetField"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "suggestTa.resetBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "buildPromptsFieldset",
+      "toElement": "resetField"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "resetField",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "resetField",
+      "toElement": "saveDailyReportPrompts"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "resetField",
+      "toElement": "applyState"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "resetField",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "resetField",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "resetField",
+      "toElement": "errMsg"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "makePromptTextarea",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "makePromptTextarea",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "makePromptTextarea",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "makePromptTextarea",
+      "toElement": "head.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "makePromptTextarea",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "makePromptTextarea",
+      "toElement": "head.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "makePromptTextarea",
+      "toElement": "field.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "makePromptTextarea",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "makePromptTextarea",
+      "toElement": "field.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "to": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "type": "call",
+      "fromElement": "errMsg",
+      "toElement": "String"
     },
     {
       "from": "tmux-web/static/js/settings/modal.js",
@@ -15462,6 +16184,34 @@
       "type": "call",
       "fromElement": "reopenTask",
       "toElement": "rollbackIssue"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "createTodoForPath",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "createTodoForPath",
+      "toElement": "JSON.stringify"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "createTodoForPath",
+      "toElement": "r.text"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "createTodoForPath",
+      "toElement": "r.json"
     },
     {
       "from": "tmux-web/static/js/tasks/crud.js",
