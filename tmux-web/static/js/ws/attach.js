@@ -13,6 +13,7 @@ import { isRemoteMode } from '../remote/healthz.js';
 import { setStatus, showPlaceholder } from '../terminal/xterm.js';
 import { renderSidebar } from '../sidebar/sidebar.js';
 import { startWindowsPolling, stopWindowsPolling } from '../sessions/windows.js';
+import { showHome } from '../home/home.js';
 
 export function connectWs(sessionName, origin) {
     // На всякий случай закрываем старый.
@@ -58,6 +59,7 @@ export function connectWs(sessionName, origin) {
     ws.onopen = () => {
         setStatus('connected', `attached → ${sessionName}`);
         showPlaceholder(false);
+        showHome(false);
         state.attachWsBackoffStep = 0;
         if (state.term) {
             state.term.reset();

@@ -1,0 +1,3 @@
+# collect_git_activity
+
+Метод HostApi (plugins/echo-host-api/src/lib.rs) с default-реализацией Ok(String::new()), чтобы не ломать stub'ы/impl'ы. Реализация в tmux-web/src/echo_host.rs::EchoHostAdapter: берёт crate::tmux::list_sessions() (поле path), дедуплицирует пути, для каждого находит git-корень (git rev-parse --show-toplevel), дедуплицирует корни, для каждого корня выполняет git log --since=@<unix> --pretty=format:'- %h %s' через tokio::process::Command. Возвращает markdown-блоки '### <repo>\n<коммиты>'. Не-git каталоги и ошибки отдельных репо тихо пропускаются. Используется generate_report для grounding.

@@ -1,0 +1,3 @@
+# plugins/echo/src/db/repo/daily_reports.rs
+
+Repo-слой таблицы daily_reports (forge-echo, миграция V002). DailyReport{id (UUID), day (TEXT YYYY-MM-DD UNIQUE), content (markdown), source ('auto'|'manual'), created_at, updated_at (unix epoch)}. API: upsert(db, day, content, source) — INSERT ... ON CONFLICT(day) DO UPDATE, id и created_at стабильны между перегенерациями за один день, updated_at обновляется; get_by_day(db, day) -> Option; get(db, id) -> Option; list(db, limit) -> Vec, отсортировано day DESC. Один отчёт на день (UNIQUE day). Unit-тесты: upsert не дублирует и сохраняет id/created_at, get_by_day/get_by_id, list orders by day desc + limit.

@@ -1,0 +1,3 @@
+# plugins/echo/src/daily_report/scheduler.rs
+
+Авто-планировщик «Сводки дня» (forge-echo). Фоновый tokio-loop, который раз в сутки около 23:00 локального времени запускает daily_report::generate_report за текущий day с source='auto'. next_run-логика: вычисляет ближайшие локальные 23:00 (если уже >=23:00 — на следующий день), спит до них, генерит, повторяет. Не зависит от AppState — работает через Arc<EchoState> + Arc<dyn HostApi>. Запускается из spawn_workers. Unit-тесты проверяют расчёт следующего запуска: before/at/after 23:00 (rolls to next day), after midnight → today 23:00, never_zero_and_within_a_day.

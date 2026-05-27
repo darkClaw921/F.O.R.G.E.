@@ -1,0 +1,3 @@
+# plugins/echo/src/daily_report/mod.rs
+
+Модуль генерации «Сводки дня» (forge-echo). Экспортирует generate_report(state, host, day: NaiveDate, source) -> Result<DailyReport> и константу NO_ACTIVITY_RU='Сегодня активности не было'. Собирает за день chat-messages, tmux-pane снапшоты и git-активность (HostApi::collect_git_activity, since=начало дня). Если все три источника пусты — upsert content=NO_ACTIVITY_RU без вызова Claude. Иначе строит русский мотивационный prompt (## Что сделано / ## Где я молодец / ## На завтра), прогоняет через runner.one_shot и upsert'ит в daily_reports по ключу day. id стабилен между перегенерациями. Подмодуль scheduler — авто-запуск ~23:00 local.

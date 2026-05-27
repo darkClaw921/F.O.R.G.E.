@@ -62,7 +62,7 @@ const NO_ACTIVITY: &str = "No activity";
 
 /// Параметры дня в UTC. Принимаем `chrono::NaiveDate` чтобы caller'ы из
 /// разных таймзон были вынуждены явно конвертировать.
-fn day_bounds_utc(day: NaiveDate) -> (i64, i64) {
+pub(crate) fn day_bounds_utc(day: NaiveDate) -> (i64, i64) {
     let start = day.and_hms_opt(0, 0, 0).expect("valid time");
     let next = start + chrono::Duration::days(1);
     let start_ts = Utc.from_utc_datetime(&start).timestamp();
@@ -71,7 +71,7 @@ fn day_bounds_utc(day: NaiveDate) -> (i64, i64) {
 }
 
 /// Усекает текст до `cap` символов с маркером "…" при отсечении.
-fn snippet(s: &str, cap: usize) -> String {
+pub(crate) fn snippet(s: &str, cap: usize) -> String {
     if s.chars().count() <= cap {
         return s.trim().to_string();
     }
@@ -85,7 +85,7 @@ fn snippet(s: &str, cap: usize) -> String {
 ///
 /// Реализация — простой `SELECT` через repo (нет специального API на день,
 /// поэтому фильтруем здесь по `created_at`).
-async fn collect_day_messages(
+pub(crate) async fn collect_day_messages(
     state: &Arc<EchoState>,
     project_id: Option<&str>,
     day: NaiveDate,
@@ -148,7 +148,7 @@ async fn collect_day_messages(
 
 /// Собирает текст из capture-pane'ов активных сессий проекта (или всех, если
 /// project_id=None). Используется в `summarize_day` для grounding.
-async fn collect_pane_snapshot(
+pub(crate) async fn collect_pane_snapshot(
     host: &dyn HostApi,
     _project_id: Option<&str>,
     lines: i32,

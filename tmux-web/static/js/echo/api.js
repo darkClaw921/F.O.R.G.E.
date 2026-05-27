@@ -156,6 +156,39 @@ export async function getStats(range) {
     return call(`/api/echo/stats${qs}`);
 }
 
+// -------- daily reports (сводка дня) --------
+
+/**
+ * Список последних сводок дня. Возвращает {items:[{id,day,content,source,
+ * created_at,updated_at}]}.
+ *
+ * @param {number} [limit] — максимум записей
+ */
+export async function listDailyReports(limit) {
+    const qs = limit != null ? `?limit=${encodeURIComponent(limit)}` : '';
+    return call(`/api/echo/daily-reports${qs}`);
+}
+
+/**
+ * Сводка за конкретный день (YYYY-MM-DD). Возвращает {id,day,content,...}.
+ * Если за день сводки нет — сервер отвечает 404, call() бросит Error со
+ * status=404 (вызывающий должен это обработать).
+ *
+ * @param {string} day — дата в формате YYYY-MM-DD
+ */
+export async function getDailyReport(day) {
+    return call(`/api/echo/daily-reports/${encodeURIComponent(day)}`);
+}
+
+/**
+ * Сгенерировать (или пересоздать) сводку дня. Возвращает {id,day,content}.
+ *
+ * @param {string} [day] — день для генерации (YYYY-MM-DD); по умолчанию сегодня
+ */
+export async function generateDailyReport(day) {
+    return call('/api/echo/daily-reports/generate', jsonInit('POST', day ? { day } : {}));
+}
+
 // -------- runs --------
 
 export async function cancelRun(runId) {

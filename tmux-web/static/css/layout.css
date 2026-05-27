@@ -59,6 +59,9 @@
     flex-direction: column;
     background: var(--bg-deep);
     overflow: hidden;
+    /* Containing block для абсолютных .placeholder и #home — иначе они
+     * anchor'ятся к вьюпорту и перекрывают сайдбар/таб-бар. */
+    position: relative;
 }
 
 #terminal {

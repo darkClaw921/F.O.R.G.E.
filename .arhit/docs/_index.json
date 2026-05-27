@@ -638,11 +638,11 @@
   },
   {
     "element": "openSettingsModal",
-    "path": "",
-    "type": "unknown",
-    "content": "Phase wk7.4 (themes UI): settings-modal теперь содержит tab-bar с двумя вкладками — Notifications (исторический контент: список проектов + per-project notify-форма) и Themes (новая, Phase wk7).\n\nСтруктура DOM:\n- .modal-card.settings-modal\n  - .modal-tabs (role=tablist)\n    - .modal-tab-btn[data-tab=notifications].active (по умолчанию)\n    - .modal-tab-btn[data-tab=themes]\n  - .modal-tab-panel[data-panel=notifications] — h2 + ul#ps-list (renderList: проекты + buildNotificationsForm)\n  - .modal-tab-panel[data-panel=themes][hidden] — h2 + .themes-content (Phase 4 рендер)\n  - .modal-actions — кнопка Close\n\nshowTab(name) переключает active-класс tab-btn и hidden у panels. При первом открытии Themes-вкладки вызывает loadThemesIntoPanel + кэш themesState.\n\nСохранён ВЕСЬ функционал Notifications-вкладки: expanded Set, renderList, buildNotificationsForm, optimistic-обновление через saveProjectSettings — без изменений.",
+    "path": "tmux-web/static/js/settings/modal.js",
+    "type": "function",
+    "content": "Диспетчер табов settings-модалки (tmux-web/static/js/settings/modal.js). openSettingsModal(initialTab) строит overlay+card, панели создаются в card.innerHTML (HTML-в-JS, не в index.html). Вкладки: Notifications (дефолт, рендерится сразу), Themes, TODO behavior, Echo, «Сводка дня» (daily-summary) и опциональный Remote servers (в remote-mode). Каждая вкладка имеет ленивый рендер с флагом loaded в собственном state-объекте; showTab(name) переключает active-класс кнопок и hidden панелей и при первом показе вызывает соответствующий renderXxxPanel. «Сводка дня» рендерится через renderDailySummaryTab(, { onClose: close }); close определён заранее (overlay.remove), т.к. кнопка «Открыть страницу» использует его как onClose. initialTab допускает 'daily-summary'.",
     "createdAt": "2026-05-10T14:20:26.443Z",
-    "updatedAt": "2026-05-10T15:11:19.084Z"
+    "updatedAt": "2026-05-27T07:35:19.394Z"
   },
   {
     "element": "todo-stage",
@@ -2865,12 +2865,9 @@
     "element": "promote_todo",
     "path": "",
     "type": "unknown",
-    "content": "POST /api/todos/:id/promote — конвертирует TODO-карточку в bd-задачу и (если есть целевая сессия) отправляет её текст в активную tmux-сессию через notifier.\n\nАлгоритм:\n1. Найти TODO (404 если нет).\n2. Создать bd-issue через 'br create' в todo.root_path, извлечь id из JSON.\n3. Удалить TODO + broadcast Removed.\n4. Резолвить target_session: body.session > cfg.session (NotifierConfig).\n5. Если target_session не определён — skip notify (200, notify_scheduled=false). bd-задача всё равно создана.\n6. Сформировать текст: если cfg.template ПУСТ — используется DEFAULT_PROMOTE_TEMPLATE ('{title}'), а непустое описание дописывается отдельной строкой (заголовок\\nописание). Если template задан — рендерится через format_notify_template. При todo.plan_mode дописывается plan-mode suffix.\n7. mode: wait_previous > delay_minutes>0 > Immediate. enqueue в notifier.\n\nВАЖНО (фикс бага 'текст не уходит в сессию'): пустой template НЕ блокирует отправку — раньше ранний return срабатывал при template_trimmed.is_empty(), теперь только при target_session.is_none(). Это сохраняет zero-config: перенос TODO→open сразу шлёт текст задачи в активную сессию.",
+    "content": "POST /api/todos/:id/promote — конвертирует TODO в bd-задачу (br create --json) и планирует notify-job в сессию. Дефолтный текст уведомления (когда NotifierConfig.template пуст) теперь '[{id}] {title}' (DEFAULT_PROMOTE_TEMPLATE) — в сессию уходит только ID и заголовок задачи, БЕЗ полного описания. Агент, получивший задачу, сам подтягивает описание через 'br show <id>'. Кастомные шаблоны с плейсхолдером {description} продолжают работать по-старому. plan-mode suffix дописывается отдельной строкой. Файлы: tmux-web/src/main.rs (promote_todo, format_notify_template, DEFAULT_PROMOTE_TEMPLATE), tmux-web/src/notifier_config.rs (NotifierConfig).",
     "createdAt": "2026-05-21T11:45:32.836Z",
-    "updatedAt": "2026-05-25T08:32:57.721Z",
-    "aliases": [
-      "перенос todo в open текст не уходит в сессию"
-    ]
+    "updatedAt": "2026-05-27T06:51:38.735Z"
   },
   {
     "element": "get_notifier_config",
@@ -2955,5 +2952,292 @@
       "кастомная подсказка",
       "tooltip hover индикатор"
     ]
+  },
+  {
+    "element": "session_history",
+    "path": "",
+    "type": "unknown",
+    "content": "Модуль tmux-web/src/session_history.rs — персистентное хранилище истории tmux-сессий. tmux держит только активные сессии (после kill-session/перезагрузки данные теряются), поэтому модуль ведёт отдельный JSON-журнал всех когда-либо виденных сессий, чтобы UI мог показать недавние/закрытые сессии и быстро восстановить их.\n\nСТРУКТУРЫ:\n- HistoryWindow { index: u32, name: String } — окно сессии в истории (только стабильные поля, без active/panes из tmux::WindowInfo).\n- HistorySession { name, path, folder_label: Option<String>, windows: Vec<HistoryWindow>, first_seen: i64, last_seen: i64 } — одна запись истории. Ключ записи = name + \\0 + path (HistorySession::key), защищает от коллизий одинаковых имён в разных каталогах. folder_label — basename корня проекта (paths::resolve_root(path)).\n- HistoryStore — cheap-clone обёртка над Arc<RwLock<Inner>>, Inner { sessions: HashMap<String, HistorySession>, file: PathBuf }. Один экземпляр на процесс, кладётся в AppState (Phase 2).\n\nМЕТОДЫ HistoryStore:\n- load(dir: &Path) -> HistoryStore — читает <dir>/session_history.json (FILE_NAME). Отсутствие файла → пустой стор; битый JSON или ошибка чтения → пустой стор + tracing::warn. Файл на диск не пишется до первого persist (инвариант 'битый файл не блокирует старт', как у themes/notifier_config).\n- snapshot(&self, sessions: &[(SessionInfo, Vec<WindowInfo>)]) — upsert по ключу: существующим обновляет last_seen=now, windows, folder_label (сохраняя first_seen); новым ставит first_seen=last_seen=now. Затем persist().\n- list(&self) -> Vec<HistorySession> — все записи, отсортированы по last_seen убыв.\n- remove(&self, name, path) — удаляет запись по ключу + persist().\n- persist(&self) — атомарная запись JSON-массива (отсортирован по last_seen убыв.) через temp-файл <file>.tmp + std::fs::rename, идентично themes.rs/notifier_config.rs. Ошибки логируются warn, не паникуют.\n\nФУНКЦИИ:\n- capture_now(store: &HistoryStore) async — единая точка снятия снимка: tmux::list_sessions() + для каждой tmux::list_windows() → собирает Vec<(SessionInfo, Vec<WindowInfo>)> → store.snapshot(). Сессии с ошибкой list_windows записываются с пустым списком окон. Переиспользуется воркером и shutdown-хуком (Phase 2+).\n- now_unix_secs() -> i64 — текущее Unix-время в секундах через std::time::SystemTime (проект использует SystemTime, НЕ chrono — chrono нет в зависимостях tmux-web).\n- folder_label_for(path) -> Option<String> — basename(paths::resolve_root(path)).\n\nЗАВИСИМОСТИ: crate::tmux (SessionInfo, WindowInfo, list_sessions, list_windows), crate::paths (resolve_root), serde, std::sync::{Arc, RwLock}, std::time::SystemTime.\n\nХРАНИЛИЩЕ: ~/.config/forge/session_history.json (тот же data-каталог, что themes.json/notifier.json; в AppState приходит как themes_dir).\n\nPHASE 1: модуль зарегистрирован в main.rs как 'mod session_history;' с #[allow(dead_code)] (API интегрируется в AppState/роуты в Phase 2). Не интегрирован в AppState/endpoints. 7 unit-тестов покрывают load/snapshot/list/remove/persist/коллизии ключей.",
+    "createdAt": "2026-05-26T07:24:11.366Z",
+    "updatedAt": "2026-05-26T07:24:11.366Z"
+  },
+  {
+    "element": "restore_one_session",
+    "path": "",
+    "type": "unknown",
+    "content": "Приватный async-хелпер в tmux-web/src/main.rs. Восстанавливает одну сессию из истории: tmux::new_session(name, path), затем воссоздаёт окна из записи HistoryStore — окно index 0 переименовывается через tmux::rename_window, остальные создаются tmux::new_window(Some(name)). Ошибки отдельных окон логируются (warn) и не фатальны; Err только при сбое создания сессии. Переиспользуется restore_session_history и restore_all_session_history.",
+    "createdAt": "2026-05-26T07:29:00.134Z",
+    "updatedAt": "2026-05-26T07:29:00.134Z"
+  },
+  {
+    "element": "get_session_history",
+    "path": "",
+    "type": "unknown",
+    "content": "GET /api/sessions/history. Возвращает Json(state.history.list()) — журнал HistorySession, сортировка по last_seen убыв. Активные и закрытые сессии вперемешку, фронт сам помечает запущенные.",
+    "createdAt": "2026-05-26T07:29:08.090Z",
+    "updatedAt": "2026-05-26T07:29:08.090Z"
+  },
+  {
+    "element": "restore_session_history",
+    "path": "",
+    "type": "unknown",
+    "content": "POST /api/sessions/history/restore, body {name,path}. 409 если сессия уже в tmux::list_sessions(); иначе restore_one_session → 201 + {name}. 400 при невалидном теле/сбое создания.",
+    "createdAt": "2026-05-26T07:29:08.357Z",
+    "updatedAt": "2026-05-26T07:29:08.357Z"
+  },
+  {
+    "element": "restore_all_session_history",
+    "path": "",
+    "type": "unknown",
+    "content": "POST /api/sessions/history/restore-all. Для каждой записи store.list(), пропуская активные имена в tmux, вызывает restore_one_session; возвращает Json {restored:[имена]}. Ошибки отдельных сессий логируются, не прерывают цикл.",
+    "createdAt": "2026-05-26T07:29:08.616Z",
+    "updatedAt": "2026-05-26T07:29:08.616Z"
+  },
+  {
+    "element": "delete_session_history",
+    "path": "",
+    "type": "unknown",
+    "content": "DELETE /api/sessions/history, body {name,path} → state.history.remove(name,path), 200. Идемпотентно, активную tmux-сессию не трогает.",
+    "createdAt": "2026-05-26T07:29:08.880Z",
+    "updatedAt": "2026-05-26T07:29:08.880Z"
+  },
+  {
+    "element": "session-history-integration",
+    "path": "",
+    "type": "page",
+    "content": "Фаза 2 (forge-joc): интеграция session_history в backend devforge (tmux-web/src/main.rs). 1) AppState.history: session_history::HistoryStore, init через HistoryStore::load(&themes_dir) (~/.config/forge/). 2) Периодический snapshot-воркер: tokio::spawn с tokio::time::interval(3600s), первый тик немедленно, на каждом тике session_history::capture_now(&history); в spawn передаётся только cheap-clone HistoryStore. 3) Shutdown-хук: клон HistoryStore захватывается в shutdown_signal future, после forge_echo::shutdown вызывается capture_now для финального снимка. 4) REST-роуты под auth: GET+DELETE /api/sessions/history, POST /api/sessions/history/restore, POST /api/sessions/history/restore-all. Общая логика восстановления — приватный хелпер restore_one_session.",
+    "createdAt": "2026-05-26T07:29:15.582Z",
+    "updatedAt": "2026-05-26T07:29:15.582Z"
+  },
+  {
+    "element": "renderHome",
+    "path": "tmux-web/static/js/home/home.js",
+    "type": "function",
+    "content": "renderHome (js/home/home.js) — async-функция рендера главной страницы 'Недавние сессии'. Загружает историю через apiFetch('/api/sessions/history') (GET, массив HistorySession {name,path,folder_label,windows:[{index,name}],first_seen,last_seen}), очищает грид #home-cards и строит карточку на каждую запись через buildHomeCard (document.createElement, XSS-safe — без innerHTML с пользовательскими данными). Карточка содержит: имя сессии, folder_label, path, количество и список имён окон, кнопки '▶ Запустить' (restoreSession) и '✕' (deleteHistory). При пустой истории показывает #home-empty ('История пуста') и скрывает кнопку #home-restore-all. При первом вызове один раз навешивает listener на #home-restore-all → restoreAll (флаг restoreAllBound защищает от дублей). Связанные функции модуля: restoreSession(name,path) — POST /api/sessions/history/restore, обрабатывает 409 (имя занято), при успехе fetchSessions()+openSession(name); restoreAll() — POST /api/sessions/history/restore-all + fetchSessions(); deleteHistory(name,path) — DELETE /api/sessions/history {name,path} + renderHome(); showHome(show) — переключает display #home (flex/none), при show=true вызывает showPlaceholder(false). Вызывается из sessions.js::fetchSessions (через syncHomeVisibility) когда нет активных сессий и нет currentSession. Зависимости: apiFetch (core/api.js), fetchSessions/openSession (sessions/sessions.js), showPlaceholder (terminal/xterm.js), DOM $home/$homeCards/$homeRestoreAll/$homeEmpty (core/dom.js).",
+    "createdAt": "2026-05-26T07:33:42.170Z",
+    "updatedAt": "2026-05-26T07:33:52.724Z",
+    "aliases": [
+      "недавние сессии",
+      "история сессий главная"
+    ]
+  },
+  {
+    "element": "home-module",
+    "path": "",
+    "type": "page",
+    "content": "Модуль js/home/home.js — главная страница 'Недавние сессии' (Phase 3, epic forge-by9). Показывается в #main когда нет активных tmux-сессий (state.sessions.length===0 && !state.currentSession). Источник данных — backend Phase 2 (HistoryStore): GET /api/sessions/history (список), POST /api/sessions/history/restore {name,path}, POST /api/sessions/history/restore-all, DELETE /api/sessions/history {name,path}. Экспорты: renderHome() (рендер карточек/пустого состояния), restoreSession(name,path) (восстановление+открытие, 409-handling), restoreAll(), deleteHistory(name,path), showHome(show). DOM: контейнер #home в index.html (.home > .home-head[.home-title + #home-restore-all] + #home-cards + #home-empty), стили css/home.css (грид .home-cards, .home-card в палитре --bg-elev/--border-input, кнопки в стиле .btn-rename/.btn-kill). Интеграция: sessions.js::fetchSessions вызывает syncHomeVisibility (renderHome+showHome(true) при пустых сессиях, иначе showHome(false)); ws/attach.js onopen вызывает showHome(false) при открытии сессии. Цикл импортов home.js<->sessions.js безопасен (обращения только в рантайме внутри функций). XSS-safe рендеринг через document.createElement.",
+    "createdAt": "2026-05-26T07:33:52.145Z",
+    "updatedAt": "2026-05-26T07:33:52.145Z"
+  },
+  {
+    "element": "capture_now",
+    "path": "",
+    "type": "unknown",
+    "content": "session_history::capture_now(store: &HistoryStore) async — единая точка снятия снимка истории tmux-сессий. Опрашивает tmux::list_sessions(), для каждой сессии вызывает tmux::list_windows() (при ошибке — пустой список окон с tracing::warn), собирает Vec<(SessionInfo, Vec<WindowInfo>)> и передаёт в store.snapshot(), который upsert'ит записи по ключу name+\\0+path (обновляя last_seen/windows/folder_label у существующих, создавая first_seen=last_seen=now у новых) и атомарно персистит JSON на диск (~/.config/forge/session_history.json). Переиспользуется в двух местах main.rs: (1) периодическим snapshot-воркером (tokio::spawn, tokio::time::interval 3600s, срабатывает немедленно на первом тике) и (2) graceful-shutdown хуком внутри with_graceful_shutdown — после wait_for_shutdown_signal() и forge_echo::shutdown() вызывается capture_now(&history_for_shutdown) чтобы зафиксировать финальный снимок перед остановкой процесса. Зависимости: crate::tmux, crate::session_history::HistoryStore. Не возвращает значения; все ошибки логируются, не паникуют.",
+    "createdAt": "2026-05-26T07:37:09.414Z",
+    "updatedAt": "2026-05-26T07:37:09.414Z"
+  },
+  {
+    "element": "session-history-snapshot-worker",
+    "path": "",
+    "type": "page",
+    "content": "Snapshot-воркер истории сессий (main.rs, Phase 2, epic forge-joc). Назначение: периодически и при завершении фиксировать снимок активных tmux-сессий в персистентный журнал HistoryStore, чтобы UI 'Недавние сессии' мог показать и восстановить ранее виденные сессии после kill-session/перезагрузки tmux.\n\nКОМПОНЕНТЫ:\n1. AppState.history: session_history::HistoryStore — cheap-clone обёртка (Arc<RwLock> внутри), загружается через HistoryStore::load(&themes_dir) при старте (~/.config/forge/session_history.json). Битый/отсутствующий файл → пустой стор, старт не блокируется.\n2. Периодический воркер: tokio::spawn с tokio::time::interval(Duration::from_secs(3600)). interval по умолчанию срабатывает немедленно на первом тике (снимок сразу при старте), далее раз в час. На каждом тике вызывает session_history::capture_now(&history_for_worker). В spawn передаётся только клон HistoryStore (а не весь AppState) — воркеру не нужны остальные поля.\n3. Graceful-shutdown хук: внутри shutdown_signal future, переданного в axum::serve(...).with_graceful_shutdown(shutdown_signal). Последовательность: wait_for_shutdown_signal() (ctrl_c или SIGTERM) → forge_echo::shutdown(&echo_for_shutdown) → tracing::info 'capturing final session history snapshot before shutdown' → session_history::capture_now(&history_for_shutdown). Гарантирует, что финальный снимок попадает в session_history.json до остановки процесса.\n\nБИЗНЕС-ЛОГИКА: capture_now опрашивает tmux и делает upsert по ключу name+path (атомарная запись через temp+rename). Дубликатов не создаёт — повторные снимки той же сессии обновляют last_seen/windows. Восстановление сессий из журнала реализуют endpoint'ы /api/sessions/history/restore[-all] (restore_one_session). Зависимости: crate::session_history (HistoryStore, capture_now), tokio, axum graceful shutdown.",
+    "createdAt": "2026-05-26T07:37:26.838Z",
+    "updatedAt": "2026-05-26T07:37:26.838Z"
+  },
+  {
+    "element": "home-layout-fix",
+    "path": "",
+    "type": "page",
+    "content": "Фикс отображения главного экрана #home при отсутствии активных сессий (2026-05-27). Два дефекта в CSS: (1) #main имел position:static, из-за чего .home и .placeholder (position:absolute; inset:0) anchor'ились к вьюпорту и перекрывали сайдбар + таб-бар; добавлен position:relative в layout.css#main → home теперь ограничен областью #main (x=240). (2) .home-empty имел display:flex, который перекрывал UA-шный display:none для атрибута [hidden], поэтому 'История пуста' висела одновременно с карточками; добавлено правило .home-empty[hidden]{display:none} в home.css. renderHome переключает видимость пустого состояния через $homeEmpty.hidden. Изменены файлы: tmux-web/static/css/layout.css, tmux-web/static/css/home.css. Проверено через playwright (mock /api/sessions=[]): home показывается в #main, сайдбар виден, пустое состояние корректно скрывается/показывается.",
+    "createdAt": "2026-05-27T06:34:22.521Z",
+    "updatedAt": "2026-05-27T06:34:22.521Z"
+  },
+  {
+    "element": "generate_report",
+    "path": "",
+    "type": "unknown",
+    "content": "Генерация «Сводки дня» (daily_report) в plugins/echo/src/daily_report/mod.rs. generate_report(state, host, day: NaiveDate, source) -> Result<DailyReport>. Собирает за день: chat-messages (memory::collect_day_messages), tmux-panes (memory::collect_pane_snapshot), git-активность (HostApi::collect_git_activity, since=начало дня). Если все три пусты — upsert content='Сегодня активности не было' без вызова Claude. Иначе строит русский мотивационный prompt с 3 разделами (## Что сделано / ## Где я молодец / ## На завтра), прогоняет через state.runner.one_shot и upsert'ит результат в daily_reports по ключу day. source: 'auto' (scheduler) | 'manual' (кнопка). id стабилен между перегенерациями за один день.",
+    "createdAt": "2026-05-27T07:22:30.299Z",
+    "updatedAt": "2026-05-27T07:22:30.299Z"
+  },
+  {
+    "element": "collect_git_activity",
+    "path": "",
+    "type": "unknown",
+    "content": "Метод HostApi (plugins/echo-host-api/src/lib.rs) с default-реализацией Ok(String::new()), чтобы не ломать stub'ы/impl'ы. Реализация в tmux-web/src/echo_host.rs::EchoHostAdapter: берёт crate::tmux::list_sessions() (поле path), дедуплицирует пути, для каждого находит git-корень (git rev-parse --show-toplevel), дедуплицирует корни, для каждого корня выполняет git log --since=@<unix> --pretty=format:'- %h %s' через tokio::process::Command. Возвращает markdown-блоки '### <repo>\\n<коммиты>'. Не-git каталоги и ошибки отдельных репо тихо пропускаются. Используется generate_report для grounding.",
+    "createdAt": "2026-05-27T07:22:30.561Z",
+    "updatedAt": "2026-05-27T07:22:30.561Z"
+  },
+  {
+    "element": "upsert",
+    "path": "",
+    "type": "unknown",
+    "content": "daily_reports::upsert(db, day, content, source) в plugins/echo/src/db/repo/daily_reports.rs. Upsert по UNIQUE(day): select-by-day + INSERT (новый UUIDv4) либо UPDATE content/source/updated_at с сохранением id и created_at. Возвращает DailyReport. Repo также: get_by_day(day)->Option, list(limit)->Vec (ORDER BY day DESC), get(id)->Option. Таблица создаётся миграцией V002_daily_reports.sql (id TEXT PK, day TEXT UNIQUE YYYY-MM-DD local, content, source 'auto'|'manual', created_at, updated_at). Зарегистрирован в db/repo/mod.rs.",
+    "createdAt": "2026-05-27T07:22:41.316Z",
+    "updatedAt": "2026-05-27T07:22:41.316Z"
+  },
+  {
+    "element": "daily-report-phase1",
+    "path": "",
+    "type": "page",
+    "content": "Phase 1 фичи «Сводка дня» (forge-1tf): backend хранилище и генерация daily_report в crate forge-echo. Состав: (1) миграция plugins/echo/migrations/V002_daily_reports.sql — таблица daily_reports; (2) repo plugins/echo/src/db/repo/daily_reports.rs — DailyReport + upsert/get_by_day/list/get; (3) plugins/echo-host-api/src/lib.rs — HostApi::collect_git_activity (default Ok(\"\")), impl в tmux-web/src/echo_host.rs; (4) plugins/echo/src/daily_report/mod.rs — generate_report, переиспользует поднятые до pub(crate) helper'ы memory/mod.rs (collect_day_messages, collect_pane_snapshot, snippet, day_bounds_utc). Пустой день → 'Сегодня активности не было'. Отдельная сущность, не трогает global_day-автоматизацию memory. Следующие фазы: REST API, scheduler ~23:00 local, frontend-страница, кнопка в настройках.",
+    "createdAt": "2026-05-27T07:22:41.578Z",
+    "updatedAt": "2026-05-27T07:22:41.578Z"
+  },
+  {
+    "element": "routes/daily_reports.rs",
+    "path": "routes/daily_reports.rs",
+    "type": "file",
+    "content": "REST API «Сводки дня» под /api/echo/daily-reports (Phase 2 фичи forge-b4q). Три хендлера на router(): GET /api/echo/daily-reports?limit=N — список последних N отчётов (daily_reports::list, DEFAULT_LIMIT=30, clamp 1..365), возвращает {items:[DailyReport]}; GET /api/echo/daily-reports/:day — отчёт за локальный день YYYY-MM-DD (daily_reports::get_by_day), валидирует формат (400 на битый), 404 если записи нет; POST /api/echo/daily-reports/generate body {day?:YYYY-MM-DD} — синхронная генерация через daily_report::generate_report(source=manual) с tokio::time::timeout(GENERATE_TIMEOUT=90s), default day=сегодня по chrono::Local, host берётся из state.host.get(), 200 {id,day,content}, 504 при таймауте, 400 на битый day. Ошибки — единый ApiError(StatusCode,String): IntoResponse сериализует {error:...} (та же конвенция, что routes::memory). Регистрируется через routes/mod.rs::build_router .merge(daily_reports::router()). Unit-тесты (mock-CLI + build_router + oneshot): generate 400 на битый day, 200 на explicit/default day, get_by_day 404/400, list+get roundtrip.",
+    "createdAt": "2026-05-27T07:26:37.220Z",
+    "updatedAt": "2026-05-27T07:26:37.220Z"
+  },
+  {
+    "element": "phase2-daily-reports-rest",
+    "path": "",
+    "type": "page",
+    "content": "Phase 2 фичи «Сводка дня» (epic forge-6ol). Добавлен модуль plugins/echo/src/routes/daily_reports.rs (по образцу routes/memory.rs) и смердж в routes/mod.rs::build_router. Эндпоинты: GET list, GET :day (404/400), POST generate (sync, timeout 90с, source=manual, default day=Local::now). Опирается на Phase 1: db::repo::daily_reports и daily_report::generate_report. 9 unit-тестов зелёные, cargo build -p forge-echo и -p devforge чистые.",
+    "createdAt": "2026-05-27T07:26:37.492Z",
+    "updatedAt": "2026-05-27T07:26:37.492Z"
+  },
+  {
+    "element": "spawn",
+    "path": "",
+    "type": "unknown",
+    "content": "daily_report::scheduler::spawn(state, host) -> JoinHandle<()>: фоновый воркер авто-генерации «Сводки дня» в локальные 23:00. Loop вычисляет Duration до ближайших локальных 23:00 через duration_until_next(Local::now()), спит в tokio::select! вместе с state.shutdown.cancelled() (CancellationToken — graceful shutdown), затем вызывает generate_report(state, host, today_local, \"auto\") и логирует результат/ошибку, после чего пересчитывает интервал на следующие сутки. JoinHandle сохраняется в state.workers через register_worker в spawn_workers (третий воркер рядом с scheduler::spawn и memory::scheduler::spawn) и abort'ится в forge_echo::shutdown.",
+    "createdAt": "2026-05-27T07:26:38.510Z",
+    "updatedAt": "2026-05-27T07:26:38.510Z"
+  },
+  {
+    "element": "duration_until_next",
+    "path": "",
+    "type": "unknown",
+    "content": "daily_report::scheduler::duration_until_next(now: DateTime<Local>) -> Duration: чистая pub(crate) функция расчёта времени до ближайших локальных 23:00 (REPORT_HOUR=23). Если now строго раньше сегодняшних 23:00 — возвращает интервал до них; иначе (в 23:00 или позже, включая после полуночи) — до 23:00 следующего дня. DST-неоднозначности разрешаются через local_at (LocalResult: Single/Ambiguous→ранняя граница, None→+24h). Детерминированный hook для unit-тестов (6 тестов покрывают границы: до/в/после 23:00, после полуночи, инвариант (0,24h]).",
+    "createdAt": "2026-05-27T07:26:38.786Z",
+    "updatedAt": "2026-05-27T07:26:38.786Z"
+  },
+  {
+    "element": "daily-report-scheduler",
+    "path": "",
+    "type": "page",
+    "content": "Phase 3 фичи «Сводка дня» (epic forge-9db). Добавлен модуль plugins/echo/src/daily_report/scheduler.rs — фоновый воркер авто-генерации дневной сводки в локальные 23:00. Содержит spawn() (loop с tokio::select! sleep vs state.shutdown.cancelled()), pub(crate) duration_until_next(now) для тестируемого расчёта интервала, и приватный local_at() для DST-safe конструирования локального DateTime. Модуль объявлен через 'pub mod scheduler' в daily_report/mod.rs. Воркер зарегистрирован третьим в lib.rs::spawn_workers (state.register_worker) рядом с scheduler::spawn (autonomous) и memory::scheduler::spawn (UTC rollover); tracing::info лог обновлён. В отличие от memory::scheduler (UTC, раз в час, маркер в БД) этот привязан к локальному времени пользователя. 6 unit-тестов на расчёт интервала.",
+    "createdAt": "2026-05-27T07:26:47.704Z",
+    "updatedAt": "2026-05-27T07:26:47.704Z"
+  },
+  {
+    "element": "renderMarkdownInto",
+    "path": "tmux-web/static/js/core/markdown.js",
+    "type": "function",
+    "content": "Общий лёгкий markdown-renderer (tmux-web/static/js/core/markdown.js). Вынесен из echo/chat.js, чтобы рендером пользовались и чат Echo, и вью «Сводка дня». Чистый DOM-renderer без сторонних библиотек: code fences (```...```), inline code, **bold**, *italic*, заголовки #/##/###, bullet-списки, ссылки [text](url). XSS-безопасен: строит DOM через createElement/textContent, пользовательские данные не уходят в innerHTML. Параметры: container (HTMLElement — куда добавлять узлы, не очищается), text (строка markdown). Зависит только от браузерного DOM (pure leaf-module). Используется в echo/chat.js (finalizeMessage, buildMessageNode) и daily-summary/daily-summary.js (renderContent).",
+    "createdAt": "2026-05-27T07:32:29.771Z",
+    "updatedAt": "2026-05-27T07:32:29.771Z"
+  },
+  {
+    "element": "showDailySummary",
+    "path": "tmux-web/static/js/daily-summary/daily-summary.js",
+    "type": "function",
+    "content": "Точка входа вью «Сводка дня» (tmux-web/static/js/daily-summary/daily-summary.js). showDailySummary(day?) показывает контейнер #daily-summary, скрывает #home и placeholder (по образцу home.js::showHome), выставляет _currentDay (по умолчанию сегодня) и грузит сводку через loadCurrent. loadCurrent вызывает getDailyReport(day): при 404 показывает пустое состояние с кнопкой «Сгенерировать», иначе рендерит markdown через renderMarkdownInto (core/markdown.js). Навигация по датам: prev/today/next (next блокируется, если день >= сегодня — запрет будущего). generateCurrent вызывает generateDailyReport и перерендеривает; кнопки блокируются на время запроса (setBusy). Также экспортирует hideDailySummary(). Зависимости: echo/api.js (getDailyReport/generateDailyReport), core/markdown.js (renderMarkdownInto), terminal/xterm.js (showPlaceholder), core/dom.js ($dailySummary*). Вью открывается извне через window.ForgeApp.showDailySummary (Phase 5 — кнопка в настройках).",
+    "createdAt": "2026-05-27T07:32:37.595Z",
+    "updatedAt": "2026-05-27T07:32:37.595Z"
+  },
+  {
+    "element": "daily-summary-frontend",
+    "path": "",
+    "type": "page",
+    "content": "Phase 4 фичи «Сводка дня»: отдельная фронтовая страница с рендером markdown.\n\nНовые/изменённые файлы:\n- tmux-web/static/js/core/markdown.js (НОВЫЙ): общий markdown-renderer renderMarkdownInto, вынесен из echo/chat.js. chat.js теперь импортирует его (import { renderMarkdownInto } from '../core/markdown.js').\n- tmux-web/static/js/echo/api.js: добавлены listDailyReports(limit?), getDailyReport(day), generateDailyReport(day?) — обёртки над /api/echo/daily-reports* через call/jsonInit.\n- tmux-web/static/index.html: контейнер #daily-summary (шапка с навигацией ←/Сегодня/→, кнопка пересоздания, область контента .echo-md, пустое состояние с кнопкой Сгенерировать).\n- tmux-web/static/js/core/dom.js: 10 DOM-ссылок $dailySummary*.\n- tmux-web/static/css/daily-summary.css (НОВЫЙ): стили вью по образцу home.css; подключён через @import в style.css.\n- tmux-web/static/js/daily-summary/daily-summary.js (НОВЫЙ): showDailySummary(day?)/hideDailySummary().\n- tmux-web/static/js/public-api.js: ForgeApp.showDailySummary / hideDailySummary.\n\nBackend (Phase 1-3) предоставляет REST: GET /api/echo/daily-reports?limit=N, GET /api/echo/daily-reports/:day (404 если нет), POST /api/echo/daily-reports/generate {day?}.\n\nXSS: весь markdown рендерится через createElement/textContent (core/markdown.js), пользовательские данные в innerHTML не попадают.",
+    "createdAt": "2026-05-27T07:32:47.713Z",
+    "updatedAt": "2026-05-27T07:32:47.713Z"
+  },
+  {
+    "element": "renderDailySummaryTab",
+    "path": "tmux-web/static/js/settings/daily-summary-tab.js",
+    "type": "function",
+    "content": "Фабрика вкладки «Сводка дня» в settings modal (tmux-web/static/js/settings/daily-summary-tab.js). Сигнатура: renderDailySummaryTab(container, { onClose }). Наполняет переданный контейнер DOM-узлами: fieldset .notify-fieldset с легендой/подсказкой и двумя кнопками в .notify-actions. Кнопка .ds-generate «Сгенерировать сводку за сегодня» вызывает generateDailyReport() из echo/api.js без day (= сегодня), показывает статус в .ds-status со сменой классов pending/ok/error (паттерн как «Test connection» в remotes-tab); на время запроса кнопка disabled. Кнопка .ds-open «Открыть страницу» вызывает onClose() (закрытие модалки) и window.ForgeApp.showDailySummary() — точка интеграции из Phase 4. Зависит от generateDailyReport (echo/api.js) и глобального window.ForgeApp. Вкладка не хранит user-settings, рендерится лениво один раз при первом показе.",
+    "createdAt": "2026-05-27T07:35:14.849Z",
+    "updatedAt": "2026-05-27T07:35:14.849Z"
+  },
+  {
+    "element": "daily-summary-settings-tab",
+    "path": "",
+    "type": "page",
+    "content": "Phase 5 фичи «Сводка дня»: вкладка в settings-модалке. Файл tmux-web/static/js/settings/daily-summary-tab.js экспортирует renderDailySummaryTab(container, { onClose }). Зарегистрирована в tmux-web/static/js/settings/modal.js: добавлена кнопка-таб data-tab='daily-summary', панель #ps-panel-daily-summary с контейнером #ps-daily-summary-content, ленивый рендер renderDailySummaryPanel в showTab, поддержка initialTab='daily-summary'. Кнопка генерации использует generateDailyReport() (echo/api.js → POST /api/echo/daily-reports/generate). Кнопка «Открыть страницу» закрывает модалку и вызывает window.ForgeApp.showDailySummary() (интеграция Phase 4). Статус-строка переиспользует CSS-класс .rs-test-status (pending/ok/error). Дополнительных правок CSS и index.html не потребовалось — панели создаются в JS.",
+    "createdAt": "2026-05-27T07:35:26.967Z",
+    "updatedAt": "2026-05-27T07:35:26.967Z"
+  },
+  {
+    "element": "plugins/echo/src/routes/daily_reports.rs",
+    "path": "plugins/echo/src/routes/daily_reports.rs",
+    "type": "file",
+    "content": "REST-роутер фичи «Сводка дня» (forge-echo). Монтируется в build_router под /api/echo/daily-reports. Эндпоинты: GET /api/echo/daily-reports — список отчётов (daily_reports::list, ответ {items:[...]}), отсортировано day DESC; GET /api/echo/daily-reports/:day — отчёт за конкретный день (валидирует YYYY-MM-DD → 400 на битый формат, 404 если нет записи); POST /api/echo/daily-reports/generate — body {day?: 'YYYY-MM-DD'} (без day → сегодня по local-времени), генерит через daily_report::generate_report с source='manual', таймаут ~90с, 200 c DTO отчёта на успех, 400 на невалидный day. Все хост-вызовы идут через state.host (Arc<dyn HostApi>). Тесты (mock-CLI + in-memory Db): generate 200/400, get_by_day 404/400, list+get roundtrip, default day = today local.",
+    "createdAt": "2026-05-27T07:39:48.494Z",
+    "updatedAt": "2026-05-27T07:39:48.494Z"
+  },
+  {
+    "element": "plugins/echo/src/daily_report/scheduler.rs",
+    "path": "plugins/echo/src/daily_report/scheduler.rs",
+    "type": "file",
+    "content": "Авто-планировщик «Сводки дня» (forge-echo). Фоновый tokio-loop, который раз в сутки около 23:00 локального времени запускает daily_report::generate_report за текущий day с source='auto'. next_run-логика: вычисляет ближайшие локальные 23:00 (если уже >=23:00 — на следующий день), спит до них, генерит, повторяет. Не зависит от AppState — работает через Arc<EchoState> + Arc<dyn HostApi>. Запускается из spawn_workers. Unit-тесты проверяют расчёт следующего запуска: before/at/after 23:00 (rolls to next day), after midnight → today 23:00, never_zero_and_within_a_day.",
+    "createdAt": "2026-05-27T07:39:48.757Z",
+    "updatedAt": "2026-05-27T07:39:48.757Z"
+  },
+  {
+    "element": "plugins/echo/src/db/repo/daily_reports.rs",
+    "path": "plugins/echo/src/db/repo/daily_reports.rs",
+    "type": "file",
+    "content": "Repo-слой таблицы daily_reports (forge-echo, миграция V002). DailyReport{id (UUID), day (TEXT YYYY-MM-DD UNIQUE), content (markdown), source ('auto'|'manual'), created_at, updated_at (unix epoch)}. API: upsert(db, day, content, source) — INSERT ... ON CONFLICT(day) DO UPDATE, id и created_at стабильны между перегенерациями за один день, updated_at обновляется; get_by_day(db, day) -> Option; get(db, id) -> Option; list(db, limit) -> Vec, отсортировано day DESC. Один отчёт на день (UNIQUE day). Unit-тесты: upsert не дублирует и сохраняет id/created_at, get_by_day/get_by_id, list orders by day desc + limit.",
+    "createdAt": "2026-05-27T07:39:49.028Z",
+    "updatedAt": "2026-05-27T07:39:49.028Z"
+  },
+  {
+    "element": "tmux-web/static/js/daily-summary/daily-summary.js",
+    "path": "tmux-web/static/js/daily-summary/daily-summary.js",
+    "type": "file",
+    "content": "Фронтенд страницы «Сводка дня» (tmux-web, vanilla JS module). showDailySummary() — открывает панель #daily-summary, грузит список отчётов через echo API (GET /api/echo/daily-reports), рендерит markdown выбранного дня через core/markdown.renderMarkdownInto, поддерживает навигацию по датам (предыдущий/следующий день) и кнопку перегенерации (POST /api/echo/daily-reports/generate с текущим day). Экспонируется через ForgeApp.",
+    "createdAt": "2026-05-27T07:40:07.261Z",
+    "updatedAt": "2026-05-27T07:40:07.261Z"
+  },
+  {
+    "element": "tmux-web/static/js/core/markdown.js",
+    "path": "tmux-web/static/js/core/markdown.js",
+    "type": "file",
+    "content": "Утилита рендера markdown в DOM (tmux-web, vanilla JS). renderMarkdownInto(el, mdText) — парсит ограниченное подмножество markdown (заголовки ##, списки, абзацы) и безопасно (escape) вставляет в элемент. Используется страницей «Сводка дня» для отображения content отчёта.",
+    "createdAt": "2026-05-27T07:40:07.521Z",
+    "updatedAt": "2026-05-27T07:40:07.521Z"
+  },
+  {
+    "element": "tmux-web/static/js/settings/daily-summary-tab.js",
+    "path": "tmux-web/static/js/settings/daily-summary-tab.js",
+    "type": "file",
+    "content": "Вкладка «Сводка дня» в settings-модалке (tmux-web). renderDailySummaryTab(panel, {onClose}) — рендерит кнопки «Сгенерировать сейчас» (POST /api/echo/daily-reports/generate) и «Открыть страницу» (вызывает showDailySummary, закрывая модалку через onClose). Ленивый рендер с флагом loaded. initialTab='daily-summary' открывает эту вкладку напрямую.",
+    "createdAt": "2026-05-27T07:40:07.778Z",
+    "updatedAt": "2026-05-27T07:40:07.778Z"
+  },
+  {
+    "element": "plugins/echo/src/daily_report/mod.rs",
+    "path": "plugins/echo/src/daily_report/mod.rs",
+    "type": "file",
+    "content": "Модуль генерации «Сводки дня» (forge-echo). Экспортирует generate_report(state, host, day: NaiveDate, source) -> Result<DailyReport> и константу NO_ACTIVITY_RU='Сегодня активности не было'. Собирает за день chat-messages, tmux-pane снапшоты и git-активность (HostApi::collect_git_activity, since=начало дня). Если все три источника пусты — upsert content=NO_ACTIVITY_RU без вызова Claude. Иначе строит русский мотивационный prompt (## Что сделано / ## Где я молодец / ## На завтра), прогоняет через runner.one_shot и upsert'ит в daily_reports по ключу day. id стабилен между перегенерациями. Подмодуль scheduler — авто-запуск ~23:00 local.",
+    "createdAt": "2026-05-27T07:40:08.043Z",
+    "updatedAt": "2026-05-27T07:40:08.043Z"
+  },
+  {
+    "element": "daily-summary-feature",
+    "path": "",
+    "type": "page",
+    "content": "# Фича «Сводка дня» (Daily Summary)\n\nEnd-to-end функция forge-echo: автоматическая и ручная генерация мотивационного markdown-отчёта за один локальный день («что сделано», «где я молодец», «на завтра»), его хранение и просмотр в UI.\n\n## Backend (plugins/echo)\n\n### Хранилище\n- Миграция V002_daily_reports.sql создаёт таблицу daily_reports: id (UUID PK), day (TEXT YYYY-MM-DD, UNIQUE), content (markdown), source ('auto'|'manual'), created_at/updated_at (unix epoch). Один отчёт на день.\n- Repo plugins/echo/src/db/repo/daily_reports.rs: upsert (ON CONFLICT(day), стабильный id/created_at), get_by_day, get, list(limit, day DESC).\n\n### Генерация\n- plugins/echo/src/daily_report/mod.rs::generate_report(state, host, day, source). Собирает за день chat-messages, tmux-pane снапшоты и git-активность (HostApi::collect_git_activity, since=начало дня). Пустые источники → content=NO_ACTIVITY_RU ('Сегодня активности не было') без вызова Claude. Иначе — русский prompt с 3 разделами через runner.one_shot, затем upsert по day. id стабилен между перегенерациями.\n\n### Scheduler\n- plugins/echo/src/daily_report/scheduler.rs — фоновый tokio-loop, около 23:00 local генерит отчёт за текущий день с source='auto'. Запускается из spawn_workers.\n\n### REST API (plugins/echo/src/routes/daily_reports.rs, под /api/echo)\n- GET /api/echo/daily-reports → {items:[...]} (list, day DESC).\n- GET /api/echo/daily-reports/:day → отчёт за день; 400 на битый формат, 404 если нет.\n- POST /api/echo/daily-reports/generate body {day?} → generate_report(source='manual'), таймаут ~90с; 200 c DTO, 400 на невалидный day. Без day → сегодня local.\n\n## Plugin boundary\nВсе хост-данные (git, сессии) идут через trait echo_host_api::HostApi (метод collect_git_activity), реализация — EchoHostAdapter в tmux-web. Echo не зависит от AppState напрямую.\n\n## Frontend (tmux-web, vanilla JS modules)\n- core/markdown.js::renderMarkdownInto — безопасный рендер ограниченного markdown в DOM.\n- daily-summary/daily-summary.js::showDailySummary — панель #daily-summary: грузит список (GET), рендерит markdown выбранного дня, навигация по датам, кнопка перегенерации (POST generate).\n- settings/daily-summary-tab.js::renderDailySummaryTab — вкладка настроек с кнопками «Сгенерировать сейчас» и «Открыть страницу»; settings modal поддерживает initialTab='daily-summary'.\n\n## Тесты\n- Repo: upsert без дублей и со стабильным id, get_by_day/get_by_id, list ordering+limit.\n- Генерация: пустой день → ровно NO_ACTIVITY_RU и запись в daily_reports без вызова runner; день с сообщениями → вызов mock-CLI и upsert; перегенерация сохраняет id (одна запись).\n- Routes (mock-CLI + in-memory Db): generate 200/400, get_by_day 404/400, list+get roundtrip, default day=today local.\n- Миграция: db::tests::migration_creates_daily_reports_table проверяет наличие таблицы и всех колонок (PRAGMA table_info) + migrate идемпотентен.\n\n## Сборка\ncargo build/test для forge-echo, devforge и --workspace — без ошибок и без warning'ов; cargo test --workspace зелёный.",
+    "createdAt": "2026-05-27T07:40:26.773Z",
+    "updatedAt": "2026-05-27T07:40:31.001Z",
+    "aliases": [
+      "сводка дня"
+    ]
+  },
+  {
+    "element": "daily-summary/daily-summary.js",
+    "path": "daily-summary/daily-summary.js",
+    "type": "file",
+    "content": "Вью «Сводка дня» (#daily-summary). showDailySummary(day?) показывает страницу, грузит GET /api/echo/daily-reports/:day (404 → пустое состояние с кнопкой генерации), рендерит markdown через renderContent (чистый renderMarkdownInto, без карточек/чипов). Стиль — минималистичный Notion: нейтральная палитра, читаемая колонка max-width 760px, тихие ghost-кнопки, заголовок-страница (eyebrow + дата как h1); вся стилизация в css/daily-summary.css через .daily-summary-content .echo-md-* (перебивает echo.css по specificity). Кнопка «← Назад» (closeDailySummary) скрывает вью и вызывает fetchSessions() для возврата к основному экрану. Навигация по датам ←/Сегодня/→ (запрет будущего), кнопка пересоздания. XSS-safe: createElement/textContent.",
+    "createdAt": "2026-05-27T07:55:04.514Z",
+    "updatedAt": "2026-05-27T08:00:13.955Z"
   }
 ]

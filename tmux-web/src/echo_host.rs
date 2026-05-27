@@ -61,4 +61,81 @@ impl HostApi for EchoHostAdapter {
     fn auth_token(&self) -> Option<String> {
         self.state.auth_token.as_ref().clone()
     }
+
+    /// Собирает git-активность с момента `since_unix` по уникальным git-корням
+    /// рабочих директорий tmux-сессий.
+    ///
+    /// Алгоритм:
+    /// 1. `crate::tmux::list_sessions()` — берём `path` каждой сессии.
+    /// 2. Для каждого пути ищем git-корень (`git rev-parse --show-toplevel`),
+    ///    дедуплицируем корни (одна репа может быть открыта в нескольких сессиях).
+    /// 3. Для каждого уникального корня — `git log --since=<unix> --pretty=...`,
+    ///    собираем markdown-блок `### <repo>` + список коммитов.
+    /// 4. Не-git каталоги, отсутствие коммитов и ошибки отдельных репозиториев
+    ///    тихо пропускаются (без падения всего вызова).
+    async fn collect_git_activity(&self, since_unix: i64) -> anyhow::Result<String> {
+        use std::collections::BTreeSet;
+        use tokio::process::Command;
+
+        let sessions = match crate::tmux::list_sessions().await {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(error = %e, "collect_git_activity: list_sessions failed");
+                return Ok(String::new());
+            }
+        };
+
+        // Уникальные пути сессий (несколько сессий могут смотреть в один cwd).
+        let mut seen_paths: BTreeSet<String> = BTreeSet::new();
+        let mut roots: BTreeSet<String> = BTreeSet::new();
+        for s in sessions {
+            if s.path.trim().is_empty() || !seen_paths.insert(s.path.clone()) {
+                continue;
+            }
+            // git-корень для пути. Не-репозитории дают ненулевой exit — пропускаем.
+            let out = Command::new("git")
+                .args(["-C", &s.path, "rev-parse", "--show-toplevel"])
+                .output()
+                .await;
+            if let Ok(out) = out {
+                if out.status.success() {
+                    let root = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    if !root.is_empty() {
+                        roots.insert(root);
+                    }
+                }
+            }
+        }
+
+        let since_arg = format!("@{since_unix}"); // unix timestamp понятен git --since.
+        let mut blocks: Vec<String> = Vec::new();
+        for root in roots {
+            let out = Command::new("git")
+                .args([
+                    "-C",
+                    &root,
+                    "log",
+                    &format!("--since={since_arg}"),
+                    "--pretty=format:- %h %s",
+                ])
+                .output()
+                .await;
+            let Ok(out) = out else { continue };
+            if !out.status.success() {
+                continue;
+            }
+            let log = String::from_utf8_lossy(&out.stdout);
+            let log = log.trim();
+            if log.is_empty() {
+                continue;
+            }
+            let name = std::path::Path::new(&root)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| root.clone());
+            blocks.push(format!("### {name}\n{log}"));
+        }
+
+        Ok(blocks.join("\n\n"))
+    }
 }

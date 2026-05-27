@@ -14,6 +14,7 @@ import { renderRemotesTable } from './remotes-tab.js';
 import { buildTodoBehaviorForm } from './todo-tab.js';
 import { fetchUserSettings } from './user-settings-api.js';
 import { renderEchoSettingsTab } from '../echo/settings.js';
+import { renderDailySummaryTab } from './daily-summary-tab.js';
 
 export function openSettingsModal(initialTab) {
     const overlay = buildModalOverlay();
@@ -63,6 +64,7 @@ export function openSettingsModal(initialTab) {
             <button type="button" class="modal-tab-btn" data-tab="themes" role="tab">Themes</button>
             <button type="button" class="modal-tab-btn" data-tab="todo" role="tab">TODO behavior</button>
             <button type="button" class="modal-tab-btn" data-tab="echo" role="tab">Echo</button>
+            <button type="button" class="modal-tab-btn" data-tab="daily-summary" role="tab">Сводка дня</button>
             ${remoteTabBtn}
         </div>
         <div class="modal-tab-panel" id="ps-panel-notifications" data-panel="notifications">
@@ -85,6 +87,10 @@ export function openSettingsModal(initialTab) {
             <h2>Echo</h2>
             <div class="echo-settings-content" id="ps-echo-content"></div>
         </div>
+        <div class="modal-tab-panel" id="ps-panel-daily-summary" data-panel="daily-summary" hidden>
+            <h2>Сводка дня</h2>
+            <div class="daily-summary-settings-content" id="ps-daily-summary-content"></div>
+        </div>
         ${remotePanel}
         <div class="modal-actions">
             <button type="button" id="ps-close" class="primary">Close</button>
@@ -106,6 +112,7 @@ export function openSettingsModal(initialTab) {
     const $remotesTbody = card.querySelector('#ps-remotes-table tbody');
     const $todoContent = card.querySelector('#ps-todo-content');
     const $echoContent = card.querySelector('#ps-echo-content');
+    const $dailySummaryContent = card.querySelector('#ps-daily-summary-content');
 
     // TODO behavior tab state: рендерим форму один раз при первом клике.
     // userSettings fetch выполняется лениво, если bootstrap-preload не успел
@@ -116,6 +123,22 @@ export function openSettingsModal(initialTab) {
     };
     const echoTabState = {
         loaded: false,
+    };
+    const dailySummaryTabState = {
+        loaded: false,
+    };
+
+    // Закрытие модалки — определено заранее, т.к. вкладка «Сводка дня»
+    // передаёт его как onClose в кнопку «Открыть страницу».
+    const close = () => overlay.remove();
+
+    // «Сводка дня» tab: рендерим один раз при первом показе. Вкладка не хранит
+    // пользовательских настроек — только действия (генерация / открытие страницы),
+    // поэтому fetchUserSettings не нужен.
+    const renderDailySummaryPanel = () => {
+        if (dailySummaryTabState.loaded) return;
+        dailySummaryTabState.loaded = true;
+        renderDailySummaryTab($dailySummaryContent, { onClose: close });
     };
 
     const renderTodoPanel = async () => {
@@ -195,6 +218,9 @@ export function openSettingsModal(initialTab) {
         }
         if (name === 'echo') {
             renderEchoPanel();
+        }
+        if (name === 'daily-summary') {
+            renderDailySummaryPanel();
         }
     };
     $tabBtns.forEach((btn) => {
@@ -325,11 +351,10 @@ export function openSettingsModal(initialTab) {
         });
     }
 
-    if (initialTab && (initialTab === 'notifications' || initialTab === 'themes' || initialTab === 'todo' || initialTab === 'echo' || (initialTab === 'remotes' && isRemoteMode()))) {
+    if (initialTab && (initialTab === 'notifications' || initialTab === 'themes' || initialTab === 'todo' || initialTab === 'echo' || initialTab === 'daily-summary' || (initialTab === 'remotes' && isRemoteMode()))) {
         showTab(initialTab);
     }
 
-    const close = () => overlay.remove();
     card.querySelector('#ps-close').addEventListener('click', close);
     overlay.addEventListener('click', (ev) => {
         if (ev.target === overlay) close();

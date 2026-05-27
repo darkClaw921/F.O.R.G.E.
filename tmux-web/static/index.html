@@ -61,6 +61,36 @@
             <div id="placeholder" class="placeholder">
                 <p>Выберите сессию слева или создайте новую.</p>
             </div>
+            <div id="home" class="home" style="display:none">
+                <div class="home-head">
+                    <h2 class="home-title">Недавние сессии</h2>
+                    <button id="home-restore-all" class="home-restore-all" type="button" title="Восстановить все недавние сессии">Открыть все</button>
+                </div>
+                <div id="home-cards" class="home-cards"></div>
+                <div id="home-empty" class="home-empty" hidden>История пуста</div>
+            </div>
+            <div id="daily-summary" class="daily-summary" style="display:none">
+                <div class="daily-summary-head">
+                    <button id="daily-summary-back" class="daily-summary-back" type="button" title="Закрыть сводку">← Назад</button>
+                    <div class="daily-summary-nav">
+                        <button id="daily-summary-prev" class="daily-summary-nav-btn" type="button" title="Предыдущий день">←</button>
+                        <button id="daily-summary-today" class="daily-summary-today" type="button" title="Сегодня">Сегодня</button>
+                        <button id="daily-summary-next" class="daily-summary-nav-btn" type="button" title="Следующий день">→</button>
+                    </div>
+                    <button id="daily-summary-regen" class="daily-summary-regen" type="button" title="Сгенерировать сводку заново">↻ Сгенерировать заново</button>
+                </div>
+                <div class="daily-summary-hero">
+                    <div class="daily-summary-eyebrow">Сводка дня</div>
+                    <h1 id="daily-summary-day" class="daily-summary-day"></h1>
+                </div>
+                <div id="daily-summary-status" class="daily-summary-status" hidden></div>
+                <div id="daily-summary-content" class="daily-summary-content echo-md"></div>
+                <div id="daily-summary-empty" class="daily-summary-empty" hidden>
+                    <span class="daily-summary-empty-icon">🗓️</span>
+                    <p>За этот день сводки ещё нет.</p>
+                    <button id="daily-summary-generate" class="daily-summary-generate" type="button">Сгенерировать</button>
+                </div>
+            </div>
             <div id="tasks" hidden>
                 <div id="tasks-toolbar">
                     <button id="tasks-reload" type="button" title="Перезагрузить">↻</button>

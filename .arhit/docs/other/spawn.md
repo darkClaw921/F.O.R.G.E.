@@ -1,0 +1,3 @@
+# spawn
+
+daily_report::scheduler::spawn(state, host) -> JoinHandle<()>: фоновый воркер авто-генерации «Сводки дня» в локальные 23:00. Loop вычисляет Duration до ближайших локальных 23:00 через duration_until_next(Local::now()), спит в tokio::select! вместе с state.shutdown.cancelled() (CancellationToken — graceful shutdown), затем вызывает generate_report(state, host, today_local, "auto") и логирует результат/ошибку, после чего пересчитывает интервал на следующие сутки. JoinHandle сохраняется в state.workers через register_worker в spawn_workers (третий воркер рядом с scheduler::spawn и memory::scheduler::spawn) и abort'ится в forge_echo::shutdown.

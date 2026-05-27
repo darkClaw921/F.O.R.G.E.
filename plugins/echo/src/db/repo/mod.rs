@@ -7,6 +7,7 @@
 
 pub mod autonomous;
 pub mod chats;
+pub mod daily_reports;
 pub mod memories;
 pub mod messages;
 pub mod stats;

@@ -36,6 +36,7 @@ async fn init_creates_db_file_and_tables() {
     for required in [
         "autonomous_tasks",
         "chat_sessions",
+        "daily_reports",
         "memories",
         "messages",
         "schema_migrations",
@@ -78,5 +79,10 @@ async fn init_is_idempotent_across_runs() {
         })
         .await
         .unwrap();
-    assert_eq!(n, 1, "V001 must be applied exactly once across two inits");
+    // Один entry на каждый embedded V*.sql (V001_init + V002_daily_reports),
+    // не растёт при повторном init.
+    assert_eq!(
+        n, 2,
+        "each embedded migration applied exactly once across two inits"
+    );
 }

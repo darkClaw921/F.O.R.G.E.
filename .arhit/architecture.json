@@ -1,6 +1,6 @@
 {
   "root": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E.",
-  "generatedAt": "2026-05-25T09:12:08.441Z",
+  "generatedAt": "2026-05-27T07:55:03.746Z",
   "nodes": [
     {
       "id": "tmux-web/static/app.js",
@@ -224,6 +224,21 @@
         "$telescopeChannelBar",
         "$projectSettings",
         "$originTabs",
+        "$home",
+        "$homeCards",
+        "$homeRestoreAll",
+        "$homeEmpty",
+        "$dailySummary",
+        "$dailySummaryBack",
+        "$dailySummaryPrev",
+        "$dailySummaryToday",
+        "$dailySummaryNext",
+        "$dailySummaryDay",
+        "$dailySummaryRegen",
+        "$dailySummaryStatus",
+        "$dailySummaryContent",
+        "$dailySummaryEmpty",
+        "$dailySummaryGenerate",
         "$tabEcho",
         "$echoEl",
         "$echoSidebar",
@@ -783,11 +798,161 @@
           ]
         },
         {
+          "id": "tmux-web/static/js/core/dom.js:$home",
+          "name": "$home",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 87,
+          "exports": [
+            "$home"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$homeCards",
+          "name": "$homeCards",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 88,
+          "exports": [
+            "$homeCards"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$homeRestoreAll",
+          "name": "$homeRestoreAll",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 89,
+          "exports": [
+            "$homeRestoreAll"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$homeEmpty",
+          "name": "$homeEmpty",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 90,
+          "exports": [
+            "$homeEmpty"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$dailySummary",
+          "name": "$dailySummary",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 97,
+          "exports": [
+            "$dailySummary"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$dailySummaryBack",
+          "name": "$dailySummaryBack",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 98,
+          "exports": [
+            "$dailySummaryBack"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$dailySummaryPrev",
+          "name": "$dailySummaryPrev",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 99,
+          "exports": [
+            "$dailySummaryPrev"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$dailySummaryToday",
+          "name": "$dailySummaryToday",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 100,
+          "exports": [
+            "$dailySummaryToday"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$dailySummaryNext",
+          "name": "$dailySummaryNext",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 101,
+          "exports": [
+            "$dailySummaryNext"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$dailySummaryDay",
+          "name": "$dailySummaryDay",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 102,
+          "exports": [
+            "$dailySummaryDay"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$dailySummaryRegen",
+          "name": "$dailySummaryRegen",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 103,
+          "exports": [
+            "$dailySummaryRegen"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$dailySummaryStatus",
+          "name": "$dailySummaryStatus",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 104,
+          "exports": [
+            "$dailySummaryStatus"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$dailySummaryContent",
+          "name": "$dailySummaryContent",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 105,
+          "exports": [
+            "$dailySummaryContent"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$dailySummaryEmpty",
+          "name": "$dailySummaryEmpty",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 106,
+          "exports": [
+            "$dailySummaryEmpty"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$dailySummaryGenerate",
+          "name": "$dailySummaryGenerate",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 107,
+          "exports": [
+            "$dailySummaryGenerate"
+          ]
+        },
+        {
           "id": "tmux-web/static/js/core/dom.js:$tabEcho",
           "name": "$tabEcho",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 92,
+          "line": 115,
           "exports": [
             "$tabEcho"
           ]
@@ -797,7 +962,7 @@
           "name": "$echoEl",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 93,
+          "line": 116,
           "exports": [
             "$echoEl"
           ]
@@ -807,7 +972,7 @@
           "name": "$echoSidebar",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 94,
+          "line": 117,
           "exports": [
             "$echoSidebar"
           ]
@@ -817,7 +982,7 @@
           "name": "$echoSidebarTabChats",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 95,
+          "line": 118,
           "exports": [
             "$echoSidebarTabChats"
           ]
@@ -827,7 +992,7 @@
           "name": "$echoSidebarTabAuto",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 96,
+          "line": 119,
           "exports": [
             "$echoSidebarTabAuto"
           ]
@@ -837,7 +1002,7 @@
           "name": "$echoSidebarTabMemory",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 97,
+          "line": 120,
           "exports": [
             "$echoSidebarTabMemory"
           ]
@@ -847,7 +1012,7 @@
           "name": "$echoConversations",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 98,
+          "line": 121,
           "exports": [
             "$echoConversations"
           ]
@@ -857,7 +1022,7 @@
           "name": "$echoConversationsList",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 99,
+          "line": 122,
           "exports": [
             "$echoConversationsList"
           ]
@@ -867,7 +1032,7 @@
           "name": "$echoNewChat",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 100,
+          "line": 123,
           "exports": [
             "$echoNewChat"
           ]
@@ -877,7 +1042,7 @@
           "name": "$echoAutonomous",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 101,
+          "line": 124,
           "exports": [
             "$echoAutonomous"
           ]
@@ -887,7 +1052,7 @@
           "name": "$echoAutonomousList",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 102,
+          "line": 125,
           "exports": [
             "$echoAutonomousList"
           ]
@@ -897,7 +1062,7 @@
           "name": "$echoNewAuto",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 103,
+          "line": 126,
           "exports": [
             "$echoNewAuto"
           ]
@@ -907,7 +1072,7 @@
           "name": "$echoMemory",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 104,
+          "line": 127,
           "exports": [
             "$echoMemory"
           ]
@@ -917,7 +1082,7 @@
           "name": "$echoMemoryList",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 105,
+          "line": 128,
           "exports": [
             "$echoMemoryList"
           ]
@@ -927,7 +1092,7 @@
           "name": "$echoMemoryRegen",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 106,
+          "line": 129,
           "exports": [
             "$echoMemoryRegen"
           ]
@@ -937,7 +1102,7 @@
           "name": "$echoMain",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 107,
+          "line": 130,
           "exports": [
             "$echoMain"
           ]
@@ -947,7 +1112,7 @@
           "name": "$echoHeader",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 108,
+          "line": 131,
           "exports": [
             "$echoHeader"
           ]
@@ -957,7 +1122,7 @@
           "name": "$echoModelPicker",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 109,
+          "line": 132,
           "exports": [
             "$echoModelPicker"
           ]
@@ -967,7 +1132,7 @@
           "name": "$echoStatus",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 110,
+          "line": 133,
           "exports": [
             "$echoStatus"
           ]
@@ -977,7 +1142,7 @@
           "name": "$echoStatsCanvas",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 111,
+          "line": 134,
           "exports": [
             "$echoStatsCanvas"
           ]
@@ -987,7 +1152,7 @@
           "name": "$echoStatsText",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 112,
+          "line": 135,
           "exports": [
             "$echoStatsText"
           ]
@@ -997,7 +1162,7 @@
           "name": "$echoMessages",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 113,
+          "line": 136,
           "exports": [
             "$echoMessages"
           ]
@@ -1007,7 +1172,7 @@
           "name": "$echoInputWrap",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 114,
+          "line": 137,
           "exports": [
             "$echoInputWrap"
           ]
@@ -1017,7 +1182,7 @@
           "name": "$echoInput",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 115,
+          "line": 138,
           "exports": [
             "$echoInput"
           ]
@@ -1027,7 +1192,7 @@
           "name": "$echoSend",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 116,
+          "line": 139,
           "exports": [
             "$echoSend"
           ]
@@ -1037,10 +1202,42 @@
           "name": "$echoToasts",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 117,
+          "line": 140,
           "exports": [
             "$echoToasts"
           ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/core/markdown.js",
+      "name": "markdown.js",
+      "type": "file",
+      "path": "tmux-web/static/js/core/markdown.js",
+      "exports": [
+        "renderMarkdownInto"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/core/markdown.js:renderMarkdownInto",
+          "name": "renderMarkdownInto",
+          "type": "function",
+          "path": "tmux-web/static/js/core/markdown.js",
+          "line": 21,
+          "signature": "renderMarkdownInto(container, text)",
+          "docComment": "Рендерит markdown-текст в DOM-узлы внутри `container` (добавляет дочерние\nэлементы, не очищает контейнер — это ответственность вызывающего).",
+          "exports": [
+            "renderMarkdownInto"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/markdown.js:appendInline",
+          "name": "appendInline",
+          "type": "function",
+          "path": "tmux-web/static/js/core/markdown.js",
+          "line": 93,
+          "signature": "appendInline(parent, text)",
+          "exports": []
         }
       ]
     },
@@ -1232,6 +1429,203 @@
       ]
     },
     {
+      "id": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "name": "daily-summary.js",
+      "type": "file",
+      "path": "tmux-web/static/js/daily-summary/daily-summary.js",
+      "exports": [
+        "showDailySummary",
+        "hideDailySummary"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/daily-summary/daily-summary.js:todayStr",
+          "name": "todayStr",
+          "type": "function",
+          "path": "tmux-web/static/js/daily-summary/daily-summary.js",
+          "line": 45,
+          "signature": "todayStr()",
+          "docComment": "Возвращает сегодняшнюю дату в формате YYYY-MM-DD (локальная зона).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/daily-summary/daily-summary.js:shiftDay",
+          "name": "shiftDay",
+          "type": "function",
+          "path": "tmux-web/static/js/daily-summary/daily-summary.js",
+          "line": 54,
+          "signature": "shiftDay(dayStr, delta)",
+          "docComment": "Сдвигает дату YYYY-MM-DD на `delta` дней, возвращает YYYY-MM-DD.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/daily-summary/daily-summary.js:setStatus",
+          "name": "setStatus",
+          "type": "function",
+          "path": "tmux-web/static/js/daily-summary/daily-summary.js",
+          "line": 65,
+          "signature": "setStatus(text)",
+          "docComment": "Показывает статус-строку (например «Генерация…»), либо скрывает её.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/daily-summary/daily-summary.js:setBusy",
+          "name": "setBusy",
+          "type": "function",
+          "path": "tmux-web/static/js/daily-summary/daily-summary.js",
+          "line": 77,
+          "signature": "setBusy(busy)",
+          "docComment": "Блокирует/разблокирует управляющие кнопки на время сетевого запроса.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/daily-summary/daily-summary.js:sectionStyle",
+          "name": "sectionStyle",
+          "type": "function",
+          "path": "tmux-web/static/js/daily-summary/daily-summary.js",
+          "line": 94,
+          "signature": "sectionStyle(title)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/daily-summary/daily-summary.js:isHeading",
+          "name": "isHeading",
+          "type": "function",
+          "path": "tmux-web/static/js/daily-summary/daily-summary.js",
+          "line": 102,
+          "signature": "isHeading(el)",
+          "docComment": "Заголовки, которые рендерит markdown.js для `#`/`##`/`###` (h3..h5).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/daily-summary/daily-summary.js:renderContent",
+          "name": "renderContent",
+          "type": "function",
+          "path": "tmux-web/static/js/daily-summary/daily-summary.js",
+          "line": 112,
+          "signature": "renderContent(content)",
+          "docComment": "Рендерит markdown-контент сводки как «инфографику»: группирует каждую\nсекцию (заголовок `## ...` + следующие за ним узлы) в карточку с иконкой,\nа сверху показывает полоску метрик (число пунктов по ключевым секциям).\nЕсли заголовков нет (напр. «Сегодня активности не было») — отдаёт plain.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/daily-summary/daily-summary.js:showEmpty",
+          "name": "showEmpty",
+          "type": "function",
+          "path": "tmux-web/static/js/daily-summary/daily-summary.js",
+          "line": 209,
+          "signature": "showEmpty()",
+          "docComment": "Показывает пустое состояние (нет сводки → кнопка «Сгенерировать»).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/daily-summary/daily-summary.js:renderDayLabel",
+          "name": "renderDayLabel",
+          "type": "function",
+          "path": "tmux-web/static/js/daily-summary/daily-summary.js",
+          "line": 218,
+          "signature": "renderDayLabel()",
+          "docComment": "Обновляет надпись с текущей датой в шапке.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/daily-summary/daily-summary.js:loadCurrent",
+          "name": "loadCurrent",
+          "type": "function",
+          "path": "tmux-web/static/js/daily-summary/daily-summary.js",
+          "line": 234,
+          "signature": "loadCurrent()",
+          "docComment": "Загружает сводку за `_currentDay` и рендерит. 404 → пустое состояние.\nПрочие ошибки показываются в статус-строке.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/daily-summary/daily-summary.js:generateCurrent",
+          "name": "generateCurrent",
+          "type": "function",
+          "path": "tmux-web/static/js/daily-summary/daily-summary.js",
+          "line": 259,
+          "signature": "generateCurrent()",
+          "docComment": "Генерирует (или пересоздаёт) сводку за `_currentDay`, затем рендерит её.\nНа время запроса блокирует кнопки и показывает статус.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/daily-summary/daily-summary.js:bindControls",
+          "name": "bindControls",
+          "type": "function",
+          "path": "tmux-web/static/js/daily-summary/daily-summary.js",
+          "line": 276,
+          "signature": "bindControls()",
+          "docComment": "Навешивает обработчики на кнопки навигации/генерации (один раз).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/daily-summary/daily-summary.js:closeDailySummary",
+          "name": "closeDailySummary",
+          "type": "function",
+          "path": "tmux-web/static/js/daily-summary/daily-summary.js",
+          "line": 318,
+          "signature": "closeDailySummary()",
+          "docComment": "Закрывает вью «Сводка дня» и возвращает к основному экрану. Скрывает\n#daily-summary и вызывает fetchSessions(), который сам решает, показать\n#home (нет активных сессий) или активную сессию/placeholder.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/daily-summary/daily-summary.js:showDailySummary",
+          "name": "showDailySummary",
+          "type": "function",
+          "path": "tmux-web/static/js/daily-summary/daily-summary.js",
+          "line": 330,
+          "signature": "showDailySummary(day)",
+          "docComment": "Показывает вью «Сводка дня» и загружает отчёт за `day` (по умолчанию —\nсегодня). Скрывает placeholder и #home, чтобы вью не накладывались\n(по образцу home.js::showHome).",
+          "exports": [
+            "showDailySummary"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/daily-summary/daily-summary.js:hideDailySummary",
+          "name": "hideDailySummary",
+          "type": "function",
+          "path": "tmux-web/static/js/daily-summary/daily-summary.js",
+          "line": 341,
+          "signature": "hideDailySummary()",
+          "docComment": "Скрывает вью «Сводка дня».",
+          "exports": [
+            "hideDailySummary"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/daily-summary/daily-summary.js:_currentDay",
+          "name": "_currentDay",
+          "type": "variable",
+          "path": "tmux-web/static/js/daily-summary/daily-summary.js",
+          "line": 38,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/daily-summary/daily-summary.js:_bound",
+          "name": "_bound",
+          "type": "variable",
+          "path": "tmux-web/static/js/daily-summary/daily-summary.js",
+          "line": 40,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/daily-summary/daily-summary.js:_busy",
+          "name": "_busy",
+          "type": "variable",
+          "path": "tmux-web/static/js/daily-summary/daily-summary.js",
+          "line": 42,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/daily-summary/daily-summary.js:SECTION_STYLES",
+          "name": "SECTION_STYLES",
+          "type": "variable",
+          "path": "tmux-web/static/js/daily-summary/daily-summary.js",
+          "line": 88,
+          "exports": []
+        }
+      ]
+    },
+    {
       "id": "tmux-web/static/js/echo/action-buttons.js",
       "name": "action-buttons.js",
       "type": "file",
@@ -1316,6 +1710,9 @@
         "runAutonomousNow",
         "listAutonomousRuns",
         "getStats",
+        "listDailyReports",
+        "getDailyReport",
+        "generateDailyReport",
         "cancelRun"
       ],
       "children": [
@@ -1516,11 +1913,47 @@
           ]
         },
         {
+          "id": "tmux-web/static/js/echo/api.js:listDailyReports",
+          "name": "listDailyReports",
+          "type": "function",
+          "path": "tmux-web/static/js/echo/api.js",
+          "line": 167,
+          "signature": "listDailyReports(limit)",
+          "docComment": "Список последних сводок дня. Возвращает {items:[{id,day,content,source,\ncreated_at,updated_at}]}.",
+          "exports": [
+            "listDailyReports"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/echo/api.js:getDailyReport",
+          "name": "getDailyReport",
+          "type": "function",
+          "path": "tmux-web/static/js/echo/api.js",
+          "line": 179,
+          "signature": "getDailyReport(day)",
+          "docComment": "Сводка за конкретный день (YYYY-MM-DD). Возвращает {id,day,content,...}.\nЕсли за день сводки нет — сервер отвечает 404, call() бросит Error со\nstatus=404 (вызывающий должен это обработать).",
+          "exports": [
+            "getDailyReport"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/echo/api.js:generateDailyReport",
+          "name": "generateDailyReport",
+          "type": "function",
+          "path": "tmux-web/static/js/echo/api.js",
+          "line": 188,
+          "signature": "generateDailyReport(day)",
+          "docComment": "Сгенерировать (или пересоздать) сводку дня. Возвращает {id,day,content}.",
+          "exports": [
+            "generateDailyReport"
+          ]
+        },
+        {
           "id": "tmux-web/static/js/echo/api.js:cancelRun",
           "name": "cancelRun",
           "type": "function",
           "path": "tmux-web/static/js/echo/api.js",
-          "line": 161,
+          "line": 194,
           "signature": "cancelRun(runId)",
           "exports": [
             "cancelRun"
@@ -1715,7 +2148,7 @@
           "name": "renderConversation",
           "type": "function",
           "path": "tmux-web/static/js/echo/chat.js",
-          "line": 25,
+          "line": 26,
           "signature": "renderConversation(messages)",
           "docComment": "Полная перерисовка истории. Используется при открытии чата / переключении.",
           "exports": [
@@ -1727,7 +2160,7 @@
           "name": "appendMessage",
           "type": "function",
           "path": "tmux-web/static/js/echo/chat.js",
-          "line": 42,
+          "line": 43,
           "signature": "appendMessage(msg)",
           "docComment": "Добавить одно сообщение (для optimistic insert при отправке user_message).",
           "exports": [
@@ -1739,7 +2172,7 @@
           "name": "appendChunk",
           "type": "function",
           "path": "tmux-web/static/js/echo/chat.js",
-          "line": 61,
+          "line": 62,
           "signature": "appendChunk(runId, kind, delta)",
           "docComment": "Принимает стрим-дельту от сервера. `runId` идентифицирует stream —\nпо нему мы группируем чанки одного assistant-ответа. Если для runId\nещё нет сообщения — создаём pending-карточку (без id, добавим при\n`finalizeMessage`).",
           "exports": [
@@ -1751,7 +2184,7 @@
           "name": "_scheduleTypewriter",
           "type": "function",
           "path": "tmux-web/static/js/echo/chat.js",
-          "line": 105,
+          "line": 106,
           "signature": "_scheduleTypewriter(buf, kind)",
           "exports": []
         },
@@ -1760,7 +2193,7 @@
           "name": "_flushAllPending",
           "type": "function",
           "path": "tmux-web/static/js/echo/chat.js",
-          "line": 137,
+          "line": 138,
           "signature": "_flushAllPending(buf)",
           "exports": []
         },
@@ -1769,7 +2202,7 @@
           "name": "finalizeMessage",
           "type": "function",
           "path": "tmux-web/static/js/echo/chat.js",
-          "line": 156,
+          "line": 157,
           "signature": "finalizeMessage(runId, messageId, usage)",
           "docComment": "Завершить streaming-сообщение: проставить реальный messageId, отрендерить\nmarkdown для text-чанков, показать usage stats.",
           "exports": [
@@ -1781,7 +2214,7 @@
           "name": "showThinking",
           "type": "function",
           "path": "tmux-web/static/js/echo/chat.js",
-          "line": 193,
+          "line": 194,
           "signature": "showThinking(runId)",
           "docComment": "Показать индикатор «thinking» — пока стрим не пришёл первым чанком.\nВызывается после отправки user_message, удаляется при appendChunk/finalizeMessage.",
           "exports": [
@@ -1793,7 +2226,7 @@
           "name": "bindInput",
           "type": "function",
           "path": "tmux-web/static/js/echo/chat.js",
-          "line": 219,
+          "line": 220,
           "signature": "bindInput(sendCb)",
           "docComment": "Привязать input + кнопку отправки. `sendCb(text)` вызывается при Enter\n(без Shift). Возвращает функцию для cleanup.",
           "exports": [
@@ -1805,7 +2238,7 @@
           "name": "clearMessages",
           "type": "function",
           "path": "tmux-web/static/js/echo/chat.js",
-          "line": 253,
+          "line": 254,
           "signature": "clearMessages()",
           "docComment": "Полностью очистить рендер (используется при переключении чата).",
           "exports": [
@@ -1817,7 +2250,7 @@
           "name": "buildMessageNode",
           "type": "function",
           "path": "tmux-web/static/js/echo/chat.js",
-          "line": 261,
+          "line": 262,
           "signature": "buildMessageNode(msg)",
           "exports": []
         },
@@ -1826,27 +2259,8 @@
           "name": "scrollToBottom",
           "type": "function",
           "path": "tmux-web/static/js/echo/chat.js",
-          "line": 287,
+          "line": 288,
           "signature": "scrollToBottom()",
-          "exports": []
-        },
-        {
-          "id": "tmux-web/static/js/echo/chat.js:renderMarkdownInto",
-          "name": "renderMarkdownInto",
-          "type": "function",
-          "path": "tmux-web/static/js/echo/chat.js",
-          "line": 303,
-          "signature": "renderMarkdownInto(container, text)",
-          "docComment": "Минимальный markdown-renderer: code fences (```...```), inline `code`,\n**bold**, *italic*, заголовки (#, ##, ###), bullet-списки, ссылки [text](url).\nНе XSS-safe для произвольного HTML — мы строим DOM, не innerHTML, поэтому\nпользовательские data не уходят в innerHTML кроме внутри <code>/<pre>.",
-          "exports": []
-        },
-        {
-          "id": "tmux-web/static/js/echo/chat.js:appendInline",
-          "name": "appendInline",
-          "type": "function",
-          "path": "tmux-web/static/js/echo/chat.js",
-          "line": 375,
-          "signature": "appendInline(parent, text)",
           "exports": []
         },
         {
@@ -1854,7 +2268,7 @@
           "name": "_messageEls",
           "type": "variable",
           "path": "tmux-web/static/js/echo/chat.js",
-          "line": 14,
+          "line": 15,
           "exports": []
         },
         {
@@ -1862,7 +2276,7 @@
           "name": "_streamBuffers",
           "type": "variable",
           "path": "tmux-web/static/js/echo/chat.js",
-          "line": 18,
+          "line": 19,
           "exports": []
         },
         {
@@ -1870,7 +2284,7 @@
           "name": "TYPEWRITER_TARGET_FRAMES",
           "type": "variable",
           "path": "tmux-web/static/js/echo/chat.js",
-          "line": 103,
+          "line": 104,
           "exports": []
         }
       ]
@@ -2613,6 +3027,99 @@
       ]
     },
     {
+      "id": "tmux-web/static/js/home/home.js",
+      "name": "home.js",
+      "type": "file",
+      "path": "tmux-web/static/js/home/home.js",
+      "exports": [
+        "renderHome",
+        "restoreSession",
+        "restoreAll",
+        "deleteHistory",
+        "showHome"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/home/home.js:buildHomeCard",
+          "name": "buildHomeCard",
+          "type": "function",
+          "path": "tmux-web/static/js/home/home.js",
+          "line": 42,
+          "signature": "buildHomeCard(rec)",
+          "docComment": "Строит DOM-карточку для одной записи истории. Использует document.createElement\n(без innerHTML с пользовательскими данными — защита от XSS).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/home/home.js:renderHome",
+          "name": "renderHome",
+          "type": "function",
+          "path": "tmux-web/static/js/home/home.js",
+          "line": 117,
+          "signature": "renderHome()",
+          "docComment": "Загружает историю и отрисовывает карточки в $homeCards. Пустую историю\nпоказывает через #home-empty и скрывает кнопку «Открыть все».",
+          "exports": [
+            "renderHome"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/home/home.js:restoreSession",
+          "name": "restoreSession",
+          "type": "function",
+          "path": "tmux-web/static/js/home/home.js",
+          "line": 157,
+          "signature": "restoreSession(name, path)",
+          "docComment": "Восстанавливает одну сессию: POST /api/sessions/history/restore {name, path}.\nПри успехе обновляет список сессий и открывает её. 409 (имя занято)\nобрабатывается понятным сообщением.",
+          "exports": [
+            "restoreSession"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/home/home.js:restoreAll",
+          "name": "restoreAll",
+          "type": "function",
+          "path": "tmux-web/static/js/home/home.js",
+          "line": 184,
+          "signature": "restoreAll()",
+          "docComment": "Восстанавливает все сессии из истории: POST /api/sessions/history/restore-all.\nПосле — обновляет список активных сессий.",
+          "exports": [
+            "restoreAll"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/home/home.js:deleteHistory",
+          "name": "deleteHistory",
+          "type": "function",
+          "path": "tmux-web/static/js/home/home.js",
+          "line": 205,
+          "signature": "deleteHistory(name, path)",
+          "docComment": "Удаляет запись из истории: DELETE /api/sessions/history {name, path}.\nПосле — перерисовывает главную.",
+          "exports": [
+            "deleteHistory"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/home/home.js:showHome",
+          "name": "showHome",
+          "type": "function",
+          "path": "tmux-web/static/js/home/home.js",
+          "line": 227,
+          "signature": "showHome(show)",
+          "docComment": "Переключает видимость #home. При show=true скрывает placeholder, чтобы\nне было одновременного показа home + placeholder.",
+          "exports": [
+            "showHome"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/home/home.js:restoreAllBound",
+          "name": "restoreAllBound",
+          "type": "variable",
+          "path": "tmux-web/static/js/home/home.js",
+          "line": 36,
+          "exports": []
+        }
+      ]
+    },
+    {
       "id": "tmux-web/static/js/main.js",
       "name": "main.js",
       "type": "file",
@@ -2811,18 +3318,27 @@
           "name": "fetchSessions",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 23,
+          "line": 24,
           "signature": "fetchSessions()",
           "exports": [
             "fetchSessions"
           ]
         },
         {
+          "id": "tmux-web/static/js/sessions/sessions.js:syncHomeVisibility",
+          "name": "syncHomeVisibility",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/sessions.js",
+          "line": 42,
+          "signature": "syncHomeVisibility()",
+          "exports": []
+        },
+        {
           "id": "tmux-web/static/js/sessions/sessions.js:formatDuration",
           "name": "formatDuration",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 38,
+          "line": 52,
           "signature": "formatDuration(totalSecs)",
           "exports": []
         },
@@ -2831,7 +3347,7 @@
           "name": "generatingTooltip",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 55,
+          "line": 69,
           "signature": "generatingTooltip(s)",
           "exports": []
         },
@@ -2840,7 +3356,7 @@
           "name": "buildSessionItem",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 63,
+          "line": 77,
           "signature": "buildSessionItem(s)",
           "exports": [
             "buildSessionItem"
@@ -2851,7 +3367,7 @@
           "name": "groupSessionsByFolder",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 136,
+          "line": 150,
           "signature": "groupSessionsByFolder(sessions, orphanKey)",
           "exports": [
             "groupSessionsByFolder"
@@ -2862,7 +3378,7 @@
           "name": "startPolling",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 150,
+          "line": 164,
           "signature": "startPolling()",
           "exports": [
             "startPolling"
@@ -2873,7 +3389,7 @@
           "name": "stopPolling",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 155,
+          "line": 169,
           "signature": "stopPolling()",
           "exports": [
             "stopPolling"
@@ -2884,7 +3400,7 @@
           "name": "createSessionPrompt",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 162,
+          "line": 176,
           "signature": "createSessionPrompt()",
           "exports": [
             "createSessionPrompt"
@@ -2895,7 +3411,7 @@
           "name": "renameSession",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 185,
+          "line": 199,
           "signature": "renameSession(oldName, origin)",
           "exports": [
             "renameSession"
@@ -2906,7 +3422,7 @@
           "name": "killSession",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 221,
+          "line": 235,
           "signature": "killSession(name, origin)",
           "exports": [
             "killSession"
@@ -2917,7 +3433,7 @@
           "name": "openSession",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 243,
+          "line": 257,
           "signature": "openSession(name, origin)",
           "exports": [
             "openSession"
@@ -2928,7 +3444,7 @@
           "name": "switchSession",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 265,
+          "line": 279,
           "signature": "switchSession(name)",
           "exports": [
             "switchSession"
@@ -3043,6 +3559,28 @@
       ]
     },
     {
+      "id": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "name": "daily-summary-tab.js",
+      "type": "file",
+      "path": "tmux-web/static/js/settings/daily-summary-tab.js",
+      "exports": [
+        "renderDailySummaryTab"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/settings/daily-summary-tab.js:renderDailySummaryTab",
+          "name": "renderDailySummaryTab",
+          "type": "function",
+          "path": "tmux-web/static/js/settings/daily-summary-tab.js",
+          "line": 23,
+          "signature": "renderDailySummaryTab(container, { onClose } = {})",
+          "exports": [
+            "renderDailySummaryTab"
+          ]
+        }
+      ]
+    },
+    {
       "id": "tmux-web/static/js/settings/modal.js",
       "name": "modal.js",
       "type": "file",
@@ -3056,7 +3594,7 @@
           "name": "openSettingsModal",
           "type": "function",
           "path": "tmux-web/static/js/settings/modal.js",
-          "line": 18,
+          "line": 19,
           "signature": "openSettingsModal(initialTab)",
           "exports": [
             "openSettingsModal"
@@ -4481,7 +5019,7 @@
           "name": "connectWs",
           "type": "function",
           "path": "tmux-web/static/js/ws/attach.js",
-          "line": 17,
+          "line": 18,
           "signature": "connectWs(sessionName, origin)",
           "exports": [
             "connectWs"
@@ -4492,7 +5030,7 @@
           "name": "scheduleAttachWsReconnect",
           "type": "function",
           "path": "tmux-web/static/js/ws/attach.js",
-          "line": 106,
+          "line": 108,
           "signature": "scheduleAttachWsReconnect()",
           "exports": [
             "scheduleAttachWsReconnect"
@@ -4503,7 +5041,7 @@
           "name": "handleControlFromServer",
           "type": "function",
           "path": "tmux-web/static/js/ws/attach.js",
-          "line": 127,
+          "line": 129,
           "signature": "handleControlFromServer(msg)",
           "exports": [
             "handleControlFromServer"
@@ -4514,7 +5052,7 @@
           "name": "disconnectWs",
           "type": "function",
           "path": "tmux-web/static/js/ws/attach.js",
-          "line": 134,
+          "line": 136,
           "signature": "disconnectWs()",
           "exports": [
             "disconnectWs"
@@ -4525,7 +5063,7 @@
           "name": "ATTACH_WS_BACKOFFS_MS",
           "type": "variable",
           "path": "tmux-web/static/js/ws/attach.js",
-          "line": 103,
+          "line": 105,
           "exports": []
         },
         {
@@ -4533,7 +5071,7 @@
           "name": "ATTACH_WS_JITTER_MAX_MS",
           "type": "variable",
           "path": "tmux-web/static/js/ws/attach.js",
-          "line": 104,
+          "line": 106,
           "exports": []
         }
       ]

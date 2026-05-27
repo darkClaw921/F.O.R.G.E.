@@ -52,4 +52,24 @@ pub trait HostApi: Send + Sync {
     async fn capture_pane_full(&self, session: &str, lines: i32) -> anyhow::Result<String>;
 
     fn auth_token(&self) -> Option<String>;
+
+    /// Собирает git-активность хоста с момента `since_unix` (unix seconds) —
+    /// markdown-блок коммитов по уникальным git-корням рабочих директорий
+    /// сессий. Используется генерацией «Сводки дня» для grounding раздела
+    /// «Что сделано».
+    ///
+    /// # Контракт
+    ///
+    /// - Реализация обходит уникальные git-корни (например, из путей сессий),
+    ///   для каждого выполняет `git log --since=<since>` и склеивает результат
+    ///   в markdown.
+    /// - Не-git каталоги и ошибки отдельных репозиториев тихо пропускаются.
+    /// - Пустой результат (нет коммитов / нет репозиториев) — `Ok(String::new())`.
+    ///
+    /// Default-реализация возвращает пустую строку, чтобы тестовые stub'ы и
+    /// прочие impl'ы не ломались — ровно тот же контракт, что у «нет активности».
+    async fn collect_git_activity(&self, since_unix: i64) -> anyhow::Result<String> {
+        let _ = since_unix;
+        Ok(String::new())
+    }
 }

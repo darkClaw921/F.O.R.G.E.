@@ -1,0 +1,166 @@
+/* tmux-web — Home (главная страница: история недавних сессий)
+ *
+ * Контейнер #home показывается в #main, когда нет активных tmux-сессий
+ * (см. js/home/home.js::showHome). Внутри — заголовок «Недавние сессии»,
+ * кнопка «Открыть все», грид карточек #home-cards и пустое состояние
+ * #home-empty. Палитра и стиль кнопок согласованы с .session-item
+ * (.btn-rename / .btn-kill) и модалками (--bg-elev / --border-input).
+ */
+
+.home {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 24px;
+    overflow-y: auto;
+    background: var(--bg-deep);
+}
+
+.home-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex: 0 0 auto;
+}
+
+.home-title {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--fg);
+}
+
+.home-restore-all {
+    background: var(--accent);
+    color: #fff;
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    padding: 6px 14px;
+    font-size: 0.85rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 100ms ease, border-color 100ms ease;
+    flex: 0 0 auto;
+}
+
+.home-restore-all:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+.home-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+    align-content: start;
+}
+
+.home-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border-input);
+    border-radius: 6px;
+    padding: 14px;
+    transition: border-color 100ms ease;
+}
+
+.home-card:hover {
+    border-color: var(--border-input-hover);
+}
+
+.home-card-name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--fg);
+    word-break: break-all;
+}
+
+.home-card-folder {
+    font-size: 0.78rem;
+    color: var(--fg-mute);
+    word-break: break-all;
+}
+
+.home-card-path {
+    font-size: 0.72rem;
+    color: var(--fg-dim);
+    word-break: break-all;
+}
+
+.home-card-windows {
+    font-size: 0.75rem;
+    color: var(--fg-mute);
+}
+
+.home-card-windows-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 2px;
+}
+
+.home-card-window-tag {
+    font-size: 0.68rem;
+    color: var(--fg-mute-2, var(--fg-dim));
+    background: var(--bg-pill);
+    border: 1px solid var(--border-row);
+    border-radius: 3px;
+    padding: 1px 6px;
+}
+
+.home-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.home-card-restore,
+.home-card-delete {
+    background: transparent;
+    color: var(--fg-muted-2);
+    border: 1px solid var(--border-row);
+    border-radius: 3px;
+    padding: 4px 10px;
+    font-size: 0.75rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: color 100ms ease, border-color 100ms ease, background 100ms ease;
+}
+
+.home-card-restore {
+    flex: 1 1 auto;
+}
+
+.home-card-restore:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--bg-input-hover);
+}
+
+.home-card-delete:hover {
+    color: var(--danger-soft);
+    border-color: var(--danger-soft);
+    background: var(--danger-bg);
+}
+
+.home-empty {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--fg-dim);
+    font-size: 0.9rem;
+}
+
+/* renderHome переключает видимость через атрибут [hidden]; авторское правило
+ * display:flex перекрывает UA-шный display:none для [hidden], поэтому
+ * возвращаем его явно — иначе «История пуста» висит вместе с карточками. */
+.home-empty[hidden] {
+    display: none;
+}

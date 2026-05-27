@@ -34,6 +34,7 @@ mod qr_print;
 mod remote_proxy;
 mod remotes;
 mod server_config;
+mod session_history;
 mod static_embed;
 mod tasks;
 mod tasks_watcher;
@@ -156,6 +157,14 @@ struct AppState {
     /// REST-эндпоинтами `/api/notifier-config`. Заменяет соответствующие
     /// поля старого `Project` (см. план `remove-projects-concept.md`).
     notifier_config: NotifierConfigStore,
+    /// История tmux-сессий (`~/.config/forge/session_history.json`).
+    /// Персистентный журнал когда-либо виденных сессий: фундамент для
+    /// «главной»/«недавних» сессий и их восстановления. Cheap-clonable
+    /// (`Arc<RwLock>` внутри [`session_history::HistoryStore`]). Наполняется
+    /// периодическим воркером (раз в час) и shutdown-хуком через
+    /// [`session_history::capture_now`]; читается/мутируется REST-роутами
+    /// `/api/sessions/history*`.
+    history: session_history::HistoryStore,
 }
 
 #[tokio::main]
@@ -399,6 +408,16 @@ async fn main() -> anyhow::Result<()> {
         "notifier-config store initialized"
     );
 
+    // История сессий — `<themes_dir>/session_history.json` (тот же data-каталог
+    // `~/.config/forge/`, что и themes/notifier). Отсутствующий/битый файл →
+    // пустой стор без паники (см. `HistoryStore::load`).
+    let history_store = session_history::HistoryStore::load(&themes_dir);
+    tracing::info!(
+        dir = %themes_dir.display(),
+        count = history_store.list().len(),
+        "session history store loaded"
+    );
+
     let app_state = AppState {
         tasks_tx: tasks_tx.clone(),
         active_path_tx: active_path_tx.clone(),
@@ -417,6 +436,7 @@ async fn main() -> anyhow::Result<()> {
         http: reqwest::Client::new(),
         user_settings: user_settings_store,
         notifier_config: notifier_config_store,
+        history: history_store,
     };
 
     // Spawn фоновый watcher. Живёт всю жизнь процесса; завершится только
@@ -435,6 +455,25 @@ async fn main() -> anyhow::Result<()> {
     // Фильтрация по проекту не нужна: фронтенду требуются флаги для всех
     // сессий (cross-project visibility).
     tokio::spawn(attention::watcher_loop(app_state.attention.clone()));
+
+    // Spawn периодический snapshot-воркер истории сессий. Раз в час (а также
+    // сразу на первом тике — `tokio::time::interval` по умолчанию срабатывает
+    // немедленно) дёргает `session_history::capture_now`, который опрашивает
+    // tmux и upsert'ит снимок в стор с атомарной записью на диск. В spawn
+    // передаём только cheap-clone `HistoryStore` (Arc внутри), а не весь
+    // AppState — воркеру не нужны остальные поля состояния.
+    {
+        let history_for_worker = app_state.history.clone();
+        tokio::spawn(async move {
+            tracing::info!("session_history snapshot worker started (interval 3600s)");
+            let mut ticker =
+                tokio::time::interval(std::time::Duration::from_secs(3600));
+            loop {
+                ticker.tick().await;
+                session_history::capture_now(&history_for_worker).await;
+            }
+        });
+    }
 
     // Static-ассеты встроены в бинарь через rust-embed (см. mod static_embed).
     // Никакой зависимости от cwd или каталога рядом с бинарём — это позволяет
@@ -457,6 +496,16 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/sessions/:name/windows/:index/select",
             post(select_window),
+        )
+        // Session history API — журнал ранее виденных сессий + восстановление.
+        .route(
+            "/api/sessions/history",
+            get(get_session_history).delete(delete_session_history),
+        )
+        .route("/api/sessions/history/restore", post(restore_session_history))
+        .route(
+            "/api/sessions/history/restore-all",
+            post(restore_all_session_history),
         )
         // Tasks API.
         .route("/api/tasks", get(get_tasks).post(create_task))
@@ -617,10 +666,16 @@ async fn main() -> anyhow::Result<()> {
     // worker'ов + закрытие соединений). После возврата future axum закрывает
     // listener и грейсфулли разлогинивает все активные соединения.
     let echo_for_shutdown = echo_state.clone();
+    let history_for_shutdown = app_state.history.clone();
     let shutdown_signal = async move {
         wait_for_shutdown_signal().await;
         tracing::info!("shutdown signal received; running Echo graceful shutdown");
         forge_echo::shutdown(&echo_for_shutdown).await;
+        // Финальный снимок истории сессий перед выходом — чтобы последнее
+        // состояние активных сессий/окон попало в журнал, даже если до
+        // следующего часового тика воркера дело не дошло.
+        tracing::info!("capturing final session history snapshot before shutdown");
+        session_history::capture_now(&history_for_shutdown).await;
     };
 
     axum::serve(listener, app)
@@ -2180,9 +2235,10 @@ const PLAN_MODE_SUFFIX: &str = "Создай план для этой задач
 
 /// Дефолтный notify-шаблон для promote, когда `NotifierConfig.template` пуст.
 /// Сохраняет инвариант «zero-config = рабочий перенос»: в активную сессию
-/// уходит заголовок задачи (а при наличии — и описание, дописывается отдельно
-/// в `promote_todo`). Плейсхолдеры — как в [`format_notify_template`].
-const DEFAULT_PROMOTE_TEMPLATE: &str = "{title}";
+/// уходит только ID и заголовок задачи в формате `[{id}] {title}`. Полное
+/// описание в текст НЕ включается — агент сам подтягивает его через
+/// `br show <id>`. Плейсхолдеры — как в [`format_notify_template`].
+const DEFAULT_PROMOTE_TEMPLATE: &str = "[{id}] {title}";
 
 /// Подставляет значения TODO/issue в template-строку.
 ///
@@ -2233,7 +2289,7 @@ struct PromoteTodoReq {
 /// 4. Прочитать `state.notifier_config.get()`:
 ///    - target session = `body.session` (если задан) else `cfg.session`.
 ///    - template из `cfg.template`; если пуст — `DEFAULT_PROMOTE_TEMPLATE`
-///      (заголовок задачи + описание отдельной строкой).
+///      (`[{id}] {title}` — описание агент берёт сам через `br show <id>`).
 ///    - mode из `cfg.delay_minutes` + `cfg.wait_previous`:
 ///        - wait_previous=true ⇒ NotifyMode::WaitPrevious
 ///        - delay_minutes>0  ⇒ NotifyMode::Delayed
@@ -2378,9 +2434,10 @@ async fn promote_todo(
     let target_session = target_session.expect("checked is_none above");
 
     // 6) Формируем текст. Если cfg.template пуст — используем дефолтный
-    //    fallback (заголовок задачи); описание дописываем отдельно, чтобы не
-    //    слать висящую пустую строку при отсутствии описания. Затем —
-    //    plan-mode suffix (если применимо).
+    //    fallback `[{id}] {title}` (без описания: агент подтянет его сам
+    //    через `br show <id>`). Затем — plan-mode suffix (если применимо).
+    //    `description` всё ещё нужен для плейсхолдера `{description}` в
+    //    кастомных шаблонах.
     let description = todo.description.clone().unwrap_or_default();
     let template_empty = cfg.template.trim().is_empty();
     let template_str: &str = if template_empty {
@@ -2396,13 +2453,6 @@ async fn promote_todo(
         todo.priority,
         &todo.issue_type,
     );
-    // При дефолтном шаблоне дописываем описание отдельной строкой.
-    if template_empty && !description.is_empty() {
-        if !text.is_empty() && !text.ends_with('\n') {
-            text.push('\n');
-        }
-        text.push_str(&description);
-    }
     if todo.plan_mode {
         // Кастомный suffix из user-level настроек (~/.forge/user_settings.json).
         // Если в настройках пусто (после trim — строки из одних пробелов тоже
@@ -3002,6 +3052,169 @@ async fn remote_server_healthz(
             }
         },
     }
+}
+
+// =============================================================================
+// Session history endpoints (~/.config/forge/session_history.json)
+// =============================================================================
+
+/// `GET /api/sessions/history` — журнал ранее виденных сессий.
+///
+/// Возвращает JSON-массив [`session_history::HistorySession`], отсортированный
+/// по `last_seen` убыв. (самые свежие — первыми; см. `HistoryStore::list`).
+/// Включает как активные, так и закрытые сессии — фронт сам помечает, какие из
+/// них уже запущены в tmux.
+async fn get_session_history(
+    State(state): State<AppState>,
+) -> Json<Vec<session_history::HistorySession>> {
+    Json(state.history.list())
+}
+
+/// Тело запроса restore/delete history — идентификатор сессии в истории
+/// (`name + path`, тот же составной ключ, что и в `HistoryStore`).
+#[derive(Debug, Deserialize)]
+struct HistorySessionRef {
+    name: String,
+    path: String,
+}
+
+/// Восстанавливает одну сессию из истории: создаёт tmux-сессию `name` в `path`
+/// и воссоздаёт её окна по записи в `store`.
+///
+/// Предполагается, что вызывающий уже проверил отсутствие сессии `name` среди
+/// активных (см. [`restore_session_history`]). Логика восстановления окон:
+/// - окно с индексом 0 уже существует у новой сессии — если в истории для него
+///   есть запись, оно переименовывается через [`tmux::rename_window`];
+/// - остальные окна (по порядку записи) создаются через [`tmux::new_window`]
+///   с именем из истории.
+///
+/// Ошибки переименования/создания отдельных окон не фатальны: сессия уже
+/// создана, поэтому они логируются (`warn`) и восстановление продолжается.
+/// Возвращает `Err` только если не удалось создать саму сессию.
+async fn restore_one_session(
+    store: &session_history::HistoryStore,
+    name: &str,
+    path: &str,
+) -> anyhow::Result<()> {
+    tmux::new_session(name, std::path::Path::new(path)).await?;
+
+    // Находим соответствующую запись истории, чтобы воссоздать окна.
+    let entry = store
+        .list()
+        .into_iter()
+        .find(|s| s.name == name && s.path == path);
+
+    if let Some(entry) = entry {
+        let mut windows = entry.windows;
+        windows.sort_by_key(|w| w.index);
+        for (pos, w) in windows.iter().enumerate() {
+            if pos == 0 {
+                // Окно 0 создаётся автоматически вместе с сессией — только
+                // переименовываем под историческое имя.
+                if let Err(e) = tmux::rename_window(name, 0, &w.name).await {
+                    tracing::warn!(
+                        session = %name, window = %w.name, error = ?e,
+                        "restore: failed to rename initial window"
+                    );
+                }
+            } else if let Err(e) = tmux::new_window(name, Some(&w.name)).await {
+                tracing::warn!(
+                    session = %name, window = %w.name, error = ?e,
+                    "restore: failed to create window"
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// `POST /api/sessions/history/restore` — восстановить одну сессию из истории.
+///
+/// Тело: [`HistorySessionRef`] (`{ name, path }`).
+/// - 409 Conflict, если сессия с таким именем уже запущена в tmux.
+/// - 201 Created + `{ "name": "<name>" }` при успешном восстановлении.
+/// - 400 Bad Request при невалидном теле или ошибке создания сессии.
+async fn restore_session_history(
+    State(state): State<AppState>,
+    body: Bytes,
+) -> Result<Response, (StatusCode, String)> {
+    let req: HistorySessionRef = serde_json::from_slice(&body)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid body: {e}")))?;
+
+    let existing = tmux::list_sessions()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")))?;
+    if existing.iter().any(|s| s.name == req.name) {
+        return Err((
+            StatusCode::CONFLICT,
+            format!("session `{}` is already running", req.name),
+        ));
+    }
+
+    match restore_one_session(&state.history, &req.name, &req.path).await {
+        Ok(()) => {
+            tracing::info!(name = %req.name, path = %req.path, "session restored from history");
+            Ok((StatusCode::CREATED, Json(serde_json::json!({ "name": req.name })))
+                .into_response())
+        }
+        Err(e) => {
+            tracing::warn!(name = %req.name, error = ?e, "restore_session_history failed");
+            Err((StatusCode::BAD_REQUEST, format!("{e:#}")))
+        }
+    }
+}
+
+/// `POST /api/sessions/history/restore-all` — восстановить все сессии из
+/// истории, пропуская те, что уже запущены в tmux.
+///
+/// Возвращает `{ "restored": ["<name>", ...] }` — список имён реально
+/// восстановленных сессий. Ошибки восстановления отдельных сессий логируются
+/// и не прерывают обработку остальных.
+async fn restore_all_session_history(
+    State(state): State<AppState>,
+) -> Result<Response, (StatusCode, String)> {
+    let existing = tmux::list_sessions()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")))?;
+    let existing_names: std::collections::HashSet<String> =
+        existing.into_iter().map(|s| s.name).collect();
+
+    let mut restored: Vec<String> = Vec::new();
+    for entry in state.history.list() {
+        if existing_names.contains(&entry.name) {
+            continue;
+        }
+        match restore_one_session(&state.history, &entry.name, &entry.path).await {
+            Ok(()) => {
+                tracing::info!(name = %entry.name, "session restored from history (restore-all)");
+                restored.push(entry.name);
+            }
+            Err(e) => {
+                tracing::warn!(name = %entry.name, error = ?e, "restore-all: failed to restore session");
+            }
+        }
+    }
+
+    Ok(Json(serde_json::json!({ "restored": restored })).into_response())
+}
+
+/// `DELETE /api/sessions/history` — удалить запись из истории по `name + path`.
+///
+/// Тело: [`HistorySessionRef`]. Удаляет только запись в журнале (активную
+/// tmux-сессию не трогает). Идемпотентно: отсутствие записи — не ошибка.
+/// - 200 OK при успехе.
+/// - 400 Bad Request при невалидном теле.
+async fn delete_session_history(
+    State(state): State<AppState>,
+    body: Bytes,
+) -> Result<Response, (StatusCode, String)> {
+    let req: HistorySessionRef = serde_json::from_slice(&body)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid body: {e}")))?;
+
+    state.history.remove(&req.name, &req.path);
+    tracing::info!(name = %req.name, path = %req.path, "session history entry removed");
+    Ok(StatusCode::OK.into_response())
 }
 
 #[cfg(test)]

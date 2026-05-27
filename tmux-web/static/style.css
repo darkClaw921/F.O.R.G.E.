@@ -30,6 +30,12 @@
 /* === 6. Origin tabs над session-list (517-570) === */
 @import url('./css/origin-tabs.css');
 
+/* === 6a. Home: главная страница (история недавних сессий) в #main === */
+@import url('./css/home.css');
+
+/* === 6b. Daily summary: сводка дня (markdown) в #main === */
+@import url('./css/daily-summary.css');
+
 /* === 7. Top tab bar (726-763) === */
 @import url('./css/tab-bar.css');
 

@@ -19,6 +19,7 @@ import { connectWs, disconnectWs } from '../ws/attach.js';
 import { syncGitToCurrentSession, syncTelescopeToCurrentSession, syncDockerToCurrentSession } from '../tabs/tui-tabs.js';
 import { syncTasksToCurrentSession } from '../ws/tasks-ws.js';
 import { syncTodosToCurrentSession } from '../ws/todos-ws.js';
+import { renderHome, showHome } from '../home/home.js';
 
 export async function fetchSessions() {
     try {
@@ -29,8 +30,21 @@ export async function fetchSessions() {
         const data = await resp.json();
         state.sessions = Array.isArray(data) ? data : [];
         renderSidebar();
+        syncHomeVisibility();
     } catch (e) {
         console.warn('fetchSessions failed', e);
+    }
+}
+
+// Показывает главную (#home) при пустом списке сессий и отсутствии активной
+// сессии; иначе скрывает её. Гарантирует, что home и placeholder не
+// показываются одновременно (showHome(true) скрывает placeholder).
+function syncHomeVisibility() {
+    if (state.sessions.length === 0 && !state.currentSession) {
+        renderHome();
+        showHome(true);
+    } else {
+        showHome(false);
     }
 }
 

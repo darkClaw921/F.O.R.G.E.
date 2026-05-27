@@ -8,8 +8,13 @@
 
 import { state } from './core/state.js';
 import { sendToActivePty } from './tabs/tui-tabs.js';
+import { showDailySummary, hideDailySummary } from './daily-summary/daily-summary.js';
 
 window.ForgeApp = {
     sendToActivePty: sendToActivePty,
     state: state,
+    // Сводка дня — вью открывается извне (например, кнопкой в настройках,
+    // Phase 5). ForgeApp.showDailySummary(day?) / hideDailySummary().
+    showDailySummary: showDailySummary,
+    hideDailySummary: hideDailySummary,
 };

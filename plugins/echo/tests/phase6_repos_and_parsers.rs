@@ -44,8 +44,8 @@ async fn db_migrate_is_idempotent_in_integration_context() {
         })
         .await
         .unwrap();
-    // На момент Phase 6 — только V001_init.sql.
-    assert_eq!(count, 1);
+    // Один entry на каждый embedded V*.sql (V001_init + V002_daily_reports).
+    assert_eq!(count, 2);
 }
 
 #[tokio::test]

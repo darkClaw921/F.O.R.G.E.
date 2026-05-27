@@ -10,9 +10,12 @@
 //! - `stats` — token_stats sparkline + POST cancel-run (Phase 3).
 //! - `autonomous` — CRUD + run-now + runs-history для autonomous_tasks
 //!   (Phase 4).
+//! - `daily_reports` — list/get/generate «Сводки дня» под
+//!   `/api/echo/daily-reports`.
 
 pub mod autonomous;
 pub mod conversations;
+pub mod daily_reports;
 pub mod memories;
 pub mod memory;
 pub mod stats;
@@ -44,6 +47,7 @@ pub fn build_router(state: Arc<EchoState>) -> Router {
         .merge(conversations::router())
         .merge(stats::router())
         .merge(autonomous::router())
+        .merge(daily_reports::router())
         .route("/ws/echo", get(crate::ws::echo_ws))
         .with_state(state)
 }

@@ -83,6 +83,29 @@ export const $projectSettings = document.getElementById('project-settings');
 // ---- Phase 5: origin-табы (скрыты при remote_mode=false) ----
 export const $originTabs = document.getElementById('origin-tabs');
 
+// ---- Home (главная страница: история недавних сессий) ----
+export const $home = document.getElementById('home');
+export const $homeCards = document.getElementById('home-cards');
+export const $homeRestoreAll = document.getElementById('home-restore-all');
+export const $homeEmpty = document.getElementById('home-empty');
+
+// ---- Daily summary (Сводка дня) ----
+//
+// Селекторы для вью #daily-summary. Видимость переключает
+// js/daily-summary/daily-summary.js::showDailySummary. Все ref'ы вычисляются
+// один раз при импорте; если узел отсутствует в DOM — переменная будет null.
+export const $dailySummary = document.getElementById('daily-summary');
+export const $dailySummaryBack = document.getElementById('daily-summary-back');
+export const $dailySummaryPrev = document.getElementById('daily-summary-prev');
+export const $dailySummaryToday = document.getElementById('daily-summary-today');
+export const $dailySummaryNext = document.getElementById('daily-summary-next');
+export const $dailySummaryDay = document.getElementById('daily-summary-day');
+export const $dailySummaryRegen = document.getElementById('daily-summary-regen');
+export const $dailySummaryStatus = document.getElementById('daily-summary-status');
+export const $dailySummaryContent = document.getElementById('daily-summary-content');
+export const $dailySummaryEmpty = document.getElementById('daily-summary-empty');
+export const $dailySummaryGenerate = document.getElementById('daily-summary-generate');
+
 // ---- Echo plugin (Phase 5c) ----
 //
 // Селекторы для DOM-узлов Echo-вкладки. Совпадают с id из index.html.

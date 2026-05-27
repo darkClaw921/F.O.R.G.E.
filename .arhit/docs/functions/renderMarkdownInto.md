@@ -1,0 +1,3 @@
+# renderMarkdownInto
+
+Общий лёгкий markdown-renderer (tmux-web/static/js/core/markdown.js). Вынесен из echo/chat.js, чтобы рендером пользовались и чат Echo, и вью «Сводка дня». Чистый DOM-renderer без сторонних библиотек: code fences (```...```), inline code, **bold**, *italic*, заголовки #/##/###, bullet-списки, ссылки [text](url). XSS-безопасен: строит DOM через createElement/textContent, пользовательские данные не уходят в innerHTML. Параметры: container (HTMLElement — куда добавлять узлы, не очищается), text (строка markdown). Зависит только от браузерного DOM (pure leaf-module). Используется в echo/chat.js (finalizeMessage, buildMessageNode) и daily-summary/daily-summary.js (renderContent).

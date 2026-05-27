@@ -1,0 +1,3 @@
+# generate_report
+
+Генерация «Сводки дня» (daily_report) в plugins/echo/src/daily_report/mod.rs. generate_report(state, host, day: NaiveDate, source) -> Result<DailyReport>. Собирает за день: chat-messages (memory::collect_day_messages), tmux-panes (memory::collect_pane_snapshot), git-активность (HostApi::collect_git_activity, since=начало дня). Если все три пусты — upsert content='Сегодня активности не было' без вызова Claude. Иначе строит русский мотивационный prompt с 3 разделами (## Что сделано / ## Где я молодец / ## На завтра), прогоняет через state.runner.one_shot и upsert'ит результат в daily_reports по ключу day. source: 'auto' (scheduler) | 'manual' (кнопка). id стабилен между перегенерациями за один день.

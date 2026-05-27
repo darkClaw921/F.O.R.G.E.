@@ -180,6 +180,7 @@ mod tests {
         for required in [
             "autonomous_tasks",
             "chat_sessions",
+            "daily_reports",
             "memories",
             "messages",
             "schema_migrations",
@@ -207,7 +208,35 @@ mod tests {
             })
             .await
             .unwrap();
-        assert_eq!(applied, 1, "expected exactly one V001 entry");
+        // Каждый V*.sql-файл регистрируется по имени один раз. Повторный
+        // migrate() не должен добавлять дубли — поэтому count == число файлов
+        // (V001 + V002), а не растёт при повторных прогонах.
+        assert_eq!(applied, 2, "expected one entry per embedded migration file");
+    }
+
+    #[tokio::test]
+    async fn migration_creates_daily_reports_table() {
+        let db = Db::open_memory().await.unwrap();
+        db.migrate().await.unwrap();
+        // V002 должна создать таблицу daily_reports с ожидаемыми колонками.
+        let cols: Vec<String> = db
+            .conn()
+            .call(|c| {
+                let mut stmt = c.prepare("PRAGMA table_info(daily_reports)")?;
+                let rows = stmt
+                    .query_map([], |r| r.get::<_, String>(1))?
+                    .collect::<Result<Vec<String>, _>>()?;
+                Ok(rows)
+            })
+            .await
+            .unwrap();
+        assert!(!cols.is_empty(), "daily_reports table must exist after migrate()");
+        for expected in ["id", "day", "content", "source", "created_at", "updated_at"] {
+            assert!(
+                cols.iter().any(|c| c == expected),
+                "daily_reports must have column {expected}, got {cols:?}"
+            );
+        }
     }
 
     #[tokio::test]

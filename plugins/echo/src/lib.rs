@@ -26,6 +26,7 @@
 pub mod actions;
 pub mod claude;
 pub mod config;
+pub mod daily_report;
 pub mod db;
 pub mod memory;
 pub mod routes;
@@ -158,9 +159,11 @@ pub async fn shutdown(state: &Arc<EchoState>) {
 pub fn spawn_workers(state: &Arc<EchoState>, host: Arc<dyn HostApi>) {
     let scheduler_handle = scheduler::spawn(state.clone(), host.clone());
     state.register_worker(scheduler_handle);
-    let memory_handle = memory::scheduler::spawn(state.clone(), host);
+    let memory_handle = memory::scheduler::spawn(state.clone(), host.clone());
     state.register_worker(memory_handle);
-    tracing::info!(target: "forge_echo", "forge-echo: spawn_workers (scheduler + memory rollover started)");
+    let daily_report_handle = daily_report::scheduler::spawn(state.clone(), host);
+    state.register_worker(daily_report_handle);
+    tracing::info!(target: "forge_echo", "forge-echo: spawn_workers (scheduler + memory rollover + daily_report started)");
 }
 
 #[cfg(test)]

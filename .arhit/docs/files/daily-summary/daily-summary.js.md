@@ -1,0 +1,3 @@
+# daily-summary/daily-summary.js
+
+Вью «Сводка дня» (#daily-summary). showDailySummary(day?) показывает страницу, грузит GET /api/echo/daily-reports/:day (404 → пустое состояние с кнопкой генерации), рендерит markdown через renderContent (чистый renderMarkdownInto, без карточек/чипов). Стиль — минималистичный Notion: нейтральная палитра, читаемая колонка max-width 760px, тихие ghost-кнопки, заголовок-страница (eyebrow + дата как h1); вся стилизация в css/daily-summary.css через .daily-summary-content .echo-md-* (перебивает echo.css по specificity). Кнопка «← Назад» (closeDailySummary) скрывает вью и вызывает fetchSessions() для возврата к основному экрану. Навигация по датам ←/Сегодня/→ (запрет будущего), кнопка пересоздания. XSS-safe: createElement/textContent.
