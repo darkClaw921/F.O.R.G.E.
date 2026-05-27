@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-27T12:20:43.587Z",
+  "generatedAt": "2026-05-27T13:48:48.571Z",
   "dependencies": [
     {
       "from": "tmux-web/static/hotkeys.js",
@@ -16217,6 +16217,90 @@
       "from": "tmux-web/static/js/tasks/crud.js",
       "to": "tmux-web/static/js/tasks/crud.js",
       "type": "call",
+      "fromElement": "setTodoAutoPromote",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "setTodoAutoPromote",
+      "toElement": "state.todosData.findIndex"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "setTodoAutoPromote",
+      "toElement": "renderTasks"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "setTodoAutoPromote",
+      "toElement": "dtoOrigin"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "setTodoAutoPromote",
+      "toElement": "apiFetch"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "setTodoAutoPromote",
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "setTodoAutoPromote",
+      "toElement": "JSON.stringify"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "setTodoAutoPromote",
+      "toElement": "r.text"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "setTodoAutoPromote",
+      "toElement": "window.alert"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "setTodoAutoPromote",
+      "toElement": "renderTasks"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "setTodoAutoPromote",
+      "toElement": "window.alert"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "setTodoAutoPromote",
+      "toElement": "renderTasks"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
       "fromElement": "promoteTodo",
       "toElement": "Array.isArray"
     },
@@ -17080,6 +17164,13 @@
       "to": "tmux-web/static/js/tasks/modals.js",
       "type": "call",
       "fromElement": "openTodoEditModal",
+      "toElement": "card.querySelector"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/modals.js",
+      "to": "tmux-web/static/js/tasks/modals.js",
+      "type": "call",
+      "fromElement": "openTodoEditModal",
       "toElement": "overlay.remove"
     },
     {
@@ -17318,6 +17409,12 @@
       "to": "tmux-web/static/js/tasks/crud.js",
       "type": "import",
       "toElement": "promoteTodo"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/render.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "import",
+      "toElement": "setTodoAutoPromote"
     },
     {
       "from": "tmux-web/static/js/tasks/render.js",
@@ -17820,6 +17917,13 @@
       "to": "tmux-web/static/js/tasks/render.js",
       "type": "call",
       "fromElement": "renderTodoCard",
+      "toElement": "t.classList.contains"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/render.js",
+      "to": "tmux-web/static/js/tasks/render.js",
+      "type": "call",
+      "fromElement": "renderTodoCard",
       "toElement": "openTodoEditModal"
     },
     {
@@ -17905,6 +18009,41 @@
       "type": "call",
       "fromElement": "renderTodoCard",
       "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/render.js",
+      "to": "tmux-web/static/js/tasks/render.js",
+      "type": "call",
+      "fromElement": "renderTodoCard",
+      "toElement": "meta.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/render.js",
+      "to": "tmux-web/static/js/tasks/render.js",
+      "type": "call",
+      "fromElement": "renderTodoCard",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/render.js",
+      "to": "tmux-web/static/js/tasks/render.js",
+      "type": "call",
+      "fromElement": "renderTodoCard",
+      "toElement": "autoToggle.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/render.js",
+      "to": "tmux-web/static/js/tasks/render.js",
+      "type": "call",
+      "fromElement": "renderTodoCard",
+      "toElement": "ev.stopPropagation"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/render.js",
+      "to": "tmux-web/static/js/tasks/render.js",
+      "type": "call",
+      "fromElement": "renderTodoCard",
+      "toElement": "setTodoAutoPromote"
     },
     {
       "from": "tmux-web/static/js/tasks/render.js",

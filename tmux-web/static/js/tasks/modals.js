@@ -262,6 +262,7 @@ export function openTodoEditModal(todo) {
     }
 
     const planChecked = todo.plan_mode ? ' checked' : '';
+    const autoChecked = todo.auto_promote ? ' checked' : '';
     card.innerHTML = `
         <h2>Edit TODO</h2>
         <div class="modal-id">${escapeText(todo.id)}</div>
@@ -269,6 +270,8 @@ export function openTodoEditModal(todo) {
         <label>Description<br><textarea id="td-desc" placeholder="Подробности (опционально)">${escapeText(todo.description || '')}</textarea></label>
         <label class="checkbox-row"><input type="checkbox" id="td-plan-mode"${planChecked}> Включить план мод
             <span class="hint">— при promote добавит «Создай план для этой задачи»</span></label>
+        <label class="checkbox-row"><input type="checkbox" id="td-auto-promote"${autoChecked}> Авто-запуск после предыдущей задачи в очереди
+            <span class="hint">— карточка сама стартует, когда закроется предыдущая помеченная задача</span></label>
         <label>Promote → tmux session<br><input type="text" id="td-session" value="${escapeAttr(defaultSession)}" placeholder="${escapeAttr(defaultSession || 'session name')}"></label>
         <div class="modal-actions">
             <button type="button" id="td-delete" class="warn">Delete</button>
@@ -285,6 +288,7 @@ export function openTodoEditModal(todo) {
     const $desc = card.querySelector('#td-desc');
     const $session = card.querySelector('#td-session');
     const $planMode = card.querySelector('#td-plan-mode');
+    const $autoPromote = card.querySelector('#td-auto-promote');
     $title.focus();
 
     const close = () => overlay.remove();
@@ -305,6 +309,8 @@ export function openTodoEditModal(todo) {
         if (newDesc !== (todo.description || '')) patch.description = newDesc;
         const newPlanMode = $planMode ? !!$planMode.checked : false;
         if (newPlanMode !== !!todo.plan_mode) patch.plan_mode = newPlanMode;
+        const newAuto = $autoPromote ? !!$autoPromote.checked : !!todo.auto_promote;
+        if (newAuto !== !!todo.auto_promote) patch.auto_promote = newAuto;
         if (Object.keys(patch).length === 0) {
             close();
             return;

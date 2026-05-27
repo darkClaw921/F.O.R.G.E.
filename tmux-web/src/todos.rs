@@ -22,7 +22,7 @@
 //! - [`Todo`] — карточка с `id` (UUID v4), `root_path`, `title`,
 //!   `description`, `priority` (`u8`, 0..=4), `issue_type` (`String`),
 //!   `labels` (`Vec<String>`), `created_at`, `updated_at` (RFC3339-строки
-//!   UTC), `plan_mode`, `origin`.
+//!   UTC), `plan_mode`, `auto_promote`, `origin`.
 //! - [`TodoStore`] — `Arc<RwLock<Inner>>`-обёртка над
 //!   `HashMap<root_path, Vec<Todo>>`, с lazy-load из todos.json и
 //!   atomic save.
@@ -78,6 +78,9 @@ use crate::paths;
 /// - `issue_type` — строковый тип (task/feature/bug/...).
 /// - `labels` — список произвольных меток.
 /// - `plan_mode` — при promote добавлять «создай план для этой задачи».
+/// - `auto_promote` — помечена ли карточка для авто-промоута по очереди
+///   (см. цепочку авто-промоута). По умолчанию `false`; `#[serde(default)]`
+///   даёт backward-compat со старыми `todos.json`.
 /// - `created_at`, `updated_at` — RFC3339-строки в UTC.
 /// - `origin` — `"local"` или `"remote"` (Phase 3 remote-proxy).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -98,6 +101,13 @@ pub struct Todo {
     pub labels: Vec<String>,
     #[serde(default)]
     pub plan_mode: bool,
+    /// Помечена ли карточка для авто-промоута по очереди. При `true` карточка
+    /// участвует в цепочке: после закрытия предыдущей промоутнутой задачи
+    /// верхняя помеченная TODO-карточка автоматически промоутится. По умолчанию
+    /// `false` (через `#[serde(default)]`, обеспечивает backward-compat со
+    /// старыми `todos.json`, где поля ещё нет).
+    #[serde(default)]
+    pub auto_promote: bool,
     pub created_at: String,
     pub updated_at: String,
     #[serde(default = "default_origin_local")]
@@ -312,6 +322,7 @@ impl TodoStore {
             issue_type: default_issue_type(),
             labels: Vec::new(),
             plan_mode,
+            auto_promote: false,
             created_at: now.clone(),
             updated_at: now,
             origin: default_origin_local(),
@@ -340,7 +351,8 @@ impl TodoStore {
         self.create(&root.to_string_lossy(), title, description, plan_mode)
     }
 
-    /// Обновляет `title` и/или `description`/`plan_mode` существующей карточки.
+    /// Обновляет `title` и/или `description`/`plan_mode`/`auto_promote`
+    /// существующей карточки.
     ///
     /// Семантика параметров:
     /// - `title: None` — не трогать.
@@ -349,6 +361,8 @@ impl TodoStore {
     /// - `description: Some(Some(s))` — записать строку.
     /// - `plan_mode: None` — не трогать.
     /// - `plan_mode: Some(b)` — записать b.
+    /// - `auto_promote: None` — не трогать.
+    /// - `auto_promote: Some(b)` — записать b.
     ///
     /// Возвращает обновлённую копию или `None`, если id не найден.
     /// При успехе обновляет `updated_at` и сохраняет файл.
@@ -358,6 +372,7 @@ impl TodoStore {
         title: Option<String>,
         description: Option<Option<String>>,
         plan_mode: Option<bool>,
+        auto_promote: Option<bool>,
     ) -> Result<Option<Todo>> {
         let mut inner = self.inner.write().expect("TodoStore lock poisoned");
         let mut found: Option<Todo> = None;
@@ -371,6 +386,9 @@ impl TodoStore {
                 }
                 if let Some(pm) = plan_mode {
                     t.plan_mode = pm;
+                }
+                if let Some(ap) = auto_promote {
+                    t.auto_promote = ap;
                 }
                 t.updated_at = now_rfc3339();
                 found = Some(t.clone());
@@ -775,7 +793,7 @@ mod tests {
         assert_eq!(fetched.id, t.id);
 
         let updated = store
-            .update(&t.id, Some("Renamed".into()), Some(None), Some(true))
+            .update(&t.id, Some("Renamed".into()), Some(None), Some(true), None)
             .unwrap()
             .unwrap();
         assert_eq!(updated.title, "Renamed");
@@ -853,7 +871,7 @@ mod tests {
         let t = store.create("/r2", "second", None, false).unwrap();
 
         let updated = store
-            .update(&t.id, Some("renamed".into()), None, None)
+            .update(&t.id, Some("renamed".into()), None, None, None)
             .unwrap()
             .unwrap();
         assert_eq!(updated.title, "renamed");
@@ -864,7 +882,7 @@ mod tests {
 
         // несуществующий id — None
         assert!(store
-            .update("no-such-id", Some("x".into()), None, None)
+            .update("no-such-id", Some("x".into()), None, None, None)
             .unwrap()
             .is_none());
         let _ = std::fs::remove_dir_all(f.parent().unwrap());
@@ -995,6 +1013,37 @@ mod tests {
         // plan_mode сохранилось
         let t2 = r1.iter().find(|t| t.title == "t2").unwrap();
         assert!(t2.plan_mode);
+
+        let _ = std::fs::remove_dir_all(f.parent().unwrap());
+    }
+
+    #[test]
+    fn auto_promote_roundtrip_persists() {
+        let f = tmpfile("auto-promote-roundtrip");
+        let id = {
+            let store = TodoStore::load_with_projects(f.clone(), None).unwrap();
+            // Новый TODO стартует с auto_promote=false (через дефолт поля).
+            let t = store
+                .create("/abs/r1", "queued task", None, false)
+                .unwrap();
+            assert!(!t.auto_promote, "новый TODO по умолчанию не помечен");
+
+            // Помечаем для авто-промоута.
+            let updated = store
+                .update(&t.id, None, None, None, Some(true))
+                .unwrap()
+                .unwrap();
+            assert!(updated.auto_promote, "auto_promote записан в Some(true)");
+            t.id
+        };
+
+        // Перезагружаем из файла — флаг должен сохраниться.
+        let store2 = TodoStore::load(f.clone()).unwrap();
+        let reloaded = store2.get(&id).unwrap();
+        assert!(
+            reloaded.auto_promote,
+            "auto_promote сохранился после reload через load"
+        );
 
         let _ = std::fs::remove_dir_all(f.parent().unwrap());
     }

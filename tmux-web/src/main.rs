@@ -9,6 +9,10 @@
 
 mod attention;
 mod auth;
+// Состояние цепочки авто-промоута TODO (in-memory). Типы AutoChainEntry /
+// AutoChainMap используются `AppState.auto_chain` и `promote_todo_core`
+// (Фаза 3); фоновый воркер `run` добавит Фаза 4b.
+mod auto_promote;
 mod cli;
 mod daemon;
 // Phase 1 Echo plugin — адаптер AppState → echo_host_api::HostApi.
@@ -64,6 +68,7 @@ use tokio::sync::{broadcast, watch, RwLock};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 
+use crate::auto_promote::AutoChainEntry;
 use crate::notifier_config::{NotifierConfig, NotifierConfigStore, PatchNotifierConfigReq};
 use crate::tasks::TaskEvent;
 use crate::themes::{Theme, ThemesState};
@@ -165,6 +170,14 @@ struct AppState {
     /// [`session_history::capture_now`]; читается/мутируется REST-роутами
     /// `/api/sessions/history*`.
     history: session_history::HistoryStore,
+    /// In-memory состояние цепочек авто-промоута TODO (`root_path -> голова
+    /// цепочки`, см. [`auto_promote::AutoChainMap`]). Cheap-clonable
+    /// (`Arc<RwLock<HashMap>>` внутри). Запись делает `promote_todo_core`
+    /// (Фаза 3) при ручном/авто промоуте; читает фоновый воркер
+    /// `auto_promote::run` (Фаза 4b), который ждёт закрытия `active_task_id` и
+    /// промоутит следующую верхнюю TODO с флагом `auto_promote`. Не
+    /// персистится (MVP, self-heal через ручной promote).
+    auto_chain: auto_promote::AutoChainMap,
 }
 
 #[tokio::main]
@@ -437,7 +450,16 @@ async fn main() -> anyhow::Result<()> {
         user_settings: user_settings_store,
         notifier_config: notifier_config_store,
         history: history_store,
+        // In-memory; persist намеренно не делаем (MVP). `std::sync::RwLock`
+        // явно, т.к. в main.rs `RwLock` импортирован из `tokio::sync`.
+        auto_chain: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
     };
+
+    // Subscribe для воркера авто-промоута ДО move'а `tasks_tx` в run_watcher
+    // ниже (иначе ранние closed-events могут быть пропущены — broadcast хранит
+    // только последние 64). Тот же поток событий, что слушают tasks_watcher и
+    // notifier.
+    let auto_promote_rx = tasks_tx.subscribe();
 
     // Spawn фоновый watcher. Живёт всю жизнь процесса; завершится только
     // если active_path_tx будет дропнут (а он живёт в AppState — т.е.
@@ -446,6 +468,12 @@ async fn main() -> anyhow::Result<()> {
         tasks_watcher::run_watcher(active_path_rx, tasks_tx).await;
         tracing::info!("tasks_watcher exited");
     });
+
+    // Spawn воркер цепочки авто-промоута. Слушает closed-события и промоутит
+    // следующую верхнюю флагнутую TODO после закрытия головы цепочки. Берёт
+    // cheap-clone AppState (нужны todos/notifier_config/notify/auto_chain).
+    tokio::spawn(auto_promote::run(app_state.clone(), auto_promote_rx));
+    tracing::info!("auto_promote watcher started");
 
     // Spawn attention-watcher: каждые 1.5с обходит ВСЕ tmux-сессии,
     // дёргает `tmux capture-pane` и обновляет `app_state.attention` флагом
@@ -2055,6 +2083,10 @@ struct PatchTodoReq {
     /// `None` (поля нет) → не трогать. `Some(true|false)` → перезаписать.
     #[serde(default)]
     plan_mode: Option<bool>,
+    /// `None` (поля нет) → не трогать. `Some(true|false)` → записать
+    /// флаг авто-промоута TODO по очереди.
+    #[serde(default)]
+    auto_promote: Option<bool>,
     /// Опциональный move TODO в другой корень. Резолвится через
     /// `paths::resolve_root`. Если пустая строка после trim — игнорируется.
     #[serde(default)]
@@ -2111,10 +2143,16 @@ async fn patch_todo(
             ));
         }
     }
-    // 1) Поля title/description/plan_mode — обычный update.
+    // 1) Поля title/description/plan_mode/auto_promote — обычный update.
     let updated = match state
         .todos
-        .update(&id, req.title.clone(), req.description.clone(), req.plan_mode)
+        .update(
+            &id,
+            req.title.clone(),
+            req.description.clone(),
+            req.plan_mode,
+            req.auto_promote,
+        )
     {
         Ok(Some(t)) => t,
         Ok(None) => {
@@ -2277,27 +2315,260 @@ struct PromoteTodoReq {
     session: Option<String>,
 }
 
+/// Результат `promote_todo_core` — id созданной bd-задачи и был ли
+/// запланирован notify-job. Используется HTTP-handler'ом `promote_todo`
+/// (для JSON-ответа) и фоновым воркером авто-промоута `auto_promote::run`
+/// (Фаза 4b), которому нужен `task_id` головы цепочки.
+pub(crate) struct PromoteOutcome {
+    /// Id созданной bd-задачи (`br create` → `.id`). Может быть пустым, если
+    /// `br` не вернул поле id (логируется warning) — поведение как до Фазы 3.
+    pub task_id: String,
+    /// `true`, если notify-job поставлен в очередь; `false`, если итоговая
+    /// сессия не определена (skip) либо `notifier.enqueue` вернул ошибку.
+    pub notify_scheduled: bool,
+}
+
+/// Ядро промоута TODO → bd-задача, без HTTP-обвязки. Вызывается из
+/// HTTP-handler'а `promote_todo` (ручной промоут) и из воркера авто-промоута
+/// `auto_promote::run` (Фаза 4b). Поведение полностью идентично прежнему
+/// inline-коду `promote_todo`.
+///
+/// Параметры:
+/// - `state` — общий [`AppState`] (доступ к `todos`, `notifier_config`,
+///   `user_settings`, `notify`, `todos_tx`, `auto_chain`).
+/// - `todo` — карточка, которую промоутим (caller уже загрузил её через
+///   `state.todos.get`; здесь она НЕ перечитывается).
+/// - `target_session` — явная целевая tmux-сессия. Если `None` — применяется
+///   фолбэк на `NotifierConfig.session`. Если и он пуст — notify скипается.
+/// - `mode_override` — явный [`notifier::NotifyMode`]. Если `None` — режим
+///   вычисляется из `cfg.wait_previous`/`cfg.delay_minutes` (приоритет
+///   wait_previous > delayed > immediate), как в прежнем коде.
+///
+/// Алгоритм:
+/// 1. `br create --json` в `todo.root_path` → извлечь `.id` (фолбэк на
+///    `.created[0].id`). Ошибка `br` → `Err(anyhow)`.
+/// 2. Удалить TODO (`todos.delete`) + broadcast `ws_todos::removed`.
+/// 3. Собрать текст: template из `cfg.template`, иначе `DEFAULT_PROMOTE_TEMPLATE`
+///    (`[{id}] {title}`); plan-mode suffix (custom из user_settings, иначе
+///    `PLAN_MODE_SUFFIX`).
+/// 4. Резолв сессии: `target_session` (если `Some`), иначе `cfg.session`
+///    (с trim/empty-фильтром).
+/// 5. Резолв режима: `mode_override` (если `Some`), иначе из cfg.
+/// 6. Если сессия есть → `notifier::new_job` + `notify.enqueue`
+///    (`notify_scheduled = true`; при ошибке enqueue — `false`); иначе skip
+///    (`notify_scheduled = false`).
+/// 7. Всегда (даже при skip notify) записать в `state.auto_chain`
+///    `root_path -> AutoChainEntry { active_task_id, session }`, где `session`
+///    — итоговая использованная сессия (`None`, если notify скипнут). Это
+///    голова цепочки авто-промоута, читаемая `auto_promote::run`. Poisoned
+///    lock обрабатывается мягко (`if let Ok`).
+/// 8. Вернуть [`PromoteOutcome`].
+pub(crate) async fn promote_todo_core(
+    state: &AppState,
+    todo: &todos::Todo,
+    target_session: Option<String>,
+    mode_override: Option<notifier::NotifyMode>,
+) -> Result<PromoteOutcome, anyhow::Error> {
+    let cfg = state.notifier_config.get();
+
+    // 1) Создаём bd-задачу. Рабочая директория для `br` = root_path TODO.
+    let priority_str = todo.priority.to_string();
+    let mut br_args: Vec<String> = vec![
+        "create".to_string(),
+        "--json".to_string(),
+        "--title".to_string(),
+        todo.title.clone(),
+    ];
+    if let Some(desc) = todo.description.as_deref().filter(|s| !s.is_empty()) {
+        br_args.push("-d".to_string());
+        br_args.push(desc.to_string());
+    }
+    if !todo.issue_type.is_empty() {
+        br_args.push("-t".to_string());
+        br_args.push(todo.issue_type.clone());
+    }
+    br_args.push("-p".to_string());
+    br_args.push(priority_str);
+
+    let arg_refs: Vec<&str> = br_args.iter().map(String::as_str).collect();
+    let root_path_buf = std::path::PathBuf::from(&todo.root_path);
+    let created = tasks::run_br(&arg_refs, &root_path_buf).await.map_err(|e| {
+        tracing::warn!(error = ?e, "br create failed during promote");
+        anyhow::anyhow!("br create: {e:#}")
+    })?;
+    let task_id = created
+        .get("id")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .or_else(|| {
+            // Некоторые версии br могут возвращать `{"created":[{...}]}` или массив.
+            created
+                .get("created")
+                .and_then(|v| v.as_array())
+                .and_then(|a| a.first())
+                .and_then(|o| o.get("id"))
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        })
+        .unwrap_or_default();
+    if task_id.is_empty() {
+        tracing::warn!(?created, "br create returned no id field");
+    }
+
+    // 2) Удаляем TODO + broadcast.
+    if let Err(e) = state.todos.delete(&todo.id) {
+        tracing::warn!(id = %todo.id, error = ?e, "todo delete after promote failed (bd task already created)");
+    } else {
+        let _ = state
+            .todos_tx
+            .send(ws_todos::removed(todo.root_path.clone(), todo.id.clone()));
+    }
+
+    // 3) Резолвим итоговую сессию: явная target_session (если задана), иначе
+    //    фолбэк на cfg.session (с trim/empty-фильтром). Если итог пуст —
+    //    notify не планируется (некуда слать), но bd-задача уже создана.
+    let resolved_session: Option<String> = target_session
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            cfg.session
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        });
+
+    let mut notify_scheduled = false;
+    if let Some(session) = resolved_session.clone() {
+        // 4) Формируем текст. Если cfg.template пуст — используем дефолтный
+        //    fallback `[{id}] {title}` (без описания: агент подтянет его сам
+        //    через `br show <id>`). Затем — plan-mode suffix (если применимо).
+        //    `description` всё ещё нужен для плейсхолдера `{description}` в
+        //    кастомных шаблонах.
+        let description = todo.description.clone().unwrap_or_default();
+        let template_empty = cfg.template.trim().is_empty();
+        let template_str: &str = if template_empty {
+            DEFAULT_PROMOTE_TEMPLATE
+        } else {
+            cfg.template.as_str()
+        };
+        let mut text = format_notify_template(
+            template_str,
+            &task_id,
+            &todo.title,
+            &description,
+            todo.priority,
+            &todo.issue_type,
+        );
+        if todo.plan_mode {
+            // Кастомный suffix из user-level настроек (~/.forge/user_settings.json).
+            // Если в настройках пусто (после trim — строки из одних пробелов тоже
+            // считаются «пустыми»), используем константу PLAN_MODE_SUFFIX —
+            // это сохраняет инвариант «нулевая конфигурация = поведение до фичи».
+            let custom_suffix = state.user_settings.get().todo_plan_mode_suffix;
+            let suffix_str: &str = if custom_suffix.trim().is_empty() {
+                PLAN_MODE_SUFFIX
+            } else {
+                custom_suffix.as_str()
+            };
+            if !text.is_empty() && !text.ends_with('\n') {
+                text.push('\n');
+            }
+            text.push_str(suffix_str);
+        }
+
+        // 5) Резолвим NotifyMode: явный mode_override (если задан), иначе по
+        //    cfg.wait_previous / cfg.delay_minutes. Приоритет: wait_previous >
+        //    delayed > immediate. previous_task_id = None — notifier сам
+        //    подберёт last_promoted_open_id по root_path.
+        let mode = mode_override.unwrap_or_else(|| {
+            if cfg.wait_previous {
+                notifier::NotifyMode::WaitPrevious {
+                    previous_task_id: None,
+                }
+            } else if cfg.delay_minutes > 0 {
+                let fire_at = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0)
+                    + (cfg.delay_minutes as u64) * 60_000;
+                notifier::NotifyMode::Delayed {
+                    fire_at_unix_ms: fire_at,
+                }
+            } else {
+                notifier::NotifyMode::Immediate
+            }
+        });
+
+        // 6) NotifyJob.root_path = todo.root_path (cwd-only ключ для wait_queues).
+        let job = notifier::new_job(
+            todo.root_path.clone(),
+            task_id.clone(),
+            session,
+            text,
+            mode,
+        );
+
+        if let Err(e) = state.notify.enqueue(job).await {
+            tracing::error!(error = ?e, "notifier enqueue failed");
+            // Тут уже задача создана и TODO удалено — не катастрофа.
+            notify_scheduled = false;
+        } else {
+            notify_scheduled = true;
+        }
+    } else {
+        tracing::info!(
+            todo_id = %todo.id,
+            task_id = %task_id,
+            root = %todo.root_path,
+            session_missing = true,
+            "todo promoted (notify skipped)"
+        );
+    }
+
+    // 7) Записываем голову цепочки авто-промоута. Делается ВСЕГДА после
+    //    успешного `br create` — даже если notify скипнут — чтобы воркер
+    //    `auto_promote::run` (Фаза 4b) знал, какой `active_task_id` ждать.
+    //    `session` = итоговая использованная сессия (None при skip). Poisoned
+    //    lock обрабатываем мягко: пропускаем запись, не паникуем.
+    if let Ok(mut chain) = state.auto_chain.write() {
+        chain.insert(
+            todo.root_path.clone(),
+            AutoChainEntry {
+                active_task_id: task_id.clone(),
+                session: resolved_session,
+            },
+        );
+    } else {
+        tracing::warn!(root = %todo.root_path, "auto_chain lock poisoned; skipped chain head write");
+    }
+
+    if notify_scheduled {
+        tracing::info!(
+            todo_id = %todo.id,
+            task_id = %task_id,
+            root = %todo.root_path,
+            "todo promoted"
+        );
+    }
+
+    Ok(PromoteOutcome {
+        task_id,
+        notify_scheduled,
+    })
+}
+
 /// `POST /api/todos/:id/promote` — конвертирует TODO в bd-задачу и (если
 /// заданы template + session) планирует notify-job в очередь.
 ///
-/// Алгоритм (Phase 3 — global NotifierConfig, без Project):
+/// Тонкая HTTP-обвязка поверх [`promote_todo_core`]:
 /// 1. Найти TODO (`todos.get`) → 404 если нет.
-/// 2. Создать bd-issue: `br create --json --title <todo.title> --description
-///    <todo.description> -t <todo.issue_type> -p <todo.priority>` в
-///    `todo.root_path`. Получаем JSON → извлекаем `.id` (string).
-/// 3. Удалить TODO + broadcast Removed (с root_path).
-/// 4. Прочитать `state.notifier_config.get()`:
-///    - target session = `body.session` (если задан) else `cfg.session`.
-///    - template из `cfg.template`; если пуст — `DEFAULT_PROMOTE_TEMPLATE`
-///      (`[{id}] {title}` — описание агент берёт сам через `br show <id>`).
-///    - mode из `cfg.delay_minutes` + `cfg.wait_previous`:
-///        - wait_previous=true ⇒ NotifyMode::WaitPrevious
-///        - delay_minutes>0  ⇒ NotifyMode::Delayed
-///        - иначе            ⇒ NotifyMode::Immediate
-/// 5. Если target session пуст ⇒ skip notify (200 OK, `notify_scheduled =
-///    false`). Пустой `template` НЕ блокирует отправку — см. п.4 (fallback).
-/// 6. Иначе — `notifier.enqueue(job).await`.
-/// 7. Ответ 200 `{ promoted: true, task_id: "<bd-id>", notify_scheduled: bool }`.
+/// 2. `target_session` = `body.session` (если задан; фолбэк на `cfg.session`
+///    делает core); `mode_override = None` (режим вычислит core из cfg).
+/// 3. Вызвать `promote_todo_core` → `Err` маппится в 400 BAD_REQUEST.
+/// 4. Ответ 200 `{ promoted: true, task_id, notify_scheduled }`.
 async fn promote_todo(
     State(state): State<AppState>,
     AxumPath(id): AxumPath<String>,
@@ -2326,7 +2597,7 @@ async fn promote_todo(
             .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid body: {e}")))?
     };
 
-    // 1) Загружаем TODO.
+    // 1) Загружаем TODO. 404 остаётся в handler (до вызова core).
     let todo = match state.todos.get(&id) {
         Some(t) => t,
         None => {
@@ -2337,191 +2608,26 @@ async fn promote_todo(
         }
     };
 
-    // 2) Phase 3: глобальный NotifierConfig — источник template/delay/
-    //    wait_previous/session. body.session (если задан) переопределяет
-    //    cfg.session. Если оба пустые — notify не планируется (bd-задача
-    //    всё равно создаётся: пункт 3-4 ниже).
-    let cfg = state.notifier_config.get();
+    // 2) target_session = body.session (trim/empty → None). Фолбэк на
+    //    cfg.session выполняется внутри core, поэтому здесь НЕ применяется.
     let target_session: Option<String> = req
         .session
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .map(str::to_string)
-        .or_else(|| {
-            cfg.session
-                .as_deref()
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string)
-        });
+        .map(str::to_string);
 
-    // 3) Создаём bd-задачу. Рабочая директория для `br` = root_path TODO.
-    let priority_str = todo.priority.to_string();
-    let mut br_args: Vec<String> = vec![
-        "create".to_string(),
-        "--json".to_string(),
-        "--title".to_string(),
-        todo.title.clone(),
-    ];
-    if let Some(desc) = todo.description.as_deref().filter(|s| !s.is_empty()) {
-        br_args.push("-d".to_string());
-        br_args.push(desc.to_string());
-    }
-    if !todo.issue_type.is_empty() {
-        br_args.push("-t".to_string());
-        br_args.push(todo.issue_type.clone());
-    }
-    br_args.push("-p".to_string());
-    br_args.push(priority_str);
+    // 3) Делегируем ядру. mode_override = None — core вычислит режим из cfg
+    //    (wait_previous/delay/immediate), как и прежде.
+    let outcome = promote_todo_core(&state, &todo, target_session, None)
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("{e:#}")))?;
 
-    let arg_refs: Vec<&str> = br_args.iter().map(String::as_str).collect();
-    let root_path_buf = std::path::PathBuf::from(&todo.root_path);
-    let created = match tasks::run_br(&arg_refs, &root_path_buf).await {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::warn!(error = ?e, "br create failed during promote");
-            return Err((StatusCode::BAD_REQUEST, format!("br create: {e:#}")));
-        }
-    };
-    let task_id = created
-        .get("id")
-        .and_then(|v| v.as_str())
-        .map(str::to_string)
-        .or_else(|| {
-            // Некоторые версии br могут возвращать `{"created":[{...}]}` или массив.
-            created
-                .get("created")
-                .and_then(|v| v.as_array())
-                .and_then(|a| a.first())
-                .and_then(|o| o.get("id"))
-                .and_then(|v| v.as_str())
-                .map(str::to_string)
-        })
-        .unwrap_or_default();
-    if task_id.is_empty() {
-        tracing::warn!(?created, "br create returned no id field");
-    }
-
-    // 4) Удаляем TODO + broadcast.
-    if let Err(e) = state.todos.delete(&id) {
-        tracing::warn!(%id, error = ?e, "todo delete after promote failed (bd task already created)");
-    } else {
-        let _ = state
-            .todos_tx
-            .send(ws_todos::removed(todo.root_path.clone(), id.clone()));
-    }
-
-    // 5) Если target_session не определён — notify не планируется (некуда
-    //    слать). bd-задача уже создана и TODO удалён — возвращаем 200 с
-    //    `notify_scheduled: false`. Пустой `template` НЕ блокирует отправку:
-    //    в этом случае используется DEFAULT_PROMOTE_TEMPLATE (см. п.6).
-    if target_session.is_none() {
-        tracing::info!(
-            todo_id = %id,
-            task_id = %task_id,
-            root = %todo.root_path,
-            session_missing = true,
-            "todo promoted (notify skipped)"
-        );
-        return Ok(Json(serde_json::json!({
-            "promoted": true,
-            "task_id": task_id,
-            "notify_scheduled": false,
-        }))
-        .into_response());
-    }
-    let target_session = target_session.expect("checked is_none above");
-
-    // 6) Формируем текст. Если cfg.template пуст — используем дефолтный
-    //    fallback `[{id}] {title}` (без описания: агент подтянет его сам
-    //    через `br show <id>`). Затем — plan-mode suffix (если применимо).
-    //    `description` всё ещё нужен для плейсхолдера `{description}` в
-    //    кастомных шаблонах.
-    let description = todo.description.clone().unwrap_or_default();
-    let template_empty = cfg.template.trim().is_empty();
-    let template_str: &str = if template_empty {
-        DEFAULT_PROMOTE_TEMPLATE
-    } else {
-        cfg.template.as_str()
-    };
-    let mut text = format_notify_template(
-        template_str,
-        &task_id,
-        &todo.title,
-        &description,
-        todo.priority,
-        &todo.issue_type,
-    );
-    if todo.plan_mode {
-        // Кастомный suffix из user-level настроек (~/.forge/user_settings.json).
-        // Если в настройках пусто (после trim — строки из одних пробелов тоже
-        // считаются «пустыми»), используем константу PLAN_MODE_SUFFIX —
-        // это сохраняет инвариант «нулевая конфигурация = поведение до фичи».
-        let custom_suffix = state.user_settings.get().todo_plan_mode_suffix;
-        let suffix_str: &str = if custom_suffix.trim().is_empty() {
-            PLAN_MODE_SUFFIX
-        } else {
-            custom_suffix.as_str()
-        };
-        if !text.is_empty() && !text.ends_with('\n') {
-            text.push('\n');
-        }
-        text.push_str(suffix_str);
-    }
-
-    // 7) Резолвим NotifyMode по cfg.wait_previous / cfg.delay_minutes.
-    //    Приоритет: wait_previous > delayed > immediate. previous_task_id =
-    //    None — notifier сам подберёт last_promoted_open_id по root_path.
-    let mode = if cfg.wait_previous {
-        notifier::NotifyMode::WaitPrevious {
-            previous_task_id: None,
-        }
-    } else if cfg.delay_minutes > 0 {
-        let fire_at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0)
-            + (cfg.delay_minutes as u64) * 60_000;
-        notifier::NotifyMode::Delayed {
-            fire_at_unix_ms: fire_at,
-        }
-    } else {
-        notifier::NotifyMode::Immediate
-    };
-
-    // 8) NotifyJob.root_path = todo.root_path (cwd-only ключ для wait_queues).
-    let job = notifier::new_job(
-        todo.root_path.clone(),
-        task_id.clone(),
-        target_session,
-        text,
-        mode,
-    );
-
-    if let Err(e) = state.notify.enqueue(job).await {
-        tracing::error!(error = ?e, "notifier enqueue failed");
-        // Тут уже задача создана и TODO удалено — не катастрофа,
-        // вернём 200 + warning (notification не доставится).
-        return Ok(Json(serde_json::json!({
-            "promoted": true,
-            "task_id": task_id,
-            "notify_scheduled": false,
-            "notify_warning": format!("{e:#}"),
-        }))
-        .into_response());
-    }
-
-    tracing::info!(
-        todo_id = %id,
-        task_id = %task_id,
-        root = %todo.root_path,
-        "todo promoted"
-    );
+    // 4) Прежний JSON-ответ (форма не изменилась).
     Ok(Json(serde_json::json!({
         "promoted": true,
-        "task_id": task_id,
-        "notify_scheduled": true,
+        "task_id": outcome.task_id,
+        "notify_scheduled": outcome.notify_scheduled,
     }))
     .into_response())
 }

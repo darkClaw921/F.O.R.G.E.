@@ -1,0 +1,3 @@
+# renderTodoCard
+
+tmux-web/static/js/tasks/render.js — рендер одной TODO-карточки канбана. В блоке .meta-row рядом с кнопкой .promote-btn рендерит toggle-кнопку авто-промоута .auto-promote-toggle (доп.класс .on когда todo.auto_promote истинно), textContent '⏭ авто', title описывает поведение очереди (порядок как в канбане, непомеченная карточка выше блокирует очередь). Клик по toggle: ev.stopPropagation() + вызов setTodoAutoPromote(todo.id, !todo.auto_promote) из crud.js (оптимистичный апдейт + PATCH + rollback). Card click-guard (открытие edit-модалки) пропускает клики по .promote-btn и .auto-promote-toggle (return до openTodoEditModal). Также рендерит p-pill приоритета, type-tag, plan-mode-badge (если todo.plan_mode), promote-btn, и блок labels (до 3 + счётчик).

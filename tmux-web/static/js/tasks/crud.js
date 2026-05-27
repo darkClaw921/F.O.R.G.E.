@@ -289,6 +289,48 @@ export async function createTodoForPath(path, title, description) {
     return r.json();
 }
 
+// Переключает флаг авто-промоута у TODO-карточки.
+// Оптимистично проставляет todo.auto_promote = value и ре-рендерит борд,
+// затем шлёт PATCH /api/todos/:id { auto_promote }. При ошибке откатывает
+// флаг к prevValue и снова ре-рендерит. Сервер на успешный PATCH рассылает
+// WS Upsert, который приведёт состояние к авторитетному.
+export async function setTodoAutoPromote(id, value) {
+    if (!id) return false;
+    const next = !!value;
+    const idx = Array.isArray(state.todosData)
+        ? state.todosData.findIndex((t) => t && t.id === id)
+        : -1;
+    if (idx < 0) return false;
+    const todo = state.todosData[idx];
+    const prevValue = !!todo.auto_promote;
+    if (prevValue === next) return true;
+
+    todo.auto_promote = next;
+    renderTasks();
+
+    try {
+        const origin = dtoOrigin(todo) || 'local';
+        const r = await apiFetch('/api/todos/' + encodeURIComponent(id), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ auto_promote: next }),
+        }, origin);
+        if (!r.ok) {
+            const text = await r.text();
+            window.alert('Update авто-промоута не удался: ' + (text || r.status));
+            todo.auto_promote = prevValue;
+            renderTasks();
+            return false;
+        }
+        return true;
+    } catch (e) {
+        window.alert('Ошибка запроса: ' + e.message);
+        todo.auto_promote = prevValue;
+        renderTasks();
+        return false;
+    }
+}
+
 export async function promoteTodo(id, sessionOverride) {
     if (!id) return;
 

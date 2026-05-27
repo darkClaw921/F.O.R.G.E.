@@ -1,6 +1,6 @@
 {
   "root": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E.",
-  "generatedAt": "2026-05-27T12:20:43.080Z",
+  "generatedAt": "2026-05-27T13:48:48.033Z",
   "nodes": [
     {
       "id": "tmux-web/static/app.js",
@@ -4345,6 +4345,7 @@
         "cleanColumn",
         "reopenTask",
         "createTodoForPath",
+        "setTodoAutoPromote",
         "promoteTodo"
       ],
       "children": [
@@ -4481,11 +4482,22 @@
           ]
         },
         {
+          "id": "tmux-web/static/js/tasks/crud.js:setTodoAutoPromote",
+          "name": "setTodoAutoPromote",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/crud.js",
+          "line": 297,
+          "signature": "setTodoAutoPromote(id, value)",
+          "exports": [
+            "setTodoAutoPromote"
+          ]
+        },
+        {
           "id": "tmux-web/static/js/tasks/crud.js:promoteTodo",
           "name": "promoteTodo",
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
-          "line": 292,
+          "line": 334,
           "signature": "promoteTodo(id, sessionOverride)",
           "exports": [
             "promoteTodo"
@@ -4643,7 +4655,7 @@
           "name": "renderCard",
           "type": "function",
           "path": "tmux-web/static/js/tasks/render.js",
-          "line": 333,
+          "line": 346,
           "signature": "renderCard(issue)",
           "exports": [
             "renderCard"

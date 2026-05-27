@@ -13,7 +13,7 @@
 import { state } from '../core/state.js';
 import { $tasksBoard, $tasksMeta } from '../core/dom.js';
 import { openCreateModal, openEditModal, openTodoEditModal } from './modals.js';
-import { updateTask, promoteTodo, cleanColumn } from './crud.js';
+import { updateTask, promoteTodo, setTodoAutoPromote, cleanColumn } from './crud.js';
 
 export const TASK_COLUMNS = ['todo', 'open', 'in_progress', 'blocked', 'deferred', 'draft', 'closed'];
 
@@ -255,6 +255,7 @@ export function renderTodoCard(todo) {
         if (dragMoved) return;
         const t = ev.target;
         if (t && t.classList && t.classList.contains('promote-btn')) return;
+        if (t && t.classList && t.classList.contains('auto-promote-toggle')) return;
         openTodoEditModal(todo);
     });
 
@@ -293,6 +294,18 @@ export function renderTodoCard(todo) {
         pm.textContent = '◆ plan';
         meta.appendChild(pm);
     }
+
+    const autoToggle = document.createElement('button');
+    autoToggle.type = 'button';
+    autoToggle.className = 'auto-promote-toggle' + (todo.auto_promote ? ' on' : '');
+    autoToggle.textContent = '⏭ авто';
+    autoToggle.title = 'Авто-запуск этой карточки после закрытия предыдущей задачи в очереди '
+        + '(порядок — как в канбане; непомеченная карточка выше блокирует очередь)';
+    autoToggle.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        setTodoAutoPromote(todo.id, !todo.auto_promote);
+    });
+    meta.appendChild(autoToggle);
 
     const promoteBtn = document.createElement('button');
     promoteBtn.type = 'button';

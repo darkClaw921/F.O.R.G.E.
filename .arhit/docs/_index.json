@@ -598,19 +598,19 @@
   },
   {
     "element": "renderTodoCard",
-    "path": "",
-    "type": "unknown",
-    "content": "Phase 4 — рендерит TODO-карточку (tmux-web/static/app.js). Создаёт div.kanban-card с data-status='todo' и data-priority. dragstart payload — 'todo:'+id (префикс маркирует TODO для drop-handler в renderColumn, чтобы отличать от bd-issue). click → openTodoEditModal(todo) — но не если кликнули по .promote-btn. Отрисовывает: title, description (truncate 140 char + …), meta-row (P-pill, type-tag, ▲ promote button), labels (max 3 + +N). Кнопка promote вызывает promoteTodo(todo.id) с stopPropagation, чтобы не открывать edit-modal.",
+    "path": "tmux-web/static/js/tasks/render.js",
+    "type": "function",
+    "content": "tmux-web/static/js/tasks/render.js — рендер одной TODO-карточки канбана. В блоке .meta-row рядом с кнопкой .promote-btn рендерит toggle-кнопку авто-промоута .auto-promote-toggle (доп.класс .on когда todo.auto_promote истинно), textContent '⏭ авто', title описывает поведение очереди (порядок как в канбане, непомеченная карточка выше блокирует очередь). Клик по toggle: ev.stopPropagation() + вызов setTodoAutoPromote(todo.id, !todo.auto_promote) из crud.js (оптимистичный апдейт + PATCH + rollback). Card click-guard (открытие edit-модалки) пропускает клики по .promote-btn и .auto-promote-toggle (return до openTodoEditModal). Также рендерит p-pill приоритета, type-tag, plan-mode-badge (если todo.plan_mode), promote-btn, и блок labels (до 3 + счётчик).",
     "createdAt": "2026-05-10T14:12:29.275Z",
-    "updatedAt": "2026-05-10T14:12:29.275Z"
+    "updatedAt": "2026-05-27T13:45:25.146Z"
   },
   {
     "element": "openTodoEditModal",
-    "path": "",
-    "type": "unknown",
-    "content": "Phase 4 — модалка редактирования TODO-карточки (tmux-web/static/app.js). Поля: title, description, session-input (Promote → tmux session). default session = state.currentSession || первая сессия проекта. Кнопки: Cancel (закрыть), Delete (DELETE /api/todos/:id с confirm), Promote (вызывает promoteTodo с введённым session), Save (PATCH /api/todos/:id с только изменёнными полями). Без поля status — у TODO-карточек его нет. WS upsert/removed синхронизирует state.todosData автоматически после успеха.",
+    "path": "tmux-web/static/js/tasks/modals.js",
+    "type": "function",
+    "content": "tmux-web/static/js/tasks/modals.js — модалка редактирования TODO. Поля: Title (#td-title), Description (#td-desc), чекбокс план-мода (#td-plan-mode), чекбокс авто-промоута (#td-auto-promote, checked если todo.auto_promote, подпись 'Авто-запуск после предыдущей задачи в очереди'), поле Promote target session (#td-session). Save-обработчик собирает patch только из изменённых полей: title, description, plan_mode (newPlanMode !== !!todo.plan_mode), auto_promote (newAuto = .checked, добавляется если newAuto !== !!todo.auto_promote). Если patch пуст — просто закрывает модалку. Иначе шлёт PATCH /api/todos/:id через apiFetch(url, opts, dtoOrigin(todo)); сервер рассылает WS Upsert. Кнопки Delete (DELETE /api/todos/:id с опциональным confirm) и Promote (вызывает promoteTodo с введённой сессией).",
     "createdAt": "2026-05-10T14:12:29.482Z",
-    "updatedAt": "2026-05-10T14:12:29.482Z"
+    "updatedAt": "2026-05-27T13:45:30.021Z"
   },
   {
     "element": "promoteTodo",
@@ -2865,9 +2865,9 @@
     "element": "promote_todo",
     "path": "",
     "type": "unknown",
-    "content": "POST /api/todos/:id/promote — конвертирует TODO в bd-задачу (br create --json) и планирует notify-job в сессию. Дефолтный текст уведомления (когда NotifierConfig.template пуст) теперь '[{id}] {title}' (DEFAULT_PROMOTE_TEMPLATE) — в сессию уходит только ID и заголовок задачи, БЕЗ полного описания. Агент, получивший задачу, сам подтягивает описание через 'br show <id>'. Кастомные шаблоны с плейсхолдером {description} продолжают работать по-старому. plan-mode suffix дописывается отдельной строкой. Файлы: tmux-web/src/main.rs (promote_todo, format_notify_template, DEFAULT_PROMOTE_TEMPLATE), tmux-web/src/notifier_config.rs (NotifierConfig).",
+    "content": "POST /api/todos/:id/promote (tmux-web/src/main.rs) — конвертирует TODO в bd-задачу и (если задана session) планирует notify-job. С Фазы 3 (forge-83eb) это тонкая HTTP-обёртка поверх promote_todo_core. Шаги: try_proxy_to_remote; парсинг PromoteTodoReq (session: Option, пустой body -> None); state.todos.get -> 404 если нет (ранний возврат остаётся в handler); target_session = req.session (trim/empty -> None; фолбэк на cfg.session делает core, НЕ handler); вызов promote_todo_core(state, &todo, target_session, mode_override=None) (режим вычисляет core из cfg); Err -> 400 BAD_REQUEST; ответ 200 { promoted: true, task_id, notify_scheduled }. Дефолтный текст уведомления при пустом cfg.template — DEFAULT_PROMOTE_TEMPLATE '[{id}] {title}' (только ID+заголовок, агент сам делает br show). plan-mode suffix дописывается отдельной строкой. Поведение HTTP не изменилось при рефакторинге в core.",
     "createdAt": "2026-05-21T11:45:32.836Z",
-    "updatedAt": "2026-05-27T06:51:38.735Z"
+    "updatedAt": "2026-05-27T13:36:28.451Z"
   },
   {
     "element": "get_notifier_config",
@@ -3369,5 +3369,104 @@
     "content": "tmux-web/static/js/echo/notifications.js: общий toast-компонент. notify({level:'info'|'warn'|'error', title, body, ttl, glass}). glass:true добавляет класс .echo-toast-glass — стиль «жидкое стекло» (полупрозрачный backdrop-filter blur + saturate, внутренняя подсветка), css/echo-notifications.css. Контейнер #echo-toasts — глобальный (fixed справа сверху, z-index 2000), виден независимо от активной вкладки. Очередь до MAX_TOASTS, slide-in справа.",
     "createdAt": "2026-05-27T12:20:42.004Z",
     "updatedAt": "2026-05-27T12:20:42.004Z"
+  },
+  {
+    "element": "Todo",
+    "path": "",
+    "type": "unknown",
+    "content": "struct Todo (tmux-web/src/todos.rs) — TODO-карточка, привязанная к root_path (абсолютный путь корня cwd-сессии). Сериализуется в ~/.config/forge/todos.json. Поля: id (UUID v4), root_path (#[serde(alias=project_id)] для backward-compat), title, description (Option), priority (u8 0..=4, default 2), issue_type (String, default 'task'), labels (Vec<String>), plan_mode (bool, при promote добавляет 'создай план'), auto_promote (bool, #[serde(default)] — помечена ли карточка для авто-промоута по очереди; цепочка авто-промоута продвигает верхнюю помеченную TODO после закрытия предыдущей промоутнутой задачи; default false для backward-compat со старыми todos.json), created_at/updated_at (RFC3339 UTC), origin ('local'|'remote'). Конструируется в TodoStore::create (auto_promote инициализируется false; create() не принимает auto_promote — новый TODO стартует невыделенным).",
+    "createdAt": "2026-05-27T13:21:11.921Z",
+    "updatedAt": "2026-05-27T13:21:11.921Z"
+  },
+  {
+    "element": "TodoStore::update",
+    "path": "",
+    "type": "unknown",
+    "content": "TodoStore::update(&self, id, title: Option<String>, description: Option<Option<String>>, plan_mode: Option<bool>, auto_promote: Option<bool>) -> Result<Option<Todo>> (tmux-web/src/todos.rs). Частичное обновление существующей карточки по id (поиск по всем root-bucket'ам Inner.by_path). Семантика параметров: None=не трогать; для title Some(s)=записать; для description Some(None)=очистить, Some(Some(s))=записать; для plan_mode/auto_promote Some(b)=записать b. При успехе обновляет updated_at (now_rfc3339) и атомарно сохраняет файл (save_locked под write-lock). Возвращает обновлённую копию Todo или None если id не найден. Вызывается из patch_todo (PATCH /api/todos/:id, main.rs) — Фаза 1 передаёт auto_promote=None (Фаза 2 прокинет req.auto_promote). Параметр auto_promote добавлен для авто-промоута TODO по очереди.",
+    "createdAt": "2026-05-27T13:22:58.643Z",
+    "updatedAt": "2026-05-27T13:22:58.643Z"
+  },
+  {
+    "element": "patch_todo",
+    "path": "",
+    "type": "unknown",
+    "content": "PATCH /api/todos/:id (main.rs). Принимает PatchTodoReq{title,description(Option<Option>),plan_mode,auto_promote,path}. Фаза 2 auto_promote: PatchTodoReq получил поле #[serde(default)] auto_promote: Option<bool> (None=не трогать, Some(b)=записать); patch_todo прокидывает req.auto_promote пятым аргументом в state.todos.update(&id,title,description,plan_mode,auto_promote). После апдейта (и опц. move в новый корень через paths::resolve_root при наличии path) шлёт WS Upsert клиентам. 404 если id не найден.",
+    "createdAt": "2026-05-27T13:27:02.815Z",
+    "updatedAt": "2026-05-27T13:27:02.815Z"
+  },
+  {
+    "element": "auto_promote",
+    "path": "",
+    "type": "unknown",
+    "content": "Модуль состояния цепочки авто-промоута TODO. Полная документация: см. tmux-web/src/auto_promote.rs. Типы: AutoChainEntry (голова цепочки: active_task_id + session) и AutoChainMap = Arc<RwLock<HashMap<root_path, AutoChainEntry>>> (in-memory, без persist). Используется AppState.auto_chain; пишет promote_todo_core (Фаза 3), читает воркер auto_promote::run (Фаза 4b).",
+    "createdAt": "2026-05-27T13:31:03.966Z",
+    "updatedAt": "2026-05-27T13:31:43.223Z"
+  },
+  {
+    "element": "tmux-web/src/auto_promote.rs",
+    "path": "tmux-web/src/auto_promote.rs",
+    "type": "file",
+    "content": "Подготовительный модуль фичи «авто-промоут TODO по очереди» (эпик forge-83eb). Содержит ТОЛЬКО in-memory типы состояния цепочки; фоновый воркер run() добавит Фаза 4b (forge-83eb.6). Вынесен ДО рефакторинга promote_todo_core (Фаза 3, forge-83eb.5), чтобы разорвать цикл зависимостей: promote_todo_core будет писать в AutoChainMap, поэтому тип и поле AppState.auto_chain обязаны существовать раньше.\n\n## Назначение\nПользователь помечает TODO-карточку флагом auto_promote (см. todos::Todo, добавлено в Фазе 1.1). После закрытия текущей задачи цепочки фоновый воркер автоматически промоутит следующую верхнюю TODO с этим флагом — без ручного нажатия «promote».\n\n## Типы\n- pub struct AutoChainEntry { active_task_id: String, session: Option<String> } (derive Debug, Clone). Запись о текущей «голове» цепочки авто-промоута для одного root_path.\n  * active_task_id — bd-id последней промоутнутой задачи цепочки (ручной или авто). При её закрытии воркер (Фаза 4b) промоутит следующую верхнюю TODO с флагом auto_promote.\n  * session — tmux-сессия для уведомления о новой задаче, протягивается по цепочке (наследуется от ручного промоута, запустившего цепочку). None = фолбэк на cfg.session из notifier_config::NotifierConfig.\n  Помечена #[allow(dead_code)] — поля читаются в Фазе 3 (promote_todo_core пишет голову) и 4b (run читает её).\n- pub type AutoChainMap = Arc<RwLock<HashMap<String, AutoChainEntry>>>. Отображение root_path -> AutoChainEntry — состояние всех активных цепочек. Ключ — строковый путь корня (paths::resolve_root от cwd сессии), т.к. TODO привязаны к корню, а не к проекту (концепция Project удалена, remove-projects-concept.md). Cheap-clonable.\n\n## Состояние и persist\nСостояние держится ТОЛЬКО в памяти — persist на диск не делается (осознанное MVP-решение). При рестарте процесса цепочка обнуляется; self-heal происходит при следующем ручном promote, который заново запишет голову. Терять при рестарте нечего критичного: незавершённые TODO остаются в todos.json.\n\n## Concurrency\nAutoChainMap — Arc<RwLock<HashMap<..>>>: дёшево клонируется (Arc внутри), кладётся в AppState.auto_chain и шарится между HTTP-handler'ами (promote_todo_core берёт write-lock при фиксации головы) и фоновым воркером (Фаза 4b: run, который читает голову, ждёт закрытия задачи и промоутит следующую). RwLock допускает параллельные чтения и сериализованные записи; мутации редки (раз на промоут).\n\n## Связи\n- main.rs: mod auto_promote; поле AppState.auto_chain: auto_promote::AutoChainMap инициализируется как Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())) (std::sync::RwLock явно, т.к. в main.rs RwLock импортирован из tokio::sync). Поле помечено #[allow(dead_code)] до Фазы 3.\n- Будущие зависимости: todos::Todo.auto_promote (флаг карточки), notifier_config::NotifierConfig.session (фолбэк сессии), promote_todo_core (Фаза 3, пишет голову), auto_promote::run (Фаза 4b, читает/мутирует).\n\n## Зависимости\nstd::collections::HashMap, std::sync::{Arc, RwLock}.",
+    "createdAt": "2026-05-27T13:31:30.505Z",
+    "updatedAt": "2026-05-27T13:31:44.027Z",
+    "aliases": [
+      "AutoChainMap",
+      "AutoChainEntry",
+      "auto_chain"
+    ]
+  },
+  {
+    "element": "promote_todo_core",
+    "path": "",
+    "type": "unknown",
+    "content": "Ядро промоута TODO -> bd-задача (tmux-web/src/main.rs), выделенное из HTTP-handler'а promote_todo в Фазе 3 рефакторинга авто-промоута (эпик forge-83eb). Сигнатура: pub(crate) async fn promote_todo_core(state: &AppState, todo: &todos::Todo, target_session: Option<String>, mode_override: Option<notifier::NotifyMode>) -> Result<PromoteOutcome, anyhow::Error>.\n\nНазначение: единая точка логики 'TODO -> bd-issue + notify-job', вызываемая из двух мест — (1) HTTP-handler promote_todo (ручной промоут через POST /api/todos/:id/promote) и (2) фоновый воркер auto_promote::run (Фаза 4b, авто-промоут следующей флагнутой TODO после закрытия предыдущей задачи).\n\nПараметры:\n- state: общий AppState (доступ к todos, notifier_config, user_settings, notify, todos_tx, auto_chain).\n- todo: карточка для промоута; caller уже загрузил её (get не делается внутри).\n- target_session: явная целевая tmux-сессия. None -> фолбэк на NotifierConfig.session. Пусто и там -> notify скипается.\n- mode_override: явный NotifyMode. None -> режим вычисляется из cfg (wait_previous > delayed > immediate).\n\nАлгоритм:\n1. br create --json (через tasks::run_br в todo.root_path) с --title/-d/-t/-p из полей todo; извлечь .id (фолбэк на .created[0].id). Ошибка br -> Err(anyhow).\n2. state.todos.delete(todo.id) + broadcast ws_todos::removed(root_path, id).\n3. Резолв итоговой сессии: target_session (trim/empty) иначе cfg.session (trim/empty).\n4. Если сессия есть: сборка text (cfg.template иначе DEFAULT_PROMOTE_TEMPLATE '[{id}] {title}'; plan_mode suffix из user_settings иначе PLAN_MODE_SUFFIX), резолв mode (mode_override иначе из cfg), notifier::new_job + notify.enqueue. notify_scheduled=true (false если enqueue Err).\n5. Если сессии нет: notify скипается, notify_scheduled=false, лог info session_missing.\n6. ВСЕГДА (даже при skip notify, после успешного br create): запись state.auto_chain[todo.root_path] = AutoChainEntry { active_task_id: task_id, session: итоговая_сессия }. Poisoned lock обрабатывается мягко (if let Ok, иначе warn без паники). Это голова цепочки авто-промоута, читаемая auto_promote::run.\n7. Вернуть PromoteOutcome { task_id, notify_scheduled }.\n\nСвязанные элементы: PromoteOutcome (возвращаемый тип), promote_todo (HTTP-обёртка поверх core), auto_promote::AutoChainEntry/AutoChainMap (запись цепочки), format_notify_template, DEFAULT_PROMOTE_TEMPLATE, PLAN_MODE_SUFFIX, notifier::new_job/NotifyMode, tasks::run_br, todos::TodoStore::get/delete, ws_todos::removed.\n\nОграничения/инварианты: bd-задача создаётся ВСЕГДА (если br не упал), даже если notify скипнут — поведение совпадает с прежним inline-кодом promote_todo. HTTP-ответ ручного promote не изменился: { promoted: true, task_id, notify_scheduled }.",
+    "createdAt": "2026-05-27T13:36:17.125Z",
+    "updatedAt": "2026-05-27T13:36:17.125Z"
+  },
+  {
+    "element": "PromoteOutcome",
+    "path": "",
+    "type": "unknown",
+    "content": "Результат promote_todo_core (tmux-web/src/main.rs): pub(crate) struct PromoteOutcome { pub task_id: String, pub notify_scheduled: bool }. task_id — id созданной bd-задачи (может быть пустым, если br не вернул поле id). notify_scheduled — был ли поставлен notify-job в очередь (false при skip из-за отсутствия сессии или при ошибке enqueue). Используется HTTP-handler'ом promote_todo для JSON-ответа { promoted, task_id, notify_scheduled } и воркером auto_promote::run (Фаза 4b) для получения task_id головы цепочки. См. promote_todo_core.",
+    "createdAt": "2026-05-27T13:36:23.045Z",
+    "updatedAt": "2026-05-27T13:36:23.045Z"
+  },
+  {
+    "element": "auto_promote::run",
+    "path": "",
+    "type": "unknown",
+    "content": "Фоновый воркер цепочки авто-промоута (tmux-web/src/auto_promote.rs). Сигнатура: pub async fn run(state: AppState, mut tasks_rx: broadcast::Receiver<TaskEvent>). Spawn'ится в main.rs рядом с tasks_watcher (auto_promote_rx = tasks_tx.subscribe() делается ДО move'а tasks_tx в run_watcher, иначе ранние closed-события теряются — broadcast хранит только 64).\n\nНазначение: реализует 'очередь' авто-промоута. Пользователь флагает TODO-карточки полем auto_promote; после закрытия текущей задачи цепочки воркер автоматически промоутит следующую верхнюю флагнутую TODO без ручного нажатия 'promote'.\n\nЛогика цикла (loop на tasks_rx.recv().await):\n- Ok(TaskEvent::Upsert{issue}) — извлекает id/status (как notifier.rs стр.193-200). Если status != 'closed' -> continue. Иначе -> handle_closed(&state, &id).await.\n- Ok(TaskEvent::Removed{..}) -> continue (физическое удаление цепочку не двигает).\n- Err(Lagged(n)) -> tracing::warn + continue.\n- Err(Closed) -> tracing::info + return (sender дропнут, процесс завершается).\n\nhandle_closed(state, closed_id) — приватная async:\n1. Анти-гонка: под ОДНИМ write-lock'ом state.auto_chain найти root где entry.active_task_id==closed_id и СРАЗУ remove запись (до любого await на br create). Posioned lock -> warn без паники + return. Нет совпадения -> return (посторонняя задача / re-touch).\n2. top = pick_top(state.todos.list(&root)) — верхняя карточка канбана БЕЗ фильтра.\n3. Барьер: если список пуст ИЛИ top.auto_promote==false -> tracing::debug + return (цепочка тихо останавливается, запись уже удалена в п.1).\n4. Иначе (top.auto_promote==true): promote_todo_core(state, &top, entry.session.clone(), Some(NotifyMode::Immediate)).await. Ok -> info(root, closed_id, new_task_id, session); Err -> error (цепочка обрывается, перезапуск ручным промоутом). promote_todo_core сам перезапишет auto_chain[root] на новую голову.\n\nИнварианты: mode=Immediate ОБЯЗАТЕЛЕН (НЕ cfg.wait_previous — двойная сериализация ожидания закрытия дала бы дедлок: воркер уже ждёт closed-событие). session протягивается по цепочке от ручного промоута (None -> фолбэк cfg.session в core). Состояние in-memory, self-heal через ручной promote при рестарте.\n\nСвязанные: handle_closed, pick_top, promote_todo_core, AutoChainEntry/AutoChainMap, tasks::TaskEvent, notifier::NotifyMode, todos::TodoStore::list.",
+    "createdAt": "2026-05-27T13:41:20.115Z",
+    "updatedAt": "2026-05-27T13:41:20.115Z"
+  },
+  {
+    "element": "auto_promote::pick_top",
+    "path": "",
+    "type": "unknown",
+    "content": "Чистая функция выбора верхней карточки канбана (tmux-web/src/auto_promote.rs). Сигнатура: pub fn pick_top(mut todos: Vec<Todo>) -> Option<Todo>. Без async/IO — вынесена ради тестируемости барьерной логики воркера auto_promote::run.\n\nНазначение: вернуть карточку, которая окажется ПЕРВОЙ в колонке UI после сортировки compareIssues (static/js/tasks/render.js стр.72-80). Повторяет фронтенд один-в-один: priority ASC (u8, меньше = выше, идёт первым), при равном priority — updated_at DESC (строки RFC3339 сравниваются лексикографически, новее = больше -> DESC значит больший updated_at первым). Реализация: todos.sort_by(|a,b| a.priority.cmp(&b.priority).then_with(|| b.updated_at.cmp(&a.updated_at))); first().\n\nВозврат: Some(top) — клон верхней карточки, либо None если список пуст.\n\nВАЖНО: фильтрации по auto_promote здесь НЕТ. Барьер цепочки (стоп если у верхней карточки auto_promote==false) проверяется в handle_closed уже ПОСЛЕ выбора top — сознательно, чтобы цепочка реагировала на текущую верхнюю карточку, а не перепрыгивала через неё к следующей флагнутой.\n\nТесты (auto_promote::tests): pick_top_empty_is_none, pick_top_orders_by_priority_asc, pick_top_breaks_ties_by_updated_at_desc, pick_top_priority_dominates_updated_at, pick_top_ignores_auto_promote_flag_in_selection.\n\nСвязанные: auto_promote::run/handle_closed (caller), todos::Todo, frontend compareIssues.",
+    "createdAt": "2026-05-27T13:41:30.804Z",
+    "updatedAt": "2026-05-27T13:41:30.804Z"
+  },
+  {
+    "element": "setTodoAutoPromote",
+    "path": "",
+    "type": "unknown",
+    "content": "tmux-web/static/js/tasks/crud.js — CRUD-функция переключения флага авто-промоута у TODO-карточки. Сигнатура: setTodoAutoPromote(id, value) -> Promise<bool>. Находит todo в state.todosData по id; если не найден или значение уже равно next — выходит (true). Оптимистично проставляет todo.auto_promote = !!value и вызывает renderTasks() для немедленной перерисовки борда, затем шлёт PATCH /api/todos/:id с телом { auto_promote: next } через apiFetch(url, opts, origin), где origin = dtoOrigin(todo) || 'local' (по образцу promoteTodo/deleteTodoLocal — todos живут в плоском массиве state.todosData, не в state.tasksData.issues, поэтому применяется ручной оптимистичный апдейт+rollback, а не applyOptimisticPatch). При не-ok ответе или исключении: откатывает todo.auto_promote к prevValue, ре-рендерит, показывает window.alert и возвращает false. Сервер на успешный PATCH рассылает WS Upsert (ws_todos.rs), который приводит состояние к авторитетному. Вызывается из renderTodoCard (render.js) по клику на .auto-promote-toggle.",
+    "createdAt": "2026-05-27T13:45:19.505Z",
+    "updatedAt": "2026-05-27T13:45:19.505Z"
+  },
+  {
+    "element": "auto-promote-queue",
+    "path": "",
+    "type": "page",
+    "content": "# Авто-промоут TODO по очереди (auto-promote queue)\n\nСводная страница фичи «авто-промоут флагнутых TODO-карточек в очереди» (эпик forge-83eb, план serene-wondering-barto.md). Описывает фичу целиком: назначение, end-to-end поток, очередь/порядок, барьер, старт/возобновление цепочки, состояние и ограничения. Per-элементные доки: Todo, TodoStore::update, patch_todo, promote_todo_core, PromoteOutcome, auto_promote::run, auto_promote::pick_top, setTodoAutoPromote, renderTodoCard, openTodoEditModal.\n\n## Назначение\n\nПользователь помечает TODO-карточки флагом «авто» (чекбокс в модалке редактирования или тогл прямо на карточке), и помеченные карточки автоматически промоутятся в bd-задачи (статус open) ПО ОЧЕРЕДИ — каждая следующая запускается по мере закрытия предыдущей. Это снимает рутину ручного drag/promote каждой карточки: достаточно один раз промоутнуть верхнюю задачу вручную (этот ручной promote задаёт «голову» цепочки), а дальше цепочка сама продвигается при закрытии задач.\n\n## Поток end-to-end\n\n1. Пометка карточки. Тогл `.auto-promote-toggle` на карточке (static/js/tasks/render.js, renderTodoCard) ИЛИ чекбокс `#td-auto-promote` в модалке редактирования (static/js/tasks/modals.js, openTodoEditModal). Оба ведут к одной точке записи.\n2. PATCH флага. Frontend вызывает setTodoAutoPromote (static/js/tasks/crud.js) → `PATCH /api/todos/:id` с телом `{auto_promote: <bool>}` → main.rs patch_todo (через PatchTodoReq.auto_promote) → TodoStore::update проставляет поле Todo.auto_promote и пишет todos.json → broadcast WS upsert карточки (клиенты обновляют UI).\n3. Старт цепочки (ручной promote). Пользователь вручную промоутит любую карточку → main.rs promote_todo_core создаёт bd-задачу (br create) и пишет голову цепочки: `auto_chain[root] = AutoChainEntry { active_task_id, session }`. Только ручной promote задаёт active_task_id и тем самым запускает/перезапускает цепочку для данного корня.\n4. Закрытие задачи. Когда задача-голова закрывается, tasks_watcher (читает .beads/) эмитит `TaskEvent::Upsert { issue, status: \"closed\" }` в broadcast tasks_tx.\n5. Продвижение цепочки. Воркер auto_promote::run слушает тот же broadcast. На каждое closed-событие вызывает handle_closed, который ищет root, где `entry.active_task_id == closed_id`. Если нашёл — берёт ВЕРХНЮЮ карточку TODO этого корня через pick_top (priority asc, при равенстве updated_at desc). Если у верхней карточки `auto_promote == true` → вызывает promote_todo_core(state, &top, entry.session, Some(NotifyMode::Immediate)); core создаёт новую задачу, перезаписывает `auto_chain[root]` новой головой — цепочка продолжается. Если флаг не стоит — барьер (см. ниже).\n\n## Очередь и порядок\n\nПорядок промоута повторяет порядок канбан-колонки один-в-один (auto_promote::pick_top дублирует фронтовую сортировку compareIssues из render.js):\n1. priority ASC (u8, меньшее число = выше приоритет, идёт первым);\n2. при равном priority — updated_at DESC (RFC3339-строки сравниваются лексикографически; новее = больше, идёт первым).\n\nТо есть «верхняя» карточка = первая в колонке UI. Цепочка всегда берёт именно текущую верхнюю карточку, а не «перепрыгивает» к следующей флагнутой.\n\n## Барьер\n\npick_top НЕ фильтрует по auto_promote — он возвращает текущую верхнюю карточку как есть. Барьер проверяется в handle_closed уже после выбора top: если у верхней карточки `auto_promote == false` (или карточек вообще нет) — цепочка тихо останавливается. Непомеченная карточка наверху колонки служит барьером: всё, что за ней (даже помеченное «авто»), не запускается, пока пользователь вручную не разберётся с барьером (закроет/удалит/промоутит эту карточку вручную, заново задав голову цепочки). Это сознательное решение: цепочка реагирует на текущую верхнюю карточку, а не проскакивает её.\n\n## Старт / возобновление цепочки\n\n- Запуск цепочки: только ручной promote задаёт active_task_id (голову). Автопродвижение active_task_id не «само-стартует» — нужен явный первый ручной promote.\n- Продвижение: только при закрытии именно задачи-головы (`closed_id == entry.active_task_id`). Посторонние закрытия (задачи не из цепочки) и re-touch старых уже закрытых задач игнорируются — handle_closed просто не находит совпадающего root и выходит.\n- Анти-гонка: поиск головы и её удаление делаются под ОДНИМ write-lock'ом state.auto_chain — запись извлекается (find + remove) ДО любого await на `br create`. Дубль closed-события или повторный re-touch не запустят вторую промоут-операцию для той же головы. Poisoned lock обрабатывается мягко (warn + выход, без паники).\n- Mode = Immediate: при продвижении цепочки promote_todo_core вызывается с `NotifyMode::Immediate`, а НЕ с cfg.wait_previous. Immediate обязателен: использовать wait_previous нельзя — воркер уже ждёт closed-событие, и двойная сериализация ожидания закрытия привела бы к дедлоку цепочки.\n- session протягивается: entry.session наследуется от ручного promote, запустившего цепочку, и передаётся каждой следующей промоут-операции (для адресации уведомления в нужную tmux-сессию). None → фолбэк на cfg.session из NotifierConfig.\n\n## Состояние\n\n`auto_chain: AutoChainMap = Arc<RwLock<HashMap<String, AutoChainEntry>>>` (тип в auto_promote.rs, поле в AppState, main.rs). Ключ — root_path (paths::resolve_root от cwd сессии; TODO привязаны к корню, не к проекту — концепция Project удалена). Значение — AutoChainEntry { active_task_id: String, session: Option<String> } — одна «голова» цепочки на корень.\n\nСостояние держится ТОЛЬКО в памяти — persist на диск намеренно НЕ делается (MVP-решение). При рестарте процесса цепочка обнуляется и перезапускается следующим ручным promote (self-heal). Терять при рестарте нечего критичного: незавершённые TODO остаются в todos.json, пользователь просто промоутит верхнюю вручную. RwLock допускает параллельные чтения и сериализованные записи; мутации редки (раз на промоут), узких мест нет.\n\n## Ограничения\n\n- Воркер реагирует на TaskEvent из broadcast tasks_tx, который питается из tasks_watcher (file-watcher по .beads/). Фича работает для проекта/корня, чьи задачи видит watcher.\n- Subscribe воркера на broadcast ОБЯЗАН быть сделан в main.rs ДО передачи tasks_tx в tasks_watcher (там sender move'ится), иначе ранние события потеряются.\n- broadcast Lagged → пропущенные closed-события «само-лечатся» при следующем ручном промоуте.\n- Ошибка `br create` при продвижении логируется (error) и обрывает цепочку — перезапуск ручным промоутом.\n\n## Ключевые файлы\n\n- tmux-web/src/auto_promote.rs — типы (AutoChainEntry, AutoChainMap), воркер run, handle_closed, чистая функция pick_top (+ юнит-тесты порядка/барьера).\n- tmux-web/src/main.rs — promote_todo_core (старт/перезапись головы, NotifyMode override), поле AppState.auto_chain, patch_todo (PATCH флага), spawn auto_promote::run рядом с tasks_watcher.\n- tmux-web/src/todos.rs — поле Todo.auto_promote, параметр в TodoStore::update.\n- static/js/tasks/render.js — renderTodoCard + тогл .auto-promote-toggle.\n- static/js/tasks/crud.js — setTodoAutoPromote (PATCH флага).\n- static/js/tasks/modals.js — openTodoEditModal + чекбокс #td-auto-promote.\n- static/css/tasks.css — стили тогла/чекбокса авто-промоута.",
+    "createdAt": "2026-05-27T13:48:31.565Z",
+    "updatedAt": "2026-05-27T13:48:36.627Z",
+    "aliases": [
+      "очередь автозапуска задач",
+      "auto_promote чекбокс",
+      "запуск после предыдущей задачи",
+      "барьер очереди todo"
+    ]
   }
 ]
