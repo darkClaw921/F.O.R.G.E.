@@ -420,3 +420,311 @@
 .kanban-card .promote-btn:active {
     transform: translateY(1px);
 }
+
+/* ===== Gantt timeline (gantt-диаграмма задач + git-коммиты) ===== */
+/* Блок занимает нижнюю часть вкладки Tasks под канбан-доской: своя высота,
+   собственный скролл, отделён рамкой/отступом сверху. Контейнер #gantt-canvas
+   служит relative-контекстом для абсолютно позиционированных полос задач,
+   вертикальных черт коммитов и засечек оси. */
+
+#tasks-gantt {
+    flex: 0 0 auto;
+    height: 34%;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 10px;
+    margin-top: 4px;
+    border-top: 1px solid var(--border-input-soft);
+}
+
+#gantt-toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex: 0 0 auto;
+}
+
+.gantt-title {
+    color: var(--fg);
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.gantt-range {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+}
+
+/* Toggle-кнопки диапазона по образцу #tasks-toolbar button. */
+.gantt-range button {
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 4px 9px;
+    font-family: inherit;
+    font-size: 0.74rem;
+    cursor: pointer;
+    transition: background 100ms ease, border-color 100ms ease, color 100ms ease;
+}
+
+.gantt-range button:hover {
+    background: var(--bg-input-hover);
+    border-color: var(--border-input-hover);
+}
+
+/* Активный диапазон — акцентная заливка, как у .primary в tasks-toolbar. */
+.gantt-range button.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--fg-on-accent);
+}
+
+.gantt-range button.active:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+/* Relative-контекст для дорожек, полос, черт коммитов и оси.
+   Также скролл-контейнер: при большом числе строк вертикальная прокрутка
+   происходит здесь (тулбар над ним остаётся зафиксированным). */
+#gantt-canvas {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+/* Контейнер строк задач: relative-контекст для overlay коммитов
+   (.gantt-commits-overlay top/bottom:0), чтобы черты покрывали полную высоту
+   всех строк и доходили до самого низа при прокрутке #gantt-canvas. */
+.gantt-rows {
+    position: relative;
+}
+
+/* Верхняя ось дней: контейнер для засечек. Прилипает к верху #gantt-canvas
+   при вертикальной прокрутке строк (sticky). Непрозрачный фон var(--bg)
+   обязателен — иначе прокручиваемые полосы/черты коммитов просвечивают сквозь
+   ось; z-index держит ось над overlay коммитов. */
+.gantt-axis {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    height: 18px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border-soft);
+    margin-bottom: 4px;
+}
+
+/* Засечка оси по дню: тонкая отметка + подпись даты. */
+.gantt-tick {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    border-left: 1px solid var(--border-soft-2);
+    padding-left: 3px;
+    font-size: 10px;
+    color: var(--fg-placeholder);
+    white-space: nowrap;
+    box-sizing: border-box;
+}
+
+/* Строка задачи: подпись слева + дорожка с абсолютной полосой. */
+.gantt-row {
+    position: relative;
+    height: 22px;
+    margin-bottom: 4px;
+}
+
+.gantt-row-label {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 120px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.72rem;
+    color: var(--fg-soft);
+    padding-right: 6px;
+    box-sizing: border-box;
+}
+
+/* Полоса задачи: абсолютная горизонтальная плашка, цвет задаётся
+   модификаторами статуса ниже. */
+.gantt-bar {
+    position: absolute;
+    top: 4px;
+    height: 14px;
+    border-radius: 3px;
+    background: var(--status-neutral);
+    min-width: 2px;
+}
+
+.gantt-bar.status-closed {
+    background: var(--success);
+}
+
+.gantt-bar.status-in_progress {
+    background: var(--info);
+}
+
+/* Тонкая вертикальная черта git-коммита во всю высоту дорожки. */
+.gantt-commit {
+    position: absolute;
+    top: 0;
+    width: 2px;
+    height: 100%;
+    background: var(--accent);
+    cursor: pointer;
+    transition: width 80ms ease, background 80ms ease;
+}
+
+/* Hover-стейт черты: утолщение + подсветка (попап появляется через ~120мс). */
+.gantt-commit:hover {
+    width: 4px;
+    background: var(--accent-hover);
+}
+
+/* Заглушка пустого состояния: приглушённый текст по образцу empty-состояний
+   доски. Показывается, когда нет задач in_progress/closed в выбранном окне. */
+.gantt-empty {
+    color: var(--fg-mute);
+    font-size: 0.74rem;
+    padding: 8px 2px;
+}
+
+/* ===== Hover-попап деталей коммита (.gantt-commit-popover) ===== */
+/* Один shared элемент, позиционируется из JS (position:fixed, координаты от
+   черты). Появляется при наведении на .gantt-commit; содержит метаданные
+   коммита и список изменённых файлов. Только переменные темы, без хардкода. */
+
+.gantt-commit-popover {
+    position: fixed;
+    z-index: 1000;
+    box-sizing: border-box;
+    max-width: 360px;
+    max-height: 50vh;
+    overflow: auto;
+    padding: 8px 10px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border-input);
+    border-radius: 6px;
+    box-shadow: 0 6px 18px var(--shadow-pill);
+    color: var(--fg);
+    font-size: 0.74rem;
+    line-height: 1.4;
+}
+
+/* Скрытое состояние (JS переключает атрибут hidden). */
+.gantt-commit-popover[hidden] {
+    display: none;
+}
+
+/* Шапка: hash7 + дата в одну компактную строку. */
+.gantt-popover-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.gantt-popover-hash {
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-weight: 600;
+    color: var(--accent);
+}
+
+.gantt-popover-date {
+    color: var(--fg-mute);
+    font-size: 0.7rem;
+}
+
+.gantt-popover-author {
+    color: var(--fg-soft);
+    margin-bottom: 4px;
+}
+
+.gantt-popover-subject {
+    font-weight: 600;
+    color: var(--fg);
+    margin-bottom: 4px;
+    word-break: break-word;
+}
+
+/* Тело сообщения коммита: моноширинный блок с переносами. */
+.gantt-popover-body {
+    margin: 0 0 6px;
+    padding: 6px 8px;
+    background: var(--bg-input);
+    border-radius: 4px;
+    color: var(--fg-soft);
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-size: 0.7rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 14em;
+    overflow: auto;
+}
+
+/* Контейнер списка изменённых файлов. */
+.gantt-commit-files {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-top: 4px;
+    border-top: 1px solid var(--border-soft);
+    padding-top: 6px;
+}
+
+/* Одна строка файла: бейдж статуса + путь (длинный путь переносится). */
+.gantt-file {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+
+.gantt-file-path {
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-size: 0.7rem;
+    color: var(--fg-soft);
+    word-break: break-all;
+}
+
+/* Бейдж статуса git (A/M/D/R/C…): моноширинный, фикс-ширина для выравнивания. */
+.gantt-file-status {
+    flex: 0 0 auto;
+    width: 1.2em;
+    text-align: center;
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-weight: 700;
+    color: var(--fg-mute);
+}
+
+/* Цветовые модификаторы по первой букве статуса (только переменные темы;
+   --warning в теме нет, поэтому R/C — нейтральный --fg-dim). */
+.gantt-file-status.status-A {
+    color: var(--success);
+}
+
+.gantt-file-status.status-M {
+    color: var(--info);
+}
+
+.gantt-file-status.status-D {
+    color: var(--danger);
+}
+
+.gantt-file-status.status-R,
+.gantt-file-status.status-C {
+    color: var(--fg-dim);
+}

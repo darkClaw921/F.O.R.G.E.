@@ -99,6 +99,19 @@
                     <span id="tasks-meta"></span>
                 </div>
                 <div id="tasks-board"></div>
+                <div id="tasks-gantt">
+                    <div id="gantt-toolbar">
+                        <span class="gantt-title">Timeline</span>
+                        <div id="gantt-range" class="gantt-range">
+                            <button type="button" data-range="today">Сегодня</button>
+                            <button type="button" data-range="yesterday">Вчера</button>
+                            <button type="button" data-range="7" class="active">7д</button>
+                            <button type="button" data-range="30">30д</button>
+                            <button type="button" data-range="all">Всё</button>
+                        </div>
+                    </div>
+                    <div id="gantt-canvas"></div>
+                </div>
             </div>
             <div id="echo" class="tab-pane" hidden>
                 <aside id="echo-sidebar">

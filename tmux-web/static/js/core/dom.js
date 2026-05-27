@@ -40,6 +40,11 @@ export const $tasksNew = document.getElementById('tasks-new');
 export const $tasksMeta = document.getElementById('tasks-meta');
 export const $tasksBoard = document.getElementById('tasks-board');
 
+// ---- Gantt timeline (gantt-диаграмма под канбан-доской вкладки Tasks) ----
+export const $tasksGantt = document.getElementById('tasks-gantt');
+export const $ganttCanvas = document.getElementById('gantt-canvas');
+export const $ganttRange = document.getElementById('gantt-range');
+
 // ---- Git tab (lazygit) ----
 export const $tabGit = document.getElementById('tab-git');
 export const $gitEl = document.getElementById('git');

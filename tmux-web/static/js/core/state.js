@@ -56,6 +56,14 @@ export const state = {
     activeTab: 'terminal',    // 'terminal' | 'tasks' | 'git'
     tasksPollTimer: null,     // setInterval handle для fetchTasks (fallback polling)
     tasksData: null,          // последний JSON snapshot {issues, total, ...} или null
+    // ---- Gantt timeline (gantt-диаграмма на вкладке Tasks) ----
+    // Последний снимок git-коммитов корня текущей сессии из GET /api/git/commits.
+    // Ответ эндпоинта — {commits:[{hash,ts,subject,author}]}; здесь хранится
+    // массив commits (возможно пустой). По умолчанию [] до первого fetch.
+    gitCommits: [],
+    // Активный диапазон оси ганта в днях: 7 | 30 | 'all'. Переключается
+    // кнопками #gantt-range; по умолчанию 7 (совпадает с .active в разметке).
+    ganttRange: 7,
     // ---- User Settings (TODO behavior) ----
     // Кэш пользовательских настроек, загружается через GET /api/user-settings
     // на bootstrap (best-effort) и обновляется через PATCH в settings/user-settings-api.js.

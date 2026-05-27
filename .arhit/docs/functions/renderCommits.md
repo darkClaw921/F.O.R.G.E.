@@ -1,0 +1,3 @@
+# renderCommits
+
+Overlay-слой коммитов гант-диаграммы (gantt.js). Сигнатура renderCommits(rowsEl, t0, span): rowsEl — relative-родитель .gantt-rows. Создаёт абсолютный контейнер .gantt-commits-overlay (left/top/right/bottom:0; pointer-events:none) и аппендит его в rowsEl, поэтому overlay покрывает полную высоту всех строк и черты .gantt-commit (position:absolute; top:0; height:100%) идут до самого низа даже при прокрутке #gantt-canvas. Для каждого commit из state.gitCommits: commit.ts в СЕКУНДАХ -> *1000, вне окна [t0,t0+span] — skip; позиция left в % по доле от домена; навешивается hover-попап (attachCommitHover).

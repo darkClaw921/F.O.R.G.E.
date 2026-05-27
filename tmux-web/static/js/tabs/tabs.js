@@ -13,6 +13,7 @@ import {
 import { scheduleResizeFromTerm } from '../terminal/xterm.js';
 import { connectTasksWs, fetchTasks, stopTasksPolling } from '../ws/tasks-ws.js';
 import { renderTasks } from '../tasks/render.js';
+import { fetchGitCommits, initGanttControls } from '../tasks/gantt.js';
 import { closeGitWs, openLazygitForActiveProject } from './tui-tabs.js';
 import {
     initEcho, connectEchoWs, disconnectEchoWs, _debugState as echoDebug,
@@ -78,6 +79,10 @@ export function switchTab(name) {
             renderTasks();
         }
         connectTasksWs();
+        // Гант: навесить переключатель диапазона (идемпотентно) и подгрузить
+        // git-коммиты корня текущей сессии (fetchGitCommits сам перерисует гант).
+        initGanttControls();
+        fetchGitCommits();
     } else if (onGit) {
         openLazygitForActiveProject();
     } else if (onDocker) {

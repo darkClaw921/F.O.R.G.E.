@@ -1,0 +1,3 @@
+# fetchGitCommits
+
+Загружает git-коммиты корня текущей сессии для активного диапазона (tmux-web/static/js/tasks/gantt.js, async, exported). cwd=sessionCwdOrNull(); since/until берутся из ganttWindow(null) — тот же хелпер, что у renderGantt, оба в секундах Unix или null. URL: /api/git/commits?path=<enc cwd>[&since=<unix>][&until=<unix>] — параметры since/until добавляются ТОЛЬКО когда не null (since=null при 'all'; until=null при 'today'/N дней; 'yesterday' задаёт оба). Если cwd null — без path. При ok → state.gitCommits=json.commits||[]; non-ok/исключение → [] + console.warn. В конце ВСЕГДА renderGantt(). Вызывается из initGanttControls по клику и при инициализации вкладки.

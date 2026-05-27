@@ -37,6 +37,7 @@ mod qr_print;
 #[allow(dead_code)]
 mod remote_proxy;
 mod remotes;
+mod git;
 mod server_config;
 mod session_history;
 mod static_embed;
@@ -540,6 +541,9 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/tasks/:id", patch(patch_task).delete(close_task))
         .route("/api/tasks/:id/reopen", post(reopen_task))
         .route("/api/tasks/:id/purge", post(purge_task))
+        // Git commits (для гант-диаграммы вкладки Tasks).
+        .route("/api/git/commits", get(get_git_commits))
+        .route("/api/git/commit", get(get_git_commit))
         // Todos API (Phase 3).
         .route("/api/todos", get(get_todos).post(create_todo))
         .route("/api/todos/:id", patch(patch_todo).delete(delete_todo))
@@ -1589,6 +1593,91 @@ async fn get_tasks(
             Err((StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")))
         }
     }
+}
+
+/// `GET /api/git/commits` — список git-коммитов корня текущей сессии для
+/// гант-диаграммы вкладки Tasks. Ответ — `{"commits":[{hash,ts,subject,author},...]}`.
+///
+/// Параметры query:
+/// - `path=<abs>` — cwd, от которого ищется git-корень. Если не задан —
+///   берётся `state.active_path_tx` (cwd активной сессии), как у `get_tasks`.
+/// - `since=<unix>` — опциональная нижняя граница по committer date (секунды
+///   Unix). Непарсимое значение тихо игнорируется (трактуется как `None`).
+/// - `until=<unix>` — опциональная верхняя граница по committer date (секунды
+///   Unix). Непарсимое значение тихо игнорируется (`None`). Вместе с `since`
+///   задаёт диапазон `[since, until]` — используется кнопками
+///   «Сегодня»/«Вчера» гант-диаграммы.
+/// - `server=<id>` — remote НЕ проксируется: для удалённых серверов сразу
+///   возвращается `{"commits":[]}` (коммиты — чисто локальная фича ганта).
+///
+/// Граница ошибок: `git::list_commits` уже graceful (возвращает `Ok(vec![])`
+/// при не-git каталоге / падении git), но на случай неожиданного `Err` мы
+/// тоже отдаём `{"commits":[]}`, чтобы вкладка Tasks никогда не падала
+/// из-за коммитов.
+async fn get_git_commits(
+    State(state): State<AppState>,
+    Query(q): Query<HashMap<String, String>>,
+) -> Result<Response, (StatusCode, String)> {
+    // Remote не проксируем — гант рисуется только для локального cwd.
+    if extract_server_id(&q).is_some() {
+        return Ok(Json(serde_json::json!({ "commits": [] })).into_response());
+    }
+
+    let cwd = if let Some(p) = q.get("path").map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        PathBuf::from(p)
+    } else {
+        state.active_path_tx.borrow().clone()
+    };
+
+    let since = q.get("since").and_then(|s| s.trim().parse::<i64>().ok());
+    let until = q.get("until").and_then(|s| s.trim().parse::<i64>().ok());
+
+    let commits = git::list_commits(&cwd, since, until)
+        .await
+        .unwrap_or_default();
+    Ok(Json(serde_json::json!({ "commits": commits })).into_response())
+}
+
+/// `GET /api/git/commit` — детали одного git-коммита (мета + тело + список
+/// изменённых файлов) для hover-попапа гант-диаграммы вкладки Tasks. Ответ —
+/// `{"commit":{hash,ts,subject,body,author,files:[{status,path},...]}}` или
+/// `{"commit":null}`.
+///
+/// Параметры query:
+/// - `hash=<sha>` — SHA коммита (полный или сокращённый префикс). Валидация
+///   (hex + длина 4..=64) выполняется внутри `git::commit_detail`, поэтому
+///   хендлер передаёт строку как есть. Отсутствует / пустой → `{"commit":null}`.
+/// - `path=<abs>` — cwd, от которого ищется git-корень. Если не задан —
+///   берётся `state.active_path_tx` (как у `get_git_commits`).
+/// - `server=<id>` — remote НЕ проксируется: для удалённых серверов сразу
+///   возвращается `{"commit":null}` (коммиты — чисто локальная фича ганта).
+///
+/// Граница ошибок: `git::commit_detail` graceful (`Ok(None)` при невалидном
+/// hash, не-git каталоге, отсутствующем коммите), а на случай неожиданного
+/// `Err` хендлер тоже отдаёт `{"commit":null}` — попап никогда не роняет
+/// вкладку Tasks.
+async fn get_git_commit(
+    State(state): State<AppState>,
+    Query(q): Query<HashMap<String, String>>,
+) -> Result<Response, (StatusCode, String)> {
+    // Remote не проксируем — детали коммита только для локального cwd.
+    if extract_server_id(&q).is_some() {
+        return Ok(Json(serde_json::json!({ "commit": null })).into_response());
+    }
+
+    let cwd = if let Some(p) = q.get("path").map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        PathBuf::from(p)
+    } else {
+        state.active_path_tx.borrow().clone()
+    };
+
+    // hash обязателен; нет/пустой → мягкий null (единообразно с graceful-стилем).
+    let Some(hash) = q.get("hash").map(|s| s.trim()).filter(|s| !s.is_empty()) else {
+        return Ok(Json(serde_json::json!({ "commit": null })).into_response());
+    };
+
+    let commit = git::commit_detail(&cwd, hash).await.unwrap_or(None);
+    Ok(Json(serde_json::json!({ "commit": commit })).into_response())
 }
 
 /// Тело запроса `POST /api/tasks` — создание новой задачи.

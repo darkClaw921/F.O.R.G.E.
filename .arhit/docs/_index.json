@@ -3468,5 +3468,201 @@
       "запуск после предыдущей задачи",
       "барьер очереди todo"
     ]
+  },
+  {
+    "element": "git::list_commits",
+    "path": "",
+    "type": "unknown",
+    "content": "Read-only обёртка над git log, отдающая список коммитов git-корня текущей сессии для гант-диаграммы вкладки Tasks. Файл: tmux-web/src/git.rs.\n\nСигнатура: pub async fn list_commits(cwd: &Path, since_unix: Option<i64>, until_unix: Option<i64>) -> anyhow::Result<Vec<Commit>>.\n\nЧто делает:\n- Определяет корень репозитория через crate::paths::resolve_root(cwd) (поднимается по ancestors() до первой папки с маркером .beads/ или .git/, иначе сам cwd) — согласовано с tasks::list_tasks.\n- Спавнит subprocess git через tokio::process::Command (async, не блокирует runtime) с current_dir(root) и аргументами: log --max-count=2000 --pretty=format:%H%x1f%ct%x1f%an%x1f%s. При since_unix=Some(v) добавляется --since=<v>; при until_unix=Some(v) добавляется --until=<v>; при None флаг не добавляется. Флаги --since/--until у git log независимы: --since=X --until=Y отдаёт коммиты в диапазоне [X, Y] (используется кнопками Сегодня/Вчера ганта).\n- Парсит stdout приватной функцией parse_log: построчно, splitn(4) по разделителю 0x1F (ASCII Unit Separator, константа FIELD_SEP) на hash/ct/author/subject. %ct -> ts:i64 через parse. Битые строки (мало полей, непарсимый ct) и пустые строки пропускаются.\n\nВозврат: Ok(Vec<Commit>) в порядке git log (новые сверху). Graceful degradation — при не-git каталоге, ненулевом exit git или ошибке spawn возвращает Ok(vec![]), НЕ Err (гант опционален и должен показывать задачи без коммитов, а не ронять эндпоинт). Ошибки логируются через tracing::debug.\n\nstruct Commit { hash:String, ts:i64, subject:String, author:String } с #[derive(Serialize)] -> JSON {hash,ts,subject,author}. ts — committer date (%ct), а не author date, чтобы порядок на оси совпадал с историей после rebase.\n\nСвязи: вызывается из main.rs::get_git_commits (хендлер GET /api/git/commits), который читает ?since=/?until= и оборачивает результат в Json({\"commits\":[...]}). Зависит от crate::paths::resolve_root. Юнит-тесты в модуле покрывают parse_log (well-formed, пропуск битых строк, табы/разделители в subject, пустой stdout) и сериализацию Commit. Соседние функции того же модуля: git::commit_detail (детали одного коммита) и git::is_valid_hash (валидация hash).",
+    "createdAt": "2026-05-27T17:32:53.840Z",
+    "updatedAt": "2026-05-27T18:19:07.341Z"
+  },
+  {
+    "element": "main.rs::get_git_commits",
+    "path": "",
+    "type": "unknown",
+    "content": "Axum-хендлер GET /api/git/commits — список git-коммитов корня текущей сессии для гант-диаграммы вкладки Tasks. Сигнатура: async fn get_git_commits(State<AppState>, Query<HashMap<String,String>>) -> Result<Response,(StatusCode,String)>. Ответ — Json {\"commits\": [{hash,ts,subject,author},...]}.\n\nQuery-параметры:\n- path=<abs>: cwd для поиска git-корня; если не задан — state.active_path_tx.borrow().clone() (cwd активной сессии, как get_tasks).\n- since=<unix>: опциональная нижняя граница по committer date (секунды Unix); непарсимое значение тихо → None.\n- until=<unix>: опциональная верхняя граница по committer date (секунды Unix); непарсимое → None. Вместе с since задаёт диапазон [since, until] — используется кнопками Сегодня/Вчера ганта.\n- server=<id> (extract_server_id): remote НЕ проксируется → сразу {commits:[]} (коммиты — локальная фича).\n\nЧитает since и until через q.get(...).and_then(parse::<i64>().ok()), вызывает git::list_commits(&cwd, since, until).await.unwrap_or_default(). Граница ошибок полностью graceful: list_commits уже возвращает Ok(vec![]) при проблемах, а .unwrap_or_default() добавляет страховку на случай Err — вкладка Tasks никогда не падает из-за коммитов. Зарегистрирован роутом .route(\"/api/git/commits\", get(get_git_commits)). Рядом зарегистрирован get_git_commit (GET /api/git/commit) — детали одного коммита.",
+    "createdAt": "2026-05-27T17:34:06.487Z",
+    "updatedAt": "2026-05-27T18:19:17.301Z"
+  },
+  {
+    "element": "$tasksGantt",
+    "path": "",
+    "type": "unknown",
+    "content": "DOM-ссылка на контейнер #tasks-gantt — блок гант-диаграммы под канбан-доской вкладки Tasks (tmux-web/static/index.html). Объявлена в tmux-web/static/js/core/dom.js рядом с $tasksBoard. Содержит #gantt-toolbar (заголовок Timeline + переключатель диапазона #gantt-range с кнопками 7д/30д/Всё) и #gantt-canvas. Phase 2 (forge-zssi) — каркас без логики рендера; рендер добавляется в Phase 3 (gantt.js).",
+    "createdAt": "2026-05-27T17:37:44.496Z",
+    "updatedAt": "2026-05-27T17:37:44.496Z"
+  },
+  {
+    "element": "$ganttCanvas",
+    "path": "",
+    "type": "unknown",
+    "content": "DOM-ссылка на #gantt-canvas (tmux-web/static/js/core/dom.js) — relative-контейнер, в котором gantt.js (Phase 3) абсолютно позиционирует .gantt-row/.gantt-bar (полосы задач по статусу), .gantt-commit (вертикальные черты git-коммитов) и .gantt-axis/.gantt-tick (ось дней). Стили в tmux-web/static/css/tasks.css раздел 'Gantt timeline'.",
+    "createdAt": "2026-05-27T17:37:44.793Z",
+    "updatedAt": "2026-05-27T17:37:44.793Z"
+  },
+  {
+    "element": "$ganttRange",
+    "path": "",
+    "type": "unknown",
+    "content": "DOM-ссылка на #gantt-range (tmux-web/static/js/core/dom.js) — группа toggle-кнопок выбора диапазона оси ганта (data-range=7|30|all, активная .active). Кликами управляет state.ganttRange (7|30|'all', по умолчанию 7). Обработчики навешиваются в Phase 3 (gantt.js initGanttControls).",
+    "createdAt": "2026-05-27T17:37:45.094Z",
+    "updatedAt": "2026-05-27T17:37:45.094Z"
+  },
+  {
+    "element": "renderGantt",
+    "path": "tmux-web/static/js/tasks/gantt.js",
+    "type": "function",
+    "content": "Основной рендер гант-диаграммы вкладки Tasks (gantt.js). Чистит $ganttCanvas, фильтрует issues по статусу in_progress|closed с валидной created_at, вычисляет домен [t0,t1] через ganttWindow и перерисовывает ось/строки/коммиты. Раскладка прокрутки: ось .gantt-axis аппендится прямым потомком #gantt-canvas (sticky к верху скролл-контейнера), затем создаётся контейнер .gantt-rows (position:relative) — в него аппендятся все .gantt-row, заглушка .gantt-empty (если нет видимых задач) и overlay коммитов. Overlay внутри .gantt-rows (top/bottom:0) покрывает полную высоту всех строк, поэтому вертикальные черты коммитов доходят до самого низа при прокрутке #gantt-canvas. Пустые состояния: t0===null или вырожденный домен -> renderEmpty(canvas); visible.length===0 -> ось + .gantt-empty + renderCommits(rowsEl,...) внутри .gantt-rows.",
+    "createdAt": "2026-05-27T17:42:28.883Z",
+    "updatedAt": "2026-05-27T18:54:00.477Z"
+  },
+  {
+    "element": "fetchGitCommits",
+    "path": "tmux-web/static/js/tasks/gantt.js",
+    "type": "function",
+    "content": "Загружает git-коммиты корня текущей сессии для активного диапазона (tmux-web/static/js/tasks/gantt.js, async, exported). cwd=sessionCwdOrNull(); since/until берутся из ganttWindow(null) — тот же хелпер, что у renderGantt, оба в секундах Unix или null. URL: /api/git/commits?path=<enc cwd>[&since=<unix>][&until=<unix>] — параметры since/until добавляются ТОЛЬКО когда не null (since=null при 'all'; until=null при 'today'/N дней; 'yesterday' задаёт оба). Если cwd null — без path. При ok → state.gitCommits=json.commits||[]; non-ok/исключение → [] + console.warn. В конце ВСЕГДА renderGantt(). Вызывается из initGanttControls по клику и при инициализации вкладки.",
+    "createdAt": "2026-05-27T17:42:39.724Z",
+    "updatedAt": "2026-05-27T18:25:12.321Z"
+  },
+  {
+    "element": "initGanttControls",
+    "path": "tmux-web/static/js/tasks/gantt.js",
+    "type": "function",
+    "content": "Навешивает обработчики на кнопки переключателя диапазона #gantt-range (tmux-web/static/js/tasks/gantt.js, exported). Идемпотентно: guard через root.dataset.ganttBound. Кнопки button[data-range] (today|yesterday|7|30|all). По клику: state.ganttRange = (data-range==='all'||'today'||'yesterday') ? строка как есть : Number(data-range) (число дней); переключение класса .active на нажатой кнопке; затем fetchGitCommits() (since/until изменились → перезагрузка коммитов + рендер). Поддержка именованных диапазонов 'today'/'yesterday' добавлена в Phase B вместе с until-параметром.",
+    "createdAt": "2026-05-27T17:42:45.494Z",
+    "updatedAt": "2026-05-27T18:25:16.095Z"
+  },
+  {
+    "element": "tasks-gantt",
+    "path": "",
+    "type": "page",
+    "content": "ОБЗОР ФИЧИ: Гант-таймлайн на вкладке Tasks (epic forge-typf, базовая реализация Phase 1-4; доработки — диапазоны Сегодня/Вчера + hover-попап коммита с файлами).\n\n== Что это ==\nГант-диаграмма (таймлайн) в нижней части вкладки Tasks под канбан-доской. Визуализирует длительность задач горизонтальными полосами на временной оси и накладывает поверх них вертикальные черты git-коммитов корня текущей tmux-сессии. Цель — наглядно сопоставить активность по задачам с реальными коммитами. Рисуется чистым DOM + CSS, без чарт-библиотек.\n\n== Источник данных задач ==\nstate.tasksData.issues (тот же массив, что питает канбан — из GET /api/tasks). Фильтр в renderGantt: только задачи status in {in_progress, closed} (lowercase) с валидным created_at (Date.parse != NaN). open/blocked на таймлайне НЕ показываются.\n\n== Полосы задач ==\nКаждая отобранная задача — строка .gantt-row с подписью .gantt-row-label (id + укороченный ~40 симв title) и полосой .gantt-bar. Полоса от created_at до: closed_at (closed, .status-closed, зелёная var(--success)) либо до t1 домена (in_progress, .status-in_progress, синяя var(--info)). Полосы целиком вне окна отбрасываются; границы клампятся к [t0,t1]. left/width — inline-проценты от домена.\n\n== Временной домен и переключатель диапазонов ==\nЕдиный источник домена — хелпер ganttWindow(rows) (gantt.js, exported), возвращает {t0,t1,since,until}: t0/t1 — границы в МИЛЛИСЕКУНДАХ для рендера; since/until — те же в СЕКУНДАХ Unix для запроса коммитов (null = не ограничивать). state.ganttRange: number(7|30) | 'all' | 'today' | 'yesterday' (по умолчанию 7).\n- 'today' (НОВОЕ): t0 = начало сегодняшних локальных суток (setHours(0,0,0,0)), t1 = now, since = floor(t0/1000), until = null.\n- 'yesterday' (НОВОЕ): t0 = начало вчерашних суток, t1 = начало сегодняшних — окно ровно «вчера»; заданы И since, И until.\n- number N (7/30): t0 = now - N*86400e3, t1 = now, since задан, until = null.\n- 'all': t0 = min(rows.start) (пустой rows → t0=null → renderEmpty), t1 = now, since = null, until = null.\nВАЖНО: t1 больше НЕ всегда Date.now() — для 'yesterday' это начало текущих суток. Переключатель — toggle-кнопки #gantt-range (data-range=today|yesterday|7|30|all) в #gantt-toolbar; initGanttControls идемпотентно (dataset.ganttBound) вешает click → меняет state.ganttRange, переключает .active, вызывает fetchGitCommits (подгрузка под новые since/until + перерисовка).\n\n== Эндпоинты и единицы ts ==\nСПИСОК коммитов: GET /api/git/commits?path=<abs>&since=<unix>&until=<unix> → {\"commits\":[{hash,ts,subject,author}]}. since/until опциональны, оба в СЕКУНДАХ Unix (committer date %ct), задают диапазон [since, until]; fetchGitCommits добавляет каждый параметр в URL ТОЛЬКО когда он не null (since=null при 'all'; until=null при 'today'/N дней; 'yesterday' задаёт оба). Бэкенд git::list_commits(cwd, since_unix, until_unix) добавляет --since/--until к git log независимо.\nДЕТАЛИ коммита (НОВОЕ): GET /api/git/commit?path=<abs>&hash=<sha>[&server=<id>] → {\"commit\": {hash,ts,subject,body,author,files:[{status,path}]}} либо {\"commit\": null}. ts — committer date в СЕКУНДАХ. files — изменённые файлы из git show --name-status (status = одна буква A/M/D/R/C, path = НОВЫЙ путь при переименовании). Бэкенд git::commit_detail двумя вызовами git show: 1) мета+body (--no-patch --format=...%b), 2) --name-status --format= (только файлы). hash приходит из недоверенного query → валидируется git::is_valid_hash (hex, длина 4..=64) ПЕРЕД spawn; невалидный → {commit:null} (защита от инъекции аргументов). server задан → remote не проксируется → {commit:null} (коммиты локальны). Всё graceful: не-git каталог/нет коммита/ошибка → null, вкладка не падает.\n\n== Коммиты как вертикальные черты ==\nOverlay-слой .gantt-commits-overlay (absolute, во всю высоту) поверх дорожек. Каждый коммит из state.gitCommits — .gantt-commit (тонкая вертикальная черта, left% = (ts*1000 - t0)/span*100, цвет var(--accent), вне окна skip). renderCommits проставляет каждой черте dataset.hash (полный sha), dataset.subject, нативный title (hash7+subject — мгновенный fallback) и вызывает attachCommitHover.\n\n== HOVER-ПОПАП КОММИТА С ФАЙЛАМИ (НОВОЕ) ==\n.gantt-commit-popover — один shared DOM-элемент на всю страницу (ленивая ensurePopover(), аппендится в body, переиспользуется всеми чертами; на нём mouseenter отменяет скрытие / mouseleave планирует). Заменяет нативный title богатым попапом.\n- КЭШ: module-level detailCache = Map<hash, detail|null> — кэширует и успех, и null, чтобы не повторять fetch.\n- АНТИ-ГОНКА: popoverToken (монотонный счётчик) — устаревший fetch-ответ не перерисует попап; таймеры showTimer (POPOVER_SHOW_DELAY=120мс) / hideTimer (POPOVER_HIDE_DELAY=150мс).\n- ПОТОК: mouseenter → 120мс → openPopoverFor: hash из dataset; detailCache.has → мгновенный renderPopover из кэша; иначе renderPopover(null,...) (fallback hash7+subject) + fetchCommitDetail(hash) → по token-проверенному ответу перерисовка. fetchCommitDetail: GET /api/git/commit?path=<enc cwd>&hash=<enc hash> (path только если sessionCwdOrNull()!=null), возвращает json.commit (объект|null).\n- РЕНДЕР: всё через textContent (никакого innerHTML с git-данными — XSS-safe). Содержимое: head (hash7 моноширинный + дата fmtDate(ts*1000)), author, subject (жирн), body в <pre> при непустом trim (обрезка до 800 симв), список .gantt-commit-files → .gantt-file (.gantt-file-status status-<перваяБуква статуса upper> + .gantt-file-path). detail===null → минимальный fallback hash7+subject.\n- ПОЗИЦИЯ: positionPopover — position:fixed от getBoundingClientRect черты, справа от черты (при нехватке места слева), кламп по window.innerWidth/innerHeight (POPOVER_GAP=10px, POPOVER_MARGIN=8px).\nCSS (tasks.css, только переменные темы): .gantt-commit-popover (bg --bg-elev, border --border-input, shadow --shadow-pill, max-width 360px, max-height 50vh overflow auto, z-index 1000, [hidden]→display:none). Статусы файлов: status-A=--success, status-M=--info, status-D=--danger, status-R/status-C=--fg-dim. .gantt-commit hover-стейт: cursor:pointer, утолщение 2px→4px, --accent-hover.\n\n== ОГРАНИЧЕНИЕ: 'начата' = created_at ==\nbeads (br) НЕ хранит момент перехода задачи open→in_progress. Поэтому левая граница полосы ВСЕГДА привязана к created_at, а не к фактическому началу работы. Сознательное фиксированное допущение: для closed полоса = created_at→closed_at, для in_progress = created_at→t1 домена.\n\n== Файлы ==\n- tmux-web/src/git.rs — backend: struct Commit (Serialize) + list_commits(cwd, since_unix, until_unix) + parse_log; struct CommitDetail{hash,ts,subject,body,author,files:Vec<FileChange>} и FileChange{status,path} + commit_detail(cwd, hash) + parse_meta/parse_name_status; is_valid_hash (валидация hex 4..=64); юнит-тесты парсеров и валидатора.\n- tmux-web/src/main.rs — хендлеры get_git_commits (роут /api/git/commits, ?since/?until/?server) и get_git_commit (роут /api/git/commit, ?path/?hash/?server); mod git.\n- tmux-web/static/js/tasks/gantt.js — frontend: ganttWindow, renderGantt, fetchGitCommits, initGanttControls, renderCommits + попап (ensurePopover/attachCommitHover/openPopoverFor/fetchCommitDetail/renderPopover/positionPopover/scheduleHide, detailCache, popoverToken) + хелперы (buildAxis, clamp, parseTs, fmtDate, fmtAxisDate, shortTitle, renderEmpty).\n- Разметка: tmux-web/static/index.html (#tasks-gantt → #gantt-toolbar(.gantt-title + #gantt-range кнопки today/yesterday/7/30/all) + #gantt-canvas).\n- Стили: tmux-web/static/css/tasks.css, раздел 'Gantt timeline' (#tasks-gantt, #gantt-canvas, .gantt-axis/.gantt-tick, .gantt-row/.gantt-row-label, .gantt-bar.status-*, .gantt-commit + hover, .gantt-commit-popover, .gantt-file/.gantt-file-status status-*, .gantt-empty).\n- Поля state: tmux-web/static/js/core/state.js (gitCommits, ganttRange).\n\n== Точки интеграции ==\n- render.js (renderTasks): после рендера канбана вызывает renderGantt() — перерисовка при каждом WS-апдейте задач.\n- tabs/tabs.js (switchTab onTasks): при входе на вкладку Tasks вызывает initGanttControls() + fetchGitCommits().\n- ws/tasks-ws.js (syncTasksToCurrentSession): при смене cwd активной сессии (если вкладка tasks активна) вызывает fetchGitCommits(); sessionCwdOrNull экспортируется отсюда и импортируется в gantt.js.",
+    "createdAt": "2026-05-27T18:29:05.938Z",
+    "updatedAt": "2026-05-27T18:29:10.150Z",
+    "aliases": [
+      "сегодня вчера таймлайн"
+    ]
+  },
+  {
+    "element": "git::is_valid_hash",
+    "path": "",
+    "type": "unknown",
+    "content": "Валидатор git-hash для защиты от инъекции аргументов git. Возвращает true ТОЛЬКО если длина строки в диапазоне 4..=64 И все байты — ASCII hex (0-9a-fA-F). Иначе false. Критичен, т.к. hash приходит из недоверенного query-параметра ?hash= хендлера get_git_commit и подставляется в командную строку git show — без валидации значение вроде '--output=...' или '; rm -rf /' могло бы быть истолковано git как флаг/команда. Диапазон длины покрывает сокращённые префиксы (от 4), полный SHA-1 (40) и SHA-256 (64). Вызывается первым делом в git::commit_detail; при false функция возвращает Ok(None) БЕЗ spawn git. Покрыт юнит-тестами (принимает реальные SHA и короткий префикс; отвергает пустую строку, '; rm -rf /', '../etc', не-hex, строку длиннее 64).",
+    "createdAt": "2026-05-27T18:18:25.441Z",
+    "updatedAt": "2026-05-27T18:18:25.441Z"
+  },
+  {
+    "element": "git::commit_detail",
+    "path": "",
+    "type": "unknown",
+    "content": "Async-функция, возвращающая полные детали одного коммита (мета + тело + список изменённых файлов) как Option<CommitDetail>, или None при любой проблеме (graceful, как весь модуль git). Сигнатура: pub async fn commit_detail(cwd:&Path, hash:&str) -> anyhow::Result<Option<CommitDetail>>. Используется хендлером GET /api/git/commit (main.rs::get_git_commit) для hover-попапа коммита на гант-диаграмме вкладки Tasks.\n\nБезопасность: hash приходит из недоверенного ?hash=, поэтому ПЕРЕД любым spawn проходит через git::is_valid_hash; при невалидном hash → Ok(None) без запуска git (защита от инъекции аргументов).\n\nРеализация — двухвызовный вариант (для надёжного парсинга, без эвристик 'где кончается body'): git-корень ищется через crate::paths::resolve_root(cwd), оба вызова git show идут с current_dir(root) через tokio::process::Command:\n1) git show --no-patch --format=%H%x1f%ct%x1f%an%x1f%s%x1f%b <hash> — одна запись с метой (hash/ts/author/subject) и многострочным телом (%b). Парсится приватной parse_meta.\n2) git show --name-status --format= <hash> — пустой --format= гасит шапку, остаются только строки status<TAB>path (для R/C — status<TAB>old<TAB>new). Парсится приватной parse_name_status.\nРазделение на два вызова исключает смешивание многострочного body и блока файлов.\n\nGraceful: невалидный hash → Ok(None) без spawn; ошибка spawn / ненулевой exit первого вызова / коммит не найден / пустая мета → Ok(None). Ненулевой exit ВТОРОГО вызова трактуется как 'нет файлов' (files=[]), мета уже получена — попап без списка файлов всё ещё полезен.\n\nСтруктуры: CommitDetail {hash,ts,subject,body,author,files:Vec<FileChange>} и FileChange {status,path} — обе #[derive(Debug,Clone,Serialize)]. В FileChange.path для переименований кладётся НОВЫЙ путь (последняя колонка).\n\nПриватные парсеры parse_meta (5 полей по FIELD_SEP 0x1F, остаток после 4-го разделителя = body, хвостовой \\n обрезается, None при <5 полей или непарсимом ct) и parse_name_status (split по табу, status=первая колонка, path=последняя, пустые/без-таба строки пропускаются) покрыты юнит-тестами без spawn git.",
+    "createdAt": "2026-05-27T18:18:42.419Z",
+    "updatedAt": "2026-05-27T18:18:42.419Z"
+  },
+  {
+    "element": "main.rs::get_git_commit",
+    "path": "",
+    "type": "unknown",
+    "content": "Axum-хендлер GET /api/git/commit — детали одного git-коммита (мета + тело + изменённые файлы) для hover-попапа гант-диаграммы вкладки Tasks. Сигнатура: async fn get_git_commit(State<AppState>, Query<HashMap<String,String>>) -> Result<Response,(StatusCode,String)>. Ответ — Json {\"commit\": {hash,ts,subject,body,author,files:[{status,path},...]}} либо {\"commit\": null}.\n\nQuery-параметры:\n- hash=<sha> (обязателен): передаётся в git::commit_detail как есть; валидация hex+длина живёт внутри commit_detail (Ok(None) при мусоре). Отсутствует/пустой → {commit:null}.\n- path=<abs>: cwd для поиска git-корня; если не задан — state.active_path_tx.borrow().clone() (как get_git_commits).\n- server=<id> (extract_server_id): remote НЕ проксируется → сразу {commit:null} (коммиты — локальная фича).\n\nГраница ошибок полностью graceful: git::commit_detail возвращает Ok(None) при невалидном hash / не-git каталоге / отсутствующем коммите, а хендлер дополнительно делает .unwrap_or(None) на случай неожиданного Err — попап никогда не роняет вкладку Tasks. Зарегистрирован роутом .route(\"/api/git/commit\", get(get_git_commit)) рядом с /api/git/commits в main.rs. Построен по образцу get_git_commits (тот же стиль чтения cwd/server и graceful-ответа).",
+    "createdAt": "2026-05-27T18:18:53.052Z",
+    "updatedAt": "2026-05-27T18:18:53.052Z"
+  },
+  {
+    "element": "ganttWindow",
+    "path": "",
+    "type": "unknown",
+    "content": "Хелпер домена гант-диаграммы (tmux-web/static/js/tasks/gantt.js, exported). Вход rows (отфильтрованные строки задач {start} в мс, нужны только для 'all'). Возврат {t0,t1,since,until}: t0/t1 — границы домена в МИЛЛИСЕКУНДАХ для рендера; since/until — те же в СЕКУНДАХ Unix для GET /api/git/commits, null = не ограничивать. Семантика по state.ganttRange: 'today' — t0=начало сегодняшних локальных суток (setHours(0,0,0,0)), t1=now, since=floor(t0/1000), until=null; 'yesterday' — t0=начало вчерашних суток, t1=начало сегодняшних, since и until заданы (окно ровно вчера); number N — t0=now-N*DAY_MS, t1=now, since задан, until=null; 'all' — t0=min(rows.start) (пустой rows→t0=null как сигнал 'нет данных'), t1=now, since=null, until=null. Единый источник домена для renderGantt и since/until для fetchGitCommits.",
+    "createdAt": "2026-05-27T18:25:05.619Z",
+    "updatedAt": "2026-05-27T18:26:07.689Z",
+    "aliases": [
+      "диапазон сегодня вчера gantt"
+    ]
+  },
+  {
+    "element": "gantt-commit-popover",
+    "path": "",
+    "type": "page",
+    "content": "Hover-попап деталей git-коммита на гант-диаграмме вкладки Tasks (tmux-web/static/js/tasks/gantt.js + tmux-web/static/css/tasks.css). Заменяет нативный title богатым попапом с метаданными коммита и списком изменённых файлов.\n\nАРХИТЕКТУРА (чистый DOM, без библиотек):\n- Один shared элемент .gantt-commit-popover на всю страницу (ленивая ensurePopover(), аппендится в document.body, переиспользуется всеми чертами). На нём mouseenter (отменяет скрытие) / mouseleave (планирует скрытие).\n- Module-level кэш detailCache: Map<hash, detail|null> — кэширует и успешный detail, и null (отсутствие/ошибку), чтобы не повторять fetch.\n- Таймеры showTimer (показ) и hideTimer (скрытие); popoverToken — монотонный счётчик против гонки fetch (устаревший ответ не перерисует попап).\n- Константы: POPOVER_SHOW_DELAY=120мс, POPOVER_HIDE_DELAY=150мс, POPOVER_GAP=10px, POPOVER_MARGIN=8px.\n\nПОТОК:\n- renderCommits проставляет каждой .gantt-commit dataset.hash (полный sha) и dataset.subject, оставляет нативный title как мгновенный fallback, и вызывает attachCommitHover(line).\n- attachCommitHover: mouseenter → отмена hideTimer + setTimeout(120мс) → openPopoverFor(line); mouseleave → отмена showTimer + scheduleHide().\n- openPopoverFor: hash из dataset; если detailCache.has(hash) — мгновенный renderPopover из кэша; иначе renderPopover(null,...) (fallback hash7+subject) + fetchCommitDetail(hash) и по ответу (с проверкой token) перерисовка.\n- fetchCommitDetail: GET /api/git/commit?path=<enc cwd>&hash=<enc hash> (path только если sessionCwdOrNull() не null); возвращает json.commit (объект|null); non-ok/исключение → null + warn.\n- renderPopover: всё через textContent (никакого innerHTML с git-данными). Содержимое: head (hash7 моноширинный + дата fmtDate(ts*1000)), author, subject (жирн), body в <pre> при непустом trim (обрезка до 800 симв), список .gantt-commit-files → .gantt-file (.gantt-file-status status-<перваяБуква статуса в upper> + .gantt-file-path). detail===null → минимальный fallback hash7+subject.\n- positionPopover: position:fixed, координаты от getBoundingClientRect черты; попап справа от черты, при нехватке места слева; кламп по window.innerWidth/innerHeight с POPOVER_MARGIN.\n\nCSS (tasks.css, только переменные темы): .gantt-commit-popover (bg --bg-elev, border --border-input, box-shadow --shadow-pill, max-width 360px, max-height 50vh overflow auto, z-index 1000, [hidden]→display:none). Статусы файлов: status-A=--success, status-M=--info, status-D=--danger, status-R/status-C=--fg-dim (в теме нет --warning). .gantt-commit получил hover-стейт (cursor:pointer, утолщение 2px→4px, --accent-hover).",
+    "createdAt": "2026-05-27T18:25:36.399Z",
+    "updatedAt": "2026-05-27T18:29:10.921Z",
+    "aliases": [
+      "hover попап файлы коммита",
+      "коммит файлы",
+      "попап коммита",
+      "diff файлы коммита"
+    ]
+  },
+  {
+    "element": "openPopoverFor",
+    "path": "tmux-web/static/js/tasks/gantt.js",
+    "type": "function",
+    "content": "Показывает hover-попап для черты коммита .gantt-commit (gantt.js). hash/subject из dataset. Если detailCache.has(hash) — мгновенный renderPopover из кэша + positionPopover; иначе ++popoverToken, renderPopover(null) (fallback hash7+subject) + positionPopover, затем fetchCommitDetail(hash): кэширует ответ, и если token актуален и попап не скрыт — перерисовывает. Ошибка fetch → detailCache.set(hash,null).",
+    "createdAt": "2026-05-27T18:25:55.822Z",
+    "updatedAt": "2026-05-27T18:25:55.822Z"
+  },
+  {
+    "element": "renderPopover",
+    "path": "tmux-web/static/js/tasks/gantt.js",
+    "type": "function",
+    "content": "Рендерит содержимое shared попапа .gantt-commit-popover чистым DOM/textContent (gantt.js). Вход detail (объект|null), hash, fallbackSubject. Очищает el, строит .gantt-popover-head (hash7 + дата fmtDate(ts*1000)), .gantt-popover-author, .gantt-popover-subject (detail.subject или fallback), .gantt-popover-body <pre> при непустом trim (обрезка 800), список .gantt-commit-files с .gantt-file (.gantt-file-status status-<буква> + путь). detail===null → минимальный fallback hash7+subject.",
+    "createdAt": "2026-05-27T18:25:56.108Z",
+    "updatedAt": "2026-05-27T18:25:56.108Z"
+  },
+  {
+    "element": "fetchCommitDetail",
+    "path": "tmux-web/static/js/tasks/gantt.js",
+    "type": "function",
+    "content": "Async-загрузка деталей коммита (gantt.js). GET /api/git/commit?path=<enc sessionCwdOrNull()>&hash=<enc hash> (path только если cwd не null). Возвращает json.commit (объект|null); non-ok статус или исключение → null + console.warn. Результат кэшируется в detailCache вызывающим openPopoverFor.",
+    "createdAt": "2026-05-27T18:25:56.370Z",
+    "updatedAt": "2026-05-27T18:25:56.370Z"
+  },
+  {
+    "element": "positionPopover",
+    "path": "tmux-web/static/js/tasks/gantt.js",
+    "type": "function",
+    "content": "Позиционирует shared попап у черты коммита (gantt.js). position:fixed; снимает getBoundingClientRect черты и попапа; по горизонтали справа от черты (anchor.right+GAP), при нехватке места слева, затем кламп в [MARGIN, vw-width-MARGIN]; по вертикали выравнивание по верху черты с клампом в вьюпорт. Не вылезает за window.innerWidth/innerHeight.",
+    "createdAt": "2026-05-27T18:25:56.629Z",
+    "updatedAt": "2026-05-27T18:25:56.629Z"
+  },
+  {
+    "element": "attachCommitHover",
+    "path": "tmux-web/static/js/tasks/gantt.js",
+    "type": "function",
+    "content": "Навешивает hover-обработчики на одну черту .gantt-commit (gantt.js). mouseenter: отмена hideTimer + setTimeout(POPOVER_SHOW_DELAY=120мс)→openPopoverFor. mouseleave: отмена showTimer + scheduleHide (POPOVER_HIDE_DELAY=150мс грейс). Вызывается из renderCommits для каждой черты.",
+    "createdAt": "2026-05-27T18:25:56.898Z",
+    "updatedAt": "2026-05-27T18:25:56.898Z"
+  },
+  {
+    "element": "renderCommits",
+    "path": "tmux-web/static/js/tasks/gantt.js",
+    "type": "function",
+    "content": "Overlay-слой коммитов гант-диаграммы (gantt.js). Сигнатура renderCommits(rowsEl, t0, span): rowsEl — relative-родитель .gantt-rows. Создаёт абсолютный контейнер .gantt-commits-overlay (left/top/right/bottom:0; pointer-events:none) и аппендит его в rowsEl, поэтому overlay покрывает полную высоту всех строк и черты .gantt-commit (position:absolute; top:0; height:100%) идут до самого низа даже при прокрутке #gantt-canvas. Для каждого commit из state.gitCommits: commit.ts в СЕКУНДАХ -> *1000, вне окна [t0,t0+span] — skip; позиция left в % по доле от домена; навешивается hover-попап (attachCommitHover).",
+    "createdAt": "2026-05-27T18:26:03.172Z",
+    "updatedAt": "2026-05-27T18:54:00.753Z"
+  },
+  {
+    "element": "buildAxis",
+    "path": "tmux-web/static/js/tasks/gantt.js",
+    "type": "function",
+    "content": "Строит верхнюю ось гант-диаграммы с равномерными засечками .gantt-tick (gantt.js). buildAxis(t0,t1): span=t1-t0; число засечек ticks по числу дней (days<=MAX_TICKS=12 -> max(MIN_TICKS=6, ceil(days)), иначе MAX_TICKS). Формат текста засечки выбирается по масштабу окна: если span<=2*DAY_MS (дневные диапазоны 'today'/'yesterday') — fmtAxisTime(ms) (HH:MM), иначе fmtAxisDate(ms) (день/месяц, для 7д/30д/'all'). Крайняя правая граница (100%) опускается, чтобы подпись не вылезла за край. Возвращает div.gantt-axis (CSS position:sticky, прилипает к верху #gantt-canvas).",
+    "createdAt": "2026-05-27T18:54:09.402Z",
+    "updatedAt": "2026-05-27T18:54:09.402Z"
+  },
+  {
+    "element": "fmtAxisTime",
+    "path": "",
+    "type": "unknown",
+    "content": "Форматирует мс в строку времени HH:MM через new Date(ms).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}), обёрнуто в try/catch (на невалидной дате возвращает ''). Используется buildAxis для подписей засечек оси при узких дневных диапазонах (span<=2*DAY_MS: 'today'/'yesterday'). Парная функция к fmtAxisDate (даты для широких окон).",
+    "createdAt": "2026-05-27T18:54:09.679Z",
+    "updatedAt": "2026-05-27T18:54:09.679Z"
+  },
+  {
+    "element": "gantt-scroll-layout",
+    "path": "",
+    "type": "page",
+    "content": "Раскладка прокрутки и оси гант-диаграммы (tmux-web/static/js/tasks/gantt.js + tmux-web/static/css/tasks.css). Структура DOM: #tasks-gantt (flex column, height:34%, overflow:hidden — тулбар зафиксирован сверху) -> #gantt-toolbar (flex 0 0 auto) + #gantt-canvas (position:relative, flex:1, min-height:0, overflow-y:auto — СКРОЛЛ-КОНТЕЙНЕР). Внутри #gantt-canvas: .gantt-axis (прямой потомок, position:sticky; top:0; z-index:5; background:var(--bg) — прилипает к верху при прокрутке, непрозрачный фон не даёт строкам/чертам просвечивать), затем .gantt-rows (position:relative). В .gantt-rows: все .gantt-row, заглушка .gantt-empty и overlay .gantt-commits-overlay (absolute top/bottom/left/right:0). overlay внутри .gantt-rows покрывает полную высоту всех строк -> вертикальные черты .gantt-commit доходят до самого низа при прокрутке (раньше overlay был в #gantt-canvas с bottom:0 и обрезался по видимой высоте). Ось в дневных диапазонах ('today'/'yesterday', span<=2*DAY_MS) показывает время HH:MM (fmtAxisTime), иначе даты (fmtAxisDate).",
+    "createdAt": "2026-05-27T18:54:18.661Z",
+    "updatedAt": "2026-05-27T18:54:18.661Z"
   }
 ]

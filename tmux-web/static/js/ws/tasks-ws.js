@@ -15,13 +15,18 @@ import { withWsToken } from '../core/auth.js';
 import { isRemoteMode } from '../remote/healthz.js';
 import { $tasksStatus } from '../core/dom.js';
 import { renderTasks } from '../tasks/render.js';
+// Циклический импорт с tasks/gantt.js (gantt.js импортирует sessionCwdOrNull
+// отсюда). Безопасен: оба биндинга вызываются только в рантайме (не при
+// инициализации модуля), ES-модули корректно разрешают такой цикл.
+import { fetchGitCommits } from '../tasks/gantt.js';
 
 const TASKS_POLL_INTERVAL_MS = 30000;
 const TASKS_WS_BACKOFFS_MS = [1000, 2000, 5000, 10000];
 
 // Tasks следуют за cwd текущей tmux-сессии (по аналогии с git-вкладкой).
 // Возвращает абсолютный путь сессии или null, если сессия не выбрана/без path.
-function sessionCwdOrNull() {
+// Экспортируется для tasks/gantt.js (since/path для GET /api/git/commits).
+export function sessionCwdOrNull() {
     const name = state.currentSession;
     if (!name) return null;
     const list = Array.isArray(state.sessions) ? state.sessions : [];
@@ -230,10 +235,14 @@ export function syncTasksToCurrentSession() {
     if (state.tasksCurrentCwd === cwd) return;
     state.tasksCurrentCwd = cwd;
     state.tasksData = null;
+    // Гант следует за cwd: сбрасываем коммиты прошлого корня и, если вкладка
+    // активна, подгружаем коммиты нового (fetchGitCommits перерисует гант).
+    state.gitCommits = [];
     disconnectTasksWs();
     if (state.activeTab === 'tasks') {
         fetchTasks();
         setTimeout(connectTasksWs, 0);
+        fetchGitCommits();
     }
 }
 

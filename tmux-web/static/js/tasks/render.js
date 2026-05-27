@@ -14,6 +14,7 @@ import { state } from '../core/state.js';
 import { $tasksBoard, $tasksMeta } from '../core/dom.js';
 import { openCreateModal, openEditModal, openTodoEditModal } from './modals.js';
 import { updateTask, promoteTodo, setTodoAutoPromote, cleanColumn } from './crud.js';
+import { renderGantt } from './gantt.js';
 
 export const TASK_COLUMNS = ['todo', 'open', 'in_progress', 'blocked', 'deferred', 'draft', 'closed'];
 
@@ -67,6 +68,9 @@ export function renderTasks() {
         const total = (typeof data.total === 'number') ? data.total : issues.length;
         $tasksMeta.textContent = `Total: ${total} · TODO: ${todos.length}`;
     }
+
+    // Гант-диаграмма синхронизируется с доской при каждом WS-апдейте/рендере.
+    renderGantt();
 }
 
 export function compareIssues(a, b) {
