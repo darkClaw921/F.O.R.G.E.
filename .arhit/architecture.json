@@ -1,6 +1,6 @@
 {
   "root": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E.",
-  "generatedAt": "2026-05-27T18:54:23.222Z",
+  "generatedAt": "2026-05-28T07:11:24.550Z",
   "nodes": [
     {
       "id": "tmux-web/static/app.js",
@@ -4605,11 +4605,20 @@
           "exports": []
         },
         {
+          "id": "tmux-web/static/js/tasks/gantt.js:fmtDuration",
+          "name": "fmtDuration",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/gantt.js",
+          "line": 82,
+          "signature": "fmtDuration(ms)",
+          "exports": []
+        },
+        {
           "id": "tmux-web/static/js/tasks/gantt.js:buildAxis",
           "name": "buildAxis",
           "type": "function",
           "path": "tmux-web/static/js/tasks/gantt.js",
-          "line": 82,
+          "line": 104,
           "signature": "buildAxis(t0, t1)",
           "exports": []
         },
@@ -4618,7 +4627,7 @@
           "name": "ganttWindow",
           "type": "function",
           "path": "tmux-web/static/js/tasks/gantt.js",
-          "line": 126,
+          "line": 148,
           "signature": "ganttWindow(rows)",
           "exports": [
             "ganttWindow"
@@ -4629,18 +4638,45 @@
           "name": "renderGantt",
           "type": "function",
           "path": "tmux-web/static/js/tasks/gantt.js",
-          "line": 167,
+          "line": 189,
           "signature": "renderGantt()",
           "exports": [
             "renderGantt"
           ]
         },
         {
+          "id": "tmux-web/static/js/tasks/gantt.js:renderTaskRow",
+          "name": "renderTaskRow",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/gantt.js",
+          "line": 280,
+          "signature": "renderTaskRow(rowsEl, v, t0, span, grouped)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/tasks/gantt.js:groupByCommit",
+          "name": "groupByCommit",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/gantt.js",
+          "line": 311,
+          "signature": "groupByCommit(visible, t0, t1)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/tasks/gantt.js:renderGroupHeader",
+          "name": "renderGroupHeader",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/gantt.js",
+          "line": 367,
+          "signature": "renderGroupHeader(rowsEl, group, t0, span)",
+          "exports": []
+        },
+        {
           "id": "tmux-web/static/js/tasks/gantt.js:renderEmpty",
           "name": "renderEmpty",
           "type": "function",
           "path": "tmux-web/static/js/tasks/gantt.js",
-          "line": 274,
+          "line": 420,
           "signature": "renderEmpty(canvas)",
           "exports": []
         },
@@ -4649,7 +4685,7 @@
           "name": "renderCommits",
           "type": "function",
           "path": "tmux-web/static/js/tasks/gantt.js",
-          "line": 287,
+          "line": 433,
           "signature": "renderCommits(rowsEl, t0, span)",
           "exports": []
         },
@@ -4658,7 +4694,7 @@
           "name": "ensurePopover",
           "type": "function",
           "path": "tmux-web/static/js/tasks/gantt.js",
-          "line": 347,
+          "line": 493,
           "signature": "ensurePopover()",
           "exports": []
         },
@@ -4667,7 +4703,7 @@
           "name": "scheduleHide",
           "type": "function",
           "path": "tmux-web/static/js/tasks/gantt.js",
-          "line": 365,
+          "line": 511,
           "signature": "scheduleHide()",
           "exports": []
         },
@@ -4676,8 +4712,26 @@
           "name": "attachCommitHover",
           "type": "function",
           "path": "tmux-web/static/js/tasks/gantt.js",
-          "line": 374,
+          "line": 520,
           "signature": "attachCommitHover(line)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/tasks/gantt.js:attachGroupHover",
+          "name": "attachGroupHover",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/gantt.js",
+          "line": 546,
+          "signature": "attachGroupHover(el, group)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/tasks/gantt.js:renderGroupPopover",
+          "name": "renderGroupPopover",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/gantt.js",
+          "line": 565,
+          "signature": "renderGroupPopover(group)",
           "exports": []
         },
         {
@@ -4685,7 +4739,7 @@
           "name": "openPopoverFor",
           "type": "function",
           "path": "tmux-web/static/js/tasks/gantt.js",
-          "line": 396,
+          "line": 625,
           "signature": "openPopoverFor(line)",
           "exports": []
         },
@@ -4694,7 +4748,7 @@
           "name": "fetchCommitDetail",
           "type": "function",
           "path": "tmux-web/static/js/tasks/gantt.js",
-          "line": 427,
+          "line": 656,
           "signature": "fetchCommitDetail(hash)",
           "exports": []
         },
@@ -4703,7 +4757,7 @@
           "name": "renderPopover",
           "type": "function",
           "path": "tmux-web/static/js/tasks/gantt.js",
-          "line": 449,
+          "line": 678,
           "signature": "renderPopover(detail, hash, fallbackSubject)",
           "exports": []
         },
@@ -4712,7 +4766,7 @@
           "name": "positionPopover",
           "type": "function",
           "path": "tmux-web/static/js/tasks/gantt.js",
-          "line": 517,
+          "line": 746,
           "signature": "positionPopover(line)",
           "exports": []
         },
@@ -4721,7 +4775,7 @@
           "name": "fetchGitCommits",
           "type": "function",
           "path": "tmux-web/static/js/tasks/gantt.js",
-          "line": 556,
+          "line": 785,
           "signature": "fetchGitCommits()",
           "exports": [
             "fetchGitCommits"
@@ -4732,7 +4786,7 @@
           "name": "initGanttControls",
           "type": "function",
           "path": "tmux-web/static/js/tasks/gantt.js",
-          "line": 587,
+          "line": 816,
           "signature": "initGanttControls()",
           "exports": [
             "initGanttControls"
@@ -4771,11 +4825,27 @@
           "exports": []
         },
         {
+          "id": "tmux-web/static/js/tasks/gantt.js:expandedGroups",
+          "name": "expandedGroups",
+          "type": "variable",
+          "path": "tmux-web/static/js/tasks/gantt.js",
+          "line": 98,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/tasks/gantt.js:OPEN_GROUP_KEY",
+          "name": "OPEN_GROUP_KEY",
+          "type": "variable",
+          "path": "tmux-web/static/js/tasks/gantt.js",
+          "line": 100,
+          "exports": []
+        },
+        {
           "id": "tmux-web/static/js/tasks/gantt.js:detailCache",
           "name": "detailCache",
           "type": "variable",
           "path": "tmux-web/static/js/tasks/gantt.js",
-          "line": 332,
+          "line": 478,
           "exports": []
         },
         {
@@ -4783,7 +4853,7 @@
           "name": "POPOVER_SHOW_DELAY",
           "type": "variable",
           "path": "tmux-web/static/js/tasks/gantt.js",
-          "line": 334,
+          "line": 480,
           "exports": []
         },
         {
@@ -4791,7 +4861,7 @@
           "name": "POPOVER_HIDE_DELAY",
           "type": "variable",
           "path": "tmux-web/static/js/tasks/gantt.js",
-          "line": 335,
+          "line": 481,
           "exports": []
         },
         {
@@ -4799,7 +4869,7 @@
           "name": "POPOVER_GAP",
           "type": "variable",
           "path": "tmux-web/static/js/tasks/gantt.js",
-          "line": 337,
+          "line": 483,
           "exports": []
         },
         {
@@ -4807,7 +4877,7 @@
           "name": "POPOVER_MARGIN",
           "type": "variable",
           "path": "tmux-web/static/js/tasks/gantt.js",
-          "line": 338,
+          "line": 484,
           "exports": []
         },
         {
@@ -4815,7 +4885,7 @@
           "name": "popoverEl",
           "type": "variable",
           "path": "tmux-web/static/js/tasks/gantt.js",
-          "line": 340,
+          "line": 486,
           "exports": []
         },
         {
@@ -4823,7 +4893,7 @@
           "name": "showTimer",
           "type": "variable",
           "path": "tmux-web/static/js/tasks/gantt.js",
-          "line": 341,
+          "line": 487,
           "exports": []
         },
         {
@@ -4831,7 +4901,7 @@
           "name": "hideTimer",
           "type": "variable",
           "path": "tmux-web/static/js/tasks/gantt.js",
-          "line": 342,
+          "line": 488,
           "exports": []
         },
         {
@@ -4839,7 +4909,7 @@
           "name": "popoverToken",
           "type": "variable",
           "path": "tmux-web/static/js/tasks/gantt.js",
-          "line": 343,
+          "line": 489,
           "exports": []
         }
       ]

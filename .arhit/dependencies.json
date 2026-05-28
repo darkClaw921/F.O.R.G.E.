@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-27T18:54:23.771Z",
+  "generatedAt": "2026-05-28T07:11:25.375Z",
   "dependencies": [
     {
       "from": "tmux-web/static/hotkeys.js",
@@ -16551,6 +16551,90 @@
       "from": "tmux-web/static/js/tasks/gantt.js",
       "to": "tmux-web/static/js/tasks/gantt.js",
       "type": "call",
+      "fromElement": "fmtDuration",
+      "toElement": "Math.max"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "fmtDuration",
+      "toElement": "Math.round"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "fmtDuration",
+      "toElement": "Number"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "fmtDuration",
+      "toElement": "Number.isFinite"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "fmtDuration",
+      "toElement": "Math.floor"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "fmtDuration",
+      "toElement": "Math.floor"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "fmtDuration",
+      "toElement": "Math.floor"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "fmtDuration",
+      "toElement": "parts.push"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "fmtDuration",
+      "toElement": "parts.push"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "fmtDuration",
+      "toElement": "parts.push"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "fmtDuration",
+      "toElement": "parts.push"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "fmtDuration",
+      "toElement": "parts.slice"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
       "fromElement": "buildAxis",
       "toElement": "document.createElement"
     },
@@ -16839,70 +16923,28 @@
       "to": "tmux-web/static/js/tasks/gantt.js",
       "type": "call",
       "fromElement": "renderGantt",
-      "toElement": "document.createElement"
+      "toElement": "groupByCommit"
     },
     {
       "from": "tmux-web/static/js/tasks/gantt.js",
       "to": "tmux-web/static/js/tasks/gantt.js",
       "type": "call",
       "fromElement": "renderGantt",
-      "toElement": "document.createElement"
+      "toElement": "renderGroupHeader"
     },
     {
       "from": "tmux-web/static/js/tasks/gantt.js",
       "to": "tmux-web/static/js/tasks/gantt.js",
       "type": "call",
       "fromElement": "renderGantt",
-      "toElement": "shortTitle"
+      "toElement": "expandedGroups.has"
     },
     {
       "from": "tmux-web/static/js/tasks/gantt.js",
       "to": "tmux-web/static/js/tasks/gantt.js",
       "type": "call",
       "fromElement": "renderGantt",
-      "toElement": "String"
-    },
-    {
-      "from": "tmux-web/static/js/tasks/gantt.js",
-      "to": "tmux-web/static/js/tasks/gantt.js",
-      "type": "call",
-      "fromElement": "renderGantt",
-      "toElement": "row.appendChild"
-    },
-    {
-      "from": "tmux-web/static/js/tasks/gantt.js",
-      "to": "tmux-web/static/js/tasks/gantt.js",
-      "type": "call",
-      "fromElement": "renderGantt",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/tasks/gantt.js",
-      "to": "tmux-web/static/js/tasks/gantt.js",
-      "type": "call",
-      "fromElement": "renderGantt",
-      "toElement": "fmtDate"
-    },
-    {
-      "from": "tmux-web/static/js/tasks/gantt.js",
-      "to": "tmux-web/static/js/tasks/gantt.js",
-      "type": "call",
-      "fromElement": "renderGantt",
-      "toElement": "fmtDate"
-    },
-    {
-      "from": "tmux-web/static/js/tasks/gantt.js",
-      "to": "tmux-web/static/js/tasks/gantt.js",
-      "type": "call",
-      "fromElement": "renderGantt",
-      "toElement": "row.appendChild"
-    },
-    {
-      "from": "tmux-web/static/js/tasks/gantt.js",
-      "to": "tmux-web/static/js/tasks/gantt.js",
-      "type": "call",
-      "fromElement": "renderGantt",
-      "toElement": "rowsEl.appendChild"
+      "toElement": "renderTaskRow"
     },
     {
       "from": "tmux-web/static/js/tasks/gantt.js",
@@ -16910,6 +16952,349 @@
       "type": "call",
       "fromElement": "renderGantt",
       "toElement": "renderCommits"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderTaskRow",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderTaskRow",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderTaskRow",
+      "toElement": "shortTitle"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderTaskRow",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderTaskRow",
+      "toElement": "row.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderTaskRow",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderTaskRow",
+      "toElement": "fmtDate"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderTaskRow",
+      "toElement": "fmtDate"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderTaskRow",
+      "toElement": "row.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderTaskRow",
+      "toElement": "rowsEl.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "groupByCommit",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "groupByCommit",
+      "toElement": "Number.isFinite"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "groupByCommit",
+      "toElement": "Number"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "groupByCommit",
+      "toElement": "Number"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "groupByCommit",
+      "toElement": "byKey.get"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "groupByCommit",
+      "toElement": "byKey.set"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "groupByCommit",
+      "toElement": "order.push"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "groupByCommit",
+      "toElement": "commits.find"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "groupByCommit",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "groupByCommit",
+      "toElement": "groupFor"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "groupByCommit",
+      "toElement": "order.sort"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "groupByCommit",
+      "toElement": "Math.max"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "groupByCommit",
+      "toElement": "Math.max"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupHeader",
+      "toElement": "expandedGroups.has"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupHeader",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupHeader",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupHeader",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupHeader",
+      "toElement": "label.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupHeader",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupHeader",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupHeader",
+      "toElement": "shortTitle"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupHeader",
+      "toElement": "label.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupHeader",
+      "toElement": "row.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupHeader",
+      "toElement": "clamp"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupHeader",
+      "toElement": "clamp"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupHeader",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupHeader",
+      "toElement": "row.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupHeader",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupHeader",
+      "toElement": "fmtDuration"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupHeader",
+      "toElement": "fmtDate"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupHeader",
+      "toElement": "fmtDate"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupHeader",
+      "toElement": "attachGroupHover"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupHeader",
+      "toElement": "row.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupHeader",
+      "toElement": "label.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupHeader",
+      "toElement": "expandedGroups.has"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupHeader",
+      "toElement": "expandedGroups.delete"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupHeader",
+      "toElement": "expandedGroups.add"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupHeader",
+      "toElement": "renderGantt"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupHeader",
+      "toElement": "rowsEl.appendChild"
     },
     {
       "from": "tmux-web/static/js/tasks/gantt.js",
@@ -17113,6 +17498,279 @@
       "type": "call",
       "fromElement": "attachCommitHover",
       "toElement": "scheduleHide"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "attachGroupHover",
+      "toElement": "el.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "attachGroupHover",
+      "toElement": "clearTimeout"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "attachGroupHover",
+      "toElement": "clearTimeout"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "attachGroupHover",
+      "toElement": "setTimeout"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "attachGroupHover",
+      "toElement": "renderGroupPopover"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "attachGroupHover",
+      "toElement": "positionPopover"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "attachGroupHover",
+      "toElement": "el.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "attachGroupHover",
+      "toElement": "clearTimeout"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "attachGroupHover",
+      "toElement": "scheduleHide"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "ensurePopover"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "head.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "el.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "fmtDuration"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "fmtDate"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "fmtDate"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "el.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "top.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "fmtDuration"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "top.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "item.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "item.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "descRaw.slice"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "item.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "list.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/gantt.js",
+      "to": "tmux-web/static/js/tasks/gantt.js",
+      "type": "call",
+      "fromElement": "renderGroupPopover",
+      "toElement": "el.appendChild"
     },
     {
       "from": "tmux-web/static/js/tasks/gantt.js",

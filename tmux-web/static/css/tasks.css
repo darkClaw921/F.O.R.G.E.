@@ -728,3 +728,152 @@
 .gantt-file-status.status-C {
     color: var(--fg-dim);
 }
+
+/* ===== Группы задач по коммитам (.gantt-group) ===== */
+/* Строка-заголовок группы: каретка + метка (subject коммита), summary-бар и
+   бейдж длительности. По клику на метку группа сворачивается/разворачивается;
+   развёрнутые задачи рисуются ниже как .gantt-row.is-grouped. */
+.gantt-group {
+    position: relative;
+    height: 22px;
+    margin-bottom: 4px;
+}
+
+/* Метка группы: кликабельная зона (каретка + заголовок), занимает левую колонку
+   как .gantt-row-label, но шире — до начала канваса баров. */
+.gantt-group-label {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 220px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    overflow: hidden;
+    cursor: pointer;
+    font-size: 0.72rem;
+    color: var(--fg);
+    padding-right: 6px;
+    box-sizing: border-box;
+}
+
+.gantt-group-label:hover {
+    color: var(--accent);
+}
+
+.gantt-group-caret {
+    flex: 0 0 auto;
+    width: 0.9em;
+    text-align: center;
+    color: var(--fg-mute);
+    font-size: 0.62rem;
+}
+
+.gantt-group-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+/* Summary-бар группы: как .gantt-bar, но отличимый цвет (акцент). */
+.gantt-group-bar {
+    position: absolute;
+    top: 4px;
+    height: 14px;
+    border-radius: 3px;
+    background: var(--accent);
+    opacity: 0.85;
+    min-width: 2px;
+}
+
+.gantt-group-bar.is-ongoing {
+    background: var(--info);
+}
+
+/* Бейдж общей длительности группы: справа от бара, hover → попап разбивки. */
+.gantt-group-duration {
+    position: absolute;
+    right: 4px;
+    top: 2px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    border-radius: 9px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-soft);
+    color: var(--fg-soft);
+    font-size: 0.66rem;
+    font-weight: 600;
+    cursor: help;
+    pointer-events: auto;
+}
+
+.gantt-group-duration:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+/* Развёрнутые задачи группы: лёгкий отступ слева для вложенности. */
+.gantt-row.is-grouped .gantt-row-label {
+    padding-left: 16px;
+}
+
+/* ===== Попап разбивки группы по задачам ===== */
+/* Переиспользует .gantt-commit-popover; ниже — стили списка задач внутри. */
+.gantt-group-tasks {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 4px;
+    border-top: 1px solid var(--border-soft);
+    padding-top: 6px;
+}
+
+.gantt-group-task {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.gantt-group-task-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.gantt-group-task-id {
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-weight: 600;
+    color: var(--accent);
+    font-size: 0.7rem;
+}
+
+.gantt-group-task-dur {
+    flex: 0 0 auto;
+    color: var(--fg-mute);
+    font-size: 0.68rem;
+}
+
+.gantt-group-task-title {
+    color: var(--fg);
+    font-weight: 600;
+    word-break: break-word;
+}
+
+.gantt-group-task-desc {
+    margin: 0;
+    padding: 4px 6px;
+    background: var(--bg-input);
+    border-radius: 4px;
+    color: var(--fg-soft);
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-size: 0.68rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 10em;
+    overflow: auto;
+}

@@ -77,6 +77,28 @@ function shortTitle(title) {
     return t.length > LABEL_TITLE_MAX ? t.slice(0, LABEL_TITLE_MAX - 1) + '…' : t;
 }
 
+// Человекочитаемая длительность из миллисекунд: «3д 4ч», «2ч 15м», «45м»,
+// «30с». Берутся максимум две старшие ненулевые единицы. <1с → «0с».
+function fmtDuration(ms) {
+    let s = Math.max(0, Math.round(Number(ms) / 1000));
+    if (!Number.isFinite(s) || s < 1) return '0с';
+    const d = Math.floor(s / 86400); s -= d * 86400;
+    const h = Math.floor(s / 3600); s -= h * 3600;
+    const m = Math.floor(s / 60); s -= m * 60;
+    const parts = [];
+    if (d) parts.push(d + 'д');
+    if (h) parts.push(h + 'ч');
+    if (m) parts.push(m + 'м');
+    if (s && parts.length === 0) parts.push(s + 'с');
+    return parts.slice(0, 2).join(' ') || '0с';
+}
+
+// Ключи развёрнутых групп (hash коммита либо OPEN_GROUP_KEY). Пустой Set →
+// все группы свёрнуты (поведение по умолчанию). Сохраняется между renderGantt().
+const expandedGroups = new Set();
+// Ключ хвостовой группы задач без последующего коммита.
+const OPEN_GROUP_KEY = '__open__';
+
 // Строит верхнюю ось с равномерными засечками дат.
 // При узком окне (<= MAX_TICKS дней) — по дню; иначе ~MAX_TICKS равномерных меток.
 function buildAxis(t0, t1) {
@@ -238,35 +260,159 @@ export function renderGantt() {
         return;
     }
 
-    for (const v of visible) {
-        const row = document.createElement('div');
-        row.className = 'gantt-row';
-
-        const label = document.createElement('div');
-        label.className = 'gantt-row-label';
-        const id = v.issue.id || '';
-        label.textContent = id + ' ' + shortTitle(v.issue.title);
-        label.title = id + ' ' + String(v.issue.title || '');
-        row.appendChild(label);
-
-        const leftPct = ((v.left - t0) / span) * 100;
-        const widthPct = ((v.right - v.left) / span) * 100;
-
-        const bar = document.createElement('div');
-        bar.className = 'gantt-bar status-' + v.status;
-        bar.style.left = leftPct + '%';
-        bar.style.width = widthPct + '%';
-
-        const endText = (v.status === 'closed') ? fmtDate(v.end) : 'в работе';
-        bar.title = id + ' · ' + fmtDate(v.start) + ' → ' + endText;
-        row.appendChild(bar);
-
-        rowsEl.appendChild(row);
+    // Группируем задачи по «закрывающему» коммиту и рисуем группы (свёрнутые
+    // по умолчанию). Развёрнутые группы раскрываются в отдельные строки задач.
+    const groups = groupByCommit(visible, t0, t1);
+    for (const g of groups) {
+        renderGroupHeader(rowsEl, g, t0, span);
+        if (expandedGroups.has(g.key)) {
+            for (const v of g.tasks) renderTaskRow(rowsEl, v, t0, span, true);
+        }
     }
 
     // Коммиты — вертикальные черты поверх дорожек (overlay-слой внутри
     // .gantt-rows, чтобы черты шли до самого низа всех строк).
     renderCommits(rowsEl, t0, span);
+}
+
+// Рисует одну строку задачи. grouped=true добавляет отступ (.is-grouped) для
+// визуального вложения под заголовок группы.
+function renderTaskRow(rowsEl, v, t0, span, grouped) {
+    const row = document.createElement('div');
+    row.className = grouped ? 'gantt-row is-grouped' : 'gantt-row';
+
+    const label = document.createElement('div');
+    label.className = 'gantt-row-label';
+    const id = v.issue.id || '';
+    label.textContent = id + ' ' + shortTitle(v.issue.title);
+    label.title = id + ' ' + String(v.issue.title || '');
+    row.appendChild(label);
+
+    const leftPct = ((v.left - t0) / span) * 100;
+    const widthPct = ((v.right - v.left) / span) * 100;
+
+    const bar = document.createElement('div');
+    bar.className = 'gantt-bar status-' + v.status;
+    bar.style.left = leftPct + '%';
+    bar.style.width = widthPct + '%';
+
+    const endText = (v.status === 'closed') ? fmtDate(v.end) : 'в работе';
+    bar.title = id + ' · ' + fmtDate(v.start) + ' → ' + endText;
+    row.appendChild(bar);
+
+    rowsEl.appendChild(row);
+}
+
+// Группирует видимые задачи по «закрывающему» коммиту: группа задачи = первый
+// коммит с ts >= anchor (anchor = closed_at для closed, иначе t1). Задачи без
+// последующего коммита уходят в хвостовую группу OPEN_GROUP_KEY. Возвращает
+// массив групп в хронологическом порядке (по ts коммита), хвостовая — последней.
+//   commit.ts в СЕКУНДАХ → *1000 для сравнения с anchor в мс.
+function groupByCommit(visible, t0, t1) {
+    const commits = (Array.isArray(state.gitCommits) ? state.gitCommits : [])
+        .filter((c) => c && Number.isFinite(Number(c.ts)))
+        .map((c) => ({ ...c, tsMs: Number(c.ts) * 1000 }))
+        .sort((a, b) => a.tsMs - b.tsMs);
+
+    const byKey = new Map();
+    const order = [];
+    const groupFor = (key, commit) => {
+        let g = byKey.get(key);
+        if (!g) {
+            g = { key, commit: commit || null, tasks: [] };
+            byKey.set(key, g);
+            order.push(g);
+        }
+        return g;
+    };
+
+    for (const v of visible) {
+        const anchor = (v.status === 'closed') ? v.end : t1;
+        const commit = commits.find((c) => c.tsMs >= anchor) || null;
+        const key = commit ? String(commit.hash || OPEN_GROUP_KEY) : OPEN_GROUP_KEY;
+        groupFor(key, commit).tasks.push(v);
+    }
+
+    // Сортировка групп: по ts коммита по возрастанию, хвостовая (нет коммита) —
+    // в конец.
+    order.sort((a, b) => {
+        const at = a.commit ? a.commit.tsMs : Infinity;
+        const bt = b.commit ? b.commit.tsMs : Infinity;
+        return at - bt;
+    });
+
+    // Сводные метрики каждой группы.
+    for (const g of order) {
+        let gStart = Infinity;
+        let gEnd = -Infinity;
+        let hasOngoing = false;
+        for (const v of g.tasks) {
+            if (v.start < gStart) gStart = v.start;
+            if (v.status !== 'closed') { hasOngoing = true; }
+            const e = (v.status === 'closed') ? v.end : t1;
+            if (e > gEnd) gEnd = e;
+        }
+        g.gStart = gStart;
+        g.gEnd = hasOngoing ? Math.max(gEnd, t1) : gEnd;
+        g.hasOngoing = hasOngoing;
+        g.totalMs = Math.max(0, g.gEnd - g.gStart);
+    }
+
+    return order;
+}
+
+// Рисует строку-заголовок группы: каретка ▶/▼, метка (subject коммита или
+// «Без коммита»), summary-бар [gStart,gEnd] и бейдж длительности. Клик по
+// заголовку переключает свёрнутость; наведение на бейдж — попап разбивки.
+function renderGroupHeader(rowsEl, group, t0, span) {
+    const expanded = expandedGroups.has(group.key);
+    const row = document.createElement('div');
+    row.className = 'gantt-group' + (expanded ? ' is-expanded' : '');
+
+    const label = document.createElement('div');
+    label.className = 'gantt-group-label';
+
+    const caret = document.createElement('span');
+    caret.className = 'gantt-group-caret';
+    caret.textContent = expanded ? '▼' : '▶';
+    label.appendChild(caret);
+
+    const subject = group.commit
+        ? String(group.commit.subject || group.commit.hash || '')
+        : 'Без коммита / в работе';
+    const text = document.createElement('span');
+    text.className = 'gantt-group-title';
+    text.textContent = shortTitle(subject) + ' · ' + group.tasks.length;
+    text.title = subject;
+    label.appendChild(text);
+    row.appendChild(label);
+
+    // Summary-бар группы.
+    const left = clamp(group.gStart, t0, t0 + span);
+    const right = clamp(group.gEnd, t0, t0 + span);
+    const bar = document.createElement('div');
+    bar.className = 'gantt-group-bar' + (group.hasOngoing ? ' is-ongoing' : '');
+    bar.style.left = (((left - t0) / span) * 100) + '%';
+    bar.style.width = (((right - left) / span) * 100) + '%';
+    row.appendChild(bar);
+
+    // Бейдж длительности (hover → попап разбивки).
+    const dur = document.createElement('div');
+    dur.className = 'gantt-group-duration';
+    dur.textContent = fmtDuration(group.totalMs) + (group.hasOngoing ? '+' : '');
+    dur.title = fmtDate(group.gStart) + ' → '
+        + (group.hasOngoing ? 'в работе' : fmtDate(group.gEnd));
+    attachGroupHover(dur, group);
+    row.appendChild(dur);
+
+    // Клик по заголовку (кроме бейджа длительности) — toggle свёрнутости.
+    label.addEventListener('click', () => {
+        if (expandedGroups.has(group.key)) expandedGroups.delete(group.key);
+        else expandedGroups.add(group.key);
+        renderGantt();
+    });
+
+    rowsEl.appendChild(row);
 }
 
 // Пустое состояние: только ось не строим (домен может быть вырожден) —
@@ -390,6 +536,89 @@ function attachCommitHover(line) {
         }
         scheduleHide();
     });
+}
+
+// ---- Hover-попап разбивки группы по задачам ----
+// Переиспользует shared-попап (ensurePopover/positionPopover/scheduleHide) и
+// те же таймеры показа/скрытия, что и попап коммита.
+
+// Навешивает hover на бейдж длительности группы → попап со списком задач.
+function attachGroupHover(el, group) {
+    el.addEventListener('mouseenter', () => {
+        if (hideTimer !== null) { clearTimeout(hideTimer); hideTimer = null; }
+        if (showTimer !== null) clearTimeout(showTimer);
+        showTimer = setTimeout(() => {
+            showTimer = null;
+            renderGroupPopover(group);
+            positionPopover(el);
+        }, POPOVER_SHOW_DELAY);
+    });
+    el.addEventListener('mouseleave', () => {
+        if (showTimer !== null) { clearTimeout(showTimer); showTimer = null; }
+        scheduleHide();
+    });
+}
+
+// Рендерит содержимое попапа группы: шапка (subject коммита + общая длительность
+// + диапазон дат) и список задач (id, title, полное описание ≤800 симв.,
+// длительность). Всё через textContent (без innerHTML).
+function renderGroupPopover(group) {
+    const el = ensurePopover();
+    el.innerHTML = '';
+
+    const head = document.createElement('div');
+    head.className = 'gantt-popover-head';
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'gantt-popover-subject';
+    titleSpan.textContent = group.commit
+        ? String(group.commit.subject || group.commit.hash || '')
+        : 'Без коммита / в работе';
+    head.appendChild(titleSpan);
+    el.appendChild(head);
+
+    const meta = document.createElement('div');
+    meta.className = 'gantt-popover-date';
+    meta.textContent = fmtDuration(group.totalMs) + (group.hasOngoing ? '+' : '')
+        + ' · ' + fmtDate(group.gStart) + ' → '
+        + (group.hasOngoing ? 'в работе' : fmtDate(group.gEnd))
+        + ' · задач: ' + group.tasks.length;
+    el.appendChild(meta);
+
+    const list = document.createElement('div');
+    list.className = 'gantt-group-tasks';
+    for (const v of group.tasks) {
+        const item = document.createElement('div');
+        item.className = 'gantt-group-task';
+
+        const top = document.createElement('div');
+        top.className = 'gantt-group-task-head';
+        const id = document.createElement('span');
+        id.className = 'gantt-group-task-id';
+        id.textContent = String(v.issue.id || '');
+        top.appendChild(id);
+        const durMs = (v.status === 'closed') ? (v.end - v.start) : NaN;
+        const dur = document.createElement('span');
+        dur.className = 'gantt-group-task-dur';
+        dur.textContent = (v.status === 'closed') ? fmtDuration(durMs) : 'в работе';
+        top.appendChild(dur);
+        item.appendChild(top);
+
+        const title = document.createElement('div');
+        title.className = 'gantt-group-task-title';
+        title.textContent = String(v.issue.title || '');
+        item.appendChild(title);
+
+        const descRaw = String(v.issue.description || '').trim();
+        if (descRaw) {
+            const desc = document.createElement('pre');
+            desc.className = 'gantt-group-task-desc';
+            desc.textContent = descRaw.length > 800 ? descRaw.slice(0, 799) + '…' : descRaw;
+            item.appendChild(desc);
+        }
+
+        list.appendChild(item);
+    }
+    el.appendChild(list);
 }
 
 // Показывает попап для черты: из кэша мгновенно, иначе fetch детали.
