@@ -313,7 +313,7 @@ dependencies = [
 
 [[package]]
 name = "devforge"
-version = "0.1.36"
+version = "0.1.37"
 dependencies = [
  "anyhow",
  "axum",
