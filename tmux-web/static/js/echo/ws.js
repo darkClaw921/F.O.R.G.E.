@@ -16,6 +16,8 @@
 // conversation_id — no-op, если уже подключены).
 
 import { withWsToken } from '../core/auth.js';
+import { fetchNextSteps } from '../sessions/sessions.js';
+import { renderSidebar } from '../sidebar/sidebar.js';
 
 const WS_BACKOFFS_MS = [1000, 2000, 5000, 10000];
 
@@ -175,6 +177,18 @@ function handleFrame(raw) {
         return;
     }
     if (!msg || typeof msg !== 'object' || !msg.type) return;
+
+    // NextStepEvent — broadcast (не привязан к conversation): изменилось
+    // состояние предложения «следующего шага» для сессии. Обрабатываем прямо
+    // здесь (а не через conversation-handlers), чтобы голубое свечение
+    // появлялось/исчезало почти мгновенно, не дожидаясь 3с-поллинга
+    // fetchSessions. has_suggestion=true → новое предложение; false → снято
+    // (send/feedback/dismiss или сессия снова активна). В обоих случаях самый
+    // надёжный путь — перефетчить актуальный список и перерисовать сайдбар.
+    if (msg.type === 'next_step_event') {
+        fetchNextSteps().then(() => renderSidebar());
+        return;
+    }
 
     // Серверный ping — сразу шлём pong, чтобы не словить idle-timeout.
     if (msg.type === 'ping') {

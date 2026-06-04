@@ -1,0 +1,3 @@
+# next_step_rules
+
+Таблица памяти правил обратной связи фичи «Следующий шаг» (миграция plugins/echo/migrations/V005_next_step_rules.sql, репозиторий plugins/echo/src/db/repo/next_step.rs). Схема: id TEXT PK, project_id TEXT NULL (NULL=глобальное правило), context_summary TEXT, suggested_next TEXT, created_at INTEGER + индекс idx_next_step_rules_project(project_id, created_at DESC). Репозиторий: Rule struct; insert_rule(db, project_id, context_summary, suggested_next) генерирует UUID+created_at; list_rules(db, project_id, limit) возвращает глобальные (project_id IS NULL) + правила указанного проекта, ORDER BY created_at DESC LIMIT (DEFAULT_RULES_LIMIT=20). Пишется маршрутом feedback (коррекция пользователя), читается воркером next_step для подмешивания в prompt.

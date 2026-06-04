@@ -87,6 +87,13 @@
         //   'esc1'   — одиночный ESC + 1 byte, пропустить
         //   'st-tail'— уже увидели \x1b в OSC-подобной — ждём \\
         escMode: null,
+        // Режим вставки (bracketed paste). xterm оборачивает вставленный
+        // текст в \x1b[200~ ... \x1b[201~. Всё между ними — НЕ команды
+        // (это код/логи/многострочный текст), их нельзя засчитывать в freq.
+        pasteMode: false,
+        // Аккумулятор параметров текущей CSI-последовательности (для
+        // распознавания 200~/201~).
+        csiParams: '',
         // DOM-refs (заполняются после DOMContentLoaded).
         bar: null,
         keysEl: null,
@@ -331,7 +338,7 @@
         switch (state.escMode) {
             case 'init':
                 // Первый байт после \x1b — определяем тип последовательности.
-                if (ch === '[') { state.escMode = 'csi'; return; }
+                if (ch === '[') { state.escMode = 'csi'; state.csiParams = ''; return; }
                 if (ch === ']') { state.escMode = 'osc'; return; }
                 if (ch === 'P') { state.escMode = 'dcs'; return; }
                 if (ch === '_') { state.escMode = 'apc'; return; }
@@ -344,7 +351,14 @@
                 return;
             case 'csi':
                 // CSI: \x1b[ params final-byte. Final-byte = 0x40-0x7e.
-                if (code >= 0x40 && code <= 0x7e) endEsc();
+                if (code >= 0x40 && code <= 0x7e) {
+                    // Bracketed paste: ESC[200~ начинает вставку, ESC[201~ — конец.
+                    if (ch === '~' && state.csiParams === '200') state.pasteMode = true;
+                    else if (ch === '~' && state.csiParams === '201') state.pasteMode = false;
+                    endEsc();
+                } else {
+                    state.csiParams += ch;
+                }
                 return;
             case 'osc':
             case 'dcs':
@@ -389,6 +403,8 @@
                 startEsc();
                 continue;
             }
+            // Внутри вставки (bracketed paste) ничего не считаем командами.
+            if (state.pasteMode) continue;
             if (ch === '\r' || ch === '\n') {
                 const cmd = normalize(state.inputBuffer);
                 state.inputBuffer = '';

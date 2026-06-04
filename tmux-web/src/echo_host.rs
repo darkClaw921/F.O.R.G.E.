@@ -12,7 +12,7 @@
 //! Echo WS-клиент сам себя авторизует при self-обращении к хост-API.
 
 use async_trait::async_trait;
-use echo_host_api::{HostApi, ProjectActivity, SessionInfo};
+use echo_host_api::{HostApi, IdleSession, ProjectActivity, SessionInfo};
 
 use crate::AppState;
 
@@ -162,4 +162,89 @@ impl HostApi for EchoHostAdapter {
 
         Ok(projects)
     }
+
+    /// Возвращает затихшие (idle) tmux-сессии — те, у которых индикатор
+    /// генерации Claude погас и при этом нет активного prompt'а
+    /// (`needs_attention`).
+    ///
+    /// Делегирует в [`crate::attention::AttentionState::idle_snapshot`]
+    /// (которая уже исключает сессии с `needs_attention=true`) и маппит
+    /// `HashMap<String, u64>` в `Vec<IdleSession { name, idle_secs }>`.
+    /// Порядок результата не определён (HashMap не упорядочен) — для воркера
+    /// «Следующий шаг» это несущественно.
+    async fn idle_sessions(&self) -> anyhow::Result<Vec<IdleSession>> {
+        let snap = self.state.attention.idle_snapshot().await;
+        if snap.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Карта имя сессии → cwd, чтобы резолвить ярлык проекта (git-корень)
+        // только для затихших сессий. list_sessions может упасть/быть пустым —
+        // тогда project_id останется None (правила скоупятся как глобальные).
+        let cwd_by_name: std::collections::HashMap<String, String> =
+            match crate::tmux::list_sessions().await {
+                Ok(sessions) => sessions
+                    .into_iter()
+                    .map(|s| (s.name, s.path))
+                    .collect(),
+                Err(e) => {
+                    tracing::warn!(error = %e, "idle_sessions: list_sessions failed, project_id=None");
+                    std::collections::HashMap::new()
+                }
+            };
+
+        let mut result = Vec::with_capacity(snap.len());
+        for (name, idle_secs) in snap {
+            let project_id = match cwd_by_name.get(&name) {
+                Some(cwd) => project_label_for_cwd(cwd).await,
+                None => None,
+            };
+            result.push(IdleSession {
+                name,
+                idle_secs,
+                project_id,
+            });
+        }
+        Ok(result)
+    }
+
+    /// Отправляет текст в указанную tmux-сессию как ввод пользователя.
+    ///
+    /// Делегирует в [`crate::tmux::send_keys`] — тот же транспорт, что промоут
+    /// TODO → open: построчная доставка через `tmux send-keys -l` + Enter,
+    /// без запуска shell. Имя сессии валидируется внутри `tmux::send_keys`.
+    async fn send_keys(&self, session: &str, text: &str) -> anyhow::Result<()> {
+        crate::tmux::send_keys(session, text).await
+    }
+}
+
+/// Вычисляет непрозрачный ярлык проекта для cwd сессии — scope правил фичи
+/// «Следующий шаг».
+///
+/// Логика (та же идея, что в [`EchoHostAdapter::collect_project_activity`]):
+/// 1. `git -C <cwd> rev-parse --show-toplevel` — git-корень. Несколько сессий,
+///    смотрящих в один репозиторий (в т.ч. в разные подкаталоги), получают
+///    ОДИН и тот же ярлык → правила между ними общие, как и ожидается.
+/// 2. Если cwd не в git-репозитории — используем сам cwd как ярлык (изоляция
+///    по директории всё равно лучше глобальной свалки).
+/// 3. Пустой/неизвестный cwd → `None` (правила скоупятся как глобальные).
+async fn project_label_for_cwd(cwd: &str) -> Option<String> {
+    let cwd = cwd.trim();
+    if cwd.is_empty() {
+        return None;
+    }
+    let out = tokio::process::Command::new("git")
+        .args(["-C", cwd, "rev-parse", "--show-toplevel"])
+        .output()
+        .await;
+    if let Ok(out) = out {
+        if out.status.success() {
+            let root = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !root.is_empty() {
+                return Some(root);
+            }
+        }
+    }
+    // Не git-репозиторий — изолируем по самому cwd.
+    Some(cwd.to_string())
 }

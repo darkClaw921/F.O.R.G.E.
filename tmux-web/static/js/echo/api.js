@@ -208,6 +208,52 @@ export async function saveDailyReportPrompts(body) {
     return call('/api/echo/daily-reports/prompts', jsonInit('PUT', body));
 }
 
+// -------- next steps («Следующий шаг») --------
+
+/**
+ * Текущие эфемерные предложения «следующего шага». Возвращает
+ * {items:[{session, content, created_at}]}.
+ */
+export async function listNextSteps() {
+    return call('/api/echo/next-steps');
+}
+
+/**
+ * Доставить шаг в терминал сессии. body {text}: если text непустой — шлётся он,
+ * иначе бэкенд берёт сохранённый content предложения. После успеха сервер
+ * снимает предложение и шлёт broadcast NextStepEvent{has_suggestion:false}.
+ *
+ * @param {string} session — имя tmux-сессии
+ * @param {string} text — текст для отправки (актуальный из textarea)
+ */
+export async function sendNextStep(session, text) {
+    return call(`/api/echo/next-steps/${encodeURIComponent(session)}/send`,
+        jsonInit('POST', { text: text || '' }));
+}
+
+/**
+ * Записать правило-коррекцию для сессии (feedback). body {correction}.
+ * Бэкенд пишет правило в next_step_rules, снимает предложение + broadcast.
+ *
+ * @param {string} session — имя tmux-сессии
+ * @param {string} correction — что нужно было сделать вместо предложенного
+ */
+export async function feedbackNextStep(session, correction) {
+    return call(`/api/echo/next-steps/${encodeURIComponent(session)}/feedback`,
+        jsonInit('POST', { correction: correction || '' }));
+}
+
+/**
+ * Снять предложение без действия (dismiss). Бэкенд убирает предложение +
+ * broadcast NextStepEvent{has_suggestion:false}.
+ *
+ * @param {string} session — имя tmux-сессии
+ */
+export async function dismissNextStep(session) {
+    return call(`/api/echo/next-steps/${encodeURIComponent(session)}/dismiss`,
+        jsonInit('POST', {}));
+}
+
 // -------- runs --------
 
 export async function cancelRun(runId) {

@@ -27,6 +27,9 @@
  *        (369-516 + 572-724) === */
 @import url('./css/sidebar.css');
 
+/* === 5a. Next-step popup: интерактивный hover-попап «Следующий шаг» === */
+@import url('./css/next-step-popup.css');
+
 /* === 6. Origin tabs над session-list (517-570) === */
 @import url('./css/origin-tabs.css');
 
@@ -74,6 +77,9 @@
 
 /* === 16. Quick-command bar (mobile) + quick-cmd edit UI (3198-3419) === */
 @import url('./css/quick-cmd.css');
+
+/* === 16b. Command dock (desktop): часто набираемые команды + сниппеты === */
+@import url('./css/command-dock.css');
 
 /* === 17. Mobile layout: @media (max-width: 768px / 480px) (2914-3197)
  *        ВАЖНО: должен быть последним, чтобы перекрывать desktop-правила. === */

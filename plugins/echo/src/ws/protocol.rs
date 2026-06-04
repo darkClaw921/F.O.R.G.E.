@@ -128,6 +128,19 @@ pub enum ServerMsg {
     Error { code: String, message: String },
     /// Heartbeat-ping; клиент должен ответить `pong`.
     Ping,
+    /// Фича «Следующий шаг» — изменилось состояние предложения для сессии.
+    ///
+    /// Broadcast всем клиентам (без `conversation_id`). `has_suggestion`:
+    /// - `true`  — для сессии появилось новое предложение (воркер сгенерировал);
+    /// - `false` — предложение снято (отправлено / dismiss / feedback / сессия
+    ///   снова активна).
+    ///
+    /// Фронтенд по этому событию перефетчит `GET /api/echo/next-steps` и
+    /// обновит голубое свечение/попап у соответствующей сессии.
+    NextStepEvent {
+        session: String,
+        has_suggestion: bool,
+    },
 }
 
 /// Тип чанка для assistant_chunk. Сериализуется как snake_case ("text",
@@ -345,6 +358,25 @@ mod tests {
         assert_eq!(v["task_id"], "t1");
         assert_eq!(v["status"], "running");
         assert_eq!(v["message_preview"], "doing X");
+    }
+
+    #[test]
+    fn server_next_step_event_round_trip() {
+        let m = ServerMsg::NextStepEvent {
+            session: "work".into(),
+            has_suggestion: true,
+        };
+        let v = rt_server(&m);
+        assert_eq!(v["type"], "next_step_event");
+        assert_eq!(v["session"], "work");
+        assert_eq!(v["has_suggestion"], true);
+
+        let cleared = ServerMsg::NextStepEvent {
+            session: "work".into(),
+            has_suggestion: false,
+        };
+        let v = rt_server(&cleared);
+        assert_eq!(v["has_suggestion"], false);
     }
 
     #[test]

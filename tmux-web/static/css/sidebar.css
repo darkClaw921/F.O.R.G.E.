@@ -176,6 +176,42 @@
     50%      { opacity: 1; }
 }
 
+/* ===== «Следующий шаг» — голубое свечение сессии =====
+ *
+ * .session-item.has-next-step ставится в js/sessions/sessions.js, когда для
+ * сессии есть предложение в state.nextSteps. Визуально ОТЛИЧАЕТСЯ от синего
+ * спарка ✶ (is_generating, цвет --accent #2a7fff): тут более светлый
+ * голубой/cyan glow по всей карточке (box-shadow + left-border + лёгкий tint
+ * фона), мягкая пульсация. Курсор-указатель сохраняется (карточка кликабельна),
+ * а сам интерактивный попап рисует js/sessions/next-step-popup.js. */
+.session-item.has-next-step {
+    --next-step-glow: #4fd0e7;
+    border-left-color: var(--next-step-glow);
+    background-color: color-mix(in srgb, var(--next-step-glow) 8%, transparent 92%);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--next-step-glow) 28%, transparent 72%),
+                0 0 10px color-mix(in srgb, var(--next-step-glow) 22%, transparent 78%);
+    animation: next-step-glow-pulse 2.4s ease-in-out infinite;
+}
+
+.session-item.has-next-step:hover {
+    background-color: color-mix(in srgb, var(--next-step-glow) 14%, transparent 86%);
+}
+
+.session-item.has-next-step .session-name {
+    color: color-mix(in srgb, var(--next-step-glow) 55%, var(--fg-soft) 45%);
+}
+
+@keyframes next-step-glow-pulse {
+    0%, 100% {
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--next-step-glow) 24%, transparent 76%),
+                    0 0 6px color-mix(in srgb, var(--next-step-glow) 16%, transparent 84%);
+    }
+    50% {
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--next-step-glow) 40%, transparent 60%),
+                    0 0 14px color-mix(in srgb, var(--next-step-glow) 30%, transparent 70%);
+    }
+}
+
 /* ===== Phase 5 — origin/project headers внутри session-list ===== */
 
 .origin-group-header {

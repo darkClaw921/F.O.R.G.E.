@@ -34,6 +34,16 @@ use std::time::Instant;
 
 use tokio::sync::RwLock;
 
+/// Сколько секунд непрерывного просмотра сессии (attached>0) достаточно, чтобы
+/// считать её «просмотренной» и завершить idle-эпизод «следующего шага»:
+/// голубое свечение гаснет и не возвращается при последующем уходе из сессии
+/// (новое предложение появится только после новой серии генерации Claude).
+///
+/// Совпадает по значению с порогом затихания воркера
+/// (`forge_echo::next_step::IDLE_THRESHOLD_SECS`), но семантически независим:
+/// здесь это «сколько пользователь смотрел сессию», там — «сколько она молчала».
+const VIEW_DISMISS_SECS: u64 = 10;
+
 /// Разделяемое состояние «у каких сессий сейчас открыт Claude permission
 /// prompt».
 ///
@@ -66,6 +76,30 @@ pub struct AttentionState {
     /// «генерация идёт уже N секунд» через [`AttentionState::generating_age_snapshot`].
     /// На саму логику дедупа/детекта не влияет.
     gen_started_at: Arc<RwLock<HashMap<String, Instant>>>,
+    /// Момент, когда индикатор генерации сессии погас (фронт `is_generating`
+    /// `true→false`) — начало периода «idle».
+    ///
+    /// Ставится в [`set_generating`] на фронте `true→false` и удаляется на
+    /// фронте `false→true` (новая серия генерации — сессия больше не idle).
+    /// Idle отсчитывается ТОЛЬКО для сессий, которые реально генерировали и
+    /// затихли: при первом наблюдении сессии (флаг сразу `false`) отметка НЕ
+    /// ставится. Используется [`AttentionState::idle_snapshot`] для фичи
+    /// «Следующий шаг» (Phase 2): по этой карте Echo-воркер находит сессии,
+    /// в которых Claude закончил генерацию.
+    idle_started_at: Arc<RwLock<HashMap<String, Instant>>>,
+    /// Момент, когда сессию начал непрерывно смотреть пользователь
+    /// (`attached>0`).
+    ///
+    /// Обновляется каждый тик watcher'а через [`AttentionState::update_attached`]:
+    /// `Instant` фиксируется при появлении сессии в attached-множестве и
+    /// держится стабильным, пока сессия непрерывно attached; снимается при
+    /// detach. Нужен для фичи «Следующий шаг», чтобы не зажигать голубое
+    /// свечение на сессиях, которые пользователь сейчас просматривает:
+    /// - пока сессия attached, фронт `is_generating` `true→false` (перерисовка
+    ///   при переключении/просмотре) НЕ ставит idle-метку (см. `set_generating`);
+    /// - если сессию смотрят >= [`VIEW_DISMISS_SECS`], её idle-эпизод
+    ///   завершается (idle-метка удаляется в [`AttentionState::idle_snapshot`]).
+    attached_since: Arc<RwLock<HashMap<String, Instant>>>,
 }
 
 impl AttentionState {
@@ -76,7 +110,25 @@ impl AttentionState {
             generating: Arc::new(RwLock::new(HashMap::new())),
             last_gen_hash: Arc::new(RwLock::new(HashMap::new())),
             gen_started_at: Arc::new(RwLock::new(HashMap::new())),
+            idle_started_at: Arc::new(RwLock::new(HashMap::new())),
+            attached_since: Arc::new(RwLock::new(HashMap::new())),
         }
+    }
+
+    /// Обновляет множество сессий, которые сейчас просматривает пользователь
+    /// (`attached>0`). Вызывается каждый тик `watcher_loop` с актуальным
+    /// набором имён attached-сессий.
+    ///
+    /// Момент начала просмотра (`Instant`) держится СТАБИЛЬНЫМ, пока сессия
+    /// непрерывно attached (используется `entry().or_insert`), и снимается,
+    /// как только сессия выпала из набора (`retain`). Это даёт корректный
+    /// `elapsed()` «сколько уже смотрят» для порога [`VIEW_DISMISS_SECS`].
+    pub async fn update_attached(&self, attached_names: &std::collections::HashSet<String>) {
+        let mut map = self.attached_since.write().await;
+        for name in attached_names {
+            map.entry(name.clone()).or_insert_with(Instant::now);
+        }
+        map.retain(|k, _| attached_names.contains(k));
     }
 
     /// Возвращает копию текущего состояния.
@@ -146,6 +198,82 @@ impl AttentionState {
         } else {
             started.remove(name);
         }
+        drop(started);
+
+        // Поддерживаем `idle_started_at` строго по фронтам флага, зеркально
+        // `gen_started_at`: фронт `true→false` — сессия затихла, фиксируем
+        // начало idle «сейчас»; фронт `false→true` — началась новая серия
+        // генерации, idle сброшен (удаляем отметку). Idle ставится ТОЛЬКО
+        // когда сессия реально генерировала (prev=true): при первом
+        // наблюдении (флаг сразу false, prev=false) отметку НЕ ставим.
+        let mut idle = self.idle_started_at.write().await;
+        if flag {
+            // false→true или true→true: генерация идёт, сессия не idle.
+            idle.remove(name);
+        } else if prev {
+            // true→false: фронт затухания. НО если сессию сейчас СМОТРИТ
+            // пользователь (attached) — это его взаимодействие/перерисовка
+            // при переключении или просмотре, а не автономная работа Claude:
+            // idle-метку НЕ ставим. Иначе простое переключение между сессиями
+            // зажигало бы «следующий шаг» на каждой посещённой сессии, и
+            // свечение появлялось бы прямо на той сессии, в которой
+            // пользователь сейчас работает.
+            let attached = self.attached_since.read().await;
+            if !attached.contains_key(name) {
+                idle.insert(name.to_string(), Instant::now());
+            }
+        }
+        // prev=false && flag=false (первое наблюдение / повторный false):
+        // отметку idle не трогаем — сессия не генерировала, нечему затихать.
+    }
+
+    /// Возвращает «затихшие» (idle) сессии: для каждой записи в
+    /// `idle_started_at` отдаёт `Instant::elapsed().as_secs()` от момента, когда
+    /// индикатор генерации погас.
+    ///
+    /// Сессии с `needs_attention=true` (показан Claude permission/plan/question
+    /// prompt — см. `self.map`) **исключаются**: там нужен ответ пользователя,
+    /// а не «следующий шаг», поэтому idle для них не имеет смысла.
+    ///
+    /// Сессии, которые пользователь непрерывно смотрит уже >= [`VIEW_DISMISS_SECS`]
+    /// секунд (см. `attached_since`), **завершают idle-эпизод**: их idle-метка
+    /// удаляется насовсем. Логика: пользователь уже находится в сессии и видит
+    /// её состояние — голубое свечение «следующего шага» ему не нужно и не
+    /// должно возвращаться при уходе (новое появится лишь после новой генерации).
+    ///
+    /// Используется хост-адаптером [`crate::echo_host::EchoHostAdapter`] для
+    /// реализации `HostApi::idle_sessions` (фича «Следующий шаг», Phase 2).
+    pub async fn idle_snapshot(&self) -> HashMap<String, u64> {
+        // Завершаем idle-эпизод для сессий, которые пользователь смотрит уже
+        // >= VIEW_DISMISS_SECS: он их «просмотрел», предложение больше не нужно.
+        // Удаляем idle-метку НАСОВСЕМ (а не просто фильтруем вывод), чтобы
+        // свечение не вернулось, когда пользователь уйдёт из сессии: новое
+        // предложение появится только после новой серии генерации Claude.
+        {
+            let attached = self.attached_since.read().await;
+            let dismissed: Vec<String> = attached
+                .iter()
+                .filter(|(_, t)| t.elapsed().as_secs() >= VIEW_DISMISS_SECS)
+                .map(|(name, _)| name.clone())
+                .collect();
+            drop(attached);
+            if !dismissed.is_empty() {
+                let mut idle = self.idle_started_at.write().await;
+                for name in dismissed {
+                    idle.remove(&name);
+                }
+            }
+        }
+
+        let idle = self.idle_started_at.read().await;
+        let needs_attention = self.map.read().await;
+        idle.iter()
+            .filter(|(name, _)| {
+                // Исключаем сессии с активным prompt'ом (needs_attention=true).
+                !needs_attention.get(*name).copied().unwrap_or(false)
+            })
+            .map(|(name, t)| (name.clone(), t.elapsed().as_secs()))
+            .collect()
     }
 
     /// Возвращает длительность текущей серии генерации (в секундах) для всех
@@ -502,6 +630,163 @@ Do you want to make this edit?
         assert!(
             !s.generating_age_snapshot().await.contains_key("forge"),
             "после →false отметка должна исчезнуть"
+        );
+    }
+
+    #[tokio::test]
+    async fn idle_snapshot_tracks_generating_fronts() {
+        // idle_started_at заводится на фронте true→false (сессия реально
+        // генерировала и затихла) и снимается на false→true (новая серия).
+        // Это питает HostApi::idle_sessions для фичи «Следующий шаг».
+        let s = AttentionState::new();
+
+        // Нет генерации никогда — idle-снапшот пуст (нечему затихать).
+        assert!(
+            s.idle_snapshot().await.is_empty(),
+            "сессия без генерации не должна попадать в idle"
+        );
+
+        // false→true: генерация пошла, сессия не idle.
+        s.set_generating("forge", true).await;
+        assert!(
+            !s.idle_snapshot().await.contains_key("forge"),
+            "пока флаг true сессия не idle"
+        );
+
+        // true→false: серия закончилась — сессия стала idle (метка появилась).
+        s.set_generating("forge", false).await;
+        assert!(
+            s.idle_snapshot().await.contains_key("forge"),
+            "после true→false должна появиться idle-метка"
+        );
+
+        // false→true: новая серия генерации — idle-метка снимается.
+        s.set_generating("forge", true).await;
+        assert!(
+            !s.idle_snapshot().await.contains_key("forge"),
+            "после false→true idle-метка должна исчезнуть"
+        );
+    }
+
+    #[tokio::test]
+    async fn idle_snapshot_not_set_on_first_false_observation() {
+        // Первое наблюдение сессии, флаг сразу false (prev=false): сессия
+        // никогда не генерировала, idle-метку ставить нельзя.
+        let s = AttentionState::new();
+        s.set_generating("forge", false).await;
+        assert!(
+            !s.idle_snapshot().await.contains_key("forge"),
+            "первый false (без предшествующей генерации) не должен ставить idle"
+        );
+
+        // Повторный false (prev=false) — тоже не ставит метку.
+        s.set_generating("forge", false).await;
+        assert!(
+            !s.idle_snapshot().await.contains_key("forge"),
+            "повторный false без генерации тоже не ставит idle"
+        );
+    }
+
+    #[tokio::test]
+    async fn idle_snapshot_excludes_needs_attention() {
+        // Сессия затихла (idle-метка стоит), но у неё показан Claude prompt
+        // (needs_attention=true в self.map) — её НЕЛЬЗЯ отдавать как idle:
+        // там нужен ответ пользователя, а не «следующий шаг».
+        let s = AttentionState::new();
+
+        // Заводим idle-метку через фронт true→false.
+        s.set_generating("forge", true).await;
+        s.set_generating("forge", false).await;
+        assert!(
+            s.idle_snapshot().await.contains_key("forge"),
+            "предусловие: idle-метка должна стоять"
+        );
+
+        // Поднимаем needs_attention — сессия должна выпасть из idle-снапшота.
+        s.set("forge", true).await;
+        assert!(
+            !s.idle_snapshot().await.contains_key("forge"),
+            "needs_attention=true исключает сессию из idle, даже если idle-метка стоит"
+        );
+
+        // Снимаем needs_attention — сессия снова считается idle.
+        s.set("forge", false).await;
+        assert!(
+            s.idle_snapshot().await.contains_key("forge"),
+            "после снятия needs_attention сессия снова idle"
+        );
+    }
+
+    #[tokio::test]
+    async fn idle_marker_not_set_while_attached() {
+        // Регрессия на баг «переключение сессий зажигает свечение каждый раз».
+        // Пока сессию смотрит пользователь (attached), фронт is_generating
+        // true→false (перерисовка при переключении/просмотре) НЕ должен
+        // ставить idle-метку — иначе посещение сессии создаёт ложный
+        // «следующий шаг».
+        let s = AttentionState::new();
+        let mut attached = std::collections::HashSet::new();
+        attached.insert("forge".to_string());
+        s.update_attached(&attached).await;
+
+        s.set_generating("forge", true).await;
+        s.set_generating("forge", false).await; // true→false, но сессия attached
+        assert!(
+            !s.idle_snapshot().await.contains_key("forge"),
+            "attached-сессия не должна попадать в idle (подавление навигационного шума)"
+        );
+    }
+
+    #[tokio::test]
+    async fn detached_session_still_marks_idle() {
+        // Контроль к предыдущему тесту: БЕЗ attached фронт true→false штатно
+        // ставит idle-метку (фоновая сессия, где Claude реально доработал).
+        let s = AttentionState::new();
+        s.set_generating("forge", true).await;
+        s.set_generating("forge", false).await;
+        assert!(
+            s.idle_snapshot().await.contains_key("forge"),
+            "не-attached сессия после true→false должна стать idle"
+        );
+    }
+
+    #[tokio::test]
+    async fn update_attached_clears_on_detach() {
+        // attached_since держит сессию, пока она в наборе, и снимает при detach.
+        // После detach сессия снова способна стать idle (новая генерация).
+        let s = AttentionState::new();
+        let mut attached = std::collections::HashSet::new();
+        attached.insert("a".to_string());
+        s.update_attached(&attached).await;
+        // Пока attached — true→false не ставит idle.
+        s.set_generating("a", true).await;
+        s.set_generating("a", false).await;
+        assert!(!s.idle_snapshot().await.contains_key("a"));
+
+        // Detach: набор пуст.
+        s.update_attached(&std::collections::HashSet::new()).await;
+        // Новая серия генерации в уже не-attached сессии → idle ставится.
+        s.set_generating("a", true).await;
+        s.set_generating("a", false).await;
+        assert!(
+            s.idle_snapshot().await.contains_key("a"),
+            "после detach новая серия генерации снова делает сессию idle"
+        );
+    }
+
+    #[tokio::test]
+    async fn idle_snapshot_returns_elapsed_secs() {
+        // idle_snapshot отдаёт elapsed().as_secs() — для свежей метки это 0,
+        // значение присутствует и детерминировано (без sleep, без флейков).
+        let s = AttentionState::new();
+        s.set_generating("forge", true).await;
+        s.set_generating("forge", false).await;
+
+        let snap = s.idle_snapshot().await;
+        assert_eq!(
+            snap.get("forge"),
+            Some(&0u64),
+            "свежая idle-метка → elapsed=0 секунд"
         );
     }
 
@@ -1024,6 +1309,20 @@ pub async fn watcher_loop(attention: Arc<AttentionState>) {
             attention.set(&name, flag).await;
         }
 
+        // Обновляем множество просматриваемых (attached>0) сессий ДО записи
+        // is_generating: set_generating подавляет постановку idle-метки для
+        // attached-сессий (см. его docstring) — чтобы переключение/просмотр
+        // сессий не зажигали голубое свечение «следующего шага».
+        {
+            use std::collections::HashSet;
+            let attached_names: HashSet<String> = sessions
+                .iter()
+                .filter(|s| s.attached > 0)
+                .map(|s| s.name.clone())
+                .collect();
+            attention.update_attached(&attached_names).await;
+        }
+
         // Шаг 2b: дедупликация is_generating. Свёртка сырых `changed`-сигналов
         // по двум осям группировки (gen_hash + session_group), затем запись
         // финального флага во всех сессиях — в т.ч. явный `false` для тех,
@@ -1052,6 +1351,16 @@ pub async fn watcher_loop(attention: Arc<AttentionState>) {
                 .retain(|k, _| live.contains(k.as_str()));
             attention
                 .gen_started_at
+                .write()
+                .await
+                .retain(|k, _| live.contains(k.as_str()));
+            attention
+                .idle_started_at
+                .write()
+                .await
+                .retain(|k, _| live.contains(k.as_str()));
+            attention
+                .attached_since
                 .write()
                 .await
                 .retain(|k, _| live.contains(k.as_str()));

@@ -184,6 +184,7 @@ mod tests {
             "daily_reports",
             "memories",
             "messages",
+            "next_step_rules",
             "schema_migrations",
             "task_runs",
             "token_stats",
@@ -211,8 +212,8 @@ mod tests {
             .unwrap();
         // Каждый V*.sql-файл регистрируется по имени один раз. Повторный
         // migrate() не должен добавлять дубли — поэтому count == число файлов
-        // (V001 + V002 + V003 + V004), а не растёт при повторных прогонах.
-        assert_eq!(applied, 4, "expected one entry per embedded migration file");
+        // (V001 + V002 + V003 + V004 + V005), а не растёт при повторных прогонах.
+        assert_eq!(applied, 5, "expected one entry per embedded migration file");
     }
 
     #[tokio::test]

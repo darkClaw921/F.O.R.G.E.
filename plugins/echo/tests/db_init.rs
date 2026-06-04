@@ -81,10 +81,10 @@ async fn init_is_idempotent_across_runs() {
         .await
         .unwrap();
     // Один entry на каждый embedded V*.sql (V001_init + V002_daily_reports +
-    // V003_daily_report_suggestions + V004_app_settings), не растёт при
-    // повторном init.
+    // V003_daily_report_suggestions + V004_app_settings + V005_next_step_rules),
+    // не растёт при повторном init.
     assert_eq!(
-        n, 4,
+        n, 5,
         "each embedded migration applied exactly once across two inits"
     );
 }

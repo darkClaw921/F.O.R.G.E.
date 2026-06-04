@@ -23,7 +23,13 @@ import { renderHome, showHome } from '../home/home.js';
 
 export async function fetchSessions() {
     try {
-        const resp = await fetch('/api/sessions', { headers: { 'Accept': 'application/json' } });
+        // Догрузка предложений «следующего шага» идёт параллельно с основным
+        // списком сессий, но НЕ влияет на него: ошибка next-steps не должна
+        // ломать рендер сайдбара. Поэтому fetchNextSteps глотает свои ошибки.
+        const [resp] = await Promise.all([
+            fetch('/api/sessions', { headers: { 'Accept': 'application/json' } }),
+            fetchNextSteps(),
+        ]);
         if (!resp.ok) {
             throw new Error('HTTP ' + resp.status);
         }
@@ -33,6 +39,32 @@ export async function fetchSessions() {
         syncHomeVisibility();
     } catch (e) {
         console.warn('fetchSessions failed', e);
+    }
+}
+
+// Догружает текущие эфемерные предложения «следующего шага» из плагина Echo и
+// складывает их в state.nextSteps (map session → { content }). Ошибка запроса
+// НЕ пробрасывается наружу (graceful): если эндпоинт недоступен — предыдущее
+// состояние остаётся, рендер сессий не ломается. Вызывается из fetchSessions()
+// (poll каждые 3с) и напрямую из echo/ws.js по событию NextStepEvent для
+// мгновенной реакции.
+export async function fetchNextSteps() {
+    try {
+        const resp = await fetch('/api/echo/next-steps', { headers: { 'Accept': 'application/json' } });
+        if (!resp.ok) {
+            throw new Error('HTTP ' + resp.status);
+        }
+        const data = await resp.json();
+        const items = (data && Array.isArray(data.items)) ? data.items : [];
+        const next = {};
+        for (const it of items) {
+            if (it && typeof it.session === 'string') {
+                next[it.session] = { content: it.content || '' };
+            }
+        }
+        state.nextSteps = next;
+    } catch (e) {
+        console.warn('fetchNextSteps failed', e);
     }
 }
 
@@ -82,6 +114,15 @@ export function buildSessionItem(s) {
     }
     if (s.needs_attention) {
         li.classList.add('needs-attention');
+    }
+    // Голубое свечение, если для сессии есть предложение «следующего шага».
+    // Визуально отдельно от синего спарка ✶ (is_generating ниже) — это два
+    // независимых индикатора: ✶ = Claude печатает прямо сейчас, has-next-step =
+    // эпизод завершён и есть готовое предложение что делать дальше. Класс
+    // снимается автоматически при перерендере, когда предложение исчезает из
+    // state.nextSteps (poll или WS NextStepEvent{has_suggestion:false}).
+    if (state.nextSteps && state.nextSteps[s.name]) {
+        li.classList.add('has-next-step');
     }
     li.dataset.session = s.name;
 

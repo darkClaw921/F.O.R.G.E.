@@ -2684,9 +2684,9 @@
     "element": "buildSessionItem",
     "path": "tmux-web/static/js/sessions/sessions.js",
     "type": "function",
-    "content": "Создаёт DOM <li class='session-item'> для одной сессии (tmux-web/static/js/sessions/sessions.js). .active при currentSession; .needs-attention при s.needs_attention (оранжевая подсветка); dataset.session=s.name; .session-meta (имя + 'N windows · attached(K)'); .session-actions (rename + kill, оба stopPropagation). При s.is_generating добавляет <span class='claude-spark'>✶</span> ПОСЛЕ actions — синий пульсирующий индикатор работы (CSS color var(--accent)=#2a7fff). Tooltip спарка строится generatingTooltip(s): объясняет ПОЧЕМУ горит индикатор — в этой сессии содержимое терминала (последние 50 строк pane) меняется; если есть s.generating_since_secs показывает длительность серии через formatDuration (5 с / 1 мин 20 с / 2 ч 3 мин). Для работы tooltip CSS .claude-spark переведён с pointer-events:none на pointer-events:auto + cursor:help (клик по ✶ всплывает на li → openSession, т.к. свой обработчик отсутствует). click-обработчик li → openSession(s.name, dtoOrigin(s)).",
+    "content": "tmux-web/static/js/sessions/sessions.js — строит <li.session-item> для сайдбара. Классы: active (текущая сессия), needs-attention (s.needs_attention), has-next-step (если state.nextSteps[s.name] есть — голубое cyan-свечение, отдельный индикатор от ✶ claude-spark/is_generating). Содержит session-meta (name+sub), session-actions (rename/kill), при is_generating — span.claude-spark ✶ с tooltip. Клик по li → openSession.",
     "createdAt": "2026-05-19T14:13:29.791Z",
-    "updatedAt": "2026-05-25T08:51:13.199Z"
+    "updatedAt": "2026-05-29T07:11:46.660Z"
   },
   {
     "element": "syncGitToCurrentSession",
@@ -3013,13 +3013,9 @@
     "element": "renderHome",
     "path": "tmux-web/static/js/home/home.js",
     "type": "function",
-    "content": "renderHome (js/home/home.js) — async-функция рендера главной страницы 'Недавние сессии'. Загружает историю через apiFetch('/api/sessions/history') (GET, массив HistorySession {name,path,folder_label,windows:[{index,name}],first_seen,last_seen}), очищает грид #home-cards и строит карточку на каждую запись через buildHomeCard (document.createElement, XSS-safe — без innerHTML с пользовательскими данными). Карточка содержит: имя сессии, folder_label, path, количество и список имён окон, кнопки '▶ Запустить' (restoreSession) и '✕' (deleteHistory). При пустой истории показывает #home-empty ('История пуста') и скрывает кнопку #home-restore-all. При первом вызове один раз навешивает listener на #home-restore-all → restoreAll (флаг restoreAllBound защищает от дублей). Связанные функции модуля: restoreSession(name,path) — POST /api/sessions/history/restore, обрабатывает 409 (имя занято), при успехе fetchSessions()+openSession(name); restoreAll() — POST /api/sessions/history/restore-all + fetchSessions(); deleteHistory(name,path) — DELETE /api/sessions/history {name,path} + renderHome(); showHome(show) — переключает display #home (flex/none), при show=true вызывает showPlaceholder(false). Вызывается из sessions.js::fetchSessions (через syncHomeVisibility) когда нет активных сессий и нет currentSession. Зависимости: apiFetch (core/api.js), fetchSessions/openSession (sessions/sessions.js), showPlaceholder (terminal/xterm.js), DOM $home/$homeCards/$homeRestoreAll/$homeEmpty (core/dom.js).",
+    "content": "tmux-web/static/js/home/home.js. Рендерит экран «Недавние сессии»: GET /api/sessions/history → карточки buildHomeCard в #home-cards. Кнопки заголовка навешиваются один раз (headerBound): «Открыть все» → restoreAll, «Открыть выбранные (N)» → restoreSelected. Каждый перерендер делает selected.clear()+updateSelectionUI(). Карточки кликабельны для мультивыбора (см. [[restoreSelected]]); кнопки ▶ Запустить → restoreSession и ✕ → deleteHistory используют stopPropagation, чтобы не триггерить выбор. Пустая история → #home-empty, кнопки скрыты.",
     "createdAt": "2026-05-26T07:33:42.170Z",
-    "updatedAt": "2026-05-26T07:33:52.724Z",
-    "aliases": [
-      "недавние сессии",
-      "история сессий главная"
-    ]
+    "updatedAt": "2026-06-04T06:07:06.205Z"
   },
   {
     "element": "home-module",
@@ -3672,5 +3668,205 @@
     "content": "Гант-таймлайн задач вкладки Tasks (tmux-web/static/js/tasks/gantt.js). Рендерит ось дней, строки задач (in_progress/closed) и вертикальные черты git-коммитов. Состояние: state.tasksData.issues, state.gitCommits, state.ganttRange.\n\nГРУППИРОВКА ПО КОММИТАМ (groupByCommit): видимые задачи группируются по 'закрывающему' коммиту — группа задачи = первый коммит с ts>=anchor (anchor=closed_at для closed, иначе t1). Задачи без последующего коммита уходят в хвостовую группу OPEN_GROUP_KEY ('Без коммита / в работе'). Группы сортируются по ts коммита; каждая несёт gStart=min(start), gEnd=max(end|t1), totalMs, hasOngoing. commit.ts в секундах → *1000.\n\nСВЁРНУТОСТЬ: модульный Set expandedGroups (ключи = hash коммита / OPEN_GROUP_KEY). По умолчанию пуст → все группы свёрнуты. Клик по .gantt-group-label toggle'ит ключ и вызывает renderGantt() (перерисовка из state).\n\nРЕНДЕР: renderGroupHeader рисует строку .gantt-group (каретка ▶/▼, метка subject коммита, summary-бар .gantt-group-bar [gStart,gEnd], бейдж .gantt-group-duration с fmtDuration(totalMs)). Развёрнутая группа дорисовывает renderTaskRow(...,grouped=true) на каждую задачу.\n\nПОПАП РАЗБИВКИ: attachGroupHover на бейдже длительности → renderGroupPopover(group) переиспользует shared-попап (ensurePopover/positionPopover/scheduleHide/showTimer/hideTimer, общий с попапом коммита). Показывает шапку (subject + общая длительность + диапазон + кол-во задач) и список задач: id, title, полное description (≤800 симв.), длительность каждой (fmtDuration(end-start) или 'в работе'). Всё через textContent.\n\nХЕЛПЕРЫ: fmtDuration(ms) — человекочитаемая длительность ('3д 4ч','2ч 15м','45м','30с', макс 2 старшие единицы). Существующие: parseTs, clamp, fmtDate, fmtAxisDate/Time, shortTitle, buildAxis, ganttWindow.\n\nЭкспорты: ganttWindow, renderGantt, fetchGitCommits, initGanttControls. CSS — раздел Gantt timeline в tmux-web/static/css/tasks.css (.gantt-group*, .gantt-group-tasks, попап переиспользует .gantt-commit-popover).",
     "createdAt": "2026-05-28T07:11:18.232Z",
     "updatedAt": "2026-05-28T07:11:18.232Z"
+  },
+  {
+    "element": "IdleSession",
+    "path": "",
+    "type": "unknown",
+    "content": "IdleSession (plugins/echo-host-api/src/lib.rs) — DTO затихшей сессии для HostApi::idle_sessions (фича «Следующий шаг»). Поля: name (имя tmux-сессии, ключ для send_keys), idle_secs (сколько секунд индикатор генерации погас), project_id: Option<String> (непрозрачный ярлык проекта — git-корень cwd сессии или сам cwd, если не git-репо; None если cwd неизвестен). project_id скоупит правила обратной связи: коррекция из одной сессии влияет только на сессии того же проекта + глобальные правила, а не на все проекты. Резолвится хост-адаптером EchoHostAdapter::idle_sessions через project_label_for_cwd (git rev-parse --show-toplevel).",
+    "createdAt": "2026-05-29T06:52:51.445Z",
+    "updatedAt": "2026-05-29T09:04:47.701Z"
+  },
+  {
+    "element": "idle_snapshot",
+    "path": "",
+    "type": "unknown",
+    "content": "AttentionState::idle_snapshot (tmux-web/src/attention.rs) — отдаёт «затихшие» сессии (HashMap<session, idle_secs>) для HostApi::idle_sessions (фича «Следующий шаг»). Источник — карта idle_started_at (метка ставится на фронте is_generating true→false в set_generating). ИСКЛЮЧЕНИЯ: (1) сессии с needs_attention=true (показан Claude prompt) — там нужен ответ, не следующий шаг; (2) сессии, которые пользователь смотрит непрерывно >= VIEW_DISMISS_SECS (10с, карта attached_since) — их idle-эпизод ЗАВЕРШАЕТСЯ: idle-метка удаляется насовсем, чтобы свечение погасло и не вернулось при уходе. Кроме того set_generating НЕ ставит idle-метку, пока сессия attached (перерисовка при переключении/просмотре != автономная генерация Claude) — это убирает баг «переключение сессий зажигает свечение». attached_since обновляется в watcher_loop каждый тик через update_attached(attached_names = сессии с attached>0).",
+    "createdAt": "2026-05-29T06:52:56.089Z",
+    "updatedAt": "2026-05-29T08:09:58.868Z"
+  },
+  {
+    "element": "set_generating",
+    "path": "",
+    "type": "unknown",
+    "content": "Метод AttentionState (tmux-web/src/attention.rs): единственный writer карты generating (финальный флаг is_generating). Поддерживает две производные карты строго по фронтам флага: (1) gen_started_at — момент начала серии генерации (false->true ставит, ->false удаляет; питает generating_age_snapshot/tooltip); (2) idle_started_at — момент затухания (true->false ставит idle-метку, false->true снимает; первое наблюдение prev=false&flag=false метку не ставит). idle_started_at питает idle_snapshot и фичу «Следующий шаг».",
+    "createdAt": "2026-05-29T06:53:02.391Z",
+    "updatedAt": "2026-05-29T06:53:02.391Z"
+  },
+  {
+    "element": "HostApi",
+    "path": "",
+    "type": "unknown",
+    "content": "Plugin boundary trait (plugins/echo-host-api/src/lib.rs): всё, что Echo может попросить у хоста. Send+Sync, async_trait для dyn-совместимости. Методы: list_sessions, capture_pane_full, auth_token, collect_git_activity (default ''), collect_project_activity (default []), idle_sessions (default vec![]) — затихшие tmux-сессии где Claude закончил генерацию и не ждёт ответа на prompt, send_keys(session,text) (default Ok(())) — отправка текста в сессию как ввод пользователя. Методы с default-реализациями чтобы тестовые stub'ы не ломались. Реализация — EchoHostAdapter в tmux-web/src/echo_host.rs. idle_sessions/send_keys добавлены для фичи «Следующий шаг» (Phase 1).",
+    "createdAt": "2026-05-29T06:53:06.225Z",
+    "updatedAt": "2026-05-29T06:53:06.225Z"
+  },
+  {
+    "element": "next_step",
+    "path": "",
+    "type": "unknown",
+    "content": "Воркер фичи «Следующий шаг» (plugins/echo/src/next_step/mod.rs). Каждые TICK_INTERVAL (2с) опрашивает HostApi::idle_sessions(); для затихших сессий с idle_secs >= IDLE_THRESHOLD_SECS (10с) генерирует РОВНО ОДИН короткий следующий шаг через state.runner.one_shot. Prompt = NEXT_STEP_META_PROMPT (RU, требует один шаг без markdown/преамбул) + подмешанные правила памяти next_step_rules::list_rules + последние 100 строк pane (capture_pane_full). Результат кладётся в state.next_steps[session] (NextStepSuggestion) и рассылается broadcast'ом ServerMsg::NextStepEvent{session, has_suggestion:true}. Защита от двойного запуска: in-memory ProcessedSet (Arc<Mutex<HashSet<String>>>) + проверка наличия в state.next_steps. Сброс эпизода: при исчезновении сессии из idle-списка (снова активна/prompt/закрыта) reset_stale_episodes чистит processed + next_steps и шлёт NextStepEvent{has_suggestion:false}. Пустой ответ модели не сохраняется. spawn(state, host)->JoinHandle регистрируется в crate::spawn_workers для graceful shutdown. Ключевые функции: spawn, run_loop, tick_once (pub(crate), тестируемый), reset_stale_episodes, generate_for_session.",
+    "createdAt": "2026-05-29T07:03:33.056Z",
+    "updatedAt": "2026-05-29T07:03:33.056Z"
+  },
+  {
+    "element": "NextStepSuggestion",
+    "path": "",
+    "type": "unknown",
+    "content": "Эфемерное предложение «следующего шага» для затихшей tmux-сессии (plugins/echo/src/state.rs). Поля: session (имя tmux-сессии, ключ в EchoState.next_steps), content (готовый к отправке в терминал текст одного шага), pane_excerpt (выдержка pane для контекста feedback-правила), project_id (Option<String> — непрозрачный ярлык проекта/git-корень или None), created_at_unix. Derive Clone+Serialize. Хранится только в памяти (Arc<RwLock<HashMap<String, NextStepSuggestion>>> в EchoState.next_steps) — не переживает рестарт. Заполняется воркером next_step, читается/удаляется REST-маршрутами routes::next_step.",
+    "createdAt": "2026-05-29T07:03:44.710Z",
+    "updatedAt": "2026-05-29T07:03:44.710Z"
+  },
+  {
+    "element": "next_step_rules",
+    "path": "",
+    "type": "unknown",
+    "content": "Таблица памяти правил обратной связи фичи «Следующий шаг» (миграция plugins/echo/migrations/V005_next_step_rules.sql, репозиторий plugins/echo/src/db/repo/next_step.rs). Схема: id TEXT PK, project_id TEXT NULL (NULL=глобальное правило), context_summary TEXT, suggested_next TEXT, created_at INTEGER + индекс idx_next_step_rules_project(project_id, created_at DESC). Репозиторий: Rule struct; insert_rule(db, project_id, context_summary, suggested_next) генерирует UUID+created_at; list_rules(db, project_id, limit) возвращает глобальные (project_id IS NULL) + правила указанного проекта, ORDER BY created_at DESC LIMIT (DEFAULT_RULES_LIMIT=20). Пишется маршрутом feedback (коррекция пользователя), читается воркером next_step для подмешивания в prompt.",
+    "createdAt": "2026-05-29T07:03:44.977Z",
+    "updatedAt": "2026-05-29T07:03:44.977Z"
+  },
+  {
+    "element": "routes::next_step",
+    "path": "",
+    "type": "unknown",
+    "content": "REST API фичи «Следующий шаг» (router в plugins/echo/src/routes/next_step.rs, монтируется в build_router). Ошибки сериализуются как {\"error\":\"...\"} (конвенция ApiError).\n\nМаршруты:\n- GET /api/echo/next-steps -> {items:[{session, content, created_at}]} — текущие эфемерные предложения из EchoState.next_steps. Фронт использует для догрузки при инициализации (api.js getNextSteps).\n- POST /api/echo/next-steps/:session/send body {text?} — доставляет текст в tmux-сессию через HostApi::send_keys, затем снимает предложение из next_steps + broadcast NextStepEvent{has_suggestion:false}. text опционален: при отсутствии/пустоте берётся content сохранённого предложения. 404 если предложения нет и text не задан. Ответ {ok:true, sent}.\n- POST /api/echo/next-steps/:session/feedback body {correction} — пишет правило в next_step_rules через rules_repo::insert_rule (context_summary = 'Контекст терминала:\\n<pane_excerpt>\\n\\nОтвергнутое предложение: <content>', suggested_next = correction, project_id берётся из снятого предложения), снимает предложение + broadcast. Пустой correction -> 400. Ответ {ok:true, rule_id}.\n- POST /api/echo/next-steps/:session/dismiss — просто снимает предложение из next_steps + broadcast (если было). Ответ {ok:true, dismissed}.\n\nОбщий хвост send/feedback/dismiss — broadcast_cleared (NextStepEvent has_suggestion:false). host-adapter достаётся из state.host (500 если отсутствует).\n\nЗависимости: EchoState (next_steps, db, host, broadcast), HostApi::send_keys, rules_repo (insert_rule), ServerMsg::NextStepEvent. Бизнес-логика: все мутирующие маршруты снимают эфемерное предложение и уведомляют фронт через WS, чтобы погасить голубое свечение.",
+    "createdAt": "2026-05-29T07:03:54.162Z",
+    "updatedAt": "2026-05-29T07:16:04.444Z"
+  },
+  {
+    "element": "NextStepEvent",
+    "path": "",
+    "type": "unknown",
+    "content": "Вариант ServerMsg::NextStepEvent{session:String, has_suggestion:bool} (plugins/echo/src/ws/protocol.rs), broadcast WS-событие фичи «Следующий шаг». Сериализуется serde-tagged как {type:next_step_event, session, has_suggestion}. has_suggestion=true — для сессии появилось предложение (воркер сгенерировал); false — снято (send/dismiss/feedback или сессия снова активна). Фронтенд по событию перефетчивает GET /api/echo/next-steps и обновляет голубое свечение/попап сессии.",
+    "createdAt": "2026-05-29T07:03:54.422Z",
+    "updatedAt": "2026-05-29T07:03:54.422Z"
+  },
+  {
+    "element": "next-step-popup.js",
+    "path": "next-step-popup.js",
+    "type": "file",
+    "content": "Интерактивный hover-попап фичи «Следующий шаг» (tmux-web/static/js/sessions/next-step-popup.js). Singleton .next-step-popup на body (position:fixed), показывается при наведении на .session-item.has-next-step через делегированный mouseover на document (переживает пересборку сайдбара каждые 3с). Отличие от ui/tooltip.js: попап ИНТЕРАКТИВНЫЙ — удерживается пока курсор над ним (mouseenter попапа отменяет отложенное скрытие hideTimer/HIDE_DELAY_MS=160ms). Содержит: textarea с текстом предложения (state.nextSteps[name].content), кнопку «Отправить в терминал» → sendNextStep(session, text актуальный из textarea) → POST /api/echo/next-steps/:session/send; поле коррекции + кнопку «Сохранить» → feedbackNextStep(session, correction) → POST .../feedback. После действия clearLocal() оптимистично удаляет предложение из state.nextSteps + renderSidebar (WS подтвердит). Экспорт initNextStepPopup() (идемпотентен) вызывается из core/bootstrap.js. Зависит от: core/state.js (nextSteps), sidebar/sidebar.js (renderSidebar), echo/api.js (sendNextStep/feedbackNextStep), echo/notifications.js (notify).",
+    "createdAt": "2026-05-29T07:11:37.525Z",
+    "updatedAt": "2026-05-29T07:11:37.525Z"
+  },
+  {
+    "element": "fetchNextSteps",
+    "path": "",
+    "type": "unknown",
+    "content": "tmux-web/static/js/sessions/sessions.js — догружает текущие эфемерные предложения «следующего шага» через GET /api/echo/next-steps и складывает в state.nextSteps (map session→{content}). Graceful: ошибка запроса НЕ пробрасывается (try/catch + console.warn), чтобы не ломать рендер сессий. Вызывается параллельно с GET /api/sessions из fetchSessions() (poll каждые 3с, Promise.all) и напрямую из echo/ws.js по WS-событию next_step_event для мгновенной реакции. Ответ {items:[{session,content,created_at}]} нормализуется в {session:{content}}.",
+    "createdAt": "2026-05-29T07:11:46.365Z",
+    "updatedAt": "2026-05-29T07:11:46.365Z"
+  },
+  {
+    "element": "next-step-popup.css",
+    "path": "next-step-popup.css",
+    "type": "file",
+    "content": "tmux-web/static/css/next-step-popup.css — стили интерактивного попапа «Следующий шаг» (.next-step-popup): фон var(--bg-elev), cyan-акцент #4fd0e7 (тот же, что у свечения сессии), border-radius/shadow под тему, fade-показ через класс .visible (opacity+transform). Элементы: .nsp-header, .nsp-text/.nsp-correction (textarea, focus с cyan-обводкой), .nsp-send (главная голубая заливка «Отправить в терминал»), .nsp-save (вторичная обводка «Сохранить»). Подключён в style.css через @import после sidebar.css. Голубое свечение самой карточки (.session-item.has-next-step) живёт в sidebar.css (box-shadow glow + left-border + tint + анимация next-step-glow-pulse, цвет #4fd0e7 отличён от accent-синего ✶ is_generating).",
+    "createdAt": "2026-05-29T07:11:58.947Z",
+    "updatedAt": "2026-05-29T07:11:58.947Z"
+  },
+  {
+    "element": "handleFrame",
+    "path": "tmux-web/static/js/echo/ws.js",
+    "type": "function",
+    "content": "tmux-web/static/js/echo/ws.js — парсит входящий WS-фрейм /ws/echo и диспетчит по msg.type. Спец-обработка ДО conversation-handlers: 'ping' → сразу pong (анти idle-timeout); 'next_step_event' (broadcast, не привязан к conversation) → fetchNextSteps().then(renderSidebar) для мгновенного появления/снятия голубого свечения без ожидания 3с-поллинга. Остальные типы (assistant_chunk, assistant_done, action_buttons, notification, stats_update, autonomous_task_event, error) → state.handlers[type] (регистрируются в echo/main.js buildHandlers).",
+    "createdAt": "2026-05-29T07:11:59.213Z",
+    "updatedAt": "2026-05-29T07:11:59.213Z"
+  },
+  {
+    "element": "sendNextStep",
+    "path": "",
+    "type": "unknown",
+    "content": "tmux-web/static/js/echo/api.js — POST /api/echo/next-steps/:session/send {text}. Доставляет шаг в терминал tmux-сессии; если text пуст, бэкенд берёт сохранённый content. Рядом: listNextSteps (GET список предложений), feedbackNextStep(session,correction) → POST .../feedback (правило-коррекция в next_step_rules), dismissNextStep(session) → POST .../dismiss (снять без действия). Все шлют broadcast NextStepEvent{has_suggestion:false} после успеха.",
+    "createdAt": "2026-05-29T07:12:05.233Z",
+    "updatedAt": "2026-05-29T07:12:05.233Z"
+  },
+  {
+    "element": "AttentionState::idle_snapshot",
+    "path": "",
+    "type": "unknown",
+    "content": "Возвращает HashMap<String, u64> «затихших» (idle) tmux-сессий: имя сессии -> сколько секунд прошло с момента, когда индикатор генерации Claude погас (Instant::elapsed().as_secs()).\n\nНазначение: основа фичи «Следующий шаг». Echo-воркер next_step опрашивает этот снимок и для сессий, простоявших idle >= IDLE_THRESHOLD_SECS (10с), генерирует предложение следующего шага.\n\nИсточник данных — карта idle_started_at внутри AttentionState. Она поддерживается строго по фронтам флага is_generating в set_generating: фронт true->false (сессия реально генерировала и затихла) ставит Instant::now(); фронт false->true (началась новая серия генерации) удаляет отметку. При первом наблюдении сессии (флаг сразу false, prev=false) отметка НЕ ставится — затихать нечему.\n\nКлючевое ограничение/бизнес-логика: сессии с needs_attention=true (открыт Claude permission/plan/question prompt, см. self.map) ИСКЛЮЧАЮТСЯ из снимка. Там нужен ответ пользователя, а не автоген следующего шага — это и есть подавление генерации при needs_attention.\n\nЗависимости: читает idle_started_at и map (needs_attention). Используется EchoHostAdapter::idle_sessions (tmux-web/src/echo_host.rs), который оборачивает результат в Vec<IdleSession{name, idle_secs}> для HostApi. Расположение: tmux-web/src/attention.rs:191.",
+    "createdAt": "2026-05-29T07:15:10.553Z",
+    "updatedAt": "2026-05-29T07:15:10.553Z"
+  },
+  {
+    "element": "next_step::spawn",
+    "path": "",
+    "type": "unknown",
+    "content": "Спавнит фоновый воркер фичи «Следующий шаг» и возвращает JoinHandle<()> для graceful shutdown (хост abort'ит его при завершении). Расположение: plugins/echo/src/next_step/mod.rs:84.\n\nСигнатура: spawn(state: Arc<EchoState>, host: Arc<dyn HostApi>) -> JoinHandle<(). Создаёт in-memory ProcessedSet (Arc<Mutex<HashSet<String>>>) и запускает run_loop, который каждые TICK_INTERVAL (2с) вызывает tick_once.\n\ntick_once — одна итерация конвейера:\n1. host.idle_sessions() — получить затихшие сессии (под капотом AttentionState::idle_snapshot, уже без needs_attention).\n2. reset_stale_episodes — для сессий, ПРОПАВШИХ из idle-списка (снова активны / показан prompt / закрыты), чистит ProcessedSet + EchoState.next_steps и шлёт broadcast NextStepEvent{has_suggestion:false} (гасит свечение во фронте, разрешает новый эпизод).\n3. Для каждой idle-сессии с idle_secs >= IDLE_THRESHOLD_SECS (10с), ещё не обработанной в этом эпизоде и без активного предложения — generate_for_session.\n\nЗащита от двойного запуска (один эпизод затихания -> не более одного предложения): ProcessedSet хранит уже обработанные сессии текущего эпизода; дополнительно проверяется наличие в next_steps (анти-гонка до попадания в processed). При ошибке генерации сессия удаляется из processed, чтобы повторить на следующем tick.\n\ngenerate_for_session: capture_pane_full(session, 100 строк) -> строит prompt из NEXT_STEP_META_PROMPT (строгий русский: РОВНО ОДИН короткий шаг, готовый к отправке в терминал, без markdown/преамбул) + блок [learned_rules] из rules_repo::list_rules (правила памяти, project_id=None -> только глобальные, т.к. концепция проектов удалена) + [terminal_tail] (snippet pane, cap 6000 симв). Прогон через state.runner.one_shot. Пустой ответ модели НЕ сохраняется (свечение не зажигается), но эпизод считается обработанным. Непустой -> NextStepSuggestion{session, content, pane_excerpt(cap 4000), project_id, created_at_unix} в state.next_steps + broadcast NextStepEvent{has_suggestion:true}.\n\nЗависимости: echo_host_api::HostApi (idle_sessions, capture_pane_full), EchoState (next_steps, runner, broadcast, db), rules_repo (list_rules), ServerMsg::NextStepEvent. Регистрируется в spawn_workers (lib.rs). Не паникует на ошибках host/БД — логирует и продолжает.\n\nКонстанты: IDLE_THRESHOLD_SECS=10, TICK_INTERVAL=2с, CAPTURE_LINES=100, PANE_SNIPPET_CAP=6000, PANE_EXCERPT_CAP=4000.",
+    "createdAt": "2026-05-29T07:15:27.269Z",
+    "updatedAt": "2026-05-29T07:15:27.269Z"
+  },
+  {
+    "element": "next_step::insert_rule",
+    "path": "",
+    "type": "unknown",
+    "content": "Репозиторий правил «Следующего шага» (таблица next_step_rules, миграция V005). Файл plugins/echo/src/db/repo/next_step.rs.\n\ninsert_rule(db, project_id: Option<&str>, context_summary: &str, suggested_next: &str) -> Rule: вставляет новое правило обратной связи с UUIDv4 id и created_at=now (unix). project_id=None означает ГЛОБАЛЬНОЕ правило (применимо к любой сессии); не-NULL — правило для непрозрачного ярлыка проекта (git-корня). Возвращает созданную запись Rule{id, project_id, context_summary, suggested_next, created_at}.\n\nНазначение: память обратной связи. Когда пользователь исправляет предложенный воркером шаг через POST .../feedback, бэкенд пишет правило (context_summary = pane-выдержка + отвергнутое предложение, suggested_next = коррекция пользователя). При последующих генерациях list_rules подмешивает эти правила в prompt, чтобы предложения становились точнее.\n\nRepo-слой ничего не знает про axum/воркер — принимает &Db. Зависимости: crate::db::Db (rusqlite через tokio), uuid, chrono. Используется routes::next_step::feedback (запись) и next_step::generate_for_session (чтение через list_rules).",
+    "createdAt": "2026-05-29T07:15:52.268Z",
+    "updatedAt": "2026-05-29T07:15:52.268Z"
+  },
+  {
+    "element": "next_step::list_rules",
+    "path": "",
+    "type": "unknown",
+    "content": "Репозиторий правил «Следующего шага» (таблица next_step_rules). Файл plugins/echo/src/db/repo/next_step.rs.\n\nlist_rules(db, project_id: Option<&str>, limit: i64) -> Vec<Rule>: возвращает релевантные правила для генерации prompt'а — ГЛОБАЛЬНЫЕ (project_id IS NULL) ПЛЮС правила указанного project_id (если задан), отсортированные по created_at DESC и ограниченные limit последними. При project_id=None отдаёт только глобальные. Один SQL для обоих случаев: WHERE project_id IS NULL OR project_id = ?1.\n\nDEFAULT_RULES_LIMIT=20 — кап на число правил в одном prompt, защищает контекст от разрастания и держит его сфокусированным на последних коррекциях.\n\nНазначение: подмешивание выученных правил в генерацию следующего шага. next_step::generate_for_session вызывает list_rules(db, None, DEFAULT_RULES_LIMIT) и вставляет блок [learned_rules] в prompt (формат 'когда: <context> предлагай: <suggested>'). Парная функция — insert_rule (запись из feedback). Зависимости: crate::db::Db.",
+    "createdAt": "2026-05-29T07:15:52.555Z",
+    "updatedAt": "2026-05-29T07:15:52.555Z"
+  },
+  {
+    "element": "next-step-popup",
+    "path": "",
+    "type": "unknown",
+    "content": "Интерактивный hover-попап «Следующий шаг» (tmux-web/static/js/sessions/next-step-popup.js + css/next-step-popup.css). Singleton .next-step-popup на body, position:fixed. При наведении на .session-item.has-next-step показывает textarea с предложением (Отправить в терминал → POST /api/echo/next-steps/:session/send) и поле коррекции (Сохранить → .../feedback). Удерживается пока курсор над попапом (mouseenter cancelHide / mouseleave scheduleHide, HIDE_DELAY_MS=160). ВАЖНО про скролл: window scroll-обработчик (capture) скрывает попап ТОЛЬКО если scroll исходит ВНЕ попапа — скролл внутри textarea/тела попапа (popupEl.contains(e.target)) игнорируется, иначе длинный текст нельзя прочитать прокруткой. show() вызывает autoSizeText(): textarea предложения авто-растёт под содержимое (height=scrollHeight) в пределах CSS max-height:50vh, дальше скролл внутри. Попап: width 360px, max-height calc(100vh-24px), overflow-y auto; nsp-text min-height 92px.",
+    "createdAt": "2026-05-29T07:16:19.808Z",
+    "updatedAt": "2026-05-29T07:55:40.934Z"
+  },
+  {
+    "element": "next-step-feature",
+    "path": "",
+    "type": "page",
+    "content": "# Фича «Следующий шаг» (Next Step)\n\nСквозная фича: когда Claude в tmux-сессии заканчивает ход и затихает, Echo автоматически предлагает РОВНО ОДИН готовый к отправке следующий шаг. Пользователь видит голубое свечение сессии в сайдбаре, наводит курсор -> интерактивный попап -> отправляет шаг в терминал или корректирует его (коррекция запоминается как правило и улучшает будущие предложения).\n\n## Конвейер end-to-end\n\nidle-детект (Host) -> опрос воркером -> генерация через Claude -> попап (Frontend) -> действие пользователя -> память (feedback -> правило -> подмешивание в prompt).\n\n### 1. Host: idle-детект (Phase 1, tmux-web/src/attention.rs)\nAttentionState.idle_started_at поддерживается по фронтам флага is_generating в set_generating: фронт true->false (сессия реально генерировала и затихла) фиксирует Instant::now(); false->true сбрасывает. При первом наблюдении (флаг сразу false) отметка НЕ ставится.\nAttentionState::idle_snapshot() -> HashMap<session, idle_secs>, ИСКЛЮЧАЯ сессии с needs_attention=true (открыт permission/plan/question prompt) — это подавление генерации, когда нужен ответ пользователя, а не автоген.\nHostApi расширен (echo-host-api): DTO IdleSession{name, idle_secs} + методы idle_sessions() и send_keys(session, text). Реализация — EchoHostAdapter (tmux-web/src/echo_host.rs): idle_sessions делегирует в idle_snapshot, send_keys — в tmux send-keys.\n\n### 2. Backend: воркер + хранение + маршруты + WS (Phase 2, plugins/echo)\n- state.rs: NextStepSuggestion{session, content, pane_excerpt, project_id, created_at_unix} + эфемерная карта EchoState.next_steps (RwLock<HashMap>).\n- БД: таблица next_step_rules (миграция V005) + репозиторий db/repo/next_step.rs: insert_rule (UUIDv4, project_id=None -> глобальное) и list_rules (глобальные + по project_id, DESC, limit DEFAULT_RULES_LIMIT=20).\n- Воркер next_step/mod.rs (spawn -> run_loop -> tick_once каждые 2с): опрашивает idle_sessions; для сессий idle >= IDLE_THRESHOLD_SECS=10с, не обработанных в текущем эпизоде и без активного предложения — generate_for_session. ProcessedSet + проверка next_steps защищают от двойного запуска (один эпизод затихания = не более одного предложения). reset_stale_episodes сбрасывает эпизод, когда сессия пропала из idle-списка (снова активна/prompt/закрыта): чистит processed + next_steps + broadcast has_suggestion=false.\n- Генерация: capture_pane_full(100 строк) -> prompt = NEXT_STEP_META_PROMPT (строгий: один короткий шаг, готовый к терминалу, без markdown/преамбул, по-русски) + [learned_rules] (list_rules) + [terminal_tail] (snippet pane) -> runner.one_shot. Пустой ответ не сохраняется. Непустой -> next_steps + broadcast.\n- WS: ServerMsg::NextStepEvent{session, has_suggestion} (ws/protocol.rs).\n- REST routes/next_step.rs: GET /api/echo/next-steps (список), POST .../:session/send (send_keys + снять + broadcast), POST .../feedback (insert_rule + снять + broadcast), POST .../dismiss (снять + broadcast).\n- Регистрация воркера в spawn_workers (lib.rs).\n\n### 3. Frontend: свечение + интерактивный попап (Phase 3, tmux-web/static)\n- core/state.js: state.nextSteps; догрузка через GET /api/echo/next-steps при инициализации.\n- sessions/sessions.js: класс .has-next-step на .session-item при наличии записи в state.nextSteps.\n- css: голубое свечение (sidebar.css) + стили попапа (next-step-popup.css).\n- sessions/next-step-popup.js: интерактивный hover-попап (singleton на body), УДЕРЖИВАЕТСЯ пока курсор над ним (в отличие от пассивного ui/tooltip.js). textarea с текстом предложения + «Отправить в терминал» (sendNextStep); поле коррекции «Что нужно было сделать» + «Сохранить» (feedbackNextStep). После действия — оптимистичное снятие свечения, затем WS-подтверждение.\n- echo/ws.js: обработка next_step_event (перефетч + перерендер сайдбара).\n\n### 4. Память обратной связи (петля обучения)\nПользователь жмёт «Сохранить» с коррекцией -> POST feedback -> insert_rule пишет правило (context_summary = pane-выдержка + отвергнутое предложение, suggested_next = коррекция) в next_step_rules. При СЛЕДУЮЩЕМ затухании generate_for_session подмешивает правила через list_rules в блок [learned_rules] prompt'а — предложения становятся точнее. project_id сейчас всегда None (концепция проектов удалена) -> правила глобальные; схема готова к проектным правилам (git-корень) при появлении резолва.\n\n## Инварианты\n- Один эпизод затихания -> максимум одно предложение (ProcessedSet + наличие в next_steps).\n- needs_attention (открытый prompt) подавляет генерацию (idle_snapshot исключает такие сессии).\n- Пустой ответ модели не зажигает свечение, но эпизод считается обработанным.\n- Возврат сессии в активность / закрытие / появление prompt -> сброс эпизода + гашение свечения (broadcast has_suggestion=false).\n\n## Тесты\nforge-echo: unit воркера (idle_session_generates_suggestion, below_threshold, does_not_regenerate_within_same_episode, episode_reset_clears_suggestion, empty_model_output_stores_nothing), unit репозитория (insert/list global+project+limit), интеграционные тесты маршрутов (send/feedback/dismiss/list, 404/400). devforge: idle_snapshot_* в attention.rs (tracks_generating_fronts, not_set_on_first_false, excludes_needs_attention, returns_elapsed_secs).",
+    "createdAt": "2026-05-29T07:16:52.995Z",
+    "updatedAt": "2026-05-29T07:16:52.995Z"
+  },
+  {
+    "element": "update_attached",
+    "path": "",
+    "type": "unknown",
+    "content": "AttentionState::update_attached(attached_names: &HashSet<String>) (tmux-web/src/attention.rs) — обновляет карту attached_since: сессии, которые сейчас смотрит пользователь (tmux attached>0, т.е. подключён web /ws/attach или терминал). Instant начала просмотра держится стабильным пока сессия непрерывно attached (entry().or_insert), снимается при detach (retain). Вызывается каждый тик watcher_loop. Питает две защиты фичи «Следующий шаг»: set_generating не ставит idle-метку для attached-сессий, а idle_snapshot завершает idle-эпизод сессий, просматриваемых >= VIEW_DISMISS_SECS (10с).",
+    "createdAt": "2026-05-29T08:09:59.148Z",
+    "updatedAt": "2026-05-29T08:09:59.148Z"
+  },
+  {
+    "element": "project_label_for_cwd",
+    "path": "",
+    "type": "unknown",
+    "content": "project_label_for_cwd(cwd) -> Option<String> (tmux-web/src/echo_host.rs) — вычисляет ярлык проекта (scope правил фичи «Следующий шаг») по cwd сессии: 1) git -C cwd rev-parse --show-toplevel → git-корень (сессии в одном репо, в т.ч. разные подкаталоги, делят ярлык → общие правила); 2) если не git-репо — сам cwd (изоляция по директории); 3) пустой cwd → None (глобальный scope). Используется в idle_sessions для заполнения IdleSession.project_id.",
+    "createdAt": "2026-05-29T09:04:47.974Z",
+    "updatedAt": "2026-05-29T09:04:47.974Z"
+  },
+  {
+    "element": "restoreSelected",
+    "path": "",
+    "type": "unknown",
+    "content": "tmux-web/static/js/home/home.js. Восстанавливает только выбранные кликом карточки истории. Выбор хранится в модульном Map selected (ключ selKey = name\\npath). Клик по .home-card (вне кнопок действий, у них stopPropagation) переключает запись в selected и класс .selected; updateSelectionUI() показывает/скрывает кнопку #home-restore-selected и обновляет счётчик «Открыть выбранные (N)». restoreSelected() циклом POST /api/sessions/history/restore по каждой записи (409 — мягкая ошибка, не прерывает), затем fetchSessions() и openSession первой успешной; ошибки собираются в alert. renderHome() сбрасывает selected.clear() на каждом перерендере.",
+    "createdAt": "2026-06-04T06:07:05.950Z",
+    "updatedAt": "2026-06-04T06:07:05.950Z"
+  },
+  {
+    "element": "command-dock-feature",
+    "path": "",
+    "type": "unknown",
+    "content": "Минималистичная нижняя панель команд (Command dock) на вкладке терминала (desktop).\n\n## Назначение\nДок с двумя секциями:\n1. **Pinned** — пользовательские chip'ы (команды и просто-текст). localStorage forge.cmdDock.items: [{id,label,text,kind}], kind ∈ cmd|text. Drag-and-drop переупорядочивание, edit (✎), delete (×).\n2. **Frequent** — авто-топ часто набираемых команд из forge.quickCmd.freq (ведёт quick-cmd.js по stdin xterm). Клик отправляет; 📌 закрепляет в Pinned; × скрывает (forge.cmdDock.freqHidden).\n\n## Клик\nrunItem: kind='cmd' → sendToActivePty(text+'\\r') (выполнить), kind='text' → sendToActivePty(text) (вставить без Enter). Через window.ForgeApp.sendToActivePty.\n\n## Тема\nCSS целиком на переменных base.css (--bg-header, --bg-pill, --border-soft, --accent, --fg-mute …) → подстраивается под активную тему. Минимализм: прозрачные header-кнопки, action-кнопки chip'а раскрываются на hover.\n\n## Layout — НЕ перекрывает сессию\n#cmd-dock — flex-сиблинг #terminal внутри #main (column), flex:0 0 auto, max-height 45vh. Его появление/изменение высоты ужимает #terminal (flex:1); xterm refit делает существующий ResizeObserver в terminal/xterm.js. Ручного padding-резервирования НЕТ. Видимость: показывается только когда terminalActive() (т.е. #terminal не hidden) и не mobile; MutationObserver на hidden у #terminal синхронизирует видимость при смене вкладок. На mobile скрыт (CSS + isMobile), работает .quick-cmd-bar.\n\n## Файлы\n- tmux-web/static/command-dock.js — IIFE, window.CommandDock.refresh()\n- tmux-web/static/css/command-dock.css — стили на переменных темы (import в style.css)\n- tmux-web/static/index.html — #cmd-dock как сиблинг #terminal внутри #main; скрипт после quick-cmd.js\n\n## Свёртка\nКнопка ▾ сворачивает body (forge.cmdDock.collapsed) — остаётся только header, #terminal расширяется.",
+    "createdAt": "2026-06-04T06:50:02.811Z",
+    "updatedAt": "2026-06-04T07:02:02.295Z"
+  },
+  {
+    "element": "quick-cmd-paste-filter",
+    "path": "",
+    "type": "unknown",
+    "content": "Защита freq-трекинга команд от мусора (Command dock / quick-cmd).\n\n## Проблема\nВ «частые команды» попадал хлам: фрагменты вставленного кода (const …;, break;, }), stack-trace (at Foo (file:line:col)), лог-префиксы (app | …), одиночные символы. Причина — xterm при вставке шлёт текст как stdin, и quick-cmd.js считал каждую строку командой.\n\n## Решение (три уровня)\n1. **Источник — quick-cmd.js**: распознаём bracketed paste (ESC[200~ … ESC[201~). В CSI-парсере копим csiParams; 200~ → state.pasteMode=true, 201~ → false. В onPtyInput при pasteMode байты пропускаются. Новые вставки не засоряют forge.quickCmd.freq.\n2. **Отображение — command-dock.js looksLikeCommand(s)**: эвристика прячет исторический мусор в computeFrequent(). Правила: длина ≥2; есть [A-Za-z0-9]; не оканчивается на ;{},= ; не начинается с ключевых слов ЯП; не stack-trace (^at … '('); не …file:line:col; не лог-префикс ^name | ; не начинается со скобки-закрывашки.\n3. **Миграция — command-dock.js migrateFreqOnce()**: одноразовая физическая очистка forge.quickCmd.freq при старте (init). Версионный флаг forge.cmdDock.freqCleanV (FREQ_CLEAN_VERSION=1, повышать при улучшении эвристики). Удаляет ключи, не прошедшие looksLikeCommand, КРОМЕ закреплённых в forge.quickCmd.pinned и текстов собственных элементов дока (forge.cmdDock.items). Идемпотентна.\n\n## Файлы\n- tmux-web/static/quick-cmd.js — pasteMode + csiParams в state, обработка в processEscByte/onPtyInput\n- tmux-web/static/command-dock.js — looksLikeCommand() в computeFrequent(); migrateFreqOnce() в init()",
+    "createdAt": "2026-06-04T07:12:14.952Z",
+    "updatedAt": "2026-06-04T07:18:05.028Z"
   }
 ]

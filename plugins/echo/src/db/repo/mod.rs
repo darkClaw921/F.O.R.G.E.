@@ -11,4 +11,5 @@ pub mod chats;
 pub mod daily_reports;
 pub mod memories;
 pub mod messages;
+pub mod next_step;
 pub mod stats;

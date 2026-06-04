@@ -1,0 +1,3 @@
+# NextStepSuggestion
+
+Эфемерное предложение «следующего шага» для затихшей tmux-сессии (plugins/echo/src/state.rs). Поля: session (имя tmux-сессии, ключ в EchoState.next_steps), content (готовый к отправке в терминал текст одного шага), pane_excerpt (выдержка pane для контекста feedback-правила), project_id (Option<String> — непрозрачный ярлык проекта/git-корень или None), created_at_unix. Derive Clone+Serialize. Хранится только в памяти (Arc<RwLock<HashMap<String, NextStepSuggestion>>> в EchoState.next_steps) — не переживает рестарт. Заполняется воркером next_step, читается/удаляется REST-маршрутами routes::next_step.

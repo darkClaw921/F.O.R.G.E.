@@ -58,13 +58,32 @@
                     <button id="quick-cmd-edit" class="quick-cmd-edit" type="button" title="Edit commands">✎</button>
                 </div>
             </div>
+            <!-- Command dock (desktop): часто набираемые команды + пользовательские
+                 сниппеты с drag-and-drop. Flex-сиблинг #terminal — ужимает сессию,
+                 а не перекрывает её. Наполняется command-dock.js. -->
+            <div id="cmd-dock" class="cmd-dock" hidden>
+                <div class="cmd-dock-header">
+                    <span class="cmd-dock-title">⌘ Команды</span>
+                    <div class="cmd-dock-header-actions">
+                        <button id="cmd-dock-add" class="cmd-dock-hbtn" type="button" title="Добавить команду или текст">+ Добавить</button>
+                        <button id="cmd-dock-collapse" class="cmd-dock-hbtn cmd-dock-collapse" type="button" title="Свернуть/развернуть">▾</button>
+                    </div>
+                </div>
+                <div class="cmd-dock-body" id="cmd-dock-body">
+                    <div class="cmd-dock-pinned" id="cmd-dock-pinned"></div>
+                    <div class="cmd-dock-frequent" id="cmd-dock-frequent"></div>
+                </div>
+            </div>
             <div id="placeholder" class="placeholder">
                 <p>Выберите сессию слева или создайте новую.</p>
             </div>
             <div id="home" class="home" style="display:none">
                 <div class="home-head">
                     <h2 class="home-title">Недавние сессии</h2>
-                    <button id="home-restore-all" class="home-restore-all" type="button" title="Восстановить все недавние сессии">Открыть все</button>
+                    <div class="home-head-actions">
+                        <button id="home-restore-selected" class="home-restore-selected" type="button" title="Открыть выбранные сессии" hidden>Открыть выбранные</button>
+                        <button id="home-restore-all" class="home-restore-all" type="button" title="Восстановить все недавние сессии">Открыть все</button>
+                    </div>
                 </div>
                 <div id="home-cards" class="home-cards"></div>
                 <div id="home-empty" class="home-empty" hidden>История пуста</div>
@@ -232,6 +251,8 @@
     <script type="module" src="/js/main.js"></script>
     <!-- Quick-command bar для mobile (legacy IIFE, ForgeApp consumer) -->
     <script src="/quick-cmd.js"></script>
+    <!-- Command dock для desktop: частые команды + сниппеты + drag-and-drop -->
+    <script src="/command-dock.js"></script>
     <!-- Горячие клавиши (vim-style + Cmd-hint mode) -->
     <script src="/hotkeys.js"></script>
 </body>

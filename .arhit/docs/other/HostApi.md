@@ -1,0 +1,3 @@
+# HostApi
+
+Plugin boundary trait (plugins/echo-host-api/src/lib.rs): всё, что Echo может попросить у хоста. Send+Sync, async_trait для dyn-совместимости. Методы: list_sessions, capture_pane_full, auth_token, collect_git_activity (default ''), collect_project_activity (default []), idle_sessions (default vec![]) — затихшие tmux-сессии где Claude закончил генерацию и не ждёт ответа на prompt, send_keys(session,text) (default Ok(())) — отправка текста в сессию как ввод пользователя. Методы с default-реализациями чтобы тестовые stub'ы не ломались. Реализация — EchoHostAdapter в tmux-web/src/echo_host.rs. idle_sessions/send_keys добавлены для фичи «Следующий шаг» (Phase 1).

@@ -29,6 +29,7 @@ pub mod config;
 pub mod daily_report;
 pub mod db;
 pub mod memory;
+pub mod next_step;
 pub mod routes;
 pub mod scheduler;
 pub mod state;
@@ -156,14 +157,20 @@ pub async fn shutdown(state: &Arc<EchoState>) {
 ///
 /// Phase 5+ здесь же появятся memory-rollover loop и другие background
 /// задачи плагина.
+///
+/// Фича «Следующий шаг» добавляет воркер [`next_step::spawn`] — он каждые 2с
+/// опрашивает [`HostApi::idle_sessions`] и для затихших сессий генерирует
+/// предложение следующего шага.
 pub fn spawn_workers(state: &Arc<EchoState>, host: Arc<dyn HostApi>) {
     let scheduler_handle = scheduler::spawn(state.clone(), host.clone());
     state.register_worker(scheduler_handle);
     let memory_handle = memory::scheduler::spawn(state.clone(), host.clone());
     state.register_worker(memory_handle);
-    let daily_report_handle = daily_report::scheduler::spawn(state.clone(), host);
+    let daily_report_handle = daily_report::scheduler::spawn(state.clone(), host.clone());
     state.register_worker(daily_report_handle);
-    tracing::info!(target: "forge_echo", "forge-echo: spawn_workers (scheduler + memory rollover + daily_report started)");
+    let next_step_handle = next_step::spawn(state.clone(), host);
+    state.register_worker(next_step_handle);
+    tracing::info!(target: "forge_echo", "forge-echo: spawn_workers (scheduler + memory rollover + daily_report + next_step started)");
 }
 
 #[cfg(test)]

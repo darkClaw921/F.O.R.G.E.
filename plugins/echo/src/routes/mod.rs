@@ -18,6 +18,7 @@ pub mod conversations;
 pub mod daily_reports;
 pub mod memories;
 pub mod memory;
+pub mod next_step;
 pub mod stats;
 
 use std::sync::Arc;
@@ -48,6 +49,7 @@ pub fn build_router(state: Arc<EchoState>) -> Router {
         .merge(stats::router())
         .merge(autonomous::router())
         .merge(daily_reports::router())
+        .merge(next_step::router())
         .route("/ws/echo", get(crate::ws::echo_ws))
         .with_state(state)
 }

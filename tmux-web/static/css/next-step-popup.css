@@ -1,0 +1,125 @@
+/* tmux-web — интерактивный hover-попап «Следующий шаг».
+ *
+ * Разметку рисует js/sessions/next-step-popup.js (singleton .next-step-popup
+ * на body, position: fixed). Голубое свечение самой карточки сессии
+ * (.session-item.has-next-step) живёт в sidebar.css. Здесь — только сам попап:
+ * контейнер, textarea предложения, поле коррекции и кнопки. Стиль согласован с
+ * темой (CSS-переменные из base.css), акцент — тот же голубой/cyan, что и у
+ * свечения (#4fd0e7), чтобы визуально связать попап с индикатором сессии. */
+
+.next-step-popup {
+    --next-step-glow: #4fd0e7;
+    position: fixed;
+    z-index: 1200;
+    width: 360px;
+    max-width: calc(100vw - 16px);
+    /* Тело попапа не выше вьюпорта — при длинном предложении сам попап
+     * скроллится (скролл внутри попапа НЕ закрывает его, см. next-step-popup.js). */
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    background: var(--bg-elev);
+    border: 1px solid color-mix(in srgb, var(--next-step-glow) 35%, var(--border) 65%);
+    border-radius: 8px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45),
+                0 0 0 1px color-mix(in srgb, var(--next-step-glow) 18%, transparent 82%);
+    color: var(--fg-soft);
+    font-size: 0.8rem;
+    /* Скрыт по умолчанию; .visible включает показ. Лёгкий fade, без layout. */
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-2px);
+    transition: opacity 120ms ease, transform 120ms ease, visibility 120ms;
+}
+
+.next-step-popup.visible {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+.next-step-popup .nsp-header {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--next-step-glow) 60%, var(--fg-mute) 40%);
+}
+
+.next-step-popup .nsp-fb-label {
+    font-size: 0.72rem;
+    color: var(--fg-mute);
+    margin-top: 2px;
+}
+
+.next-step-popup textarea {
+    width: 100%;
+    box-sizing: border-box;
+    resize: vertical;
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border-row);
+    border-radius: 5px;
+    padding: 7px 9px;
+    font-family: inherit;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    transition: border-color 100ms ease, box-shadow 100ms ease;
+}
+
+/* Textarea предложения авто-растёт под текст (JS autoSizeText), но не выше
+ * половины вьюпорта — дальше скроллится внутри себя. */
+.next-step-popup .nsp-text {
+    min-height: 92px;
+    max-height: 50vh;
+    overflow-y: auto;
+}
+
+.next-step-popup textarea:focus {
+    outline: none;
+    border-color: var(--next-step-glow);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--next-step-glow) 25%, transparent 75%);
+}
+
+.next-step-popup .nsp-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.next-step-popup button {
+    font-family: inherit;
+    font-size: 0.78rem;
+    padding: 6px 12px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 100ms ease, border-color 100ms ease, color 100ms ease;
+}
+
+/* Главное действие — «Отправить в терминал»: голубая заливка. */
+.next-step-popup .nsp-send {
+    background: color-mix(in srgb, var(--next-step-glow) 22%, var(--bg-elev) 78%);
+    color: color-mix(in srgb, var(--next-step-glow) 70%, var(--fg) 30%);
+    border: 1px solid color-mix(in srgb, var(--next-step-glow) 50%, var(--border) 50%);
+}
+
+.next-step-popup .nsp-send:hover {
+    background: color-mix(in srgb, var(--next-step-glow) 34%, var(--bg-elev) 66%);
+    border-color: var(--next-step-glow);
+}
+
+/* Вторичное действие — «Сохранить» коррекцию: нейтральная обводка. */
+.next-step-popup .nsp-save {
+    background: transparent;
+    color: var(--fg-mute);
+    border: 1px solid var(--border-row);
+}
+
+.next-step-popup .nsp-save:hover {
+    color: var(--fg-soft);
+    border-color: var(--accent);
+    background: var(--bg-input-hover);
+}

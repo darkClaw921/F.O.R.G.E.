@@ -45,8 +45,8 @@ async fn db_migrate_is_idempotent_in_integration_context() {
         .await
         .unwrap();
     // Один entry на каждый embedded V*.sql (V001_init + V002_daily_reports +
-    // V003_daily_report_suggestions + V004_app_settings).
-    assert_eq!(count, 4);
+    // V003_daily_report_suggestions + V004_app_settings + V005_next_step_rules).
+    assert_eq!(count, 5);
 }
 
 #[tokio::test]

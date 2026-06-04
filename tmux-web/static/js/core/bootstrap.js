@@ -39,6 +39,7 @@ import {
 } from '../ws/todos-ws.js';
 import { openSettingsModal } from '../settings/modal.js';
 import { initTooltips } from '../ui/tooltip.js';
+import { initNextStepPopup } from '../sessions/next-step-popup.js';
 import { fetchUserSettings } from '../settings/user-settings-api.js';
 import { openCreateModal } from '../tasks/modals.js';
 import {
@@ -132,6 +133,7 @@ export async function bootstrap() {
     initTuiTabs();
     applyTerminalFontSize();
     initTooltips();
+    initNextStepPopup();
 
     if ($tabGit) $tabGit.addEventListener('click', () => switchTab('git'));
     if ($tabDocker) $tabDocker.addEventListener('click', () => switchTab('docker'));

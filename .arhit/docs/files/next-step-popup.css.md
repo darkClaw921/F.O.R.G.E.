@@ -1,0 +1,3 @@
+# next-step-popup.css
+
+tmux-web/static/css/next-step-popup.css — стили интерактивного попапа «Следующий шаг» (.next-step-popup): фон var(--bg-elev), cyan-акцент #4fd0e7 (тот же, что у свечения сессии), border-radius/shadow под тему, fade-показ через класс .visible (opacity+transform). Элементы: .nsp-header, .nsp-text/.nsp-correction (textarea, focus с cyan-обводкой), .nsp-send (главная голубая заливка «Отправить в терминал»), .nsp-save (вторичная обводка «Сохранить»). Подключён в style.css через @import после sidebar.css. Голубое свечение самой карточки (.session-item.has-next-step) живёт в sidebar.css (box-shadow glow + left-border + tint + анимация next-step-glow-pulse, цвет #4fd0e7 отличён от accent-синего ✶ is_generating).

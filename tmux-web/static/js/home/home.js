@@ -30,10 +30,30 @@
 import { apiFetch } from '../core/api.js';
 import { fetchSessions, openSession } from '../sessions/sessions.js';
 import { showPlaceholder } from '../terminal/xterm.js';
-import { $home, $homeCards, $homeRestoreAll, $homeEmpty } from '../core/dom.js';
+import { $home, $homeCards, $homeRestoreAll, $homeRestoreSelected, $homeEmpty } from '../core/dom.js';
 
-// Защита от повторной навески listener на кнопку «Открыть все».
-let restoreAllBound = false;
+// Защита от повторной навески listener на кнопки заголовка.
+let headerBound = false;
+
+// Выбранные записи истории (режим мультивыбора). Ключ — name\npath,
+// значение — {name, path}. Сбрасывается при каждом renderHome().
+const selected = new Map();
+
+/** Стабильный ключ записи истории для Map выбранных. */
+function selKey(name, path) {
+    return `${name}\n${path || ''}`;
+}
+
+/**
+ * Обновляет видимость и подпись кнопки «Открыть выбранные» по текущему
+ * содержимому selected.
+ */
+function updateSelectionUI() {
+    if (!$homeRestoreSelected) return;
+    const n = selected.size;
+    $homeRestoreSelected.hidden = n === 0;
+    $homeRestoreSelected.textContent = `Открыть выбранные (${n})`;
+}
 
 /**
  * Строит DOM-карточку для одной записи истории. Использует document.createElement
@@ -42,6 +62,28 @@ let restoreAllBound = false;
 function buildHomeCard(rec) {
     const card = document.createElement('div');
     card.className = 'home-card';
+
+    const key = selKey(rec.name, rec.path);
+    if (selected.has(key)) card.classList.add('selected');
+
+    // Индикатор выбора (галочка) в углу карточки.
+    const check = document.createElement('div');
+    check.className = 'home-card-check';
+    check.setAttribute('aria-hidden', 'true');
+    check.textContent = '✓';
+    card.appendChild(check);
+
+    // Клик по карточке (не по кнопкам действий) переключает выбор.
+    card.addEventListener('click', () => {
+        if (selected.has(key)) {
+            selected.delete(key);
+            card.classList.remove('selected');
+        } else {
+            selected.set(key, { name: rec.name, path: rec.path });
+            card.classList.add('selected');
+        }
+        updateSelectionUI();
+    });
 
     const name = document.createElement('div');
     name.className = 'home-card-name';
@@ -117,11 +159,13 @@ function buildHomeCard(rec) {
 export async function renderHome() {
     if (!$homeCards) return;
 
-    // Навешиваем restoreAll один раз при первом рендере.
-    if (!restoreAllBound && $homeRestoreAll) {
-        $homeRestoreAll.addEventListener('click', () => restoreAll());
-        restoreAllBound = true;
+    // Навешиваем listener'ы кнопок заголовка один раз при первом рендере.
+    if (!headerBound) {
+        if ($homeRestoreAll) $homeRestoreAll.addEventListener('click', () => restoreAll());
+        if ($homeRestoreSelected) $homeRestoreSelected.addEventListener('click', () => restoreSelected());
+        headerBound = true;
     }
+
 
     let records = [];
     try {
@@ -136,17 +180,29 @@ export async function renderHome() {
         records = [];
     }
 
+    // Выбор сохраняется между перерендерами (renderHome зовётся периодическим
+    // poll'ом fetchSessions каждые 3 с — иначе выделение пропадало бы). Чистим
+    // только записи, которых больше нет в актуальной истории.
+    const validKeys = new Set(records.map((r) => selKey(r.name, r.path)));
+    for (const key of selected.keys()) {
+        if (!validKeys.has(key)) selected.delete(key);
+    }
+
     $homeCards.innerHTML = '';
 
     const isEmpty = records.length === 0;
     if ($homeEmpty) $homeEmpty.hidden = !isEmpty;
     if ($homeRestoreAll) $homeRestoreAll.hidden = isEmpty;
 
-    if (isEmpty) return;
+    if (isEmpty) {
+        updateSelectionUI();
+        return;
+    }
 
     for (const rec of records) {
         $homeCards.appendChild(buildHomeCard(rec));
     }
+    updateSelectionUI();
 }
 
 /**
@@ -195,6 +251,45 @@ export async function restoreAll() {
         await fetchSessions();
     } catch (e) {
         window.alert('Ошибка запроса: ' + e.message);
+    }
+}
+
+/**
+ * Восстанавливает только выбранные кликом сессии. Для каждой записи делает
+ * POST /api/sessions/history/restore {name, path}; 409 (имя занято) считается
+ * мягкой ошибкой и не прерывает цикл. После — обновляет список активных
+ * сессий и открывает первую успешно восстановленную.
+ */
+export async function restoreSelected() {
+    if (selected.size === 0) return;
+
+    const recs = Array.from(selected.values());
+    let firstOk = null;
+    const failed = [];
+
+    for (const rec of recs) {
+        try {
+            const resp = await apiFetch('/api/sessions/history/restore', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: rec.name, path: rec.path }),
+            });
+            if (resp.ok) {
+                if (!firstOk) firstOk = rec.name;
+            } else if (resp.status !== 409) {
+                failed.push(rec.name);
+            }
+        } catch (e) {
+            failed.push(rec.name);
+        }
+    }
+
+    selected.clear();
+    updateSelectionUI();
+    await fetchSessions();
+    if (firstOk) openSession(firstOk);
+    if (failed.length) {
+        window.alert('Не удалось восстановить: ' + failed.join(', '));
     }
 }
 

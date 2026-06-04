@@ -1,0 +1,223 @@
+/* =========================================================================
+ * ===== Command dock (desktop) ============================================
+ * =========================================================================
+ * Минималистичная нижняя панель вкладки терминала. Полностью на переменных
+ * темы (base.css), поэтому подстраивается под активную тему.
+ *
+ *   1. Pinned   — пользовательские chip'ы (команды и просто-текст),
+ *                 переупорядочиваемые drag-and-drop. forge.cmdDock.items.
+ *   2. Frequent — авто-список часто набираемых команд (forge.quickCmd.freq).
+ *
+ * Высота дока резервируется как padding-bottom #terminal (command-dock.js
+ * через ResizeObserver), чтобы xterm не перекрывался. На mobile док скрыт.
+ * ========================================================================= */
+
+.cmd-dock {
+    /* Flex-сиблинг #terminal внутри #main (column). Занимает место снизу
+     * и ужимает #terminal (flex:1) — поэтому НЕ перекрывает сессию. */
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    background: var(--bg-header);
+    border-top: 1px solid var(--border-soft);
+    color: var(--fg);
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    max-height: 45vh;
+}
+.cmd-dock[hidden] { display: none; }
+
+/* ---- Header ---- */
+.cmd-dock-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 3px 8px;
+    flex: 0 0 auto;
+    user-select: none;
+}
+.cmd-dock-title {
+    font-size: 0.66rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--fg-mute);
+}
+.cmd-dock-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.cmd-dock-hbtn {
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--fg-dim);
+    font: inherit;
+    font-size: 0.7rem;
+    line-height: 1;
+    padding: 3px 7px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+}
+.cmd-dock-hbtn:hover { background: var(--bg-pill); color: var(--fg); }
+.cmd-dock-collapse {
+    width: 24px;
+    padding: 3px 0;
+    text-align: center;
+}
+
+/* ---- Body ---- */
+.cmd-dock-body {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 5px;
+    padding: 0 8px 7px 8px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex: 1 1 auto;
+    min-height: 0;
+    scrollbar-width: thin;
+}
+.cmd-dock.collapsed .cmd-dock-body { display: none; }
+.cmd-dock.collapsed .cmd-dock-collapse { transform: rotate(-90deg); }
+
+.cmd-dock-pinned,
+.cmd-dock-frequent {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
+}
+.cmd-dock-pinned { flex: 0 0 auto; }
+.cmd-dock-frequent {
+    flex: 1 1 auto;
+    padding-left: 7px;
+    border-left: 1px solid var(--border-soft-2);
+}
+.cmd-dock-frequent:empty { display: none; }
+
+/* ---- Chip ---- */
+.cmd-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    border: 1px solid var(--border-soft);
+    background: var(--bg-pill);
+    color: var(--fg);
+    font: inherit;
+    font-size: 0.78rem;
+    line-height: 1;
+    padding: 4px 7px;
+    border-radius: 5px;
+    max-width: 280px;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, opacity 0.12s;
+}
+.cmd-chip:hover {
+    background: var(--bg-pill-hover);
+    border-color: var(--border-input-hover);
+}
+.cmd-chip-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.cmd-chip-text .cmd-chip-label {
+    font-style: italic;
+    color: var(--fg-mute);
+}
+.cmd-chip-kind {
+    font-size: 0.6rem;
+    opacity: 0.5;
+    flex: 0 0 auto;
+}
+
+/* drag handle / state */
+.cmd-chip-pinned { cursor: grab; }
+.cmd-chip-pinned[draggable="true"]:active { cursor: grabbing; }
+.cmd-chip.dragging { opacity: 0.4; }
+.cmd-chip.drop-before { box-shadow: -2px 0 0 0 var(--accent); }
+.cmd-chip.drop-after { box-shadow: 2px 0 0 0 var(--accent); }
+
+/* inline-кнопки (edit/delete/pin) — видны на hover */
+.cmd-chip-act {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--fg-mute);
+    font: inherit;
+    font-size: 0.68rem;
+    line-height: 1;
+    padding: 0 1px;
+    cursor: pointer;
+    max-width: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: opacity 0.12s, max-width 0.12s, color 0.12s;
+}
+.cmd-chip:hover .cmd-chip-act {
+    opacity: 0.75;
+    max-width: 1.4em;
+    margin-left: 1px;
+}
+.cmd-chip-act:hover { opacity: 1; color: var(--fg); }
+.cmd-chip-act.cmd-chip-del:hover { color: var(--danger); }
+
+.cmd-dock-empty {
+    font-size: 0.74rem;
+    color: var(--fg-mute-3);
+    padding: 4px 2px;
+    font-style: italic;
+}
+
+/* ---- Inline-редактор ---- */
+.cmd-dock-editor {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
+    width: 100%;
+    padding: 5px 0 2px 0;
+}
+.cmd-dock-editor[hidden] { display: none; }
+.cmd-dock-editor input[type="text"] {
+    flex: 1 1 220px;
+    min-width: 150px;
+    border: 1px solid var(--border-input);
+    background: var(--bg-input);
+    color: var(--fg);
+    font: inherit;
+    font-size: 0.78rem;
+    padding: 5px 8px;
+    border-radius: 5px;
+}
+.cmd-dock-editor input[type="text"]:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+.cmd-dock-editor select {
+    border: 1px solid var(--border-input);
+    background: var(--bg-input);
+    color: var(--fg-dim);
+    font: inherit;
+    font-size: 0.76rem;
+    padding: 4px 6px;
+    border-radius: 5px;
+}
+.cmd-dock-editor .cmd-dock-ed-save {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--fg-on-accent);
+}
+.cmd-dock-editor .cmd-dock-ed-save:hover {
+    background: var(--accent-hover);
+    color: var(--fg-on-accent);
+}
+
+/* На mobile док не нужен — там работает .quick-cmd-bar. */
+@media (max-width: 768px) {
+    .cmd-dock { display: none !important; }
+}

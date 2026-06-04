@@ -111,4 +111,14 @@ export const state = {
     gitTerm: null,          // TuiTab.state — заполняется в bootstrap createTuiTab
     dockerTerm: null,
     telescopeTerm: null,
+    // ---- Echo «Следующий шаг» ----
+    // Map session-name → { content } — текущие эфемерные предложения «следующего
+    // шага» из плагина Echo. Заполняется в sessions.js::fetchSessions параллельно
+    // с GET /api/sessions (через GET /api/echo/next-steps), а также мгновенно
+    // обновляется по WS-событию NextStepEvent (echo/ws.js). Источник истины —
+    // in-memory EchoState.next_steps на бэкенде; предложения НЕ переживают
+    // рестарт. Используется sessions.js::buildSessionItem (класс has-next-step →
+    // голубое свечение) и sessions/next-step-popup.js (интерактивный hover-попап).
+    // По умолчанию {} до первого fetch.
+    nextSteps: {},
 };

@@ -1,0 +1,3 @@
+# IdleSession
+
+IdleSession (plugins/echo-host-api/src/lib.rs) — DTO затихшей сессии для HostApi::idle_sessions (фича «Следующий шаг»). Поля: name (имя tmux-сессии, ключ для send_keys), idle_secs (сколько секунд индикатор генерации погас), project_id: Option<String> (непрозрачный ярлык проекта — git-корень cwd сессии или сам cwd, если не git-репо; None если cwd неизвестен). project_id скоупит правила обратной связи: коррекция из одной сессии влияет только на сессии того же проекта + глобальные правила, а не на все проекты. Резолвится хост-адаптером EchoHostAdapter::idle_sessions через project_label_for_cwd (git rev-parse --show-toplevel).

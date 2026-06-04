@@ -1,0 +1,3 @@
+# restoreSelected
+
+tmux-web/static/js/home/home.js. Восстанавливает только выбранные кликом карточки истории. Выбор хранится в модульном Map selected (ключ selKey = name\npath). Клик по .home-card (вне кнопок действий, у них stopPropagation) переключает запись в selected и класс .selected; updateSelectionUI() показывает/скрывает кнопку #home-restore-selected и обновляет счётчик «Открыть выбранные (N)». restoreSelected() циклом POST /api/sessions/history/restore по каждой записи (409 — мягкая ошибка, не прерывает), затем fetchSessions() и openSession первой успешной; ошибки собираются в alert. renderHome() сбрасывает selected.clear() на каждом перерендере.

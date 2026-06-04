@@ -11,6 +11,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use echo_host_api::HostApi;
+use serde::Serialize;
 
 use crate::actions::Action;
 use crate::claude::ClaudeRunner;
@@ -21,6 +22,41 @@ use crate::ws::protocol::ServerMsg;
 /// TTL для записей `action_registry` (Phase 5b). 30 минут — пользователь
 /// успеет нажать кнопку, но мы не держим устаревшие mapping'и вечно.
 pub const ACTION_REGISTRY_TTL_SECS: i64 = 30 * 60;
+
+/// Предложение «следующего шага» для затихшей (idle) tmux-сессии.
+///
+/// Эфемерная сущность фичи «Следующий шаг»: воркер
+/// [`crate::next_step`] генерирует её для сессии, в которой Claude
+/// закончил генерацию (см. [`echo_host_api::IdleSession`]), и кладёт в
+/// in-memory [`EchoState::next_steps`]. Предложения НЕ переживают рестарт
+/// процесса — это намеренно: после рестарта актуальность контекста сессии
+/// уже не гарантируется, и воркер сгенерирует новые при необходимости.
+///
+/// # Поля
+///
+/// - `session` — имя tmux-сессии (ключ в `next_steps`, стабильный ключ для
+///   `send_keys`).
+/// - `content` — готовый к отправке в терминал текст одного следующего шага
+///   (без преамбул/markdown).
+/// - `pane_excerpt` — выдержка из pane (последние строки), на основе которой
+///   сгенерировано предложение. Сохраняется, чтобы при «обратной связи»
+///   (feedback) записать правило памяти с контекстом.
+/// - `project_id` — опциональный непрозрачный ярлык проекта (git-корень или
+///   `None`); используется для подмешивания правил памяти по проекту.
+/// - `created_at_unix` — момент генерации (unix seconds).
+#[derive(Debug, Clone, Serialize)]
+pub struct NextStepSuggestion {
+    /// Имя tmux-сессии (ключ в `next_steps`).
+    pub session: String,
+    /// Готовый к отправке текст одного следующего шага.
+    pub content: String,
+    /// Выдержка из pane, на основе которой сгенерировано предложение.
+    pub pane_excerpt: String,
+    /// Непрозрачный ярлык проекта (git-корень) или `None`.
+    pub project_id: Option<String>,
+    /// Момент генерации (unix seconds).
+    pub created_at_unix: i64,
+}
 
 /// Запись registry: actions + timestamp создания (для TTL eviction).
 #[derive(Debug, Clone)]
@@ -107,6 +143,12 @@ pub struct EchoState {
     /// здесь Action по id. TTL [`ACTION_REGISTRY_TTL_SECS`] чистится
     /// лениво при каждом lookup.
     pub action_registry: Arc<Mutex<HashMap<String, ActionRegistryEntry>>>,
+    /// Фича «Следующий шаг» — эфемерные предложения по затихшим сессиям.
+    /// Ключ — имя tmux-сессии. Заполняется воркером [`crate::next_step`],
+    /// читается REST-маршрутами [`crate::routes::next_step`] (GET/send/
+    /// feedback/dismiss). Хранение только в памяти: предложения не
+    /// переживают рестарт (см. [`NextStepSuggestion`]).
+    pub next_steps: Arc<tokio::sync::RwLock<HashMap<String, NextStepSuggestion>>>,
     /// Phase 6 — полная конфигурация плагина (cli/db paths, лимиты,
     /// default-model, autonomous cap, rate-limit). Доступна handler'ам
     /// и worker'ам через `state.config`.
@@ -139,6 +181,7 @@ impl EchoState {
             runner,
             workers: Arc::new(Mutex::new(Vec::new())),
             action_registry: Arc::new(Mutex::new(HashMap::new())),
+            next_steps: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             config: Arc::new(config),
             shutdown: CancellationToken::new(),
         }

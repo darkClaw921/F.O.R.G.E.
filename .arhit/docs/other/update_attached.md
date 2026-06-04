@@ -1,0 +1,3 @@
+# update_attached
+
+AttentionState::update_attached(attached_names: &HashSet<String>) (tmux-web/src/attention.rs) — обновляет карту attached_since: сессии, которые сейчас смотрит пользователь (tmux attached>0, т.е. подключён web /ws/attach или терминал). Instant начала просмотра держится стабильным пока сессия непрерывно attached (entry().or_insert), снимается при detach (retain). Вызывается каждый тик watcher_loop. Питает две защиты фичи «Следующий шаг»: set_generating не ставит idle-метку для attached-сессий, а idle_snapshot завершает idle-эпизод сессий, просматриваемых >= VIEW_DISMISS_SECS (10с).

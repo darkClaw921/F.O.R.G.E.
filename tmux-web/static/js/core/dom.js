@@ -92,6 +92,7 @@ export const $originTabs = document.getElementById('origin-tabs');
 export const $home = document.getElementById('home');
 export const $homeCards = document.getElementById('home-cards');
 export const $homeRestoreAll = document.getElementById('home-restore-all');
+export const $homeRestoreSelected = document.getElementById('home-restore-selected');
 export const $homeEmpty = document.getElementById('home-empty');
 
 // ---- Daily summary (Сводка дня) ----

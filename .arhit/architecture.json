@@ -1,12 +1,20 @@
 {
   "root": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E.",
-  "generatedAt": "2026-05-28T07:11:24.550Z",
+  "generatedAt": "2026-06-04T06:50:02.544Z",
   "nodes": [
     {
       "id": "tmux-web/static/app.js",
       "name": "app.js",
       "type": "file",
       "path": "tmux-web/static/app.js",
+      "exports": [],
+      "children": []
+    },
+    {
+      "id": "tmux-web/static/command-dock.js",
+      "name": "command-dock.js",
+      "type": "file",
+      "path": "tmux-web/static/command-dock.js",
       "exports": [],
       "children": []
     },
@@ -157,7 +165,7 @@
           "name": "bootstrap",
           "type": "function",
           "path": "tmux-web/static/js/core/bootstrap.js",
-          "line": 115,
+          "line": 116,
           "signature": "bootstrap()",
           "exports": [
             "bootstrap"
@@ -230,6 +238,7 @@
         "$home",
         "$homeCards",
         "$homeRestoreAll",
+        "$homeRestoreSelected",
         "$homeEmpty",
         "$dailySummary",
         "$dailySummaryBack",
@@ -862,11 +871,21 @@
           ]
         },
         {
+          "id": "tmux-web/static/js/core/dom.js:$homeRestoreSelected",
+          "name": "$homeRestoreSelected",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 95,
+          "exports": [
+            "$homeRestoreSelected"
+          ]
+        },
+        {
           "id": "tmux-web/static/js/core/dom.js:$homeEmpty",
           "name": "$homeEmpty",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 95,
+          "line": 96,
           "exports": [
             "$homeEmpty"
           ]
@@ -876,7 +895,7 @@
           "name": "$dailySummary",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 102,
+          "line": 103,
           "exports": [
             "$dailySummary"
           ]
@@ -886,7 +905,7 @@
           "name": "$dailySummaryBack",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 103,
+          "line": 104,
           "exports": [
             "$dailySummaryBack"
           ]
@@ -896,7 +915,7 @@
           "name": "$dailySummaryPrev",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 104,
+          "line": 105,
           "exports": [
             "$dailySummaryPrev"
           ]
@@ -906,7 +925,7 @@
           "name": "$dailySummaryToday",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 105,
+          "line": 106,
           "exports": [
             "$dailySummaryToday"
           ]
@@ -916,7 +935,7 @@
           "name": "$dailySummaryNext",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 106,
+          "line": 107,
           "exports": [
             "$dailySummaryNext"
           ]
@@ -926,7 +945,7 @@
           "name": "$dailySummaryDay",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 107,
+          "line": 108,
           "exports": [
             "$dailySummaryDay"
           ]
@@ -936,7 +955,7 @@
           "name": "$dailySummaryRegen",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 108,
+          "line": 109,
           "exports": [
             "$dailySummaryRegen"
           ]
@@ -946,7 +965,7 @@
           "name": "$dailySummaryStatus",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 109,
+          "line": 110,
           "exports": [
             "$dailySummaryStatus"
           ]
@@ -956,7 +975,7 @@
           "name": "$dailySummaryContent",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 110,
+          "line": 111,
           "exports": [
             "$dailySummaryContent"
           ]
@@ -966,7 +985,7 @@
           "name": "$dailySummarySuggestions",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 111,
+          "line": 112,
           "exports": [
             "$dailySummarySuggestions"
           ]
@@ -976,7 +995,7 @@
           "name": "$dailySummaryEmpty",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 112,
+          "line": 113,
           "exports": [
             "$dailySummaryEmpty"
           ]
@@ -986,7 +1005,7 @@
           "name": "$dailySummaryGenerate",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 113,
+          "line": 114,
           "exports": [
             "$dailySummaryGenerate"
           ]
@@ -996,7 +1015,7 @@
           "name": "$tabEcho",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 121,
+          "line": 122,
           "exports": [
             "$tabEcho"
           ]
@@ -1006,7 +1025,7 @@
           "name": "$echoEl",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 122,
+          "line": 123,
           "exports": [
             "$echoEl"
           ]
@@ -1016,7 +1035,7 @@
           "name": "$echoSidebar",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 123,
+          "line": 124,
           "exports": [
             "$echoSidebar"
           ]
@@ -1026,7 +1045,7 @@
           "name": "$echoSidebarTabChats",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 124,
+          "line": 125,
           "exports": [
             "$echoSidebarTabChats"
           ]
@@ -1036,7 +1055,7 @@
           "name": "$echoSidebarTabAuto",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 125,
+          "line": 126,
           "exports": [
             "$echoSidebarTabAuto"
           ]
@@ -1046,7 +1065,7 @@
           "name": "$echoSidebarTabMemory",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 126,
+          "line": 127,
           "exports": [
             "$echoSidebarTabMemory"
           ]
@@ -1056,7 +1075,7 @@
           "name": "$echoConversations",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 127,
+          "line": 128,
           "exports": [
             "$echoConversations"
           ]
@@ -1066,7 +1085,7 @@
           "name": "$echoConversationsList",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 128,
+          "line": 129,
           "exports": [
             "$echoConversationsList"
           ]
@@ -1076,7 +1095,7 @@
           "name": "$echoNewChat",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 129,
+          "line": 130,
           "exports": [
             "$echoNewChat"
           ]
@@ -1086,7 +1105,7 @@
           "name": "$echoAutonomous",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 130,
+          "line": 131,
           "exports": [
             "$echoAutonomous"
           ]
@@ -1096,7 +1115,7 @@
           "name": "$echoAutonomousList",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 131,
+          "line": 132,
           "exports": [
             "$echoAutonomousList"
           ]
@@ -1106,7 +1125,7 @@
           "name": "$echoNewAuto",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 132,
+          "line": 133,
           "exports": [
             "$echoNewAuto"
           ]
@@ -1116,7 +1135,7 @@
           "name": "$echoMemory",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 133,
+          "line": 134,
           "exports": [
             "$echoMemory"
           ]
@@ -1126,7 +1145,7 @@
           "name": "$echoMemoryList",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 134,
+          "line": 135,
           "exports": [
             "$echoMemoryList"
           ]
@@ -1136,7 +1155,7 @@
           "name": "$echoMemoryRegen",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 135,
+          "line": 136,
           "exports": [
             "$echoMemoryRegen"
           ]
@@ -1146,7 +1165,7 @@
           "name": "$echoMain",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 136,
+          "line": 137,
           "exports": [
             "$echoMain"
           ]
@@ -1156,7 +1175,7 @@
           "name": "$echoHeader",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 137,
+          "line": 138,
           "exports": [
             "$echoHeader"
           ]
@@ -1166,7 +1185,7 @@
           "name": "$echoModelPicker",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 138,
+          "line": 139,
           "exports": [
             "$echoModelPicker"
           ]
@@ -1176,7 +1195,7 @@
           "name": "$echoStatus",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 139,
+          "line": 140,
           "exports": [
             "$echoStatus"
           ]
@@ -1186,7 +1205,7 @@
           "name": "$echoStatsCanvas",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 140,
+          "line": 141,
           "exports": [
             "$echoStatsCanvas"
           ]
@@ -1196,7 +1215,7 @@
           "name": "$echoStatsText",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 141,
+          "line": 142,
           "exports": [
             "$echoStatsText"
           ]
@@ -1206,7 +1225,7 @@
           "name": "$echoMessages",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 142,
+          "line": 143,
           "exports": [
             "$echoMessages"
           ]
@@ -1216,7 +1235,7 @@
           "name": "$echoInputWrap",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 143,
+          "line": 144,
           "exports": [
             "$echoInputWrap"
           ]
@@ -1226,7 +1245,7 @@
           "name": "$echoInput",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 144,
+          "line": 145,
           "exports": [
             "$echoInput"
           ]
@@ -1236,7 +1255,7 @@
           "name": "$echoSend",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 145,
+          "line": 146,
           "exports": [
             "$echoSend"
           ]
@@ -1246,7 +1265,7 @@
           "name": "$echoToasts",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 146,
+          "line": 147,
           "exports": [
             "$echoToasts"
           ]
@@ -1762,6 +1781,10 @@
         "generateDailyReport",
         "getDailyReportPrompts",
         "saveDailyReportPrompts",
+        "listNextSteps",
+        "sendNextStep",
+        "feedbackNextStep",
+        "dismissNextStep",
         "cancelRun"
       ],
       "children": [
@@ -2022,11 +2045,59 @@
           ]
         },
         {
+          "id": "tmux-web/static/js/echo/api.js:listNextSteps",
+          "name": "listNextSteps",
+          "type": "function",
+          "path": "tmux-web/static/js/echo/api.js",
+          "line": 217,
+          "signature": "listNextSteps()",
+          "docComment": "Текущие эфемерные предложения «следующего шага». Возвращает\n{items:[{session, content, created_at}]}.",
+          "exports": [
+            "listNextSteps"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/echo/api.js:sendNextStep",
+          "name": "sendNextStep",
+          "type": "function",
+          "path": "tmux-web/static/js/echo/api.js",
+          "line": 229,
+          "signature": "sendNextStep(session, text)",
+          "docComment": "Доставить шаг в терминал сессии. body {text}: если text непустой — шлётся он,\nиначе бэкенд берёт сохранённый content предложения. После успеха сервер\nснимает предложение и шлёт broadcast NextStepEvent{has_suggestion:false}.",
+          "exports": [
+            "sendNextStep"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/echo/api.js:feedbackNextStep",
+          "name": "feedbackNextStep",
+          "type": "function",
+          "path": "tmux-web/static/js/echo/api.js",
+          "line": 241,
+          "signature": "feedbackNextStep(session, correction)",
+          "docComment": "Записать правило-коррекцию для сессии (feedback). body {correction}.\nБэкенд пишет правило в next_step_rules, снимает предложение + broadcast.",
+          "exports": [
+            "feedbackNextStep"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/echo/api.js:dismissNextStep",
+          "name": "dismissNextStep",
+          "type": "function",
+          "path": "tmux-web/static/js/echo/api.js",
+          "line": 252,
+          "signature": "dismissNextStep(session)",
+          "docComment": "Снять предложение без действия (dismiss). Бэкенд убирает предложение +\nbroadcast NextStepEvent{has_suggestion:false}.",
+          "exports": [
+            "dismissNextStep"
+          ]
+        },
+        {
           "id": "tmux-web/static/js/echo/api.js:cancelRun",
           "name": "cancelRun",
           "type": "function",
           "path": "tmux-web/static/js/echo/api.js",
-          "line": 213,
+          "line": 259,
           "signature": "cancelRun(runId)",
           "exports": [
             "cancelRun"
@@ -2977,7 +3048,7 @@
           "name": "connectEchoWs",
           "type": "function",
           "path": "tmux-web/static/js/echo/ws.js",
-          "line": 38,
+          "line": 40,
           "signature": "connectEchoWs(conversationId, handlers)",
           "docComment": "Подключиться к /ws/echo для указанной conversation.",
           "exports": [
@@ -2989,7 +3060,7 @@
           "name": "disconnectEchoWs",
           "type": "function",
           "path": "tmux-web/static/js/echo/ws.js",
-          "line": 76,
+          "line": 78,
           "signature": "disconnectEchoWs()",
           "docComment": "Закрыть соединение. После disconnectEchoWs автоматическая реконнектация\nне происходит — нужно явно вызвать connectEchoWs.",
           "exports": [
@@ -3001,7 +3072,7 @@
           "name": "sendClientMsg",
           "type": "function",
           "path": "tmux-web/static/js/echo/ws.js",
-          "line": 95,
+          "line": 97,
           "signature": "sendClientMsg(msg)",
           "docComment": "Отправить ClientMsg. Возвращает true, если фрейм был отправлен,\nfalse — если соединение не открыто.",
           "exports": [
@@ -3013,7 +3084,7 @@
           "name": "open",
           "type": "function",
           "path": "tmux-web/static/js/echo/ws.js",
-          "line": 111,
+          "line": 113,
           "signature": "open()",
           "exports": []
         },
@@ -3022,7 +3093,7 @@
           "name": "scheduleReconnect",
           "type": "function",
           "path": "tmux-web/static/js/echo/ws.js",
-          "line": 155,
+          "line": 157,
           "signature": "scheduleReconnect()",
           "exports": []
         },
@@ -3031,7 +3102,7 @@
           "name": "handleFrame",
           "type": "function",
           "path": "tmux-web/static/js/echo/ws.js",
-          "line": 169,
+          "line": 171,
           "signature": "handleFrame(raw)",
           "exports": []
         },
@@ -3040,7 +3111,7 @@
           "name": "sendUserMessage",
           "type": "function",
           "path": "tmux-web/static/js/echo/ws.js",
-          "line": 205,
+          "line": 219,
           "signature": "sendUserMessage(payload)",
           "docComment": "Отправить user_message в текущую открытую conversation.",
           "exports": [
@@ -3052,7 +3123,7 @@
           "name": "sendCancel",
           "type": "function",
           "path": "tmux-web/static/js/echo/ws.js",
-          "line": 216,
+          "line": 230,
           "signature": "sendCancel(runId)",
           "exports": [
             "sendCancel"
@@ -3063,7 +3134,7 @@
           "name": "sendActionInvoke",
           "type": "function",
           "path": "tmux-web/static/js/echo/ws.js",
-          "line": 220,
+          "line": 234,
           "signature": "sendActionInvoke(actionId, params)",
           "exports": [
             "sendActionInvoke"
@@ -3074,7 +3145,7 @@
           "name": "_debugState",
           "type": "function",
           "path": "tmux-web/static/js/echo/ws.js",
-          "line": 231,
+          "line": 245,
           "signature": "_debugState()",
           "docComment": "Для тестов / диагностики — возвращает текущий conversation_id и состояние.",
           "exports": [
@@ -3086,7 +3157,7 @@
           "name": "WS_BACKOFFS_MS",
           "type": "variable",
           "path": "tmux-web/static/js/echo/ws.js",
-          "line": 20,
+          "line": 22,
           "exports": []
         },
         {
@@ -3094,7 +3165,7 @@
           "name": "state",
           "type": "variable",
           "path": "tmux-web/static/js/echo/ws.js",
-          "line": 22,
+          "line": 24,
           "exports": []
         }
       ]
@@ -3108,16 +3179,37 @@
         "renderHome",
         "restoreSession",
         "restoreAll",
+        "restoreSelected",
         "deleteHistory",
         "showHome"
       ],
       "children": [
         {
+          "id": "tmux-web/static/js/home/home.js:selKey",
+          "name": "selKey",
+          "type": "function",
+          "path": "tmux-web/static/js/home/home.js",
+          "line": 43,
+          "signature": "selKey(name, path)",
+          "docComment": "Стабильный ключ записи истории для Map выбранных.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/home/home.js:updateSelectionUI",
+          "name": "updateSelectionUI",
+          "type": "function",
+          "path": "tmux-web/static/js/home/home.js",
+          "line": 51,
+          "signature": "updateSelectionUI()",
+          "docComment": "Обновляет видимость и подпись кнопки «Открыть выбранные» по текущему\nсодержимому selected.",
+          "exports": []
+        },
+        {
           "id": "tmux-web/static/js/home/home.js:buildHomeCard",
           "name": "buildHomeCard",
           "type": "function",
           "path": "tmux-web/static/js/home/home.js",
-          "line": 42,
+          "line": 62,
           "signature": "buildHomeCard(rec)",
           "docComment": "Строит DOM-карточку для одной записи истории. Использует document.createElement\n(без innerHTML с пользовательскими данными — защита от XSS).",
           "exports": []
@@ -3127,7 +3219,7 @@
           "name": "renderHome",
           "type": "function",
           "path": "tmux-web/static/js/home/home.js",
-          "line": 117,
+          "line": 159,
           "signature": "renderHome()",
           "docComment": "Загружает историю и отрисовывает карточки в $homeCards. Пустую историю\nпоказывает через #home-empty и скрывает кнопку «Открыть все».",
           "exports": [
@@ -3139,7 +3231,7 @@
           "name": "restoreSession",
           "type": "function",
           "path": "tmux-web/static/js/home/home.js",
-          "line": 157,
+          "line": 213,
           "signature": "restoreSession(name, path)",
           "docComment": "Восстанавливает одну сессию: POST /api/sessions/history/restore {name, path}.\nПри успехе обновляет список сессий и открывает её. 409 (имя занято)\nобрабатывается понятным сообщением.",
           "exports": [
@@ -3151,7 +3243,7 @@
           "name": "restoreAll",
           "type": "function",
           "path": "tmux-web/static/js/home/home.js",
-          "line": 184,
+          "line": 240,
           "signature": "restoreAll()",
           "docComment": "Восстанавливает все сессии из истории: POST /api/sessions/history/restore-all.\nПосле — обновляет список активных сессий.",
           "exports": [
@@ -3159,11 +3251,23 @@
           ]
         },
         {
+          "id": "tmux-web/static/js/home/home.js:restoreSelected",
+          "name": "restoreSelected",
+          "type": "function",
+          "path": "tmux-web/static/js/home/home.js",
+          "line": 263,
+          "signature": "restoreSelected()",
+          "docComment": "Восстанавливает только выбранные кликом сессии. Для каждой записи делает\nPOST /api/sessions/history/restore {name, path}; 409 (имя занято) считается\nмягкой ошибкой и не прерывает цикл. После — обновляет список активных\nсессий и открывает первую успешно восстановленную.",
+          "exports": [
+            "restoreSelected"
+          ]
+        },
+        {
           "id": "tmux-web/static/js/home/home.js:deleteHistory",
           "name": "deleteHistory",
           "type": "function",
           "path": "tmux-web/static/js/home/home.js",
-          "line": 205,
+          "line": 300,
           "signature": "deleteHistory(name, path)",
           "docComment": "Удаляет запись из истории: DELETE /api/sessions/history {name, path}.\nПосле — перерисовывает главную.",
           "exports": [
@@ -3175,7 +3279,7 @@
           "name": "showHome",
           "type": "function",
           "path": "tmux-web/static/js/home/home.js",
-          "line": 227,
+          "line": 322,
           "signature": "showHome(show)",
           "docComment": "Переключает видимость #home. При show=true скрывает placeholder, чтобы\nне было одновременного показа home + placeholder.",
           "exports": [
@@ -3183,11 +3287,19 @@
           ]
         },
         {
-          "id": "tmux-web/static/js/home/home.js:restoreAllBound",
-          "name": "restoreAllBound",
+          "id": "tmux-web/static/js/home/home.js:headerBound",
+          "name": "headerBound",
           "type": "variable",
           "path": "tmux-web/static/js/home/home.js",
           "line": 36,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/home/home.js:selected",
+          "name": "selected",
+          "type": "variable",
+          "path": "tmux-web/static/js/home/home.js",
+          "line": 40,
           "exports": []
         }
       ]
@@ -3369,12 +3481,165 @@
       ]
     },
     {
+      "id": "tmux-web/static/js/sessions/next-step-popup.js",
+      "name": "next-step-popup.js",
+      "type": "file",
+      "path": "tmux-web/static/js/sessions/next-step-popup.js",
+      "exports": [
+        "initNextStepPopup"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/sessions/next-step-popup.js:ensurePopup",
+          "name": "ensurePopup",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/next-step-popup.js",
+          "line": 35,
+          "signature": "ensurePopup()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/sessions/next-step-popup.js:position",
+          "name": "position",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/next-step-popup.js",
+          "line": 72,
+          "signature": "position(target)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/sessions/next-step-popup.js:show",
+          "name": "show",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/next-step-popup.js",
+          "line": 95,
+          "signature": "show(target, sessionName)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/sessions/next-step-popup.js:autoSizeText",
+          "name": "autoSizeText",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/next-step-popup.js",
+          "line": 123,
+          "signature": "autoSizeText(ta)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/sessions/next-step-popup.js:hide",
+          "name": "hide",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/next-step-popup.js",
+          "line": 129,
+          "signature": "hide()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/sessions/next-step-popup.js:cancelHide",
+          "name": "cancelHide",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/next-step-popup.js",
+          "line": 138,
+          "signature": "cancelHide()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/sessions/next-step-popup.js:scheduleHide",
+          "name": "scheduleHide",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/next-step-popup.js",
+          "line": 145,
+          "signature": "scheduleHide()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/sessions/next-step-popup.js:clearLocal",
+          "name": "clearLocal",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/next-step-popup.js",
+          "line": 153,
+          "signature": "clearLocal(sessionName)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/sessions/next-step-popup.js:onSend",
+          "name": "onSend",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/next-step-popup.js",
+          "line": 161,
+          "signature": "onSend()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/sessions/next-step-popup.js:onSave",
+          "name": "onSave",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/next-step-popup.js",
+          "line": 174,
+          "signature": "onSave()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/sessions/next-step-popup.js:initNextStepPopup",
+          "name": "initNextStepPopup",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/next-step-popup.js",
+          "line": 196,
+          "signature": "initNextStepPopup()",
+          "exports": [
+            "initNextStepPopup"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/sessions/next-step-popup.js:popupEl",
+          "name": "popupEl",
+          "type": "variable",
+          "path": "tmux-web/static/js/sessions/next-step-popup.js",
+          "line": 29,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/sessions/next-step-popup.js:currentSession",
+          "name": "currentSession",
+          "type": "variable",
+          "path": "tmux-web/static/js/sessions/next-step-popup.js",
+          "line": 30,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/sessions/next-step-popup.js:hideTimer",
+          "name": "hideTimer",
+          "type": "variable",
+          "path": "tmux-web/static/js/sessions/next-step-popup.js",
+          "line": 31,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/sessions/next-step-popup.js:HIDE_DELAY_MS",
+          "name": "HIDE_DELAY_MS",
+          "type": "variable",
+          "path": "tmux-web/static/js/sessions/next-step-popup.js",
+          "line": 32,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/sessions/next-step-popup.js:inited",
+          "name": "inited",
+          "type": "variable",
+          "path": "tmux-web/static/js/sessions/next-step-popup.js",
+          "line": 191,
+          "exports": []
+        }
+      ]
+    },
+    {
       "id": "tmux-web/static/js/sessions/sessions.js",
       "name": "sessions.js",
       "type": "file",
       "path": "tmux-web/static/js/sessions/sessions.js",
       "exports": [
         "fetchSessions",
+        "fetchNextSteps",
         "buildSessionItem",
         "groupSessionsByFolder",
         "startPolling",
@@ -3398,11 +3663,22 @@
           ]
         },
         {
+          "id": "tmux-web/static/js/sessions/sessions.js:fetchNextSteps",
+          "name": "fetchNextSteps",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/sessions.js",
+          "line": 51,
+          "signature": "fetchNextSteps()",
+          "exports": [
+            "fetchNextSteps"
+          ]
+        },
+        {
           "id": "tmux-web/static/js/sessions/sessions.js:syncHomeVisibility",
           "name": "syncHomeVisibility",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 42,
+          "line": 74,
           "signature": "syncHomeVisibility()",
           "exports": []
         },
@@ -3411,7 +3687,7 @@
           "name": "formatDuration",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 52,
+          "line": 84,
           "signature": "formatDuration(totalSecs)",
           "exports": []
         },
@@ -3420,7 +3696,7 @@
           "name": "generatingTooltip",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 69,
+          "line": 101,
           "signature": "generatingTooltip(s)",
           "exports": []
         },
@@ -3429,7 +3705,7 @@
           "name": "buildSessionItem",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 77,
+          "line": 109,
           "signature": "buildSessionItem(s)",
           "exports": [
             "buildSessionItem"
@@ -3440,7 +3716,7 @@
           "name": "groupSessionsByFolder",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 150,
+          "line": 191,
           "signature": "groupSessionsByFolder(sessions, orphanKey)",
           "exports": [
             "groupSessionsByFolder"
@@ -3451,7 +3727,7 @@
           "name": "startPolling",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 164,
+          "line": 205,
           "signature": "startPolling()",
           "exports": [
             "startPolling"
@@ -3462,7 +3738,7 @@
           "name": "stopPolling",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 169,
+          "line": 210,
           "signature": "stopPolling()",
           "exports": [
             "stopPolling"
@@ -3473,7 +3749,7 @@
           "name": "createSessionPrompt",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 176,
+          "line": 217,
           "signature": "createSessionPrompt()",
           "exports": [
             "createSessionPrompt"
@@ -3484,7 +3760,7 @@
           "name": "renameSession",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 199,
+          "line": 240,
           "signature": "renameSession(oldName, origin)",
           "exports": [
             "renameSession"
@@ -3495,7 +3771,7 @@
           "name": "killSession",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 235,
+          "line": 276,
           "signature": "killSession(name, origin)",
           "exports": [
             "killSession"
@@ -3506,7 +3782,7 @@
           "name": "openSession",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 257,
+          "line": 298,
           "signature": "openSession(name, origin)",
           "exports": [
             "openSession"
@@ -3517,7 +3793,7 @@
           "name": "switchSession",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 279,
+          "line": 320,
           "signature": "switchSession(name)",
           "exports": [
             "switchSession"
