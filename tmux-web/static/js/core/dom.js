@@ -19,6 +19,7 @@ export const $layout = document.getElementById('layout');
 export const $btnSidebarToggle = document.getElementById('btn-sidebar-toggle');
 export const $sidebar = document.getElementById('session-list');
 export const $btnNew = document.getElementById('btn-new');
+export const $btnNewPath = document.getElementById('btn-new-path');
 export const $sidebarOverlay = document.getElementById('sidebar-overlay');
 
 // ---- Terminal / window-bar / status ----
@@ -84,6 +85,16 @@ export const $telescopeChannelBar = document.getElementById('telescope-channel-b
 
 // ---- Settings bar ----
 export const $projectSettings = document.getElementById('project-settings');
+
+// ---- Screensaver (заставка «таверна дворфов») ----
+//
+// Кнопка-переключатель в #settings-bar и полноэкранная вью #screensaver в
+// #main (по образцу #daily-summary). Видимость и анимацию переключает
+// js/screensaver/screensaver.js::showScreensaver / hideScreensaver.
+export const $screensaverToggle = document.getElementById('screensaver-toggle');
+export const $screensaver = document.getElementById('screensaver');
+export const $screensaverBack = document.getElementById('screensaver-back');
+export const $ssStage = document.getElementById('ss-stage');
 
 // ---- Phase 5: origin-табы (скрыты при remote_mode=false) ----
 export const $originTabs = document.getElementById('origin-tabs');

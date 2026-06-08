@@ -531,6 +531,8 @@ async fn main() -> anyhow::Result<()> {
             "/api/sessions/history",
             get(get_session_history).delete(delete_session_history),
         )
+        // Нативный системный диалог выбора папки (кнопка «+ в папке»).
+        .route("/api/fs/pick-folder", get(pick_folder))
         .route("/api/sessions/history/restore", post(restore_session_history))
         .route(
             "/api/sessions/history/restore-all",
@@ -1140,18 +1142,28 @@ async fn get_sessions(
 #[derive(Debug, Deserialize)]
 struct CreateSessionReq {
     name: String,
+    /// Опциональный рабочий каталог новой сессии (кнопка «+ в папке»). Если
+    /// задан непустым — раскрывается `~` и проверяется, что это существующая
+    /// директория, после чего используется как cwd. Если не задан/пуст —
+    /// прежнее поведение: cwd берётся из `state.active_path_tx`.
+    #[serde(default)]
+    path: Option<String>,
 }
 
-/// `POST /api/sessions` — создаёт detached-сессию в cwd «активного пути»
-/// (`state.active_path_tx.borrow()` — после Phase 4 это инициализированный
-/// cwd процесса либо последнее значение, проставленное хост-кодом).
+/// `POST /api/sessions` — создаёт detached-сессию.
+///
+/// cwd выбирается так: если в теле задан непустой `path` — он раскрывается
+/// (`~` → `$HOME`) и валидируется как существующая директория; иначе берётся
+/// «активный путь» сервера (`state.active_path_tx.borrow()` — после Phase 4
+/// это инициализированный cwd процесса либо последнее значение, проставленное
+/// хост-кодом).
 ///
 /// После удаления проектов авто-префикс по `tmux_prefix` больше не
 /// применяется: имя используется как ввёл пользователь (с trim пробелов
 /// и базовой валидацией внутри `tmux::new_session`).
 ///
 /// - 201 Created при успехе.
-/// - 400 Bad Request при невалидном имени или duplicate.
+/// - 400 Bad Request при невалидном имени, несуществующей папке или duplicate.
 async fn create_session(
     State(state): State<AppState>,
     Query(q): Query<HashMap<String, String>>,
@@ -1175,7 +1187,28 @@ async fn create_session(
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid body: {e}")))?;
 
     let name = req.name.trim().to_string();
-    let cwd = state.active_path_tx.borrow().clone();
+    let cwd = match req.path.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
+        Some(p) => {
+            // Раскрываем ведущий `~` в $HOME для UX-дружелюбного ввода.
+            let expanded = if p == "~" {
+                std::env::var("HOME").map(std::path::PathBuf::from).unwrap_or_else(|_| p.into())
+            } else if let Some(rest) = p.strip_prefix("~/") {
+                std::env::var("HOME")
+                    .map(|h| std::path::Path::new(&h).join(rest))
+                    .unwrap_or_else(|_| p.into())
+            } else {
+                std::path::PathBuf::from(p)
+            };
+            if !expanded.is_dir() {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    format!("папка не найдена: {}", expanded.display()),
+                ));
+            }
+            expanded
+        }
+        None => state.active_path_tx.borrow().clone(),
+    };
 
     match tmux::new_session(&name, &cwd).await {
         Ok(()) => {
@@ -1186,6 +1219,83 @@ async fn create_session(
             tracing::warn!(name = %name, error = ?e, "new_session failed");
             Err((StatusCode::BAD_REQUEST, format!("{e:#}")))
         }
+    }
+}
+
+/// `GET /api/fs/pick-folder` — открывает **нативный системный диалог** выбора
+/// папки на машине сервера и возвращает выбранный абсолютный путь.
+///
+/// Зачем серверный диалог: devforge раздаёт UI в браузере, а браузерные API
+/// (`showDirectoryPicker`, `<input webkitdirectory>`) из соображений
+/// безопасности НЕ дают абсолютный путь к папке. tmux же запускает сессию на
+/// сервере и требует абсолютный cwd. В локальном режиме сервер = та же
+/// машина, поэтому нативный диалог появляется на экране пользователя.
+///
+/// Реализация по платформам:
+/// - macOS — `osascript … choose folder` (нативный Finder-диалог);
+/// - Linux — `zenity --file-selection --directory` (если установлен);
+/// - иначе — 501 Not Implemented (фронт делает fallback на ручной ввод пути).
+///
+/// Ответы:
+/// - 200 `{ "path": "/abs/dir" }` — папка выбрана;
+/// - 204 No Content — пользователь нажал «Отмена»;
+/// - 501 — нативный диалог недоступен на этой платформе;
+/// - 500 — диалог не удалось запустить.
+async fn pick_folder() -> Result<Response, (StatusCode, String)> {
+    #[cfg(target_os = "macos")]
+    {
+        let output = tokio::process::Command::new("osascript")
+            .arg("-e")
+            .arg("POSIX path of (choose folder with prompt \"Выберите папку для новой сессии\")")
+            .output()
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("не удалось запустить osascript: {e}"),
+                )
+            })?;
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            return Ok(Json(serde_json::json!({ "path": path })).into_response());
+        }
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // Отмена пользователем: AppleScript error -128 ("User canceled").
+        if stderr.contains("-128") || stderr.contains("User canceled") {
+            return Ok(StatusCode::NO_CONTENT.into_response());
+        }
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("ошибка диалога: {}", stderr.trim()),
+        ));
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let output = tokio::process::Command::new("zenity")
+            .args(["--file-selection", "--directory", "--title=Выберите папку для новой сессии"])
+            .output()
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("не удалось запустить zenity (установлен ли он?): {e}"),
+                )
+            })?;
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            return Ok(Json(serde_json::json!({ "path": path })).into_response());
+        }
+        // zenity при отмене возвращает exit code 1 без stderr.
+        return Ok(StatusCode::NO_CONTENT.into_response());
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        Err((
+            StatusCode::NOT_IMPLEMENTED,
+            "нативный диалог выбора папки недоступен на этой платформе".to_string(),
+        ))
     }
 }
 

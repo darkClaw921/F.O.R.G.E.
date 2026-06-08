@@ -1,6 +1,6 @@
 {
   "root": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E.",
-  "generatedAt": "2026-06-04T06:50:02.544Z",
+  "generatedAt": "2026-06-08T16:21:42.813Z",
   "nodes": [
     {
       "id": "tmux-web/static/app.js",
@@ -165,7 +165,7 @@
           "name": "bootstrap",
           "type": "function",
           "path": "tmux-web/static/js/core/bootstrap.js",
-          "line": 116,
+          "line": 117,
           "signature": "bootstrap()",
           "exports": [
             "bootstrap"
@@ -183,6 +183,7 @@
         "$btnSidebarToggle",
         "$sidebar",
         "$btnNew",
+        "$btnNewPath",
         "$sidebarOverlay",
         "$terminalEl",
         "$placeholder",
@@ -234,6 +235,10 @@
         "$telescopeInstallList",
         "$telescopeChannelBar",
         "$projectSettings",
+        "$screensaverToggle",
+        "$screensaver",
+        "$screensaverBack",
+        "$ssStage",
         "$originTabs",
         "$home",
         "$homeCards",
@@ -321,11 +326,21 @@
           ]
         },
         {
+          "id": "tmux-web/static/js/core/dom.js:$btnNewPath",
+          "name": "$btnNewPath",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 22,
+          "exports": [
+            "$btnNewPath"
+          ]
+        },
+        {
           "id": "tmux-web/static/js/core/dom.js:$sidebarOverlay",
           "name": "$sidebarOverlay",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 22,
+          "line": 23,
           "exports": [
             "$sidebarOverlay"
           ]
@@ -335,7 +350,7 @@
           "name": "$terminalEl",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 25,
+          "line": 26,
           "exports": [
             "$terminalEl"
           ]
@@ -345,7 +360,7 @@
           "name": "$placeholder",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 26,
+          "line": 27,
           "exports": [
             "$placeholder"
           ]
@@ -355,7 +370,7 @@
           "name": "$windowBar",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 27,
+          "line": 28,
           "exports": [
             "$windowBar"
           ]
@@ -365,7 +380,7 @@
           "name": "$windowTabs",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 28,
+          "line": 29,
           "exports": [
             "$windowTabs"
           ]
@@ -375,7 +390,7 @@
           "name": "$windowNewBtn",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 29,
+          "line": 30,
           "exports": [
             "$windowNewBtn"
           ]
@@ -385,7 +400,7 @@
           "name": "$statusDot",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 30,
+          "line": 31,
           "exports": [
             "$statusDot"
           ]
@@ -395,7 +410,7 @@
           "name": "$statusText",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 31,
+          "line": 32,
           "exports": [
             "$statusText"
           ]
@@ -405,7 +420,7 @@
           "name": "$tabTerminal",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 34,
+          "line": 35,
           "exports": [
             "$tabTerminal"
           ]
@@ -415,7 +430,7 @@
           "name": "$tabTasks",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 35,
+          "line": 36,
           "exports": [
             "$tabTasks"
           ]
@@ -425,7 +440,7 @@
           "name": "$tasksStatus",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 36,
+          "line": 37,
           "exports": [
             "$tasksStatus"
           ]
@@ -435,7 +450,7 @@
           "name": "$tasksEl",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 37,
+          "line": 38,
           "exports": [
             "$tasksEl"
           ]
@@ -445,7 +460,7 @@
           "name": "$tasksReload",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 38,
+          "line": 39,
           "exports": [
             "$tasksReload"
           ]
@@ -455,7 +470,7 @@
           "name": "$tasksNew",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 39,
+          "line": 40,
           "exports": [
             "$tasksNew"
           ]
@@ -465,7 +480,7 @@
           "name": "$tasksMeta",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 40,
+          "line": 41,
           "exports": [
             "$tasksMeta"
           ]
@@ -475,7 +490,7 @@
           "name": "$tasksBoard",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 41,
+          "line": 42,
           "exports": [
             "$tasksBoard"
           ]
@@ -485,7 +500,7 @@
           "name": "$tasksGantt",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 44,
+          "line": 45,
           "exports": [
             "$tasksGantt"
           ]
@@ -495,7 +510,7 @@
           "name": "$ganttCanvas",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 45,
+          "line": 46,
           "exports": [
             "$ganttCanvas"
           ]
@@ -505,7 +520,7 @@
           "name": "$ganttRange",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 46,
+          "line": 47,
           "exports": [
             "$ganttRange"
           ]
@@ -515,7 +530,7 @@
           "name": "$tabGit",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 49,
+          "line": 50,
           "exports": [
             "$tabGit"
           ]
@@ -525,7 +540,7 @@
           "name": "$gitEl",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 50,
+          "line": 51,
           "exports": [
             "$gitEl"
           ]
@@ -535,7 +550,7 @@
           "name": "$gitTermEl",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 51,
+          "line": 52,
           "exports": [
             "$gitTermEl"
           ]
@@ -545,7 +560,7 @@
           "name": "$gitPlaceholder",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 52,
+          "line": 53,
           "exports": [
             "$gitPlaceholder"
           ]
@@ -555,7 +570,7 @@
           "name": "$gitError",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 53,
+          "line": 54,
           "exports": [
             "$gitError"
           ]
@@ -565,7 +580,7 @@
           "name": "$gitErrorText",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 54,
+          "line": 55,
           "exports": [
             "$gitErrorText"
           ]
@@ -575,7 +590,7 @@
           "name": "$gitErrorRetry",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 55,
+          "line": 56,
           "exports": [
             "$gitErrorRetry"
           ]
@@ -585,7 +600,7 @@
           "name": "$gitErrorClose",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 56,
+          "line": 57,
           "exports": [
             "$gitErrorClose"
           ]
@@ -595,7 +610,7 @@
           "name": "$gitInstallHelp",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 57,
+          "line": 58,
           "exports": [
             "$gitInstallHelp"
           ]
@@ -605,7 +620,7 @@
           "name": "$gitInstallList",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 58,
+          "line": 59,
           "exports": [
             "$gitInstallList"
           ]
@@ -615,7 +630,7 @@
           "name": "$tabDocker",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 61,
+          "line": 62,
           "exports": [
             "$tabDocker"
           ]
@@ -625,7 +640,7 @@
           "name": "$dockerEl",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 62,
+          "line": 63,
           "exports": [
             "$dockerEl"
           ]
@@ -635,7 +650,7 @@
           "name": "$dockerTermEl",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 63,
+          "line": 64,
           "exports": [
             "$dockerTermEl"
           ]
@@ -645,7 +660,7 @@
           "name": "$dockerPlaceholder",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 64,
+          "line": 65,
           "exports": [
             "$dockerPlaceholder"
           ]
@@ -655,7 +670,7 @@
           "name": "$dockerError",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 65,
+          "line": 66,
           "exports": [
             "$dockerError"
           ]
@@ -665,7 +680,7 @@
           "name": "$dockerErrorText",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 66,
+          "line": 67,
           "exports": [
             "$dockerErrorText"
           ]
@@ -675,7 +690,7 @@
           "name": "$dockerErrorRetry",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 67,
+          "line": 68,
           "exports": [
             "$dockerErrorRetry"
           ]
@@ -685,7 +700,7 @@
           "name": "$dockerErrorClose",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 68,
+          "line": 69,
           "exports": [
             "$dockerErrorClose"
           ]
@@ -695,7 +710,7 @@
           "name": "$dockerInstallHelp",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 69,
+          "line": 70,
           "exports": [
             "$dockerInstallHelp"
           ]
@@ -705,7 +720,7 @@
           "name": "$dockerInstallList",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 70,
+          "line": 71,
           "exports": [
             "$dockerInstallList"
           ]
@@ -715,7 +730,7 @@
           "name": "$tabTelescope",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 73,
+          "line": 74,
           "exports": [
             "$tabTelescope"
           ]
@@ -725,7 +740,7 @@
           "name": "$telescopeEl",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 74,
+          "line": 75,
           "exports": [
             "$telescopeEl"
           ]
@@ -735,7 +750,7 @@
           "name": "$telescopeTermEl",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 75,
+          "line": 76,
           "exports": [
             "$telescopeTermEl"
           ]
@@ -745,7 +760,7 @@
           "name": "$telescopePlaceholder",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 76,
+          "line": 77,
           "exports": [
             "$telescopePlaceholder"
           ]
@@ -755,7 +770,7 @@
           "name": "$telescopeError",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 77,
+          "line": 78,
           "exports": [
             "$telescopeError"
           ]
@@ -765,7 +780,7 @@
           "name": "$telescopeErrorText",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 78,
+          "line": 79,
           "exports": [
             "$telescopeErrorText"
           ]
@@ -775,7 +790,7 @@
           "name": "$telescopeErrorRetry",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 79,
+          "line": 80,
           "exports": [
             "$telescopeErrorRetry"
           ]
@@ -785,7 +800,7 @@
           "name": "$telescopeErrorClose",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 80,
+          "line": 81,
           "exports": [
             "$telescopeErrorClose"
           ]
@@ -795,7 +810,7 @@
           "name": "$telescopeInstallHelp",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 81,
+          "line": 82,
           "exports": [
             "$telescopeInstallHelp"
           ]
@@ -805,7 +820,7 @@
           "name": "$telescopeInstallList",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 82,
+          "line": 83,
           "exports": [
             "$telescopeInstallList"
           ]
@@ -815,7 +830,7 @@
           "name": "$telescopeChannelBar",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 83,
+          "line": 84,
           "exports": [
             "$telescopeChannelBar"
           ]
@@ -825,9 +840,49 @@
           "name": "$projectSettings",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 86,
+          "line": 87,
           "exports": [
             "$projectSettings"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$screensaverToggle",
+          "name": "$screensaverToggle",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 94,
+          "exports": [
+            "$screensaverToggle"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$screensaver",
+          "name": "$screensaver",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 95,
+          "exports": [
+            "$screensaver"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$screensaverBack",
+          "name": "$screensaverBack",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 96,
+          "exports": [
+            "$screensaverBack"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/core/dom.js:$ssStage",
+          "name": "$ssStage",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 97,
+          "exports": [
+            "$ssStage"
           ]
         },
         {
@@ -835,7 +890,7 @@
           "name": "$originTabs",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 89,
+          "line": 100,
           "exports": [
             "$originTabs"
           ]
@@ -845,7 +900,7 @@
           "name": "$home",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 92,
+          "line": 103,
           "exports": [
             "$home"
           ]
@@ -855,7 +910,7 @@
           "name": "$homeCards",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 93,
+          "line": 104,
           "exports": [
             "$homeCards"
           ]
@@ -865,7 +920,7 @@
           "name": "$homeRestoreAll",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 94,
+          "line": 105,
           "exports": [
             "$homeRestoreAll"
           ]
@@ -875,7 +930,7 @@
           "name": "$homeRestoreSelected",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 95,
+          "line": 106,
           "exports": [
             "$homeRestoreSelected"
           ]
@@ -885,7 +940,7 @@
           "name": "$homeEmpty",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 96,
+          "line": 107,
           "exports": [
             "$homeEmpty"
           ]
@@ -895,7 +950,7 @@
           "name": "$dailySummary",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 103,
+          "line": 114,
           "exports": [
             "$dailySummary"
           ]
@@ -905,7 +960,7 @@
           "name": "$dailySummaryBack",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 104,
+          "line": 115,
           "exports": [
             "$dailySummaryBack"
           ]
@@ -915,7 +970,7 @@
           "name": "$dailySummaryPrev",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 105,
+          "line": 116,
           "exports": [
             "$dailySummaryPrev"
           ]
@@ -925,7 +980,7 @@
           "name": "$dailySummaryToday",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 106,
+          "line": 117,
           "exports": [
             "$dailySummaryToday"
           ]
@@ -935,7 +990,7 @@
           "name": "$dailySummaryNext",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 107,
+          "line": 118,
           "exports": [
             "$dailySummaryNext"
           ]
@@ -945,7 +1000,7 @@
           "name": "$dailySummaryDay",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 108,
+          "line": 119,
           "exports": [
             "$dailySummaryDay"
           ]
@@ -955,7 +1010,7 @@
           "name": "$dailySummaryRegen",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 109,
+          "line": 120,
           "exports": [
             "$dailySummaryRegen"
           ]
@@ -965,7 +1020,7 @@
           "name": "$dailySummaryStatus",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 110,
+          "line": 121,
           "exports": [
             "$dailySummaryStatus"
           ]
@@ -975,7 +1030,7 @@
           "name": "$dailySummaryContent",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 111,
+          "line": 122,
           "exports": [
             "$dailySummaryContent"
           ]
@@ -985,7 +1040,7 @@
           "name": "$dailySummarySuggestions",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 112,
+          "line": 123,
           "exports": [
             "$dailySummarySuggestions"
           ]
@@ -995,7 +1050,7 @@
           "name": "$dailySummaryEmpty",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 113,
+          "line": 124,
           "exports": [
             "$dailySummaryEmpty"
           ]
@@ -1005,7 +1060,7 @@
           "name": "$dailySummaryGenerate",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 114,
+          "line": 125,
           "exports": [
             "$dailySummaryGenerate"
           ]
@@ -1015,7 +1070,7 @@
           "name": "$tabEcho",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 122,
+          "line": 133,
           "exports": [
             "$tabEcho"
           ]
@@ -1025,7 +1080,7 @@
           "name": "$echoEl",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 123,
+          "line": 134,
           "exports": [
             "$echoEl"
           ]
@@ -1035,7 +1090,7 @@
           "name": "$echoSidebar",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 124,
+          "line": 135,
           "exports": [
             "$echoSidebar"
           ]
@@ -1045,7 +1100,7 @@
           "name": "$echoSidebarTabChats",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 125,
+          "line": 136,
           "exports": [
             "$echoSidebarTabChats"
           ]
@@ -1055,7 +1110,7 @@
           "name": "$echoSidebarTabAuto",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 126,
+          "line": 137,
           "exports": [
             "$echoSidebarTabAuto"
           ]
@@ -1065,7 +1120,7 @@
           "name": "$echoSidebarTabMemory",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 127,
+          "line": 138,
           "exports": [
             "$echoSidebarTabMemory"
           ]
@@ -1075,7 +1130,7 @@
           "name": "$echoConversations",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 128,
+          "line": 139,
           "exports": [
             "$echoConversations"
           ]
@@ -1085,7 +1140,7 @@
           "name": "$echoConversationsList",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 129,
+          "line": 140,
           "exports": [
             "$echoConversationsList"
           ]
@@ -1095,7 +1150,7 @@
           "name": "$echoNewChat",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 130,
+          "line": 141,
           "exports": [
             "$echoNewChat"
           ]
@@ -1105,7 +1160,7 @@
           "name": "$echoAutonomous",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 131,
+          "line": 142,
           "exports": [
             "$echoAutonomous"
           ]
@@ -1115,7 +1170,7 @@
           "name": "$echoAutonomousList",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 132,
+          "line": 143,
           "exports": [
             "$echoAutonomousList"
           ]
@@ -1125,7 +1180,7 @@
           "name": "$echoNewAuto",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 133,
+          "line": 144,
           "exports": [
             "$echoNewAuto"
           ]
@@ -1135,7 +1190,7 @@
           "name": "$echoMemory",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 134,
+          "line": 145,
           "exports": [
             "$echoMemory"
           ]
@@ -1145,7 +1200,7 @@
           "name": "$echoMemoryList",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 135,
+          "line": 146,
           "exports": [
             "$echoMemoryList"
           ]
@@ -1155,7 +1210,7 @@
           "name": "$echoMemoryRegen",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 136,
+          "line": 147,
           "exports": [
             "$echoMemoryRegen"
           ]
@@ -1165,7 +1220,7 @@
           "name": "$echoMain",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 137,
+          "line": 148,
           "exports": [
             "$echoMain"
           ]
@@ -1175,7 +1230,7 @@
           "name": "$echoHeader",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 138,
+          "line": 149,
           "exports": [
             "$echoHeader"
           ]
@@ -1185,7 +1240,7 @@
           "name": "$echoModelPicker",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 139,
+          "line": 150,
           "exports": [
             "$echoModelPicker"
           ]
@@ -1195,7 +1250,7 @@
           "name": "$echoStatus",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 140,
+          "line": 151,
           "exports": [
             "$echoStatus"
           ]
@@ -1205,7 +1260,7 @@
           "name": "$echoStatsCanvas",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 141,
+          "line": 152,
           "exports": [
             "$echoStatsCanvas"
           ]
@@ -1215,7 +1270,7 @@
           "name": "$echoStatsText",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 142,
+          "line": 153,
           "exports": [
             "$echoStatsText"
           ]
@@ -1225,7 +1280,7 @@
           "name": "$echoMessages",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 143,
+          "line": 154,
           "exports": [
             "$echoMessages"
           ]
@@ -1235,7 +1290,7 @@
           "name": "$echoInputWrap",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 144,
+          "line": 155,
           "exports": [
             "$echoInputWrap"
           ]
@@ -1245,7 +1300,7 @@
           "name": "$echoInput",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 145,
+          "line": 156,
           "exports": [
             "$echoInput"
           ]
@@ -1255,7 +1310,7 @@
           "name": "$echoSend",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 146,
+          "line": 157,
           "exports": [
             "$echoSend"
           ]
@@ -1265,7 +1320,7 @@
           "name": "$echoToasts",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 147,
+          "line": 158,
           "exports": [
             "$echoToasts"
           ]
@@ -3481,6 +3536,617 @@
       ]
     },
     {
+      "id": "tmux-web/static/js/screensaver/screensaver.js",
+      "name": "screensaver.js",
+      "type": "file",
+      "path": "tmux-web/static/js/screensaver/screensaver.js",
+      "exports": [
+        "showScreensaver",
+        "hideScreensaver",
+        "closeScreensaver"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:perfNow",
+          "name": "perfNow",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 59,
+          "signature": "perfNow()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:rand",
+          "name": "rand",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 63,
+          "signature": "rand(min, max)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:pick",
+          "name": "pick",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 64,
+          "signature": "pick(arr)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:newGrid",
+          "name": "newGrid",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 170,
+          "signature": "newGrid()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:cloneGrid",
+          "name": "cloneGrid",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 175,
+          "signature": "cloneGrid(src)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:setCh",
+          "name": "setCh",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 180,
+          "signature": "setCh(g, r, c, ch)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:setOpaque",
+          "name": "setOpaque",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 185,
+          "signature": "setOpaque(g, r, c, ch)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:hline",
+          "name": "hline",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 189,
+          "signature": "hline(g, r, c1, c2, ch)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:vline",
+          "name": "vline",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 190,
+          "signature": "vline(g, c, r1, r2, ch)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:paintText",
+          "name": "paintText",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 191,
+          "signature": "paintText(g, r, c, str)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:paintOpaque",
+          "name": "paintOpaque",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 192,
+          "signature": "paintOpaque(g, r, c, str)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:blit",
+          "name": "blit",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 193,
+          "signature": "blit(g, r, c, rows)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:box",
+          "name": "box",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 194,
+          "signature": "box(g, r1, c1, r2, c2, st)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:drawShelf",
+          "name": "drawShelf",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 237,
+          "signature": "drawShelf(g, r, c1, c2)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:buildInterior",
+          "name": "buildInterior",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 255,
+          "signature": "buildInterior()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:drawTable",
+          "name": "drawTable",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 327,
+          "signature": "drawTable(g, centerCol, topRow)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:makeBust",
+          "name": "makeBust",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 353,
+          "signature": "makeBust(helm0, helm1, eyes, nose, beard, acc)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:placeDwarves",
+          "name": "placeDwarves",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 390,
+          "signature": "placeDwarves(g)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:addDwarf",
+          "name": "addDwarf",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 434,
+          "signature": "addDwarf(bust, r, c)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:renderAmbient",
+          "name": "renderAmbient",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 462,
+          "signature": "renderAmbient(g, t)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:renderFrame",
+          "name": "renderFrame",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 486,
+          "signature": "renderFrame(now)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:showBubble",
+          "name": "showBubble",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 508,
+          "signature": "showBubble(d, text, now, dur)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:hideBubble",
+          "name": "hideBubble",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 515,
+          "signature": "hideBubble(d)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:autoSpeak",
+          "name": "autoSpeak",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 521,
+          "signature": "autoSpeak(d, now)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:onDwarfClick",
+          "name": "onDwarfClick",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 534,
+          "signature": "onDwarfClick(d)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:measureCell",
+          "name": "measureCell",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 549,
+          "signature": "measureCell()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:fitFont",
+          "name": "fitFont",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 565,
+          "signature": "fitFont()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:positionBubbles",
+          "name": "positionBubbles",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 584,
+          "signature": "positionBubbles()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:_onResize",
+          "name": "_onResize",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 599,
+          "signature": "_onResize()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:_onScreenClick",
+          "name": "_onScreenClick",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 608,
+          "signature": "_onScreenClick(ev)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:_onKeydown",
+          "name": "_onKeydown",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 623,
+          "signature": "_onKeydown(ev)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:_onVisibility",
+          "name": "_onVisibility",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 626,
+          "signature": "_onVisibility()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:buildScene",
+          "name": "buildScene",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 637,
+          "signature": "buildScene()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:loop",
+          "name": "loop",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 670,
+          "signature": "loop()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:startLoop",
+          "name": "startLoop",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 689,
+          "signature": "startLoop()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:stopLoop",
+          "name": "stopLoop",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 697,
+          "signature": "stopLoop()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:bindControls",
+          "name": "bindControls",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 706,
+          "signature": "bindControls()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:showScreensaver",
+          "name": "showScreensaver",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 712,
+          "signature": "showScreensaver()",
+          "exports": [
+            "showScreensaver"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:hideScreensaver",
+          "name": "hideScreensaver",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 741,
+          "signature": "hideScreensaver()",
+          "exports": [
+            "hideScreensaver"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:closeScreensaver",
+          "name": "closeScreensaver",
+          "type": "function",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 750,
+          "signature": "closeScreensaver()",
+          "exports": [
+            "closeScreensaver"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:_built",
+          "name": "_built",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 38,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:_bound",
+          "name": "_bound",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 39,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:_running",
+          "name": "_running",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 40,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:_rafId",
+          "name": "_rafId",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 41,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:_reduced",
+          "name": "_reduced",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 42,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:_tick",
+          "name": "_tick",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 43,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:_lastRenderAt",
+          "name": "_lastRenderAt",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 44,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:_lastFrameStr",
+          "name": "_lastFrameStr",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 45,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:_screenEl",
+          "name": "_screenEl",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 47,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:_bubbleLayer",
+          "name": "_bubbleLayer",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 48,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:_base",
+          "name": "_base",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 49,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:_dwarves",
+          "name": "_dwarves",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 50,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:_cellW",
+          "name": "_cellW",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 51,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:_cellH",
+          "name": "_cellH",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 51,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:RENDER_MS",
+          "name": "RENDER_MS",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 53,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:COLS",
+          "name": "COLS",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 70,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:ROWS",
+          "name": "ROWS",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 71,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:LINES",
+          "name": "LINES",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 77,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:RETORTS",
+          "name": "RETORTS",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 135,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:DBL",
+          "name": "DBL",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 203,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:SGL",
+          "name": "SGL",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 204,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:SPR",
+          "name": "SPR",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 210,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:FIRE",
+          "name": "FIRE",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 251,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:CANDLES",
+          "name": "CANDLES",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 252,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:SMOKE",
+          "name": "SMOKE",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 253,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:BUSTS",
+          "name": "BUSTS",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 375,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:FIRE_ROWS",
+          "name": "FIRE_ROWS",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 453,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:CANDLE_FLAMES",
+          "name": "CANDLE_FLAMES",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 459,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/screensaver/screensaver.js:SMOKE_FRAMES",
+          "name": "SMOKE_FRAMES",
+          "type": "variable",
+          "path": "tmux-web/static/js/screensaver/screensaver.js",
+          "line": 460,
+          "exports": []
+        }
+      ]
+    },
+    {
       "id": "tmux-web/static/js/sessions/next-step-popup.js",
       "name": "next-step-popup.js",
       "type": "file",
@@ -3645,6 +4311,7 @@
         "startPolling",
         "stopPolling",
         "createSessionPrompt",
+        "createSessionInPath",
         "renameSession",
         "killSession",
         "openSession",
@@ -3756,11 +4423,22 @@
           ]
         },
         {
+          "id": "tmux-web/static/js/sessions/sessions.js:createSessionInPath",
+          "name": "createSessionInPath",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/sessions.js",
+          "line": 251,
+          "signature": "createSessionInPath()",
+          "exports": [
+            "createSessionInPath"
+          ]
+        },
+        {
           "id": "tmux-web/static/js/sessions/sessions.js:renameSession",
           "name": "renameSession",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 240,
+          "line": 297,
           "signature": "renameSession(oldName, origin)",
           "exports": [
             "renameSession"
@@ -3771,7 +4449,7 @@
           "name": "killSession",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 276,
+          "line": 333,
           "signature": "killSession(name, origin)",
           "exports": [
             "killSession"
@@ -3782,7 +4460,7 @@
           "name": "openSession",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 298,
+          "line": 355,
           "signature": "openSession(name, origin)",
           "exports": [
             "openSession"
@@ -3793,7 +4471,7 @@
           "name": "switchSession",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 320,
+          "line": 377,
           "signature": "switchSession(name)",
           "exports": [
             "switchSession"
@@ -4403,7 +5081,7 @@
           "name": "switchTab",
           "type": "function",
           "path": "tmux-web/static/js/tabs/tabs.js",
-          "line": 22,
+          "line": 23,
           "signature": "switchTab(name)",
           "exports": [
             "switchTab"
@@ -5803,7 +6481,7 @@
           "name": "connectWs",
           "type": "function",
           "path": "tmux-web/static/js/ws/attach.js",
-          "line": 18,
+          "line": 19,
           "signature": "connectWs(sessionName, origin)",
           "exports": [
             "connectWs"
@@ -5814,7 +6492,7 @@
           "name": "scheduleAttachWsReconnect",
           "type": "function",
           "path": "tmux-web/static/js/ws/attach.js",
-          "line": 108,
+          "line": 110,
           "signature": "scheduleAttachWsReconnect()",
           "exports": [
             "scheduleAttachWsReconnect"
@@ -5825,7 +6503,7 @@
           "name": "handleControlFromServer",
           "type": "function",
           "path": "tmux-web/static/js/ws/attach.js",
-          "line": 129,
+          "line": 131,
           "signature": "handleControlFromServer(msg)",
           "exports": [
             "handleControlFromServer"
@@ -5836,7 +6514,7 @@
           "name": "disconnectWs",
           "type": "function",
           "path": "tmux-web/static/js/ws/attach.js",
-          "line": 136,
+          "line": 138,
           "signature": "disconnectWs()",
           "exports": [
             "disconnectWs"
@@ -5847,7 +6525,7 @@
           "name": "ATTACH_WS_BACKOFFS_MS",
           "type": "variable",
           "path": "tmux-web/static/js/ws/attach.js",
-          "line": 105,
+          "line": 107,
           "exports": []
         },
         {
@@ -5855,7 +6533,7 @@
           "name": "ATTACH_WS_JITTER_MAX_MS",
           "type": "variable",
           "path": "tmux-web/static/js/ws/attach.js",
-          "line": 106,
+          "line": 108,
           "exports": []
         }
       ]

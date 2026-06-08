@@ -1,0 +1,3 @@
+# pick_folder
+
+GET /api/fs/pick-folder (tmux-web/src/main.rs) — открывает НАТИВНЫЙ системный диалог выбора папки на машине сервера и возвращает абсолютный путь. Зачем серверный диалог: браузерные API (showDirectoryPicker, input webkitdirectory) НЕ дают абсолютный путь по безопасности, а tmux нужен абсолютный cwd; в локальном режиме сервер=машина пользователя, диалог появляется на его экране. Платформы: macOS → osascript 'POSIX path of (choose folder ...)'; Linux → zenity --file-selection --directory; иначе 501. Ответы: 200 {path}; 204 — отмена пользователем (AppleScript -128); 501 — платформа без диалога (фронт делает fallback на ручной ввод); 500 — не удалось запустить. Питает кнопку фронта createSessionInPath (#btn-new-path '📁').

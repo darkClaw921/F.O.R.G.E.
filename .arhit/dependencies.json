@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-04T06:50:09.531Z",
+  "generatedAt": "2026-06-08T16:21:43.379Z",
   "dependencies": [
     {
       "from": "tmux-web/static/command-dock.js",
@@ -42,6 +42,34 @@
       "type": "call",
       "fromElement": "getFreq",
       "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/command-dock.js",
+      "to": "tmux-web/static/command-dock.js",
+      "type": "call",
+      "fromElement": "setFreq",
+      "toElement": "lsSet"
+    },
+    {
+      "from": "tmux-web/static/command-dock.js",
+      "to": "tmux-web/static/command-dock.js",
+      "type": "call",
+      "fromElement": "getQcPinned",
+      "toElement": "lsGet"
+    },
+    {
+      "from": "tmux-web/static/command-dock.js",
+      "to": "tmux-web/static/command-dock.js",
+      "type": "call",
+      "fromElement": "getQcPinned",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/command-dock.js",
+      "to": "tmux-web/static/command-dock.js",
+      "type": "call",
+      "fromElement": "getQcPinned",
+      "toElement": "v.filter"
     },
     {
       "from": "tmux-web/static/command-dock.js",
@@ -152,6 +180,97 @@
       "from": "tmux-web/static/command-dock.js",
       "to": "tmux-web/static/command-dock.js",
       "type": "call",
+      "fromElement": "looksLikeCommand",
+      "toElement": "s.trim"
+    },
+    {
+      "from": "tmux-web/static/command-dock.js",
+      "to": "tmux-web/static/command-dock.js",
+      "type": "call",
+      "fromElement": "migrateFreqOnce",
+      "toElement": "lsGet"
+    },
+    {
+      "from": "tmux-web/static/command-dock.js",
+      "to": "tmux-web/static/command-dock.js",
+      "type": "call",
+      "fromElement": "migrateFreqOnce",
+      "toElement": "getFreq"
+    },
+    {
+      "from": "tmux-web/static/command-dock.js",
+      "to": "tmux-web/static/command-dock.js",
+      "type": "call",
+      "fromElement": "migrateFreqOnce",
+      "toElement": "getQcPinned"
+    },
+    {
+      "from": "tmux-web/static/command-dock.js",
+      "to": "tmux-web/static/command-dock.js",
+      "type": "call",
+      "fromElement": "migrateFreqOnce",
+      "toElement": "getItems"
+    },
+    {
+      "from": "tmux-web/static/command-dock.js",
+      "to": "tmux-web/static/command-dock.js",
+      "type": "call",
+      "fromElement": "migrateFreqOnce",
+      "toElement": "keep.add"
+    },
+    {
+      "from": "tmux-web/static/command-dock.js",
+      "to": "tmux-web/static/command-dock.js",
+      "type": "call",
+      "fromElement": "migrateFreqOnce",
+      "toElement": "Object.keys"
+    },
+    {
+      "from": "tmux-web/static/command-dock.js",
+      "to": "tmux-web/static/command-dock.js",
+      "type": "call",
+      "fromElement": "migrateFreqOnce",
+      "toElement": "keep.has"
+    },
+    {
+      "from": "tmux-web/static/command-dock.js",
+      "to": "tmux-web/static/command-dock.js",
+      "type": "call",
+      "fromElement": "migrateFreqOnce",
+      "toElement": "looksLikeCommand"
+    },
+    {
+      "from": "tmux-web/static/command-dock.js",
+      "to": "tmux-web/static/command-dock.js",
+      "type": "call",
+      "fromElement": "migrateFreqOnce",
+      "toElement": "setFreq"
+    },
+    {
+      "from": "tmux-web/static/command-dock.js",
+      "to": "tmux-web/static/command-dock.js",
+      "type": "call",
+      "fromElement": "migrateFreqOnce",
+      "toElement": "lsSet"
+    },
+    {
+      "from": "tmux-web/static/command-dock.js",
+      "to": "tmux-web/static/command-dock.js",
+      "type": "call",
+      "fromElement": "migrateFreqOnce",
+      "toElement": "console.info"
+    },
+    {
+      "from": "tmux-web/static/command-dock.js",
+      "to": "tmux-web/static/command-dock.js",
+      "type": "call",
+      "fromElement": "migrateFreqOnce",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/command-dock.js",
+      "to": "tmux-web/static/command-dock.js",
+      "type": "call",
       "fromElement": "computeFrequent",
       "toElement": "getFreq"
     },
@@ -182,6 +301,13 @@
       "type": "call",
       "fromElement": "computeFrequent",
       "toElement": "exclude.has"
+    },
+    {
+      "from": "tmux-web/static/command-dock.js",
+      "to": "tmux-web/static/command-dock.js",
+      "type": "call",
+      "fromElement": "computeFrequent",
+      "toElement": "looksLikeCommand"
     },
     {
       "from": "tmux-web/static/command-dock.js",
@@ -280,13 +406,6 @@
       "type": "call",
       "fromElement": "ensureRefs",
       "toElement": "applyCollapsed"
-    },
-    {
-      "from": "tmux-web/static/command-dock.js",
-      "to": "tmux-web/static/command-dock.js",
-      "type": "call",
-      "fromElement": "ensureRefs",
-      "toElement": "applyLayout"
     },
     {
       "from": "tmux-web/static/command-dock.js",
@@ -1133,21 +1252,7 @@
       "to": "tmux-web/static/command-dock.js",
       "type": "call",
       "fromElement": "openEditor",
-      "toElement": "applyLayout"
-    },
-    {
-      "from": "tmux-web/static/command-dock.js",
-      "to": "tmux-web/static/command-dock.js",
-      "type": "call",
-      "fromElement": "openEditor",
       "toElement": "f.textInput.focus"
-    },
-    {
-      "from": "tmux-web/static/command-dock.js",
-      "to": "tmux-web/static/command-dock.js",
-      "type": "call",
-      "fromElement": "closeEditor",
-      "toElement": "applyLayout"
     },
     {
       "from": "tmux-web/static/command-dock.js",
@@ -1195,22 +1300,8 @@
       "from": "tmux-web/static/command-dock.js",
       "to": "tmux-web/static/command-dock.js",
       "type": "call",
-      "fromElement": "applyLayout",
+      "fromElement": "terminalActive",
       "toElement": "document.getElementById"
-    },
-    {
-      "from": "tmux-web/static/command-dock.js",
-      "to": "tmux-web/static/command-dock.js",
-      "type": "call",
-      "fromElement": "applyLayout",
-      "toElement": "isMobile"
-    },
-    {
-      "from": "tmux-web/static/command-dock.js",
-      "to": "tmux-web/static/command-dock.js",
-      "type": "call",
-      "fromElement": "applyLayout",
-      "toElement": "requestAnimationFrame"
     },
     {
       "from": "tmux-web/static/command-dock.js",
@@ -1231,7 +1322,7 @@
       "to": "tmux-web/static/command-dock.js",
       "type": "call",
       "fromElement": "render",
-      "toElement": "applyLayout"
+      "toElement": "terminalActive"
     },
     {
       "from": "tmux-web/static/command-dock.js",
@@ -1258,13 +1349,6 @@
       "from": "tmux-web/static/command-dock.js",
       "to": "tmux-web/static/command-dock.js",
       "type": "call",
-      "fromElement": "render",
-      "toElement": "applyLayout"
-    },
-    {
-      "from": "tmux-web/static/command-dock.js",
-      "to": "tmux-web/static/command-dock.js",
-      "type": "call",
       "fromElement": "refresh",
       "toElement": "render"
     },
@@ -1274,6 +1358,13 @@
       "type": "call",
       "fromElement": "onMqChange",
       "toElement": "render"
+    },
+    {
+      "from": "tmux-web/static/command-dock.js",
+      "to": "tmux-web/static/command-dock.js",
+      "type": "call",
+      "fromElement": "init",
+      "toElement": "migrateFreqOnce"
     },
     {
       "from": "tmux-web/static/command-dock.js",
@@ -1329,13 +1420,6 @@
       "to": "tmux-web/static/command-dock.js",
       "type": "call",
       "fromElement": "init",
-      "toElement": "isMobile"
-    },
-    {
-      "from": "tmux-web/static/command-dock.js",
-      "to": "tmux-web/static/command-dock.js",
-      "type": "call",
-      "fromElement": "init",
       "toElement": "render"
     },
     {
@@ -1344,13 +1428,6 @@
       "type": "call",
       "fromElement": "init",
       "toElement": "document.getElementById"
-    },
-    {
-      "from": "tmux-web/static/command-dock.js",
-      "to": "tmux-web/static/command-dock.js",
-      "type": "call",
-      "fromElement": "init",
-      "toElement": "isMobile"
     },
     {
       "from": "tmux-web/static/command-dock.js",
@@ -2392,6 +2469,12 @@
       "from": "tmux-web/static/js/core/bootstrap.js",
       "to": "tmux-web/static/js/core/dom.js",
       "type": "import",
+      "toElement": "$btnNewPath"
+    },
+    {
+      "from": "tmux-web/static/js/core/bootstrap.js",
+      "to": "tmux-web/static/js/core/dom.js",
+      "type": "import",
       "toElement": "$windowNewBtn"
     },
     {
@@ -2447,6 +2530,12 @@
       "to": "tmux-web/static/js/core/dom.js",
       "type": "import",
       "toElement": "$projectSettings"
+    },
+    {
+      "from": "tmux-web/static/js/core/bootstrap.js",
+      "to": "tmux-web/static/js/core/dom.js",
+      "type": "import",
+      "toElement": "$screensaverToggle"
     },
     {
       "from": "tmux-web/static/js/core/bootstrap.js",
@@ -2612,6 +2701,12 @@
     },
     {
       "from": "tmux-web/static/js/core/bootstrap.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "import",
+      "toElement": "createSessionInPath"
+    },
+    {
+      "from": "tmux-web/static/js/core/bootstrap.js",
       "to": "tmux-web/static/js/sessions/windows.js",
       "type": "import",
       "toElement": "createWindow"
@@ -2675,6 +2770,12 @@
       "to": "tmux-web/static/js/settings/modal.js",
       "type": "import",
       "toElement": "openSettingsModal"
+    },
+    {
+      "from": "tmux-web/static/js/core/bootstrap.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "import",
+      "toElement": "showScreensaver"
     },
     {
       "from": "tmux-web/static/js/core/bootstrap.js",
@@ -3253,6 +3354,36 @@
       "type": "call",
       "fromElement": "bootstrap",
       "toElement": "connectEchoWs"
+    },
+    {
+      "from": "tmux-web/static/js/core/dom.js",
+      "to": "tmux-web/static/js/core/dom.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/js/core/dom.js",
+      "to": "tmux-web/static/js/core/dom.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/js/core/dom.js",
+      "to": "tmux-web/static/js/core/dom.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/js/core/dom.js",
+      "to": "tmux-web/static/js/core/dom.js",
+      "type": "call",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/js/core/dom.js",
+      "to": "tmux-web/static/js/core/dom.js",
+      "type": "call",
+      "toElement": "document.getElementById"
     },
     {
       "from": "tmux-web/static/js/core/dom.js",
@@ -11119,6 +11250,1308 @@
       "toElement": "state.remoteSessions.get"
     },
     {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/terminal/xterm.js",
+      "type": "import",
+      "toElement": "showPlaceholder"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "import",
+      "toElement": "fetchSessions"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/core/dom.js",
+      "type": "import",
+      "toElement": "$screensaver"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/core/dom.js",
+      "type": "import",
+      "toElement": "$screensaverBack"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/core/dom.js",
+      "type": "import",
+      "toElement": "$ssStage"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/core/dom.js",
+      "type": "import",
+      "toElement": "$home"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "perfNow",
+      "toElement": "performance.now"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "perfNow",
+      "toElement": "Date.now"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "rand",
+      "toElement": "Math.random"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "pick",
+      "toElement": "Math.random"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "hline",
+      "toElement": "setOpaque"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "vline",
+      "toElement": "setOpaque"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "paintText",
+      "toElement": "setCh"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "paintOpaque",
+      "toElement": "setOpaque"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "blit",
+      "toElement": "paintText"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "box",
+      "toElement": "hline"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "box",
+      "toElement": "hline"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "box",
+      "toElement": "vline"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "box",
+      "toElement": "vline"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "box",
+      "toElement": "setOpaque"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "box",
+      "toElement": "setOpaque"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "box",
+      "toElement": "setOpaque"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "box",
+      "toElement": "setOpaque"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "drawShelf",
+      "toElement": "setCh"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "drawShelf",
+      "toElement": "setCh"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "drawShelf",
+      "toElement": "hline"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "drawShelf",
+      "toElement": "setOpaque"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "drawShelf",
+      "toElement": "setOpaque"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "newGrid"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "box"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "hline"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "setOpaque"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "paintText"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "paintText"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "paintText"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "paintText"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "paintText"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "paintText"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "paintText"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "box"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "vline"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "hline"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "vline"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "blit"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "box"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "paintText"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "paintText"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "paintText"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "paintText"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "paintText"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "box"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "vline"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "hline"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "paintText"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "paintText"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "box"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "vline"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "hline"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "blit"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "drawShelf"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "drawShelf"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "paintText"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "paintText"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "box"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "hline"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "paintText"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "blit"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "blit"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "blit"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "blit"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "hline"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildInterior",
+      "toElement": "setOpaque"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "drawTable",
+      "toElement": "paintOpaque"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "drawTable",
+      "toElement": "paintOpaque"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "drawTable",
+      "toElement": "paintOpaque"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "drawTable",
+      "toElement": "setOpaque"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "drawTable",
+      "toElement": "paintText"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "drawTable",
+      "toElement": "surf.slice"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "drawTable",
+      "toElement": "paintOpaque"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "drawTable",
+      "toElement": "hline"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "drawTable",
+      "toElement": "paintOpaque"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "drawTable",
+      "toElement": "setOpaque"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "drawTable",
+      "toElement": "setOpaque"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "drawTable",
+      "toElement": "CANDLES.push"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "toElement": "makeBust"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "toElement": "makeBust"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "toElement": "makeBust"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "toElement": "makeBust"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "toElement": "makeBust"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "toElement": "makeBust"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "toElement": "makeBust"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "toElement": "makeBust"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "placeDwarves",
+      "toElement": "drawTable"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "placeDwarves",
+      "toElement": "addDwarf"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "placeDwarves",
+      "toElement": "nextBust"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "placeDwarves",
+      "toElement": "setOpaque"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "placeDwarves",
+      "toElement": "addDwarf"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "placeDwarves",
+      "toElement": "nextBust"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "addDwarf",
+      "toElement": "_dwarves.push"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "renderAmbient",
+      "toElement": "paintText"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "renderAmbient",
+      "toElement": "setOpaque"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "renderAmbient",
+      "toElement": "setCh"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "renderFrame",
+      "toElement": "cloneGrid"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "renderFrame",
+      "toElement": "renderAmbient"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "renderFrame",
+      "toElement": "blit"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "showBubble",
+      "toElement": "d.bubble.classList.add"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "hideBubble",
+      "toElement": "d.bubble.classList.remove"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "autoSpeak",
+      "toElement": "pick"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "autoSpeak",
+      "toElement": "showBubble"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "autoSpeak",
+      "toElement": "rand"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "autoSpeak",
+      "toElement": "Math.random"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "autoSpeak",
+      "toElement": "pick"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "autoSpeak",
+      "toElement": "_dwarves.filter"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "autoSpeak",
+      "toElement": "pick"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "autoSpeak",
+      "toElement": "rand"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "onDwarfClick",
+      "toElement": "perfNow"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "onDwarfClick",
+      "toElement": "showBubble"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "onDwarfClick",
+      "toElement": "pick"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "onDwarfClick",
+      "toElement": "rand"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "onDwarfClick",
+      "toElement": "Math.random"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "onDwarfClick",
+      "toElement": "pick"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "onDwarfClick",
+      "toElement": "_dwarves.filter"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "onDwarfClick",
+      "toElement": "pick"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "onDwarfClick",
+      "toElement": "rand"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "measureCell",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "measureCell",
+      "toElement": "getComputedStyle"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "measureCell",
+      "toElement": "probe.getBoundingClientRect"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "measureCell",
+      "toElement": "parseFloat"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "measureCell",
+      "toElement": "probe.remove"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "fitFont",
+      "toElement": "Math.min"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "fitFont",
+      "toElement": "Math.max"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "fitFont",
+      "toElement": "Math.min"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "fitFont",
+      "toElement": "Math.floor"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "fitFont",
+      "toElement": "measureCell"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "fitFont",
+      "toElement": "Math.max"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "fitFont",
+      "toElement": "Math.floor"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "fitFont",
+      "toElement": "measureCell"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "positionBubbles",
+      "toElement": "_screenEl.getBoundingClientRect"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "_onResize",
+      "toElement": "fitFont"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "_onResize",
+      "toElement": "positionBubbles"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "_onScreenClick",
+      "toElement": "_screenEl.getBoundingClientRect"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "_onScreenClick",
+      "toElement": "Math.floor"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "_onScreenClick",
+      "toElement": "Math.floor"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "_onScreenClick",
+      "toElement": "onDwarfClick"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "_onKeydown",
+      "toElement": "ev.stopPropagation"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "_onKeydown",
+      "toElement": "closeScreensaver"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "_onVisibility",
+      "toElement": "perfNow"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "_onVisibility",
+      "toElement": "rand"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildScene",
+      "toElement": "buildInterior"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildScene",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildScene",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildScene",
+      "toElement": "placeDwarves"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildScene",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildScene",
+      "toElement": "_bubbleLayer.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "buildScene",
+      "toElement": "_screenEl.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "loop",
+      "toElement": "stopLoop"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "loop",
+      "toElement": "perfNow"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "loop",
+      "toElement": "renderFrame"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "loop",
+      "toElement": "hideBubble"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "loop",
+      "toElement": "autoSpeak"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "loop",
+      "toElement": "requestAnimationFrame"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "startLoop",
+      "toElement": "perfNow"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "startLoop",
+      "toElement": "_dwarves.forEach"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "startLoop",
+      "toElement": "rand"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "startLoop",
+      "toElement": "requestAnimationFrame"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "stopLoop",
+      "toElement": "cancelAnimationFrame"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "bindControls",
+      "toElement": "closeScreensaver"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "showScreensaver",
+      "toElement": "bindControls"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "showScreensaver",
+      "toElement": "buildScene"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "showScreensaver",
+      "toElement": "window.matchMedia"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "showScreensaver",
+      "toElement": "window.ForgeApp.hideDailySummary"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "showScreensaver",
+      "toElement": "showPlaceholder"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "showScreensaver",
+      "toElement": "renderFrame"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "showScreensaver",
+      "toElement": "perfNow"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "showScreensaver",
+      "toElement": "requestAnimationFrame"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "showScreensaver",
+      "toElement": "fitFont"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "showScreensaver",
+      "toElement": "positionBubbles"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "showScreensaver",
+      "toElement": "document.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "showScreensaver",
+      "toElement": "document.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "showScreensaver",
+      "toElement": "window.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "showScreensaver",
+      "toElement": "startLoop"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "hideScreensaver",
+      "toElement": "stopLoop"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "hideScreensaver",
+      "toElement": "document.removeEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "hideScreensaver",
+      "toElement": "document.removeEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "hideScreensaver",
+      "toElement": "window.removeEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "hideScreensaver",
+      "toElement": "hideBubble"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "closeScreensaver",
+      "toElement": "hideScreensaver"
+    },
+    {
+      "from": "tmux-web/static/js/screensaver/screensaver.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "call",
+      "fromElement": "closeScreensaver",
+      "toElement": "fetchSessions"
+    },
+    {
       "from": "tmux-web/static/js/sessions/next-step-popup.js",
       "to": "tmux-web/static/js/core/state.js",
       "type": "import",
@@ -12111,6 +13544,125 @@
       "to": "tmux-web/static/js/sessions/sessions.js",
       "type": "call",
       "fromElement": "createSessionPrompt",
+      "toElement": "window.alert"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "createSessionInPath",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "createSessionInPath",
+      "toElement": "window.prompt"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "createSessionInPath",
+      "toElement": "manual.trim"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "createSessionInPath",
+      "toElement": "resp.text"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "createSessionInPath",
+      "toElement": "window.alert"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "createSessionInPath",
+      "toElement": "resp.json"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "createSessionInPath",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "createSessionInPath",
+      "toElement": "window.alert"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "createSessionInPath",
+      "toElement": "window.prompt"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "createSessionInPath",
+      "toElement": "name.trim"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "createSessionInPath",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "createSessionInPath",
+      "toElement": "JSON.stringify"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "createSessionInPath",
+      "toElement": "resp.text"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "createSessionInPath",
+      "toElement": "window.alert"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "createSessionInPath",
+      "toElement": "fetchSessions"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "createSessionInPath",
+      "toElement": "openSession"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "createSessionInPath",
       "toElement": "window.alert"
     },
     {
@@ -16351,6 +17903,19 @@
       "to": "tmux-web/static/js/echo/main.js",
       "type": "import",
       "toElement": "_debugState"
+    },
+    {
+      "from": "tmux-web/static/js/tabs/tabs.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "import",
+      "toElement": "hideScreensaver"
+    },
+    {
+      "from": "tmux-web/static/js/tabs/tabs.js",
+      "to": "tmux-web/static/js/tabs/tabs.js",
+      "type": "call",
+      "fromElement": "switchTab",
+      "toElement": "hideScreensaver"
     },
     {
       "from": "tmux-web/static/js/tabs/tabs.js",
@@ -25056,6 +26621,12 @@
     },
     {
       "from": "tmux-web/static/js/ws/attach.js",
+      "to": "tmux-web/static/js/screensaver/screensaver.js",
+      "type": "import",
+      "toElement": "hideScreensaver"
+    },
+    {
+      "from": "tmux-web/static/js/ws/attach.js",
       "to": "tmux-web/static/js/ws/attach.js",
       "type": "call",
       "fromElement": "connectWs",
@@ -25158,6 +26729,13 @@
       "type": "call",
       "fromElement": "connectWs",
       "toElement": "showHome"
+    },
+    {
+      "from": "tmux-web/static/js/ws/attach.js",
+      "to": "tmux-web/static/js/ws/attach.js",
+      "type": "call",
+      "fromElement": "connectWs",
+      "toElement": "hideScreensaver"
     },
     {
       "from": "tmux-web/static/js/ws/attach.js",

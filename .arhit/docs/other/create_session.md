@@ -1,0 +1,3 @@
+# create_session
+
+POST /api/sessions (tmux-web/src/main.rs) — создаёт detached tmux-сессию. Тело CreateSessionReq{ name: String, path: Option<String> }. Выбор cwd: если path задан непустым — раскрывается ведущий ~ (~ или ~/...) в $HOME и проверяется std PathBuf::is_dir() (400 'папка не найдена' если нет), используется он; иначе fallback на state.active_path_tx (active cwd сервера). path-вариант питает кнопку фронта «+ в папке» (createSessionInPath); пустой/отсутствующий path = прежнее поведение кнопки «+ new». Проксируется на remote при ?server=. 201 Created успех; 400 при невалидном имени/несуществующей папке/duplicate.

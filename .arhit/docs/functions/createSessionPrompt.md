@@ -1,0 +1,3 @@
+# createSessionPrompt
+
+tmux-web/static/js/sessions/sessions.js — обработчик кнопки '+ new' (#btn-new в .sidebar-header-actions; подключение core/bootstrap.js). window.prompt на имя, затем POST /api/sessions {name, path?}. ВАЖНО: path = cwd АКТИВНОЙ сессии в момент нажатия — берётся из state.sessions.find(s=>s.name===state.currentSession).path (это #{session_path}, рабочий каталог сессии). Если активной сессии нет (ничего не выбрано) — path не шлётся, и бэкенд (create_session) использует свой active_path (cwd процесса devforge). Так новая сессия наследует папку текущей, а не всегда создаётся в каталоге запуска devforge. Отличие от кнопки 📁 (createSessionInPath): та открывает нативный системный диалог выбора произвольной папки.

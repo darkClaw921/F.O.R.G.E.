@@ -39,6 +39,9 @@
 /* === 6b. Daily summary: сводка дня (markdown) в #main === */
 @import url('./css/daily-summary.css');
 
+/* === 6c. Screensaver: ASCII-заставка «таверна дворфов» в #main === */
+@import url('./css/screensaver.css');
+
 /* === 7. Top tab bar (726-763) === */
 @import url('./css/tab-bar.css');
 

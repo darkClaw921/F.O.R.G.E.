@@ -18,11 +18,14 @@ import { closeGitWs, openLazygitForActiveProject } from './tui-tabs.js';
 import {
     initEcho, connectEchoWs, disconnectEchoWs, _debugState as echoDebug,
 } from '../echo/main.js';
+import { hideScreensaver } from '../screensaver/screensaver.js';
 
 export function switchTab(name) {
     if (name !== 'terminal' && name !== 'tasks' && name !== 'git'
         && name !== 'docker' && name !== 'telescope' && name !== 'echo') return;
     if (state.activeTab === name) return;
+    // Заставка лежит поверх области терминала — при переключении вкладок гасим её.
+    hideScreensaver();
     const prev = state.activeTab;
     state.activeTab = name;
 

@@ -16,10 +16,14 @@
         <aside id="sidebar">
             <div id="settings-bar">
                 <button id="project-settings" type="button" title="Settings">⚙</button>
+                <button id="screensaver-toggle" type="button" title="Заставка — таверна дворфов" aria-label="Заставка">🍺</button>
             </div>
             <header class="sidebar-header">
                 <h1>tmux-web</h1>
-                <button id="btn-new" type="button" title="Создать новую сессию">+ new</button>
+                <div class="sidebar-header-actions">
+                    <button id="btn-new" type="button" title="Создать новую сессию">+ new</button>
+                    <button id="btn-new-path" type="button" title="Создать сессию в выбранной папке" aria-label="Создать сессию в выбранной папке">📁</button>
+                </div>
             </header>
             <!-- Phase 5: origin-табы (показываются только при remote_mode=true) -->
             <div id="origin-tabs" class="origin-tabs" hidden>
@@ -109,6 +113,16 @@
                     <span class="daily-summary-empty-icon">🗓️</span>
                     <p>За этот день сводки ещё нет.</p>
                     <button id="daily-summary-generate" class="daily-summary-generate" type="button">Сгенерировать</button>
+                </div>
+            </div>
+            <div id="screensaver" class="screensaver" style="display:none">
+                <div class="ss-head">
+                    <button id="screensaver-back" class="ss-back" type="button" title="Закрыть заставку (Esc)">← Назад</button>
+                    <span class="ss-title">🍺 Таверна «Сломанный Билд»</span>
+                    <span class="ss-hint">кликни по дворфу — он поднимет кружку</span>
+                </div>
+                <div id="ss-stage" class="ss-stage">
+                    <!-- Заполняется JS: фон-таверна + спрайты дворфов с облачками -->
                 </div>
             </div>
             <div id="tasks" hidden>

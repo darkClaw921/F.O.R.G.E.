@@ -14,6 +14,7 @@ import { setStatus, showPlaceholder } from '../terminal/xterm.js';
 import { renderSidebar } from '../sidebar/sidebar.js';
 import { startWindowsPolling, stopWindowsPolling } from '../sessions/windows.js';
 import { showHome } from '../home/home.js';
+import { hideScreensaver } from '../screensaver/screensaver.js';
 
 export function connectWs(sessionName, origin) {
     // На всякий случай закрываем старый.
@@ -60,6 +61,7 @@ export function connectWs(sessionName, origin) {
         setStatus('connected', `attached → ${sessionName}`);
         showPlaceholder(false);
         showHome(false);
+        hideScreensaver();
         state.attachWsBackoffStep = 0;
         if (state.term) {
             state.term.reset();

@@ -219,11 +219,18 @@ export async function createSessionPrompt() {
     if (!name) return;
     const trimmed = name.trim();
     if (!trimmed) return;
+    // Создаём в рабочем каталоге АКТИВНОЙ сессии (cwd той, что выбрана в момент
+    // нажатия). Если активной сессии нет — path не шлём, и бэкенд использует
+    // свой дефолтный active_path (cwd процесса devforge).
+    const activeSess = (state.sessions || []).find((s) => s && s.name === state.currentSession);
+    const activePath = (activeSess && activeSess.path) ? activeSess.path : null;
+    const payload = { name: trimmed };
+    if (activePath) payload.path = activePath;
     try {
         const resp = await fetch('/api/sessions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: trimmed }),
+            body: JSON.stringify(payload),
         });
         if (!resp.ok) {
             const text = await resp.text();
@@ -232,6 +239,56 @@ export async function createSessionPrompt() {
         }
         await fetchSessions();
         openSession(trimmed);
+    } catch (e) {
+        window.alert('Ошибка запроса: ' + e.message);
+    }
+}
+
+// Создание сессии в указанной папке (кнопка «+ в папке» рядом с «+ new»).
+// Открывает НАТИВНЫЙ системный диалог выбора папки через бэкенд
+// (GET /api/fs/pick-folder → osascript/zenity на машине сервера), затем
+// спрашивает имя и шлёт POST /api/sessions { name, path }.
+export async function createSessionInPath() {
+    let path = '';
+    try {
+        const resp = await fetch('/api/fs/pick-folder', { headers: { Accept: 'application/json' } });
+        if (resp.status === 204) return; // пользователь нажал «Отмена»
+        if (resp.status === 501) {
+            // Нативный диалог недоступен — fallback на ручной ввод пути.
+            const manual = window.prompt('Диалог недоступен на этой системе. Введите путь к папке вручную:', '');
+            if (manual === null) return;
+            path = manual.trim();
+        } else if (!resp.ok) {
+            const text = await resp.text();
+            window.alert('Не удалось открыть диалог выбора папки: ' + (text || resp.status));
+            return;
+        } else {
+            const data = await resp.json();
+            path = (data && data.path) ? String(data.path).trim() : '';
+        }
+    } catch (e) {
+        window.alert('Ошибка запроса: ' + e.message);
+        return;
+    }
+    if (!path) return;
+
+    const name = window.prompt('Имя новой сессии в папке\n' + path + ':', '');
+    if (!name) return;
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
+    try {
+        const resp = await fetch('/api/sessions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: trimmedName, path }),
+        });
+        if (!resp.ok) {
+            const text = await resp.text();
+            window.alert('Не удалось создать сессию: ' + (text || resp.status));
+            return;
+        }
+        await fetchSessions();
+        openSession(trimmedName);
     } catch (e) {
         window.alert('Ошибка запроса: ' + e.message);
     }

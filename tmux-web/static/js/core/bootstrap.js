@@ -6,10 +6,10 @@
 
 import { state } from './state.js';
 import {
-    $btnNew, $windowNewBtn,
+    $btnNew, $btnNewPath, $windowNewBtn,
     $tabTerminal, $tabTasks, $tabGit, $tabDocker, $tabTelescope, $tabEcho,
     $tasksReload, $tasksNew,
-    $projectSettings,
+    $projectSettings, $screensaverToggle,
     $btnSidebarToggle, $sidebarOverlay, $layout,
 } from './dom.js';
 import {
@@ -27,7 +27,7 @@ import { initTerminal, showPlaceholder, setStatus } from '../terminal/xterm.js';
 import { switchTab } from '../tabs/tabs.js';
 import { initTuiTabs, closeGitWs } from '../tabs/tui-tabs.js';
 import {
-    fetchSessions, startPolling, stopPolling, createSessionPrompt,
+    fetchSessions, startPolling, stopPolling, createSessionPrompt, createSessionInPath,
 } from '../sessions/sessions.js';
 import { createWindow } from '../sessions/windows.js';
 import { disconnectWs } from '../ws/attach.js';
@@ -38,6 +38,7 @@ import {
     fetchTodos, connectTodosWs, disconnectTodosWs, stopTodosPolling,
 } from '../ws/todos-ws.js';
 import { openSettingsModal } from '../settings/modal.js';
+import { showScreensaver } from '../screensaver/screensaver.js';
 import { initTooltips } from '../ui/tooltip.js';
 import { initNextStepPopup } from '../sessions/next-step-popup.js';
 import { fetchUserSettings } from '../settings/user-settings-api.js';
@@ -123,6 +124,7 @@ export async function bootstrap() {
     setStatus('disconnected', 'disconnected');
 
     $btnNew.addEventListener('click', createSessionPrompt);
+    if ($btnNewPath) $btnNewPath.addEventListener('click', createSessionInPath);
     if ($windowNewBtn) $windowNewBtn.addEventListener('click', createWindow);
 
     if ($tabTerminal) $tabTerminal.addEventListener('click', () => switchTab('terminal'));
@@ -146,6 +148,10 @@ export async function bootstrap() {
 
     if ($projectSettings) {
         $projectSettings.addEventListener('click', openSettingsModal);
+    }
+
+    if ($screensaverToggle) {
+        $screensaverToggle.addEventListener('click', showScreensaver);
     }
 
     if (isRemoteMode()) {

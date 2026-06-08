@@ -1,0 +1,3 @@
+# createSessionInPath
+
+tmux-web/static/js/sessions/sessions.js — обработчик кнопки 📁 (#btn-new-path, рядом с '+ new' в .sidebar-header-actions; подключение core/bootstrap.js). Flow: (1) GET /api/fs/pick-folder открывает нативный системный диалог выбора папки (osascript/zenity на сервере); статус 204=отмена (выход), 501=нет диалога→fallback window.prompt на ручной ввод пути, иначе берём data.path; (2) window.prompt на имя сессии (с показом выбранной папки); (3) POST /api/sessions {name, path}. Бэкенд create_session раскрывает ~ и проверяет is_dir. Успех → fetchSessions()+openSession. Отличается от '+ new' (createSessionPrompt): та создаёт в active cwd сервера, эта — в выбранной через системный диалог папке.

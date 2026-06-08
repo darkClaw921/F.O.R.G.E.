@@ -3868,5 +3868,57 @@
     "content": "Защита freq-трекинга команд от мусора (Command dock / quick-cmd).\n\n## Проблема\nВ «частые команды» попадал хлам: фрагменты вставленного кода (const …;, break;, }), stack-trace (at Foo (file:line:col)), лог-префиксы (app | …), одиночные символы. Причина — xterm при вставке шлёт текст как stdin, и quick-cmd.js считал каждую строку командой.\n\n## Решение (три уровня)\n1. **Источник — quick-cmd.js**: распознаём bracketed paste (ESC[200~ … ESC[201~). В CSI-парсере копим csiParams; 200~ → state.pasteMode=true, 201~ → false. В onPtyInput при pasteMode байты пропускаются. Новые вставки не засоряют forge.quickCmd.freq.\n2. **Отображение — command-dock.js looksLikeCommand(s)**: эвристика прячет исторический мусор в computeFrequent(). Правила: длина ≥2; есть [A-Za-z0-9]; не оканчивается на ;{},= ; не начинается с ключевых слов ЯП; не stack-trace (^at … '('); не …file:line:col; не лог-префикс ^name | ; не начинается со скобки-закрывашки.\n3. **Миграция — command-dock.js migrateFreqOnce()**: одноразовая физическая очистка forge.quickCmd.freq при старте (init). Версионный флаг forge.cmdDock.freqCleanV (FREQ_CLEAN_VERSION=1, повышать при улучшении эвристики). Удаляет ключи, не прошедшие looksLikeCommand, КРОМЕ закреплённых в forge.quickCmd.pinned и текстов собственных элементов дока (forge.cmdDock.items). Идемпотентна.\n\n## Файлы\n- tmux-web/static/quick-cmd.js — pasteMode + csiParams в state, обработка в processEscByte/onPtyInput\n- tmux-web/static/command-dock.js — looksLikeCommand() в computeFrequent(); migrateFreqOnce() в init()",
     "createdAt": "2026-06-04T07:12:14.952Z",
     "updatedAt": "2026-06-04T07:18:05.028Z"
+  },
+  {
+    "element": "screensaver",
+    "path": "",
+    "type": "unknown",
+    "content": "Модуль static/js/screensaver/screensaver.js — ASCII-заставка «Таверна дворфов». Полноэкранная вью #screensaver в #main, открывается кнопкой 🍺 (#screensaver-toggle) в #settings-bar ВМЕСТО области сессий, по образцу #daily-summary.\n\nРЕНДЕР — единый ASCII-композитор: вся сцена (интерьер таверны ИЗНУТРИ + 5 столов + 10 дворфов) рисуется в ОДНУ моноширинную сетку COLS×ROWS (100×34) в одном <pre id=ss-screen>. Слои: статичный интерьер (база, buildInterior) → анимированный ambient (пламя камина/свечи/дым, renderAmbient) → бюсты дворфов (renderFrame по копии базы). Единая сетка даёт идеальное выравнивание «дворфы сидят за столами». Примитивы рисования: newGrid/cloneGrid/setCh(пробел=прозрачно)/box/hline/vline/paintText/blit.\n\nИНТЕРЬЕР (buildInterior): внешние стены (двойная рамка), потолочные балки, вывеска THE BROKEN BUILD TAVERN, окна с луной/звёздами, полки с бутылками, баннер BUILD GUILD, доска-меню (Эль/Мёд/Рагу/Rollback FREE), камин с живым пламенем (FIRE) + кот, висячие фонари, бочки в углах, пол. Анимируемые зоны фиксируются в FIRE/CANDLES/SMOKE.\n\nДВОРФЫ: 8 вариантов детализированных бюстов (makeBust: шлемы рогатые/остроконечные/крылатые/корона, разные глаза/носы/бороды, аксессуары — трубка, шрам), 2 кадра idle/drink (кружка U= едет от стола к лицу). placeDwarves раскладывает 10 дворфов за 5 столами (drawTable). Каждый дворф: bbox {r,c,w,h}, headRow/headCol, состояние реплики.\n\nРЕПЛИКИ: ~55 LINES (дев-юмор F.O.R.G.E.: билды/CI/коммиты/баги/tmux/Claude/Rust) + ~28 RETORTS (ответы соседа). autoSpeak по таймеру, клик по дворфу (onDwarfClick) — хит-тест: пиксель→ячейка(row,col)→поиск дворфа по bbox. Сосед иногда отвечает (forcedLine).\n\nОБЛАЧКА: отдельные .ss-bubble в слое .ss-bubbles; позиция в пикселях по координате головы (positionBubbles через getBoundingClientRect относительно сцены — учитывает transform центрирования). Размер сцены подгоняется fitFont (вписывает COLS×ROWS в #ss-stage), cellW измеряется probe-span (measureCell). Пересчёт на resize.\n\nЦИКЛ/ОСТАНОВКА: requestAnimationFrame с троттлингом RENDER_MS≈120мс (~8fps), перерисовка <pre> только при смене кадра (_lastFrameStr). hideScreensaver отменяет rAF и listener'ы; self-guard (offsetParent===null); Esc; visibilitychange; prefers-reduced-motion замораживает кадры. Внешние хуки: ws/attach.js (ws.onopen) и tabs/tabs.js (switchTab) вызывают hideScreensaver(). Экспорт: showScreensaver/hideScreensaver/closeScreensaver(→fetchSessions). XSS: текст через textContent.",
+    "createdAt": "2026-06-04T08:51:09.027Z",
+    "updatedAt": "2026-06-04T20:13:35.452Z",
+    "aliases": [
+      "дизайн как в дневных отчётах фон цвет",
+      "дворфы в разных местах парами и поодиночке"
+    ]
+  },
+  {
+    "element": "screensaver-feature",
+    "path": "",
+    "type": "page",
+    "content": "Фича «Заставка — таверна дворфов» (добавлена 2026-06-04).\n\nНазначение: рядом с кнопкой настроек (⚙ #project-settings) добавлена кнопка 🍺 (#screensaver-toggle); по нажатию вместо области сессий открывается полноэкранная ASCII-анимация — дворфы пьют в таверне, поднимают кружки и переговариваются репликами в облачках над головами (дев-юмор F.O.R.G.E.). Заставка кликабельна: клик по дворфу поднимает кружку и выдаёт новую реплику, иногда сосед отвечает.\n\nАрхитектурное решение: повторяет паттерн «ежедневной сводки» (#daily-summary) — оверлей position:absolute;inset:0 в #main, показ через display:flex + скрытие #home + showPlaceholder(false), выход через «← Назад»/Esc → fetchSessions(). Чисто фронтенд, бэкенд не требуется.\n\nЗатронутые файлы:\n- НОВЫЙ static/js/screensaver/screensaver.js — логика/анимация (см. doc 'screensaver').\n- НОВЫЙ static/css/screensaver.css — стили сцены, дворфов, облачек, кнопки 🍺; @media mobile + prefers-reduced-motion.\n- static/index.html — кнопка #screensaver-toggle в #settings-bar; контейнер #screensaver (с #screensaver-back и #ss-stage) в #main.\n- static/js/core/dom.js — DOM-ссылки $screensaverToggle/$screensaver/$screensaverBack/$ssStage.\n- static/js/core/bootstrap.js — импорт showScreensaver + клик-handler на #screensaver-toggle.\n- static/js/ws/attach.js — hideScreensaver() в ws.onopen (гасит при открытии сессии).\n- static/js/tabs/tabs.js — hideScreensaver() в начале switchTab (гасит при смене вкладки).\n- static/style.css — @import './css/screensaver.css'.\n\nEmbedding: ассеты включаются в бинарь автоматически (rust-embed #[folder=...static/]), правок Rust нет — нужна лишь пересборка cargo build -p devforge (выполнена, exit 0).\n\nОстановка анимации (важно для CPU): hideScreensaver отменяет rAF; self-guard в loop (offsetParent===null); внешние хуки в attach/switchTab; Esc; rAF auto-пауза в скрытой вкладке; reduced-motion замораживает кадры.",
+    "createdAt": "2026-06-04T08:51:28.532Z",
+    "updatedAt": "2026-06-04T08:51:28.532Z"
+  },
+  {
+    "element": "createSessionInPath",
+    "path": "tmux-web/static/js/sessions/sessions.js",
+    "type": "function",
+    "content": "tmux-web/static/js/sessions/sessions.js — обработчик кнопки 📁 (#btn-new-path, рядом с '+ new' в .sidebar-header-actions; подключение core/bootstrap.js). Flow: (1) GET /api/fs/pick-folder открывает нативный системный диалог выбора папки (osascript/zenity на сервере); статус 204=отмена (выход), 501=нет диалога→fallback window.prompt на ручной ввод пути, иначе берём data.path; (2) window.prompt на имя сессии (с показом выбранной папки); (3) POST /api/sessions {name, path}. Бэкенд create_session раскрывает ~ и проверяет is_dir. Успех → fetchSessions()+openSession. Отличается от '+ new' (createSessionPrompt): та создаёт в active cwd сервера, эта — в выбранной через системный диалог папке.",
+    "createdAt": "2026-06-08T14:17:36.027Z",
+    "updatedAt": "2026-06-08T16:01:14.204Z"
+  },
+  {
+    "element": "create_session",
+    "path": "",
+    "type": "unknown",
+    "content": "POST /api/sessions (tmux-web/src/main.rs) — создаёт detached tmux-сессию. Тело CreateSessionReq{ name: String, path: Option<String> }. Выбор cwd: если path задан непустым — раскрывается ведущий ~ (~ или ~/...) в $HOME и проверяется std PathBuf::is_dir() (400 'папка не найдена' если нет), используется он; иначе fallback на state.active_path_tx (active cwd сервера). path-вариант питает кнопку фронта «+ в папке» (createSessionInPath); пустой/отсутствующий path = прежнее поведение кнопки «+ new». Проксируется на remote при ?server=. 201 Created успех; 400 при невалидном имени/несуществующей папке/duplicate.",
+    "createdAt": "2026-06-08T14:17:36.305Z",
+    "updatedAt": "2026-06-08T14:17:36.305Z"
+  },
+  {
+    "element": "pick_folder",
+    "path": "",
+    "type": "unknown",
+    "content": "GET /api/fs/pick-folder (tmux-web/src/main.rs) — открывает НАТИВНЫЙ системный диалог выбора папки на машине сервера и возвращает абсолютный путь. Зачем серверный диалог: браузерные API (showDirectoryPicker, input webkitdirectory) НЕ дают абсолютный путь по безопасности, а tmux нужен абсолютный cwd; в локальном режиме сервер=машина пользователя, диалог появляется на его экране. Платформы: macOS → osascript 'POSIX path of (choose folder ...)'; Linux → zenity --file-selection --directory; иначе 501. Ответы: 200 {path}; 204 — отмена пользователем (AppleScript -128); 501 — платформа без диалога (фронт делает fallback на ручной ввод); 500 — не удалось запустить. Питает кнопку фронта createSessionInPath (#btn-new-path '📁').",
+    "createdAt": "2026-06-08T16:01:13.935Z",
+    "updatedAt": "2026-06-08T16:01:13.935Z"
+  },
+  {
+    "element": "createSessionPrompt",
+    "path": "tmux-web/static/js/sessions/sessions.js",
+    "type": "function",
+    "content": "tmux-web/static/js/sessions/sessions.js — обработчик кнопки '+ new' (#btn-new в .sidebar-header-actions; подключение core/bootstrap.js). window.prompt на имя, затем POST /api/sessions {name, path?}. ВАЖНО: path = cwd АКТИВНОЙ сессии в момент нажатия — берётся из state.sessions.find(s=>s.name===state.currentSession).path (это #{session_path}, рабочий каталог сессии). Если активной сессии нет (ничего не выбрано) — path не шлётся, и бэкенд (create_session) использует свой active_path (cwd процесса devforge). Так новая сессия наследует папку текущей, а не всегда создаётся в каталоге запуска devforge. Отличие от кнопки 📁 (createSessionInPath): та открывает нативный системный диалог выбора произвольной папки.",
+    "createdAt": "2026-06-08T16:21:43.656Z",
+    "updatedAt": "2026-06-08T16:21:43.656Z"
   }
 ]

@@ -1,0 +1,174 @@
+/* tmux-web — Screensaver «Таверна дворфов» (ASCII-заставка)
+ *
+ * Полноэкранная вью #screensaver в #main (по образцу #daily-summary):
+ * position:absolute; inset:0. Дизайн повторяет «сводку дня»: плоский фон
+ * var(--bg-elev) и цвет текста var(--fg) — без янтарного градиента/свечения.
+ * Сцена рисуется одним моноширинным <pre.ss-screen> (ASCII-композитор),
+ * облачка-реплики (.ss-bubble) позиционируются JS над головами дворфов.
+ *
+ * Логику и анимацию ведёт js/screensaver/screensaver.js. Здесь — только
+ * оформление, позиционирование и переходы появления облачка.
+ */
+
+/* ---- Кнопка-переключатель 🍺 в #settings-bar ---- */
+#settings-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+#screensaver-toggle {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--fg-mute);
+    font-size: 1rem;
+    line-height: 1;
+    padding: 2px 6px;
+    transition: background 0.15s ease, transform 0.15s ease;
+}
+#screensaver-toggle:hover {
+    background: var(--bg-input-hover);
+    color: var(--fg);
+    transform: scale(1.08);
+}
+
+/* ---- Контейнер вью (фон как у «сводки дня») ---- */
+.screensaver {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg-elev);
+    color: var(--fg);
+}
+
+/* ---- Верхняя панель (тихие ghost-кнопки, как в daily-summary) ---- */
+.ss-head {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border-soft, var(--border));
+    background: transparent;
+    z-index: 3;
+}
+
+.ss-back {
+    background: transparent;
+    color: var(--fg);
+    font-weight: 600;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 0.82rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 100ms ease, color 100ms ease;
+}
+.ss-back:hover {
+    background: var(--bg-input-hover);
+    color: var(--fg);
+}
+
+.ss-title {
+    font-weight: 600;
+    font-size: 0.92rem;
+    color: var(--fg);
+    letter-spacing: 0.02em;
+}
+.ss-hint {
+    margin-left: auto;
+    font-size: 0.74rem;
+    color: var(--fg-mute);
+    opacity: 0.8;
+}
+
+/* ---- Игровая сцена ---- */
+.ss-stage {
+    position: relative;
+    flex: 1 1 auto;
+    overflow: hidden;
+}
+
+/* Единый ASCII-экран сцены: вся таверна (интерьер + столы + дворфы) рисуется
+   в одну моноширинную сетку (COLS×ROWS) одним <pre>. Размер шрифта подгоняет
+   JS (fitFont) под размер #ss-stage, поэтому сцена центрируется и помещается
+   целиком. Кликабелен (клик мапится в ячейку → дворф). */
+.ss-screen {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    margin: 0;
+    cursor: pointer;
+    user-select: none;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    white-space: pre;
+    letter-spacing: 0;
+    color: var(--fg);
+    z-index: 1;
+}
+
+/* Слой облачек — поверх экрана, координаты задаёт JS (positionBubbles). */
+.ss-bubbles {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 4;
+}
+
+/* ---- Облачко-реплика ---- */
+/* left/top выставляет JS в точку над головой дворфа; transform поднимает
+   облачко над этой точкой. */
+.ss-bubble {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform: translate(-50%, -100%) translateY(6px) scale(0.92);
+    transform-origin: bottom center;
+    max-width: 220px;
+    padding: 6px 10px;
+    border-radius: 11px;
+    background: var(--fg, #f4f1de);
+    color: var(--bg, #1a1a1a);
+    font-family: inherit;
+    font-size: 0.74rem;
+    line-height: 1.25;
+    text-align: center;
+    white-space: normal;
+    box-shadow: 0 4px 14px var(--overlay-shadow, rgba(0, 0, 0, 0.45));
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease, transform 0.22s ease;
+}
+.ss-bubble.show {
+    opacity: 1;
+    transform: translate(-50%, -100%) translateY(-2px) scale(1);
+}
+/* Хвостик облачка (треугольник вниз, к голове дворфа). */
+.ss-bubble::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 7px solid transparent;
+    border-top-color: var(--fg, #f4f1de);
+}
+
+/* ---- Мобильная адаптация ---- */
+@media (max-width: 640px) {
+    .ss-hint { display: none; }
+    .ss-bubble { max-width: 150px; font-size: 0.68rem; }
+}
+
+/* ---- Уважение prefers-reduced-motion ---- */
+@media (prefers-reduced-motion: reduce) {
+    .ss-bubble,
+    #screensaver-toggle {
+        transition: none;
+    }
+}
