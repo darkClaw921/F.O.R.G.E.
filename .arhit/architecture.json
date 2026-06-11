@@ -1,6 +1,6 @@
 {
   "root": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E.",
-  "generatedAt": "2026-06-08T16:21:42.813Z",
+  "generatedAt": "2026-06-11T19:43:13.500Z",
   "nodes": [
     {
       "id": "tmux-web/static/app.js",
@@ -5337,11 +5337,20 @@
       ],
       "children": [
         {
+          "id": "tmux-web/static/js/tasks/crud.js:withTaskPath",
+          "name": "withTaskPath",
+          "type": "function",
+          "path": "tmux-web/static/js/tasks/crud.js",
+          "line": 23,
+          "signature": "withTaskPath(url, origin)",
+          "exports": []
+        },
+        {
           "id": "tmux-web/static/js/tasks/crud.js:getIssueIndex",
           "name": "getIssueIndex",
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
-          "line": 17,
+          "line": 31,
           "signature": "getIssueIndex(id)",
           "exports": [
             "getIssueIndex"
@@ -5352,7 +5361,7 @@
           "name": "applyOptimisticPatch",
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
-          "line": 22,
+          "line": 36,
           "signature": "applyOptimisticPatch(id, patch)",
           "exports": [
             "applyOptimisticPatch"
@@ -5363,7 +5372,7 @@
           "name": "rollbackIssue",
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
-          "line": 32,
+          "line": 46,
           "signature": "rollbackIssue(id, prev)",
           "exports": [
             "rollbackIssue"
@@ -5374,7 +5383,7 @@
           "name": "createTask",
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
-          "line": 43,
+          "line": 57,
           "signature": "createTask(payload)",
           "exports": [
             "createTask"
@@ -5385,7 +5394,7 @@
           "name": "updateTask",
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
-          "line": 99,
+          "line": 113,
           "signature": "updateTask(id, payload)",
           "exports": [
             "updateTask"
@@ -5396,7 +5405,7 @@
           "name": "taskOriginById",
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
-          "line": 140,
+          "line": 154,
           "signature": "taskOriginById(id)",
           "exports": [
             "taskOriginById"
@@ -5407,7 +5416,7 @@
           "name": "closeTask",
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
-          "line": 146,
+          "line": 160,
           "signature": "closeTask(id, reason, opts)",
           "exports": [
             "closeTask"
@@ -5418,7 +5427,7 @@
           "name": "purgeTask",
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
-          "line": 168,
+          "line": 185,
           "signature": "purgeTask(id, opts)",
           "exports": [
             "purgeTask"
@@ -5429,7 +5438,7 @@
           "name": "deleteTodoLocal",
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
-          "line": 201,
+          "line": 218,
           "signature": "deleteTodoLocal(id, opts)",
           "exports": [
             "deleteTodoLocal"
@@ -5440,7 +5449,7 @@
           "name": "cleanColumn",
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
-          "line": 236,
+          "line": 253,
           "signature": "cleanColumn(status, ids)",
           "exports": [
             "cleanColumn"
@@ -5451,7 +5460,7 @@
           "name": "reopenTask",
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
-          "line": 258,
+          "line": 278,
           "signature": "reopenTask(id)",
           "exports": [
             "reopenTask"
@@ -5462,7 +5471,7 @@
           "name": "createTodoForPath",
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
-          "line": 282,
+          "line": 302,
           "signature": "createTodoForPath(path, title, description)",
           "exports": [
             "createTodoForPath"
@@ -5473,7 +5482,7 @@
           "name": "setTodoAutoPromote",
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
-          "line": 297,
+          "line": 317,
           "signature": "setTodoAutoPromote(id, value)",
           "exports": [
             "setTodoAutoPromote"
@@ -5484,7 +5493,7 @@
           "name": "promoteTodo",
           "type": "function",
           "path": "tmux-web/static/js/tasks/crud.js",
-          "line": 334,
+          "line": 354,
           "signature": "promoteTodo(id, sessionOverride)",
           "exports": [
             "promoteTodo"

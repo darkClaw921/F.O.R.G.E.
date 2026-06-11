@@ -211,9 +211,9 @@
     "element": "close_task",
     "path": "",
     "type": "unknown",
-    "content": "Axum-хендлер DELETE /api/tasks/:id?reason=... Принимает CloseTaskQuery {reason?}. Зовёт br close --json <id> [-r reason] через tasks::run_br. На успех — 204 NoContent (тело не возвращаем — клиент уже знает id). На ошибку — 400 + stderr. Используется UI-кнопкой Close в modal-edit. Файл: tmux-web/src/main.rs.",
+    "content": "HTTP-handler DELETE /api/tasks/:id?reason=...&path=... (tmux-web/src/main.rs). Закрывает issue через br close --json [-r reason] в cwd из task_cwd (?path= из query, фолбэк active_path_tx). 204 No Content при успехе; ошибка br -> 400.\n\nИдемпотентность (оба кейса -> 204, не ошибка):\n1. ISSUE_NOT_FOUND / 'Issue not found' — задача уже отсутствует (двойной клик, гонка с purge).\n2. NOTHING_TO_DO / 'already closed' — br close уже закрытой задачи падает с exit=3 и error-JSON {code: NOTHING_TO_DO, 'all issues skipped: already closed'}. Кейс реален при stale-канбане: задачу закрыли через CLI (br close в сессии), UI ещё показывает её открытой, юзер жмёт clean -> до фикса каждая такая задача давала 400 и алерт 'Очистка завершена с ошибками: ok=0, fail=N'.\n\nИспользуется: кнопка clean колонок open/in_progress (cleanColumn -> closeTask), кнопка закрытия одиночной карточки. Связанные: task_cwd, tasks::run_br, purge_task (аналогичная идемпотентность по ISSUE_NOT_FOUND), cleanColumn (после bulk-операции делает fetchTasks() для пересинхронизации борда).",
     "createdAt": "2026-05-09T20:00:56.618Z",
-    "updatedAt": "2026-05-09T20:00:56.618Z"
+    "updatedAt": "2026-06-11T17:57:47.653Z"
   },
   {
     "element": "reopen_task",
@@ -299,9 +299,12 @@
     "element": "tmux-web/src/tasks_watcher.rs",
     "path": "tmux-web/src/tasks_watcher.rs",
     "type": "file",
-    "content": "Фоновый file-watcher для .beads/issues.jsonl активного пути. После Phase 4 (remove-projects-concept) переименован project_path → active_path, привязка к ProjectStore убрана. Использует notify crate (RecommendedWatcher) с tail-debounce 200ms. run_watcher(active_path_rx, tasks_tx) — единственный публичный entry-point. Outer-loop пересоздаёт watcher при смене active_path (sender в AppState — extension-point). Inner-loop: snapshot baseline → notify event → 200ms debounce → diff_issues → broadcast TaskEvent. find_beads_dir() ищет .beads/ начиная с указанного пути вверх по родительским каталогам (зеркалит логику ). relevant_event() — фильтр fs-событий (только issues.jsonl и его .tmp). DEBOUNCE_MS = 200.",
+    "content": "Мульти-корневой фоновый file-watcher для .beads/issues.jsonl. Переписан с одно-корневой схемы (active_path) на мульти-корневую — фикс бага «авто-запуск следующей todo не сработал, хотя задача закрыта»: старый watcher следил только за каталогом запуска сервера (active_path_tx после старта никогда не обновлялся), и closed-события задач других проектов не доходили до auto_promote::run и notifier (wait_previous) — цепочка авто-промоута не двигалась нигде, кроме стартового проекта.\n\nПубличный API:\n- run_multi_watcher(roots_rx: watch::Receiver<BTreeSet<PathBuf>>, tasks_tx: broadcast::Sender<TaskEvent>) — главный цикл. Получает набор путей-кандидатов из roots-канала (наполняет collector-task в main.rs: cwd всех tmux-сессий + initial cwd процесса + корни активных auto_chain, пересборка каждые 5с, send_if_modified). Каждый кандидат резолвится через find_beads_dir; дедуп по фактическому .beads/-пути (сессии одного репо/подкаталогов -> один watcher). На изменение набора: spawn watch_root для новых корней, JoinHandle::abort для исчезнувших. Завершается при закрытии roots-канала.\n- watch_root(snapshot_root, beads_dir, tasks_tx) — watcher одного корня: initial snapshot (baseline, не бродкастится) -> notify::recommended_watcher на .beads/ (NonRecursive, mpsc::unbounded как EventHandler) -> 200ms tail-debounce -> tasks::snapshot + diff_issues -> broadcast TaskEvent. Живёт до abort.\n- find_beads_dir(start) — поиск .beads/ вверх по родителям (зеркалит br).\n- relevant_event(ev) — фильтр fs-событий (issues.jsonl и *.jsonl/tmp).\n- DEBOUNCE_MS = 200.\n\nПодписчики глобального tasks_tx: notifier.rs (wait_previous) и auto_promote::run. UI (/ws/tasks) канал НЕ использует — у него per-connection watcher'ы на ?path= клиента (ws_tasks.rs), поэтому мульти-корневой broadcast не утекает в чужие канбаны.\n\nСтарый API run_watcher(active_path_rx, tasks_tx) удалён.",
     "createdAt": "2026-05-09T20:16:52.767Z",
-    "updatedAt": "2026-05-21T12:08:38.124Z"
+    "updatedAt": "2026-06-11T19:43:14.569Z",
+    "aliases": [
+      "авто промоут не сработал другой проект"
+    ]
   },
   {
     "element": "run_watcher",
@@ -3920,5 +3923,44 @@
     "content": "tmux-web/static/js/sessions/sessions.js — обработчик кнопки '+ new' (#btn-new в .sidebar-header-actions; подключение core/bootstrap.js). window.prompt на имя, затем POST /api/sessions {name, path?}. ВАЖНО: path = cwd АКТИВНОЙ сессии в момент нажатия — берётся из state.sessions.find(s=>s.name===state.currentSession).path (это #{session_path}, рабочий каталог сессии). Если активной сессии нет (ничего не выбрано) — path не шлётся, и бэкенд (create_session) использует свой active_path (cwd процесса devforge). Так новая сессия наследует папку текущей, а не всегда создаётся в каталоге запуска devforge. Отличие от кнопки 📁 (createSessionInPath): та открывает нативный системный диалог выбора произвольной папки.",
     "createdAt": "2026-06-08T16:21:43.656Z",
     "updatedAt": "2026-06-08T16:21:43.656Z"
+  },
+  {
+    "element": "find_claude_pane",
+    "path": "",
+    "type": "unknown",
+    "content": "Поиск панели с запущенным Claude Code CLI внутри tmux-сессии (tmux-web/src/tmux.rs). Сигнатура: pub async fn find_claude_pane(session: &str) -> anyhow::Result<Option<String>>.\n\nНазначение: фикс бага forge-v6pw — notify при промоуте TODO->task доставлялся через send-keys -t <session>, т.е. в АКТИВНОЕ окно сессии. При нескольких окнах активным могло быть окно с шеллом, и текст не доходил до Claude (симптом: «отправляется только если в сессии одно окно»). Также из-за этого «не запускалась» следующая задача авто-цепочки: auto_promote::run промоутил карточку, но Immediate-notify уходил в чужое окно.\n\nАлгоритм:\n1. tmux list-panes -s -t '<session>:' -F LP_FORMAT (LP_FORMAT = '#{window_index}.#{pane_index}|#{pane_current_command}|#{window_active}|#{pane_active}'). Суффикс ':' обязателен — session-target, иначе числовые имена сессий ('8') резолвятся как окно чужой сессии (тот же баг, что был у capture_pane).\n2. pick_claude_pane (чистая функция, юнит-тесты) фильтрует панели по is_claude_command и выбирает лучшую: активная панель активного окна > активное окно > первая по листингу. Возвращает суффикс 'win.pane'.\n3. is_claude_command(cmd): true для буквального 'claude' (case-insensitive) ИЛИ version-like строки (только ASCII-цифры и точки, минимум одна точка) — Claude Code переименовывает свой процесс в строку версии ('2.1.172'). 'python3.11', 'zsh', 'node', '123' не проходят.\n\nВозврат: Ok(Some('win.pane')) — найдена; Ok(None) — Claude-панели нет / сессия исчезла / tmux-сервер не запущен; Err — прочие сбои tmux.\n\nИспользуется: send_keys (резолв target перед доставкой). Связанные: pick_claude_pane, is_claude_command, LP_FORMAT, send_keys, capture_pane (источник паттерна ':'-суффикса).",
+    "createdAt": "2026-06-11T16:13:03.113Z",
+    "updatedAt": "2026-06-11T16:13:20.981Z",
+    "aliases": [
+      "перенос todo в open несколько окон не отправляется",
+      "авто запуск следующей todo не началась"
+    ]
+  },
+  {
+    "element": "send_keys",
+    "path": "",
+    "type": "unknown",
+    "content": "Доставка текста в tmux-сессию с нажатием Enter (tmux-web/src/tmux.rs). Сигнатура: pub async fn send_keys(session: &str, text: &str) -> anyhow::Result<()>. Используется notifier::fire_job для доставки текста промоутнутого TODO (ручной промоут и авто-цепочка auto_promote).\n\nПоведение:\n1. Валидация имени сессии через is_valid_session_name ([A-Za-z0-9_-]+).\n2. Пустой text -> Ok(()) без действий.\n3. Резолв target через find_claude_pane: текст идёт в панель с запущенным Claude CLI ('<session>:<win>.<pane>'), в каком бы окне она ни была. Фолбэк (Claude-панель не найдена или list-panes упал): '<session>:' — активная панель сессии; ':' обязателен для числовых имён сессий. Фикс forge-v6pw: раньше target был голым именем сессии -> доставка в активное окно -> при нескольких окнах текст попадал в шелл вместо Claude, и авто-цепочка «не запускалась».\n4. Многострочный text шлётся построчно: send-keys -t <target> -l <line> + отдельный send-keys -t <target> Enter. Без shell-интерпретации (Command::args).\n\nОшибки: invalid session name -> bail; 'no server running'/'can't find session' НЕ глушатся (caller обязан узнать о провале доставки — notifier ретраит x3 с backoff 500/1000/2000ms).\n\nСвязанные: find_claude_pane, pick_claude_pane, is_claude_command, notifier::fire_job, promote_todo_core, auto_promote::handle_closed.",
+    "createdAt": "2026-06-11T16:13:20.364Z",
+    "updatedAt": "2026-06-11T16:13:20.364Z"
+  },
+  {
+    "element": "task_cwd",
+    "path": "",
+    "type": "unknown",
+    "content": "Резолвер cwd для br-команд task-хендлеров (tmux-web/src/main.rs). Сигнатура: fn task_cwd(state: &AppState, q: &HashMap<String, String>) -> PathBuf. Возвращает явный ?path=<abs> из query (trim, непустой) либо fallback на state.active_path_tx (каталог запуска сервера).\n\nФикс бага «clean колонки не переживает перезагрузку страницы»: active_path_tx после старта процесса НИКОГДА не обновляется (никто не вызывает .send), поэтому мутирующие хендлеры (close_task, patch_task, purge_task, reopen_task, create_task), бравшие cwd только из него, выполняли br в каталоге запуска сервера, а не в корне проекта текущей сессии. br close в чужом корне отвечал 'Issue not found', что маппилось в идемпотентный 204 -> фронт считал задачу закрытой, а реальная база проекта не менялась; после reload задачи возвращались. GET /api/tasks при этом УЖЕ принимал ?path= (tasks следуют за cwd сессии) — отсюда расхождение чтения и записи.\n\nИспользуется во всех task-хендлерах: get_tasks, create_task, patch_task, close_task, reopen_task, purge_task. Фронтовая пара — withTaskPath (static/js/tasks/crud.js), добавляющая ?path=<cwd сессии> к URL мутаций. Связанные: AppState.active_path_tx, tasks::run_br, sessionCwdOrNull (ws/tasks-ws.js).",
+    "createdAt": "2026-06-11T17:32:28.375Z",
+    "updatedAt": "2026-06-11T17:32:28.912Z",
+    "aliases": [
+      "clean колонки задачи возвращаются после перезагрузки"
+    ]
+  },
+  {
+    "element": "withTaskPath",
+    "path": "tmux-web/static/js/tasks/crud.js",
+    "type": "function",
+    "content": "Хелпер фронтенда (tmux-web/static/js/tasks/crud.js). Сигнатура: withTaskPath(url, origin) -> string. Добавляет ?path=<cwd текущей сессии> (sessionCwdOrNull из ws/tasks-ws.js) к URL мутаций /api/tasks — только для origin='local'/falsy; для remote origin URL не трогается (remote-сервер резолвит свой путь сам, а apiFetch добавит ?server=). Если cwd нет (сессия не выбрана/без path) — URL без изменений, сервер фолбэкнется на active_path_tx (прежнее поведение).\n\nПрименяется во всех мутациях задач: createTask (POST /api/tasks), updateTask (PATCH), closeTask (DELETE, совместим с ?reason=), purgeTask (POST /purge), reopenTask (POST /reopen). Серверная пара — task_cwd (main.rs). Причина появления: баг clean-колонки — мутации шли в каталог запуска сервера, см. док task_cwd.",
+    "createdAt": "2026-06-11T17:32:28.646Z",
+    "updatedAt": "2026-06-11T17:32:28.646Z"
   }
 ]

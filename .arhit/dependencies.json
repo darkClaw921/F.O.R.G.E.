@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-08T16:21:43.379Z",
+  "generatedAt": "2026-06-11T19:43:14.042Z",
   "dependencies": [
     {
       "from": "tmux-web/static/command-dock.js",
@@ -19317,6 +19317,33 @@
     },
     {
       "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/ws/tasks-ws.js",
+      "type": "import",
+      "toElement": "sessionCwdOrNull"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "withTaskPath",
+      "toElement": "sessionCwdOrNull"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "withTaskPath",
+      "toElement": "url.indexOf"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "withTaskPath",
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
       "to": "tmux-web/static/js/tasks/crud.js",
       "type": "call",
       "fromElement": "getIssueIndex",
@@ -19412,6 +19439,13 @@
       "type": "call",
       "fromElement": "createTask",
       "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "createTask",
+      "toElement": "withTaskPath"
     },
     {
       "from": "tmux-web/static/js/tasks/crud.js",
@@ -19531,6 +19565,13 @@
       "type": "call",
       "fromElement": "updateTask",
       "toElement": "apiFetch"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "updateTask",
+      "toElement": "withTaskPath"
     },
     {
       "from": "tmux-web/static/js/tasks/crud.js",
@@ -19663,6 +19704,13 @@
       "to": "tmux-web/static/js/tasks/crud.js",
       "type": "call",
       "fromElement": "closeTask",
+      "toElement": "withTaskPath"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "closeTask",
       "toElement": "encodeURIComponent"
     },
     {
@@ -19748,6 +19796,13 @@
       "type": "call",
       "fromElement": "purgeTask",
       "toElement": "apiFetch"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "purgeTask",
+      "toElement": "withTaskPath"
     },
     {
       "from": "tmux-web/static/js/tasks/crud.js",
@@ -19956,6 +20011,13 @@
       "from": "tmux-web/static/js/tasks/crud.js",
       "to": "tmux-web/static/js/tasks/crud.js",
       "type": "call",
+      "fromElement": "cleanColumn",
+      "toElement": "fetchTasks"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
       "fromElement": "reopenTask",
       "toElement": "applyOptimisticPatch"
     },
@@ -19972,6 +20034,13 @@
       "type": "call",
       "fromElement": "reopenTask",
       "toElement": "apiFetch"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/crud.js",
+      "to": "tmux-web/static/js/tasks/crud.js",
+      "type": "call",
+      "fromElement": "reopenTask",
+      "toElement": "withTaskPath"
     },
     {
       "from": "tmux-web/static/js/tasks/crud.js",

@@ -1,56 +1,57 @@
-//! Фоновый file-watcher для `.beads/issues.jsonl`.
+//! Фоновый file-watcher для `.beads/issues.jsonl` — мульти-корневой.
 //!
 //! ### Назначение
 //!
-//! Следит за изменениями файла `<active.path>/.beads/issues.jsonl` (его
-//! пишет `br sync --flush-only` и автоматически после каждой write-операции
-//! `br create/update/close`), пересчитывает diff между предыдущим и новым
-//! snapshot задач и бродкастит [`TaskEvent`] подписчикам через
-//! `tokio::sync::broadcast::Sender`. WS-handler `/ws/tasks` (см. `ws_tasks.rs`)
-//! подписывается и проксирует события в браузер.
+//! Следит за изменениями `issues.jsonl` (его пишет `br sync --flush-only` и
+//! автоматически каждая write-операция `br create/update/close`) СРАЗУ ВО ВСЕХ
+//! интересных корнях, пересчитывает diff между предыдущим и новым snapshot
+//! задач каждого корня и бродкастит [`TaskEvent`] подписчикам через общий
+//! `tokio::sync::broadcast::Sender`.
 //!
-//! ### Как работает
+//! Подписчики глобального канала:
+//! - `notifier.rs` — режим `wait_previous` (ждёт `closed` предыдущей задачи);
+//! - `auto_promote::run` — цепочка авто-промоута TODO (ждёт закрытия головы).
 //!
-//! [`run_watcher`] — единственный публичный entry-point, его spawn'ит
-//! `main.rs` один раз при старте сервера. Внутри — outer-loop, который
-//! пересоздаёт notify-watcher при каждой смене активного пути (сигнал
-//! приходит через `tokio::sync::watch::Receiver<PathBuf>`).
+//! UI (`/ws/tasks`) глобальный канал НЕ использует — у него per-connection
+//! watcher'ы на `?path=` клиента (см. `ws_tasks.rs`).
 //!
-//! После Phase 4 (`remove-projects-concept`) активный путь больше не
-//! связан с понятием «проект» — `active_path_tx` в `AppState` остаётся
-//! как опциональный точка обновления (например, при ручной смене активной
-//! сессии), но по умолчанию хост стартует с фиксированным initial-путём
-//! (cwd процесса) и watcher следит за его `.beads/` директорией.
+//! ### Почему мульти-корневой
 //!
-//! Для каждого активного пути:
-//! 1. Читаем initial snapshot задач через [`crate::tasks::snapshot`] —
-//!    это baseline для последующих диффов. НЕ бродкастим (клиент при
-//!    подключении WS получит свой полный snapshot отдельно).
-//! 2. Создаём notify::recommended_watcher с tokio::mpsc::UnboundedSender
-//!    в роли EventHandler — паттерн рекомендуемый upstream'ом для
-//!    интеграции с tokio runtime (см. notify docs Tokio Integration).
-//!    Watch'им именно директорию `.beads/`, а не файл — некоторые редакторы/
-//!    инструменты делают atomic-rename (write tmp → rename), и в этом случае
-//!    inode файла меняется, а watcher на конкретный файл перестаёт получать
-//!    события. Recursive=NonRecursive — нам не нужны вложенные.
-//! 3. Inner-loop: select! между notify mpsc, watch (active_path change) и
-//!    debounce-таймером. При получении события — стартуем (или продлеваем)
-//!    200ms таймер. По истечении таймера — `snapshot()` + `diff_issues()` +
-//!    broadcast каждого события.
-//! 4. При смене active path: сбрасываем watcher (drop), сбрасываем prev
-//!    snapshot, переходим к шагу 1 для нового пути.
+//! Раньше watcher следил за единственным «активным путём»
+//! (`active_path_tx`), который после старта процесса фактически никогда не
+//! менялся — т.е. события приходили только для проекта, в котором запущен
+//! сервер. Из-за этого авто-цепочка промоута НЕ двигалась для задач любых
+//! других проектов: их closed-события просто никто не наблюдал (баг
+//! «авто-запуск следующей todo не сработал, хотя задача закрыта»).
+//!
+//! Теперь [`run_multi_watcher`] держит по одному дочернему watcher-task'у на
+//! каждый уникальный `.beads/`-корень из набора кандидатов, который ему
+//! присылает collector-task из `main.rs` (cwd всех tmux-сессий + initial cwd
+//! процесса + корни активных цепочек авто-промоута, пересборка каждые 5с).
+//!
+//! ### Как работает один корень ([`watch_root`])
+//!
+//! 1. Initial snapshot задач через [`crate::tasks::snapshot`] — baseline для
+//!    диффов, НЕ бродкастится.
+//! 2. notify::recommended_watcher на директорию `.beads/` (не на файл —
+//!    atomic-rename меняет inode). Recursive=NonRecursive.
+//! 3. select-loop: notify-событие → 200ms tail-debounce → `snapshot()` +
+//!    `diff_issues()` → broadcast каждого события.
+//!
+//! Task живёт до исключения корня из набора (JoinHandle::abort) или до
+//! shutdown процесса.
 //!
 //! ### Граничные случаи
 //!
-//! - `.beads/issues.jsonl` отсутствует (новый проект, ещё не было `br sync`):
-//!   watch на саму директорию `.beads/` всё равно поднимется (если она есть
-//!   как минимум) — мы зацепим момент создания файла. Если и `.beads/` нет —
-//!   логируем warn и не watch'им; cycle ждёт смены active_path.
-//! - notify сам не дедуплицирует и не дебаунсит — мы делаем 200ms tail-debounce.
-//! - broadcast::send возвращает количество получателей, отказ означает «никто
-//!   не подписан» — это норма (никто не открыл WS); мы игнорируем.
+//! - У кандидата нет `.beads/` ни в нём, ни выше ([`find_beads_dir`]) —
+//!   корень тихо пропускается (появится `.beads/` — подхватим на следующем
+//!   тике collector'а).
+//! - Несколько сессий в одном репо (включая подкаталоги) — дедуп по
+//!   фактическому `.beads/`-пути: один watcher на репозиторий.
+//! - broadcast::send Err = «никто не подписан» — норма, игнорируем.
 
-use std::path::PathBuf;
+use std::collections::{BTreeSet, HashMap};
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
@@ -65,102 +66,121 @@ use crate::tasks::{diff_issues, snapshot, TaskEvent};
 /// в UI. Можно уменьшить до 100ms, но 200ms даёт запас при больших операциях.
 pub const DEBOUNCE_MS: u64 = 200;
 
-/// Главный цикл watcher'а. Вызывается один раз из `main()` через
-/// `tokio::spawn`, держится в памяти всю жизнь процесса. Завершается только
-/// если `active_path_rx.changed().await` возвращает Err (sender дропнут —
-/// процесс шатдаунится).
+/// Главный цикл мульти-корневого watcher'а. Вызывается один раз из `main()`
+/// через `tokio::spawn`, держится в памяти всю жизнь процесса.
 ///
 /// # Параметры
 ///
-/// - `active_path_rx` — receiver, который получает новый путь, на чьём
-///   `.beads/` нужно следить. Sender держит хост-процесс (`AppState`),
-///   обновление пути остаётся опциональным extension-point (Phase 4+).
-/// - `tasks_tx` — broadcast-sender, в который пушатся [`TaskEvent`]'ы.
-///   Подписчики — WS-handler'ы `/ws/tasks` (по одному `subscribe()` на
-///   соединение).
-pub async fn run_watcher(
-    mut active_path_rx: watch::Receiver<PathBuf>,
+/// - `roots_rx` — watch-receiver с набором путей-кандидатов (cwd сессий,
+///   initial cwd, корни авто-цепочек). Каждый кандидат резолвится в фактический
+///   `.beads/`-корень через [`find_beads_dir`]; кандидаты без `.beads/`
+///   пропускаются. Sender держит collector-task в `main.rs`.
+/// - `tasks_tx` — broadcast-sender, в который пушатся [`TaskEvent`]'ы всех
+///   наблюдаемых корней. Подписчики — `notifier` и `auto_promote::run`.
+///
+/// На каждое изменение набора: спавним [`watch_root`] для новых корней,
+/// abort'им task'и исчезнувших. Завершается, когда `roots_rx` закрылся
+/// (collector дропнут — процесс шатдаунится).
+pub async fn run_multi_watcher(
+    mut roots_rx: watch::Receiver<BTreeSet<PathBuf>>,
     tasks_tx: broadcast::Sender<TaskEvent>,
 ) {
+    // Ключ — фактическая директория `.beads/` (дедуп сессий одного репо).
+    let mut active: HashMap<PathBuf, tokio::task::JoinHandle<()>> = HashMap::new();
+
     loop {
-        // Текущий активный путь.
-        let path = active_path_rx.borrow().clone();
-        tracing::info!(path = %path.display(), "tasks watcher: starting for path");
+        // Желаемый набор: beads_dir -> snapshot_root (родитель .beads/).
+        let desired: HashMap<PathBuf, PathBuf> = roots_rx
+            .borrow()
+            .iter()
+            .filter_map(|candidate| {
+                find_beads_dir(candidate).map(|beads_dir| {
+                    let snapshot_root = beads_dir
+                        .parent()
+                        .map(Path::to_path_buf)
+                        .unwrap_or_else(|| candidate.clone());
+                    (beads_dir, snapshot_root)
+                })
+            })
+            .collect();
 
-        // Запускаем inner-loop, который ведёт watcher до следующей смены пути.
-        watch_one(path, &mut active_path_rx, &tasks_tx).await;
+        // Стопаем watcher'ы корней, выпавших из набора.
+        active.retain(|beads_dir, handle| {
+            if desired.contains_key(beads_dir) {
+                true
+            } else {
+                handle.abort();
+                tracing::info!(beads = %beads_dir.display(), "tasks watcher: root removed");
+                false
+            }
+        });
 
-        // Если active_path_rx закрылся — выходим. У `watch::Receiver` нет
-        // прямого «is_closed» через has_changed; следующий `.changed().await`
-        // вернёт Err и мы вернёмся из `watch_one`.
-        if active_path_rx.has_changed().is_err() {
-            tracing::info!("tasks watcher: active_path channel closed, exiting");
+        // Спавним watcher'ы новых корней.
+        for (beads_dir, snapshot_root) in desired {
+            if !active.contains_key(&beads_dir) {
+                tracing::info!(
+                    beads = %beads_dir.display(),
+                    root = %snapshot_root.display(),
+                    "tasks watcher: root added"
+                );
+                let tx = tasks_tx.clone();
+                let bd = beads_dir.clone();
+                active.insert(
+                    beads_dir,
+                    tokio::spawn(watch_root(snapshot_root, bd, tx)),
+                );
+            }
+        }
+
+        if roots_rx.changed().await.is_err() {
+            tracing::info!("tasks watcher: roots channel closed, exiting");
+            for (_, handle) in active.drain() {
+                handle.abort();
+            }
             return;
         }
     }
 }
 
-/// Внутренний цикл — обслуживает один активный путь до его смены.
-///
-/// Возвращается, когда:
-/// - `active_path_rx.changed()` сигналит новый путь.
-/// - Или `active_path_rx` закрылся (тогда возвращается; внешний loop тоже выйдет).
-async fn watch_one(
-    active_path: PathBuf,
-    active_path_rx: &mut watch::Receiver<PathBuf>,
-    tasks_tx: &broadcast::Sender<TaskEvent>,
+/// Watcher одного `.beads/`-корня: initial snapshot → notify на `.beads/` →
+/// debounce → diff → broadcast. Живёт до `JoinHandle::abort` из
+/// [`run_multi_watcher`] (или до фатальной ошибки notify).
+async fn watch_root(
+    snapshot_root: PathBuf,
+    beads_dir: PathBuf,
+    tasks_tx: broadcast::Sender<TaskEvent>,
 ) {
     // 1) Initial snapshot — baseline, не бродкастим.
-    let mut prev = match snapshot(&active_path).await {
+    let mut prev = match snapshot(&snapshot_root).await {
         Ok(s) => {
-            tracing::debug!(path = %active_path.display(), n = s.len(), "initial snapshot taken");
+            tracing::debug!(path = %snapshot_root.display(), n = s.len(), "initial snapshot taken");
             s
         }
         Err(e) => {
-            // Не критично: либо `br` ещё не доступен, либо `.beads/` отсутствует.
-            // Возвращаем пустой snapshot и продолжаем — следующее событие
-            // создаст «added» для всех задач.
+            // Не критично: `br` недоступен или БД пуста. Пустой baseline —
+            // следующее событие даст «added» для всех задач.
             tracing::warn!(
                 error = ?e,
-                path = %active_path.display(),
+                path = %snapshot_root.display(),
                 "initial snapshot failed; using empty baseline"
             );
             std::collections::HashMap::new()
         }
     };
 
-    // 2) Найдём фактический `.beads/` каталог. `br` walk'ает up до корня репо,
-    //    поэтому active project может быть подкаталогом — мы должны идти тем же
-    //    путём, иначе watch на пустую директорию ничего не даст.
-    let beads_dir = match find_beads_dir(&active_path) {
-        Some(d) => d,
-        None => {
-            tracing::warn!(
-                path = %active_path.display(),
-                "tasks watcher: no .beads/ found in project path or its ancestors — skipping watch"
-            );
-            let _ = active_path_rx.changed().await;
-            return;
-        }
-    };
-
-    // 3) Создаём notify watcher через tokio::mpsc::UnboundedSender как
-    //    EventHandler. Это паттерн из notify docs: любой
-    //    `Fn(notify::Result<Event>) + Send + 'static` подходит, а tokio
-    //    UnboundedSender реализует `Fn` через `send()`.
+    // 2) notify watcher через tokio::mpsc::UnboundedSender как EventHandler —
+    //    паттерн из notify docs (Tokio Integration).
     let (notify_tx, mut notify_rx) =
         mpsc::unbounded_channel::<notify::Result<notify::Event>>();
 
     let mut watcher: RecommendedWatcher = match notify::recommended_watcher(
         move |res: notify::Result<notify::Event>| {
-            // Если receiver дропнут — send_error, игнорируем.
             let _ = notify_tx.send(res);
         },
     ) {
         Ok(w) => w,
         Err(e) => {
-            tracing::error!(error = ?e, "failed to create notify watcher; will wait for path change");
-            let _ = active_path_rx.changed().await;
+            tracing::error!(error = ?e, "failed to create notify watcher for root");
             return;
         }
     };
@@ -169,72 +189,42 @@ async fn watch_one(
         tracing::error!(
             error = ?e,
             path = %beads_dir.display(),
-            "watcher.watch failed; waiting for active path change"
+            "watcher.watch failed for root"
         );
-        let _ = active_path_rx.changed().await;
         return;
     }
     tracing::info!(path = %beads_dir.display(), "watching .beads/ for changes");
 
-    // 4) Inner select-loop: notify event / active path change / debounce timer.
-    //
-    // Дебаунс: храним Option<Instant> — момент, к которому надо
-    // среагировать. Каждое новое событие — обновляем deadline на now+200ms.
-    // sleep_until(deadline) внутри select сравнивается с notify_rx.recv():
-    // если новое событие приходит — мы пересоздаём ветку с новым deadline.
+    // 3) select-loop: notify event / debounce timer.
     let mut debounce_deadline: Option<Instant> = None;
 
     loop {
-        // Если debounce активен — ждём notify ИЛИ истечения таймера ИЛИ change.
-        // Если debounce не активен — таймера нет, ждём только notify/change.
-        let timer = match debounce_deadline {
-            Some(t) => Some(sleep_until(t)),
-            None => None,
-        };
+        let timer = debounce_deadline.map(sleep_until);
 
         tokio::select! {
             biased;
 
-            // Смена активного проекта — выходим, outer-loop пересоздаст watcher.
-            change = active_path_rx.changed() => {
-                if change.is_err() {
-                    tracing::info!("active_path channel closed");
-                    return;
-                }
-                let new_path = active_path_rx.borrow().clone();
-                if new_path != active_path {
-                    tracing::info!(
-                        from = %active_path.display(),
-                        to = %new_path.display(),
-                        "tasks watcher: active project changed"
-                    );
-                    return;
-                }
-                // Тот же путь — игнор (на практике вряд ли).
-            }
-
-            // Истечение debounce-таймера → берём snapshot, считаем diff, broadcast.
+            // Истечение debounce-таймера → snapshot, diff, broadcast.
             _ = async {
                 if let Some(t) = timer { t.await }
                 else { std::future::pending::<()>().await }
             } => {
                 debounce_deadline = None;
-                match snapshot(&active_path).await {
+                match snapshot(&snapshot_root).await {
                     Ok(new_snap) => {
                         let events = diff_issues(&prev, &new_snap);
                         if !events.is_empty() {
-                            tracing::debug!(n = events.len(), "broadcasting task events");
+                            tracing::debug!(
+                                n = events.len(),
+                                root = %snapshot_root.display(),
+                                "broadcasting task events"
+                            );
                             for ev in events {
                                 // send Err = нет подписчиков, игнор.
                                 let _ = tasks_tx.send(ev);
                             }
-                            prev = new_snap;
-                        } else {
-                            tracing::trace!("debounce fired but diff empty");
-                            // Всё равно обновляем prev на случай, если diff был
-                            // пуст из-за глюка JSON порядка ключей etc.
-                            prev = new_snap;
                         }
+                        prev = new_snap;
                     }
                     Err(e) => {
                         tracing::warn!(error = ?e, "snapshot failed during debounce");
@@ -246,21 +236,14 @@ async fn watch_one(
             event = notify_rx.recv() => {
                 match event {
                     None => {
-                        // Канал закрыт (watcher дропнут?) — ситуация
-                        // теоретическая. Уходим в outer-loop.
                         tracing::warn!("notify channel closed unexpectedly");
                         return;
                     }
                     Some(Err(e)) => {
                         tracing::warn!(error = ?e, "notify error event");
-                        // Не падаем — продолжаем слушать.
                     }
                     Some(Ok(ev)) => {
-                        // Фильтр: нас интересуют только события на issues.jsonl
-                        // (или его tmp-собратья при atomic-rename). Beads
-                        // пишет именно `issues.jsonl` через `br sync`.
                         if relevant_event(&ev) {
-                            tracing::trace!(?ev, "relevant fs event");
                             debounce_deadline =
                                 Some(Instant::now() + Duration::from_millis(DEBOUNCE_MS));
                         }

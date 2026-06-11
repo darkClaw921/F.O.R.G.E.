@@ -12,7 +12,21 @@
 import { state } from '../core/state.js';
 import { apiFetch, dtoOrigin } from '../core/api.js';
 import { renderTasks } from './render.js';
-import { fetchTasks } from '../ws/tasks-ws.js';
+import { fetchTasks, sessionCwdOrNull } from '../ws/tasks-ws.js';
+
+// Добавляет ?path=<cwd текущей сессии> к URL мутаций /api/tasks (только для
+// local origin — remote-сервер резолвит свой путь сам). Сервер выполняет br
+// именно в этом каталоге. Без параметра мутации шли в каталог запуска сервера
+// (active_path_tx после старта не обновляется): br close в чужом корне отвечал
+// «Issue not found», маппился в идемпотентный 204 — задачи «удалялись» из UI,
+// но возвращались после перезагрузки страницы (GET /api/tasks path передавал).
+function withTaskPath(url, origin) {
+    if (origin && origin !== 'local') return url;
+    const cwd = sessionCwdOrNull();
+    if (!cwd) return url;
+    const sep = url.indexOf('?') >= 0 ? '&' : '?';
+    return url + sep + 'path=' + encodeURIComponent(cwd);
+}
 
 export function getIssueIndex(id) {
     if (!state.tasksData || !Array.isArray(state.tasksData.issues)) return -1;
@@ -59,7 +73,7 @@ export async function createTask(payload) {
     }
 
     try {
-        const r = await fetch('/api/tasks', {
+        const r = await fetch(withTaskPath('/api/tasks', 'local'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -109,7 +123,7 @@ export async function updateTask(id, payload) {
 
     try {
         const origin = taskOriginById(id);
-        const r = await apiFetch('/api/tasks/' + encodeURIComponent(id), {
+        const r = await apiFetch(withTaskPath('/api/tasks/' + encodeURIComponent(id), origin), {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -148,8 +162,11 @@ export async function closeTask(id, reason, opts) {
     const prev = applyOptimisticPatch(id, { status: 'closed' });
     try {
         const origin = taskOriginById(id);
-        let url = '/api/tasks/' + encodeURIComponent(id)
-            + (reason ? ('?reason=' + encodeURIComponent(reason)) : '');
+        let url = withTaskPath(
+            '/api/tasks/' + encodeURIComponent(id)
+                + (reason ? ('?reason=' + encodeURIComponent(reason)) : ''),
+            origin,
+        );
         const r = await apiFetch(url, { method: 'DELETE' }, origin);
         if (!r.ok && r.status !== 204) {
             const text = await r.text();
@@ -175,7 +192,7 @@ export async function purgeTask(id, opts) {
     }
     try {
         const origin = taskOriginById(id);
-        const r = await apiFetch('/api/tasks/' + encodeURIComponent(id) + '/purge', {
+        const r = await apiFetch(withTaskPath('/api/tasks/' + encodeURIComponent(id) + '/purge', origin), {
             method: 'POST',
         }, origin);
         if (!r.ok && r.status !== 204) {
@@ -252,6 +269,9 @@ export async function cleanColumn(status, ids) {
             else fail += 1;
         }
     }
+    // Пересинхронизация борда с базой: optimistic-состояние после bulk-операции
+    // могло разойтись с реальностью (stale-карточки, частичные ошибки).
+    fetchTasks();
     return { ok, fail };
 }
 
@@ -259,7 +279,7 @@ export async function reopenTask(id) {
     const prev = applyOptimisticPatch(id, { status: 'open' });
     try {
         const origin = taskOriginById(id);
-        const r = await apiFetch('/api/tasks/' + encodeURIComponent(id) + '/reopen', {
+        const r = await apiFetch(withTaskPath('/api/tasks/' + encodeURIComponent(id) + '/reopen', origin), {
             method: 'POST',
         }, origin);
         if (!r.ok && r.status !== 204) {

@@ -86,12 +86,12 @@ use crate::ws_todos::TodoEvent;
 /// (extension-point — обновляется хост-кодом, например при переключении
 /// активной сессии). Дефолтное начальное значение — cwd процесса.
 ///
-/// - `tasks_tx` — broadcast-sender, в который [`tasks_watcher::run_watcher`]
-///   пушит [`TaskEvent`] при изменениях `.beads/issues.jsonl`. WS-handler
-///   `/ws/tasks` делает `subscribe()` на каждое соединение.
-/// - `active_path_tx` — watch-sender для пересоздания watcher'а при смене
-///   активного пути. Sender держится в state, изменение пути — опциональный
-///   extension-point (см. doc-string `tasks_watcher::run_watcher`).
+/// - `tasks_tx` — broadcast-sender, в который [`tasks_watcher::run_multi_watcher`]
+///   пушит [`TaskEvent`] при изменениях `.beads/issues.jsonl` всех наблюдаемых
+///   корней (cwd сессий + initial cwd + корни авто-цепочек). Подписчики —
+///   `notifier` и `auto_promote::run`.
+/// - `active_path_tx` — watch-sender с fallback-значением cwd (task_cwd,
+///   create_session и т.п.). Watcher задач от него больше не зависит.
 #[derive(Clone)]
 struct AppState {
     /// broadcast-канал глобальных task-событий активного пути.
@@ -293,7 +293,10 @@ async fn main() -> anyhow::Result<()> {
         tracing::warn!(error = ?e, "failed to read current_dir; falling back to /");
         PathBuf::from("/")
     });
-    let (active_path_tx, active_path_rx) = watch::channel(initial_path.clone());
+    // active_path_rx больше не нужен: tasks_watcher стал мульти-корневым и
+    // питается отдельным roots-каналом (см. ниже). Сам active_path_tx остаётся
+    // в AppState как fallback-источник cwd (task_cwd, create_session и т.п.).
+    let (active_path_tx, _active_path_rx) = watch::channel(initial_path.clone());
     let active_path_tx = Arc::new(active_path_tx);
 
     // Phase 2 — Notifier подсистема. Subscribe ДО передачи tasks_tx в watcher,
@@ -456,19 +459,67 @@ async fn main() -> anyhow::Result<()> {
         auto_chain: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
     };
 
-    // Subscribe для воркера авто-промоута ДО move'а `tasks_tx` в run_watcher
+    // Subscribe для воркера авто-промоута ДО move'а `tasks_tx` в watcher
     // ниже (иначе ранние closed-events могут быть пропущены — broadcast хранит
     // только последние 64). Тот же поток событий, что слушают tasks_watcher и
     // notifier.
     let auto_promote_rx = tasks_tx.subscribe();
 
-    // Spawn фоновый watcher. Живёт всю жизнь процесса; завершится только
-    // если active_path_tx будет дропнут (а он живёт в AppState — т.е.
-    // фактически до shutdown'а).
+    // Мульти-корневой tasks watcher: следит за `.beads/` ВСЕХ интересных
+    // корней сразу, а не только за каталогом запуска сервера. Без этого
+    // closed-события задач других проектов не доходили до auto_promote
+    // (цепочка авто-промоута «не запускалась») и notifier (wait_previous).
+    //
+    // roots-канал наполняет collector-task ниже: cwd всех tmux-сессий +
+    // initial cwd процесса + корни активных цепочек авто-промоута.
+    let (watch_roots_tx, watch_roots_rx) =
+        watch::channel::<std::collections::BTreeSet<PathBuf>>(
+            std::collections::BTreeSet::from([initial_path.clone()]),
+        );
     tokio::spawn(async move {
-        tasks_watcher::run_watcher(active_path_rx, tasks_tx).await;
+        tasks_watcher::run_multi_watcher(watch_roots_rx, tasks_tx).await;
         tracing::info!("tasks_watcher exited");
     });
+
+    // Collector корней для мульти-watcher'а: каждые 5с пересобирает набор
+    // кандидатов. send_if_modified — watcher пересоздаёт дочерние task'и
+    // только при реальном изменении набора.
+    {
+        let auto_chain = app_state.auto_chain.clone();
+        let initial = initial_path.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(5));
+            loop {
+                tick.tick().await;
+                let mut roots: std::collections::BTreeSet<PathBuf> =
+                    std::collections::BTreeSet::from([initial.clone()]);
+                if let Ok(sessions) = tmux::list_sessions().await {
+                    for s in sessions {
+                        if !s.path.trim().is_empty() {
+                            roots.insert(PathBuf::from(&s.path));
+                        }
+                    }
+                }
+                if let Ok(chain) = auto_chain.read() {
+                    for root in chain.keys() {
+                        roots.insert(PathBuf::from(root));
+                    }
+                }
+                watch_roots_tx.send_if_modified(|cur| {
+                    if *cur != roots {
+                        *cur = roots;
+                        true
+                    } else {
+                        false
+                    }
+                });
+                if watch_roots_tx.is_closed() {
+                    tracing::info!("watch roots collector: receiver dropped, exiting");
+                    return;
+                }
+            }
+        });
+    }
 
     // Spawn воркер цепочки авто-промоута. Слушает closed-события и промоутит
     // следующую верхнюю флагнутую TODO после закрытия головы цепочки. Берёт
@@ -1604,6 +1655,25 @@ async fn patch_window(
 // Tasks endpoint
 // =============================================================================
 
+/// Резолвит cwd для `br`-команд task-хендлеров: явный `?path=<abs>` из query
+/// (cwd tmux-сессии, которую фронт сейчас показывает) либо fallback на
+/// `state.active_path_tx` (каталог запуска сервера).
+///
+/// Фикс бага «clean не переживает перезагрузку страницы»: `active_path_tx`
+/// после старта процесса НИКОГДА не обновляется, поэтому мутирующие хендлеры
+/// (`close`/`patch`/`purge`/`reopen`/`create`), бравшие cwd только из него,
+/// выполняли `br` в каталоге запуска сервера, а не в корне проекта сессии.
+/// `br close` там отвечал `Issue not found`, что маппилось в идемпотентный
+/// 204 → фронт считал задачу закрытой, а реальная база проекта не менялась.
+/// `GET /api/tasks` при этом уже принимал `?path=` — отсюда расхождение
+/// «в UI удалилось, после reload вернулось».
+fn task_cwd(state: &AppState, q: &HashMap<String, String>) -> PathBuf {
+    match q.get("path").map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        Some(p) => PathBuf::from(p),
+        None => state.active_path_tx.borrow().clone(),
+    }
+}
+
 /// `GET /api/tasks` — read-only snapshot задач из beads активного проекта.
 ///
 /// cwd для `br list --json --all --limit 0` берётся из active project.
@@ -1672,15 +1742,7 @@ async fn get_tasks(
     // Tasks следуют за cwd текущей сессии (как git-вкладка): если фронт
     // передал ?path=<abs>, берём его как cwd для list_tasks, иначе fallback
     // на текущее значение state.active_path_tx.
-    let cwd = if let Some(p) = q
-        .get("path")
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-    {
-        PathBuf::from(p)
-    } else {
-        state.active_path_tx.borrow().clone()
-    };
+    let cwd = task_cwd(&state, &q);
     match tasks::list_tasks(&cwd).await {
         Ok(mut value) => {
             // Phase 3 — каждый issue в response.issues получает origin="local"
@@ -1846,7 +1908,7 @@ async fn create_task(
         return Err((StatusCode::BAD_REQUEST, "title is required".to_string()));
     }
 
-    let cwd = state.active_path_tx.borrow().clone();
+    let cwd = task_cwd(&state, &q);
 
     // Собираем аргументы динамически — у `br create` все флаги «ключ значение»,
     // удобно держать всё в `Vec<String>` и в конце передать как `Vec<&str>`.
@@ -1939,7 +2001,7 @@ async fn patch_task(
     let req: PatchTaskReq = serde_json::from_slice(&body)
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid body: {e}")))?;
 
-    let cwd = state.active_path_tx.borrow().clone();
+    let cwd = task_cwd(&state, &q);
 
     let mut args: Vec<String> = vec!["update".to_string(), "--json".to_string(), id.clone()];
     let mut any = false;
@@ -2012,7 +2074,7 @@ async fn close_task(
         return result;
     }
 
-    let cwd = state.active_path_tx.borrow().clone();
+    let cwd = task_cwd(&state, &q);
 
     let reason = q.get("reason").map(|s| s.as_str()).unwrap_or("");
     let mut args: Vec<String> = vec!["close".to_string(), "--json".to_string(), id.clone()];
@@ -2031,6 +2093,15 @@ async fn close_task(
             let msg = format!("{e:#}");
             if msg.contains("ISSUE_NOT_FOUND") || msg.contains("Issue not found") {
                 tracing::info!(%id, "task already absent — treating close as idempotent success");
+                return Ok(StatusCode::NO_CONTENT.into_response());
+            }
+            // `br close` уже закрытой задачи падает с NOTHING_TO_DO («all
+            // issues skipped: already closed»). Для клиента это успех: цель
+            // «задача закрыта» достигнута. Кейс реален при stale-канбане —
+            // задачу закрыли через CLI, UI ещё показывает её открытой, юзер
+            // жмёт clean → без этой ветки получал «ok=0, fail=N».
+            if msg.contains("NOTHING_TO_DO") || msg.contains("already closed") {
+                tracing::info!(%id, "task already closed — treating close as idempotent success");
                 return Ok(StatusCode::NO_CONTENT.into_response());
             }
             tracing::warn!(%id, error = ?e, "br close failed");
@@ -2060,7 +2131,7 @@ async fn reopen_task(
         return result;
     }
 
-    let cwd = state.active_path_tx.borrow().clone();
+    let cwd = task_cwd(&state, &q);
     let args = ["reopen", "--json", id.as_str()];
     match tasks::run_br(&args, &cwd).await {
         Ok(value) => {
@@ -2097,7 +2168,7 @@ async fn purge_task(
         return result;
     }
 
-    let cwd = state.active_path_tx.borrow().clone();
+    let cwd = task_cwd(&state, &q);
     let args = [
         "delete",
         "--hard",

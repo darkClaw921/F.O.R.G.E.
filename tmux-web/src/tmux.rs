@@ -296,7 +296,86 @@ pub async fn capture_pane_full(session: &str, lines: i32) -> anyhow::Result<Stri
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-/// Отправляет текст в активное окно tmux-сессии и нажимает Enter.
+/// Формат строки `list-panes` для [`find_claude_pane`]:
+/// `win.pane|команда|окно_активно|панель_активна`.
+const LP_FORMAT: &str =
+    "#{window_index}.#{pane_index}|#{pane_current_command}|#{window_active}|#{pane_active}";
+
+/// Похоже ли `pane_current_command` на запущенный Claude Code CLI.
+///
+/// Claude Code переименовывает свой процесс в строку версии (`2.1.172`),
+/// поэтому матчим либо буквальное `claude` (старые/альтернативные установки),
+/// либо version-like строку: только ASCII-цифры и точки, минимум одна точка.
+/// Команды вида `python3.11` не проходят (содержат буквы), `zsh`/`node` — тоже.
+fn is_claude_command(cmd: &str) -> bool {
+    if cmd.eq_ignore_ascii_case("claude") {
+        return true;
+    }
+    !cmd.is_empty()
+        && cmd.contains('.')
+        && cmd.chars().all(|c| c.is_ascii_digit() || c == '.')
+}
+
+/// Выбирает из вывода `list-panes -s` (формат [`LP_FORMAT`]) панель с Claude.
+///
+/// Возвращает target-суффикс `"win.pane"` (без имени сессии) либо `None`,
+/// если ни одна панель не похожа на Claude. При нескольких кандидатах
+/// приоритет: активная панель активного окна > активное окно > первая по
+/// порядку листинга. Чистая функция — вынесена ради юнит-тестов.
+fn pick_claude_pane(list_panes_output: &str) -> Option<String> {
+    let mut best: Option<(u8, String)> = None;
+    for line in list_panes_output.lines() {
+        let mut parts = line.split('|');
+        let (Some(target), Some(cmd), Some(win_active), Some(pane_active)) =
+            (parts.next(), parts.next(), parts.next(), parts.next())
+        else {
+            continue;
+        };
+        if !is_claude_command(cmd) {
+            continue;
+        }
+        let score =
+            u8::from(win_active == "1") * 2 + u8::from(win_active == "1" && pane_active == "1");
+        if best.as_ref().is_none_or(|(s, _)| score > *s) {
+            best = Some((score, target.to_string()));
+        }
+    }
+    best.map(|(_, target)| target)
+}
+
+/// Ищет в сессии панель, в которой запущен Claude Code CLI.
+///
+/// Перечисляет ВСЕ панели всех окон сессии (`tmux list-panes -s`) и выбирает
+/// ту, чей `pane_current_command` похож на Claude (см. [`is_claude_command`]).
+/// Возвращает `Ok(Some("win.pane"))` — суффикс для target `session:win.pane`,
+/// `Ok(None)` если Claude-панель не найдена, сессия исчезла или tmux-сервер
+/// не запущен (доставку решает caller), `Err` — прочие сбои tmux.
+pub async fn find_claude_pane(session: &str) -> anyhow::Result<Option<String>> {
+    // `:` в конце — session-target (см. `capture_pane`): критично для числовых
+    // имён сессий, иначе tmux резолвит `-t 8` как окно 8 текущей сессии.
+    let target = format!("{session}:");
+    let output = Command::new("tmux")
+        .args(["list-panes", "-s", "-t", &target, "-F", LP_FORMAT])
+        .output()
+        .await
+        .context("failed to spawn `tmux list-panes`")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("no server running") || stderr.contains("can't find session") {
+            return Ok(None);
+        }
+        return Err(anyhow!(
+            "tmux list-panes failed (exit {:?}): {}",
+            output.status.code(),
+            stderr.trim()
+        ));
+    }
+
+    Ok(pick_claude_pane(&String::from_utf8_lossy(&output.stdout)))
+}
+
+/// Отправляет текст в tmux-сессию и нажимает Enter.
 ///
 /// Используется фоновым notifier'ом для доставки текста промоутнутого
 /// TODO в указанную tmux-сессию (см. Phase 2). Реализация:
@@ -305,12 +384,20 @@ pub async fn capture_pane_full(session: &str, lines: i32) -> anyhow::Result<Stri
 ///    запрещены пробелы, `:`, `.` и не-ASCII, чтобы tmux не интерпретировал
 ///    их как target syntax.
 /// 2. Если `text` пуст — возвращаем `Ok(())` без действий.
-/// 3. Многострочный текст разбивается по символу новой строки. Для каждой строки
-///    выполняется `tmux send-keys -t <session> -l <line>`, после неё —
-///    отдельный `tmux send-keys -t <session> Enter`. Это эквивалентно
+/// 3. Целевая панель резолвится через [`find_claude_pane`]: текст идёт в
+///    панель с запущенным Claude CLI, в каком бы окне сессии она ни была.
+///    Раньше target был просто именем сессии — tmux слал в активное окно, и
+///    при нескольких окнах текст попадал в шелл вместо Claude (баг
+///    forge-v6pw: «доставка работает только при одном окне»). Если
+///    Claude-панель не найдена — фолбэк на `session:` (активная панель;
+///    `:` обязателен — для числовых имён без него tmux резолвит target как
+///    окно чужой сессии, тот же баг, что был у `capture_pane`).
+/// 4. Многострочный текст разбивается по символу новой строки. Для каждой строки
+///    выполняется `tmux send-keys -t <target> -l <line>`, после неё —
+///    отдельный `tmux send-keys -t <target> Enter`. Это эквивалентно
 ///    набору пользователем строки за строкой и нажатию Enter после
 ///    каждой.
-/// 4. Не запускаем shell — каждый аргумент передаётся отдельно через
+/// 5. Не запускаем shell — каждый аргумент передаётся отдельно через
 ///    `Command::args`, поэтому никакой интерпретации `text` как shell не
 ///    происходит. Безопасно для произвольных пользовательских строк.
 ///
@@ -330,10 +417,23 @@ pub async fn send_keys(session: &str, text: &str) -> anyhow::Result<()> {
         return Ok(());
     }
 
+    let target = match find_claude_pane(session).await {
+        Ok(Some(pane)) => format!("{session}:{pane}"),
+        Ok(None) => format!("{session}:"),
+        Err(e) => {
+            tracing::warn!(
+                session = %session,
+                error = ?e,
+                "find_claude_pane failed; falling back to session active pane"
+            );
+            format!("{session}:")
+        }
+    };
+
     for line in text.split('\n') {
         if !line.is_empty() {
             let output = Command::new("tmux")
-                .args(["send-keys", "-t", session, "-l", line])
+                .args(["send-keys", "-t", &target, "-l", line])
                 .output()
                 .await
                 .context("failed to spawn `tmux send-keys -l`")?;
@@ -347,7 +447,7 @@ pub async fn send_keys(session: &str, text: &str) -> anyhow::Result<()> {
             }
         }
         let enter = Command::new("tmux")
-            .args(["send-keys", "-t", session, "Enter"])
+            .args(["send-keys", "-t", &target, "Enter"])
             .output()
             .await
             .context("failed to spawn `tmux send-keys Enter`")?;
@@ -653,6 +753,64 @@ pub fn is_valid_session_name(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn is_claude_command_matches_version_string() {
+        // Claude Code переименовывает процесс в строку версии.
+        assert!(is_claude_command("2.1.172"));
+        assert!(is_claude_command("2.1.170"));
+        assert!(is_claude_command("10.0"));
+    }
+
+    #[test]
+    fn is_claude_command_matches_literal_claude() {
+        assert!(is_claude_command("claude"));
+        assert!(is_claude_command("Claude"));
+    }
+
+    #[test]
+    fn is_claude_command_rejects_other_commands() {
+        assert!(!is_claude_command("zsh"));
+        assert!(!is_claude_command("node"));
+        assert!(!is_claude_command("python3.11")); // буквы + точка — не версия
+        assert!(!is_claude_command("123")); // цифры без точки — не версия
+        assert!(!is_claude_command(""));
+    }
+
+    #[test]
+    fn pick_claude_pane_finds_claude_in_inactive_window() {
+        // Главный кейс forge-v6pw: Claude в НЕактивном окне (активно окно с zsh).
+        let out = "0.0|zsh|1|1\n1.0|2.1.170|0|1\n";
+        assert_eq!(pick_claude_pane(out).as_deref(), Some("1.0"));
+    }
+
+    #[test]
+    fn pick_claude_pane_prefers_active_window() {
+        // Два Claude — выбираем тот, что в активном окне.
+        let out = "0.0|2.1.170|0|1\n1.0|2.1.172|1|1\n";
+        assert_eq!(pick_claude_pane(out).as_deref(), Some("1.0"));
+    }
+
+    #[test]
+    fn pick_claude_pane_prefers_active_pane_within_active_window() {
+        // Сплит в активном окне: zsh-панель активна, Claude — нет, но из двух
+        // Claude-панелей выигрывает та, что активна в своём окне.
+        let out = "0.0|2.1.170|1|0\n0.1|zsh|1|1\n1.0|2.1.170|0|1\n";
+        assert_eq!(pick_claude_pane(out).as_deref(), Some("0.0"));
+    }
+
+    #[test]
+    fn pick_claude_pane_none_when_no_claude() {
+        let out = "0.0|zsh|1|1\n1.0|vim|0|1\n";
+        assert_eq!(pick_claude_pane(out), None);
+        assert_eq!(pick_claude_pane(""), None);
+    }
+
+    #[test]
+    fn pick_claude_pane_skips_malformed_lines() {
+        let out = "garbage\n1.0|2.1.170|1|1\n";
+        assert_eq!(pick_claude_pane(out).as_deref(), Some("1.0"));
+    }
 
     #[test]
     fn parse_session_line_ok() {
