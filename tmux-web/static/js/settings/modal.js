@@ -185,9 +185,32 @@ export function openSettingsModal(initialTab) {
         if (notifierState.loaded) return;
         notifierState.loaded = true;
         $notifierContent.innerHTML = '<div class="themes-loading">Loading…</div>';
-        const cfg = await fetchNotifierConfig();
+        const res = await fetchNotifierConfig();
         $notifierContent.innerHTML = '';
-        $notifierContent.appendChild(buildNotificationsForm(cfg, () => {
+        if (!res || !res.ok) {
+            // Загрузка не удалась — НЕ показываем форму с дефолтами (иначе Save
+            // затрёт реальный конфиг). Показываем ошибку и кнопку Retry;
+            // редактирование/сохранение заблокировано до успешной загрузки.
+            const err = document.createElement('div');
+            err.className = 'settings-load-error';
+            const msg = document.createElement('div');
+            msg.textContent = 'Не удалось загрузить настройки: '
+                + (res && res.error ? res.error : 'неизвестная ошибка');
+            err.appendChild(msg);
+            const retry = document.createElement('button');
+            retry.type = 'button';
+            retry.className = 'primary';
+            retry.textContent = 'Повторить';
+            retry.addEventListener('click', () => {
+                // Сбрасываем флаг, чтобы повторно загрузить.
+                notifierState.loaded = false;
+                renderNotifierPanel();
+            });
+            err.appendChild(retry);
+            $notifierContent.appendChild(err);
+            return;
+        }
+        $notifierContent.appendChild(buildNotificationsForm(res.config, () => {
             // no-op: form keeps текущие значения после успешного PATCH
         }));
     };

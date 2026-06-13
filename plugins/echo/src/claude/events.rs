@@ -63,8 +63,15 @@ pub enum ClaudeEvent {
         input: serde_json::Value,
     },
     /// Финальный результат run'а: usage и сырой объект для аудита.
+    ///
+    /// `is_error` — Claude CLI помечает неуспешный финал прямо в `result`-event
+    /// (`is_error:true` и/или `subtype` вида `error_*`: `error_max_turns`,
+    /// `error_during_execution`). Раньше любой `result` трактовался как success,
+    /// из-за чего ошибочный run писался в БД со status=success. Теперь флаг
+    /// прокидывается выше и транслируется в Error/status=error.
     Result {
         usage: Usage,
+        is_error: bool,
         raw_json: serde_json::Value,
     },
     /// Ошибка от CLI (type=error в стриме).
@@ -155,8 +162,16 @@ pub fn parse_line(line: &str) -> Option<ClaudeEvent> {
         "result" => {
             let usage_val = v.get("usage").cloned().unwrap_or(serde_json::Value::Null);
             let usage: Usage = serde_json::from_value(usage_val).unwrap_or_default();
+            // Неуспешный финал: либо явный is_error:true, либо subtype с
+            // префиксом error_ (error_max_turns / error_during_execution).
+            let is_error = v.get("is_error").and_then(|b| b.as_bool()).unwrap_or(false)
+                || v.get("subtype")
+                    .and_then(|s| s.as_str())
+                    .map(|s| s.starts_with("error"))
+                    .unwrap_or(false);
             Some(ClaudeEvent::Result {
                 usage,
+                is_error,
                 raw_json: v,
             })
         }

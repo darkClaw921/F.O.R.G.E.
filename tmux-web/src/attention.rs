@@ -315,7 +315,7 @@ impl AttentionState {
 
         match prev {
             Some(p) if p != current_hash => {
-                tracing::info!(
+                tracing::debug!(
                     session = %name,
                     prev = p,
                     current = current_hash,
@@ -1339,6 +1339,13 @@ pub async fn watcher_loop(attention: Arc<AttentionState>) {
         {
             use std::collections::HashSet;
             let live: HashSet<&str> = sessions.iter().map(|s| s.name.as_str()).collect();
+            // needs_attention-карта: без prune мёртвая сессия вечно «требует
+            // внимания» и переиспользование имени унаследует чужой флаг.
+            attention
+                .map
+                .write()
+                .await
+                .retain(|k, _| live.contains(k.as_str()));
             attention
                 .last_gen_hash
                 .write()
@@ -1366,9 +1373,9 @@ pub async fn watcher_loop(attention: Arc<AttentionState>) {
                 .retain(|k, _| live.contains(k.as_str()));
         }
 
-        // Сводный лог по индикаторам всех сессий за тик. Уровень info, чтобы
-        // его было видно при дефолтной фильтрации RUST_LOG=info, но компактно:
-        // одна строка с парами session=needs_attention/is_generating.
+        // Сводный лог по индикаторам всех сессий за тик. Уровень debug: тик
+        // идёт каждые ~1.5с, на info это засоряло лог и без ротации раздувало
+        // файл. На debug включается прицельно через RUST_LOG=...=debug.
         let attn_snap = attention.snapshot().await;
         let gen_snap = attention.generating_snapshot().await;
         let summary: Vec<String> = sessions
@@ -1380,7 +1387,7 @@ pub async fn watcher_loop(attention: Arc<AttentionState>) {
             })
             .collect();
         if !summary.is_empty() {
-            tracing::info!(tick = %summary.join(" "), "indicator summary");
+            tracing::debug!(tick = %summary.join(" "), "indicator summary");
         }
     }
 }

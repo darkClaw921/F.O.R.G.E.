@@ -103,8 +103,14 @@ pub(crate) async fn collect_day_messages(
                  WHERE s.project_id = ?1 AND m.created_at >= ?2 AND m.created_at < ?3 \
                  ORDER BY m.created_at ASC LIMIT ?4"
             } else {
+                // Global-сводка дня НЕ должна тянуть служебные автономные чаты
+                // (`__autonomous__/<task_id>`): это машинные прогоны, а не
+                // активность пользователя, и они забивают сводку шумом. Сравнение
+                // по точному префиксу через substr (LIKE трактует '_' как
+                // wildcard и матчил бы лишнее).
                 "SELECT id, role, content, created_at FROM messages \
                  WHERE created_at >= ?2 AND created_at < ?3 \
+                 AND substr(session_id, 1, 15) <> '__autonomous__/' \
                  ORDER BY created_at ASC LIMIT ?4"
             };
             let mut stmt = c.prepare(sql)?;
@@ -523,6 +529,34 @@ printf '%s\n' '{"type":"result","usage":{"input_tokens":5,"output_tokens":3}}'
         let m = memories::get(&state.db, &id).await.unwrap().unwrap();
         assert!(m.content.contains("Mock summary"), "got: {}", m.content);
         assert_eq!(m.scope, "global_day");
+    }
+
+    #[tokio::test]
+    async fn summarize_day_global_excludes_autonomous_chats() {
+        let dir = tempfile::tempdir().unwrap();
+        let cli = write_mock_cli(&dir, mock_summary_script());
+        let state = make_state(cli).await;
+        let host: Arc<dyn HostApi> = Arc::new(StubHost);
+
+        // Только служебный автономный чат с сообщениями за сегодня.
+        let s = chats::create_with_id(
+            &state.db,
+            "__autonomous__/task-xyz",
+            "[auto] nightly",
+            None,
+            "sonnet",
+        )
+        .await
+        .unwrap();
+        messages::insert(&state.db, &s.id, "assistant", "machine run output", None, None, 1, 0, 0, 0)
+            .await
+            .unwrap();
+
+        let today = Utc::now().date_naive();
+        let id = summarize_day(state.clone(), host, today, None).await.unwrap();
+        let m = memories::get(&state.db, &id).await.unwrap().unwrap();
+        // Автономный чат исключён → данных нет → No activity.
+        assert_eq!(m.content, NO_ACTIVITY, "autonomous chat leaked into global summary");
     }
 
     #[tokio::test]

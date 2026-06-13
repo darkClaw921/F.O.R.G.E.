@@ -435,6 +435,16 @@ async fn main() -> anyhow::Result<()> {
         "session history store loaded"
     );
 
+    // Общий HTTP-клиент для proxy-запросов на удалённые devforge. reqwest 0.12
+    // по умолчанию НЕ выставляет ни connect-, ни total-таймаут — зависший
+    // remote повесил бы proxy-хендлер навсегда. Явно ограничиваем время
+    // установления соединения и полного запроса.
+    let http_client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .expect("failed to build reqwest HTTP client");
+
     let app_state = AppState {
         tasks_tx: tasks_tx.clone(),
         active_path_tx: active_path_tx.clone(),
@@ -447,10 +457,9 @@ async fn main() -> anyhow::Result<()> {
         remote_mode,
         auth_token: Arc::new(auth_token_value.clone()),
         remotes: Arc::new(RwLock::new(remotes_store)),
-        // Phase 3 — общий reqwest-клиент. Дефолтные настройки (без таймаутов
-        // выставленных явно — это TODO для Phase 7 robustness; пока полагаемся
-        // на дефолты reqwest 0.12, где connect timeout не задан, общий — 30s).
-        http: reqwest::Client::new(),
+        // Общий reqwest-клиент с явными таймаутами (connect 10s, total 30s),
+        // см. построение `http_client` выше.
+        http: http_client,
         user_settings: user_settings_store,
         notifier_config: notifier_config_store,
         history: history_store,
@@ -671,17 +680,20 @@ async fn main() -> anyhow::Result<()> {
     // bearer_auth middleware покрыл /api/echo/* и (в будущем) /ws/echo
     // автоматически в remote-mode. Static-fallback и trace-layer
     // применяются уже к мердженному роутеру.
-    let echo_cfg = forge_echo::EchoConfigStub::default();
-    let echo_state = forge_echo::init(echo_cfg)
+    // Полная конфигурация Echo: defaults → ~/.config/forge/echo.toml →
+    // env-override FORGE_ECHO_*. Раньше тут был EchoConfigStub::default(),
+    // из-за чего echo.toml и FORGE_ECHO_* молча игнорировались.
+    let echo_cfg = forge_echo::EchoConfig::load();
+    let echo_state = forge_echo::init_with_config(echo_cfg)
         .await
-        .context("forge_echo::init failed")?;
+        .context("forge_echo::init_with_config failed")?;
     let echo_host: Arc<dyn echo_host_api::HostApi> = Arc::new(echo_host::EchoHostAdapter {
         state: app_state.clone(),
     });
     let app = forge_echo::register_routes(app, echo_state.clone(), echo_host.clone());
     tracing::info!("forge-echo: plugin registered");
     // Phase 4 — поднимаем background scheduler автономных задач.
-    forge_echo::spawn_workers(&echo_state, echo_host.clone());
+    forge_echo::spawn_workers(&echo_state, echo_host.clone()).await;
     let _ = (&echo_state, &echo_host); // удерживаем для будущих фаз (см. план)
 
     let mut app = app
@@ -704,6 +716,13 @@ async fn main() -> anyhow::Result<()> {
         app = app.layer(from_fn_with_state(auth_state, auth::bearer_auth));
         tracing::info!("Bearer-auth middleware enabled (remote mode)");
     }
+
+    // Anti-CSRF / drive-by guard (forge-cgzf). Подключается ВСЕГДА — в т.ч. в
+    // дефолтном localhost-режиме, где bearer_auth отсутствует. Применяется
+    // последним .layer(...) → становится самым внешним слоем и отбивает
+    // cross-origin WebSocket-апгрейды (/ws/attach drive-by RCE) и мутирующие
+    // /api/* до того, как они дойдут до хендлеров.
+    app = app.layer(axum::middleware::from_fn(auth::csrf_guard));
 
     // Phase 1 — финальный bind:
     // - remote_mode=false → 127.0.0.1:<port> (legacy, hardcoded — гарант
@@ -916,21 +935,24 @@ fn rebuild_query_without_server(q: &HashMap<String, String>) -> String {
     parts.join("&")
 }
 
-/// Минимальный url-encoder для query-значений: экранирует `&`, `=`, `?`,
-/// `#`, ` ` (space) в `%XX`. Для типичных id-значений (alnum, `-`, `_`)
-/// никаких изменений. Полноценный URL-encoder не тянем, чтобы не добавлять
-/// зависимость percent-encoding в Cargo.toml.
+/// Allowlist-based url-encoder: оставляет нетронутыми только
+/// `alnum`/`-`/`_`/`.`/`~`, всё остальное (включая `/`, `..`, `%`, спецсимволы
+/// и любые байты вне ASCII) кодирует в `%XX`.
+///
+/// Раньше это был blocklist (экранировал лишь `& = ? # space +`), из-за чего
+/// `/` и последовательности `..` проходили насквозь. Эта же функция
+/// используется для path-сегментов в `format!("/api/.../{}", encode(name))`,
+/// поэтому blocklist открывал path-инъекцию: `name = "../admin"` или с `/`
+/// меняли структуру upstream-URL при проксировании. Allowlist (как в
+/// [`crate::ws`]) закрывает это: `/` → `%2F`, `.` остаётся, но самостоятельно
+/// `..` без `/` сегмент не сменит.
 fn urlencode_minimal(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
-    for ch in s.chars() {
-        match ch {
-            '&' => out.push_str("%26"),
-            '=' => out.push_str("%3D"),
-            '?' => out.push_str("%3F"),
-            '#' => out.push_str("%23"),
-            ' ' => out.push_str("%20"),
-            '+' => out.push_str("%2B"),
-            c => out.push(c),
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
         }
     }
     out
@@ -1035,11 +1057,20 @@ async fn try_proxy_to_remote(
     };
 
     let query = rebuild_query_without_server(raw_query);
-    let store = state.remotes.read().await;
+    // Разрешаем сервер под коротким read-lock и дропаем guard ДО сетевого
+    // вызова (иначе read-guard висит на всё время запроса → FIFO-deadlock на
+    // write по реестру серверов).
+    let server = {
+        let store = state.remotes.read().await;
+        remote_proxy::resolve_server(&store, &server_id)
+    };
+    let server = match server {
+        Ok(s) => s,
+        Err(e) => return Some(Err(e.into_response())),
+    };
     let result = remote_proxy::proxy_request(
-        &store,
+        &server,
         &state.http,
-        &server_id,
         method,
         path,
         &query,
@@ -1692,11 +1723,18 @@ async fn get_tasks(
             ));
         }
         let query = rebuild_query_without_server(&q);
-        let store = state.remotes.read().await;
+        // Короткий read-lock: клонируем сервер и дропаем guard до сетевого вызова.
+        let server = {
+            let store = state.remotes.read().await;
+            remote_proxy::resolve_server(&store, &server_id)
+        };
+        let server = match server {
+            Ok(s) => s,
+            Err(e) => return Err(e.into_response()),
+        };
         return match remote_proxy::proxy_request(
-            &store,
+            &server,
             &state.http,
-            &server_id,
             reqwest::Method::GET,
             "/api/tasks",
             &query,
@@ -3284,7 +3322,17 @@ async fn create_remote_server(
     let mut store = state.remotes.write().await;
     match store.add(req.label, req.url, req.token) {
         Ok(server) => {
-            if let Err(e) = store.save() {
+            // Сериализуем под guard'ом, пишем на диск ПОСЛЕ его дропа —
+            // блокирующий fs I/O не должен держать tokio RwLock реестра.
+            let snap = match store.serialize() {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::error!(error = ?e, "remotes serialize failed");
+                    return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("save: {e:#}")));
+                }
+            };
+            drop(store);
+            if let Err(e) = remotes::write_remotes_snapshot(&snap) {
                 tracing::error!(error = ?e, "remotes save failed");
                 return Err((
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -3316,7 +3364,15 @@ async fn delete_remote_server(
             format!("no remote server with id `{id}`"),
         ));
     }
-    if let Err(e) = store.save() {
+    let snap = match store.serialize() {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!(error = ?e, "remotes serialize failed");
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("save: {e:#}")));
+        }
+    };
+    drop(store);
+    if let Err(e) = remotes::write_remotes_snapshot(&snap) {
         tracing::error!(error = ?e, "remotes save failed");
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -3346,7 +3402,15 @@ async fn patch_remote_server(
             ));
         }
     };
-    if let Err(e) = store.save() {
+    let snap = match store.serialize() {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!(error = ?e, "remotes serialize failed");
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("save: {e:#}")));
+        }
+    };
+    drop(store);
+    if let Err(e) = remotes::write_remotes_snapshot(&snap) {
         tracing::error!(error = ?e, "remotes save failed");
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -3373,11 +3437,23 @@ async fn remote_server_healthz(
     State(state): State<AppState>,
     AxumPath(id): AxumPath<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let store = state.remotes.read().await;
+    // Короткий read-lock: клонируем сервер и дропаем guard до сетевого вызова.
+    let server = {
+        let store = state.remotes.read().await;
+        remote_proxy::resolve_server(&store, &id)
+    };
+    let server = match server {
+        Ok(s) => s,
+        Err(_) => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                format!("no remote server with id `{id}`"),
+            ))
+        }
+    };
     match remote_proxy::proxy_request(
-        &store,
+        &server,
         &state.http,
-        &id,
         reqwest::Method::GET,
         "/healthz",
         "",
@@ -3458,15 +3534,18 @@ struct HistorySessionRef {
 /// и воссоздаёт её окна по записи в `store`.
 ///
 /// Предполагается, что вызывающий уже проверил отсутствие сессии `name` среди
-/// активных (см. [`restore_session_history`]). Логика восстановления окон:
-/// - окно с индексом 0 уже существует у новой сессии — если в истории для него
-///   есть запись, оно переименовывается через [`tmux::rename_window`];
-/// - остальные окна (по порядку записи) создаются через [`tmux::new_window`]
-///   с именем из истории.
+/// активных (см. [`restore_session_history`]). Логика восстановления окон
+/// сохраняет ОРИГИНАЛЬНЫЕ индексы окон (в т.ч. разрежённые, например `0, 2, 5`):
+/// - tmux при создании сессии всегда даёт одно окно с индексом 0;
+/// - если в истории есть окно с индексом 0 — оно переименовывается на месте;
+/// - если индекса 0 в истории нет — авто-окно 0 перемещается (`move-window`)
+///   на наименьший исторический индекс и переименовывается;
+/// - остальные окна создаются по ЯВНОМУ индексу через [`tmux::new_window_at`],
+///   так что раскладка окон восстанавливается точь-в-точь.
 ///
-/// Ошибки переименования/создания отдельных окон не фатальны: сессия уже
-/// создана, поэтому они логируются (`warn`) и восстановление продолжается.
-/// Возвращает `Err` только если не удалось создать саму сессию.
+/// Ошибки переименования/перемещения/создания отдельных окон не фатальны:
+/// сессия уже создана, поэтому они логируются (`warn`) и восстановление
+/// продолжается. Возвращает `Err` только если не удалось создать саму сессию.
 async fn restore_one_session(
     store: &session_history::HistoryStore,
     name: &str,
@@ -3480,25 +3559,46 @@ async fn restore_one_session(
         .into_iter()
         .find(|s| s.name == name && s.path == path);
 
-    if let Some(entry) = entry {
-        let mut windows = entry.windows;
-        windows.sort_by_key(|w| w.index);
-        for (pos, w) in windows.iter().enumerate() {
-            if pos == 0 {
-                // Окно 0 создаётся автоматически вместе с сессией — только
-                // переименовываем под историческое имя.
-                if let Err(e) = tmux::rename_window(name, 0, &w.name).await {
-                    tracing::warn!(
-                        session = %name, window = %w.name, error = ?e,
-                        "restore: failed to rename initial window"
-                    );
-                }
-            } else if let Err(e) = tmux::new_window(name, Some(&w.name)).await {
+    let Some(entry) = entry else {
+        return Ok(());
+    };
+
+    let mut windows = entry.windows;
+    windows.sort_by_key(|w| w.index);
+    if windows.is_empty() {
+        return Ok(());
+    }
+
+    // Индекс, который займёт авто-созданное окно 0. Если в истории есть окно 0 —
+    // это оно; иначе сдвигаем окно 0 на наименьший исторический индекс.
+    let has_zero = windows.iter().any(|w| w.index == 0);
+    let base_index = windows[0].index; // наименьший индекс (windows отсортированы)
+
+    if !has_zero {
+        // Перемещаем авто-окно 0 на наименьший исторический индекс.
+        if let Err(e) = tmux::move_window(name, 0, base_index).await {
+            tracing::warn!(
+                session = %name, to = base_index, error = ?e,
+                "restore: failed to move initial window to historical index"
+            );
+        }
+    }
+
+    for w in &windows {
+        // Окно на base_index уже существует (это авто-окно 0, при необходимости
+        // перемещённое) — его только переименовываем.
+        if w.index == base_index {
+            if let Err(e) = tmux::rename_window(name, w.index, &w.name).await {
                 tracing::warn!(
-                    session = %name, window = %w.name, error = ?e,
-                    "restore: failed to create window"
+                    session = %name, index = w.index, window = %w.name, error = ?e,
+                    "restore: failed to rename initial window"
                 );
             }
+        } else if let Err(e) = tmux::new_window_at(name, w.index, Some(&w.name)).await {
+            tracing::warn!(
+                session = %name, index = w.index, window = %w.name, error = ?e,
+                "restore: failed to create window at explicit index"
+            );
         }
     }
 
@@ -3821,9 +3921,13 @@ mod tests {
         assert_eq!(urlencode_minimal("a b"), "a%20b");
         assert_eq!(urlencode_minimal("a+b"), "a%2Bb");
         assert_eq!(urlencode_minimal("a?b#c"), "a%3Fb%23c");
-        // alphanumerics, '-', '_', '.', '/' остаются как есть (наши id такие).
+        // alphanumerics, '-', '_', '.', '~' остаются как есть (наши id такие).
         assert_eq!(urlencode_minimal("office-2"), "office-2");
-        assert_eq!(urlencode_minimal("a/b.c_d"), "a/b.c_d");
+        assert_eq!(urlencode_minimal("a.c_d~e"), "a.c_d~e");
+        // forge-vt68: allowlist-кодировщик ЭКРАНИРУЕТ '/' → закрыта
+        // path-инъекция в format!("/api/.../{}", encode(name)).
+        assert_eq!(urlencode_minimal("a/b"), "a%2Fb");
+        assert_eq!(urlencode_minimal("../admin"), "..%2Fadmin");
     }
 }
 

@@ -325,14 +325,20 @@ function renderDayLabel() {
  */
 async function loadCurrent() {
     if (!_currentDay) return;
+    // Токен запроса: фиксируем день на момент старта. Если пользователь
+    // переключится на другой день, пока ждём ответ, отбрасываем устаревший
+    // результат — иначе сводка одного дня отрендерится под заголовком другого.
+    const day = _currentDay;
     renderDayLabel();
     setStatus('Загрузка…');
     try {
-        const report = await getDailyReport(_currentDay);
+        const report = await getDailyReport(day);
+        if (day !== _currentDay) return;
         setStatus('');
         renderContent(report && report.content);
         renderSuggestions(report && report.suggestions);
     } catch (e) {
+        if (day !== _currentDay) return;
         if (e && e.status === 404) {
             setStatus('');
             showEmpty();
@@ -351,14 +357,19 @@ async function loadCurrent() {
  */
 async function generateCurrent() {
     if (!_currentDay || _busy) return;
+    // setBusy(true) уже блокирует навигацию по дням (кнопки проверяют _busy),
+    // но фиксируем токен дня для надёжности на случай иных триггеров смены дня.
+    const day = _currentDay;
     setBusy(true);
     setStatus('Генерация сводки…');
     try {
-        const report = await generateDailyReport(_currentDay);
+        const report = await generateDailyReport(day);
+        if (day !== _currentDay) return;
         setStatus('');
         renderContent(report && report.content);
         renderSuggestions(report && report.suggestions);
     } catch (e) {
+        if (day !== _currentDay) return;
         setStatus('Не удалось сгенерировать: ' + (e && e.message ? e.message : 'неизвестно'));
     } finally {
         setBusy(false);

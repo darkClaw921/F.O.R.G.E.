@@ -60,7 +60,9 @@ pub type RunningSet = Arc<Mutex<HashSet<String>>>;
 /// Спавнит scheduler-loop. Возвращает `JoinHandle`, который вызывающий
 /// может abort'нуть для graceful shutdown.
 pub fn spawn(state: Arc<EchoState>, host: Arc<dyn HostApi>) -> JoinHandle<()> {
-    let running: RunningSet = Arc::new(Mutex::new(HashSet::new()));
+    // RunningSet берём из EchoState — он общий с ручным `POST /run-now`,
+    // чтобы tick и run-now не запускали один и тот же task_id параллельно.
+    let running: RunningSet = state.running_tasks.clone();
     tracing::info!(tick_secs = TICK_INTERVAL.as_secs(), "Echo scheduler started");
     tokio::spawn(async move {
         run_loop(state, host, running).await;
@@ -117,13 +119,24 @@ pub(crate) async fn tick_once(
         let running_clone = running.clone();
         let tid = task_id.clone();
         tokio::spawn(async move {
-            // Никакая panic-инсайд не должна обрушить scheduler.
-            // tokio::spawn ловит panic — пишет в JoinError, но он
-            // не наблюдается scheduler'ом (мы не join'им). Дополнительно
-            // оборачиваем сам вызов в try-блок чтобы always очистить set.
-            let res = runner::run_task(state_clone, host_clone, task).await;
-            if let Err(e) = res {
-                tracing::warn!(task_id = %tid, error = %e, "scheduler: run_task error");
+            // Panic внутри run_task НЕ должна навсегда оставить task_id в
+            // RunningSet (иначе задача залипает: tick видит её «running» и
+            // больше никогда не перезапускает). tokio::spawn ловит panic, но
+            // строка remove() после .await тогда не выполнится. Оборачиваем в
+            // catch_unwind(AssertUnwindSafe) → panic становится Err, и cleanup
+            // set'а отрабатывает в любом случае.
+            use futures_util::FutureExt;
+            let res = std::panic::AssertUnwindSafe(runner::run_task(state_clone, host_clone, task))
+                .catch_unwind()
+                .await;
+            match res {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => {
+                    tracing::warn!(task_id = %tid, error = %e, "scheduler: run_task error");
+                }
+                Err(_panic) => {
+                    tracing::error!(task_id = %tid, "scheduler: run_task PANICKED — task unblocked, will retry next tick");
+                }
             }
             running_clone.lock().await.remove(&tid);
         });

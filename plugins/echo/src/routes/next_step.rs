@@ -81,20 +81,34 @@ async fn send(
     Path(session): Path<String>,
     Json(b): Json<SendBody>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    // Снимаем предложение (если есть) и определяем итоговый текст.
+    // Безопасность: send_keys — примитив инъекции произвольного ввода в tmux,
+    // а в localhost-режиме REST не имеет auth (drive-by из браузера). Поэтому
+    // отправка РАЗРЕШЕНА только при наличии активного предложения для сессии.
+    // Без предложения любой `text` отклоняется (404) — нельзя слать
+    // произвольные команды в чужой терминал. Снимаем предложение и определяем
+    // итоговый текст (опциональный edit поверх предложения допускается).
     let suggestion = state.next_steps.write().await.remove(&session);
+    let suggestion = suggestion.ok_or_else(|| {
+        ApiError(
+            StatusCode::NOT_FOUND,
+            format!("no active suggestion for session {session}; send is not allowed without one"),
+        )
+    })?;
     let text = match b.text.map(|t| t.trim().to_string()).filter(|t| !t.is_empty()) {
+        // Пользователь отредактировал предложение перед отправкой — допустимо,
+        // т.к. предложение существует (проверка выше).
         Some(t) => t,
-        None => suggestion
-            .as_ref()
-            .map(|s| s.content.clone())
-            .filter(|c| !c.trim().is_empty())
-            .ok_or_else(|| {
-                ApiError(
+        // Пустой/отсутствующий text → шлём содержимое предложения.
+        None => {
+            let c = suggestion.content.clone();
+            if c.trim().is_empty() {
+                return Err(ApiError(
                     StatusCode::NOT_FOUND,
-                    format!("no suggestion to send for session {session}"),
-                )
-            })?,
+                    format!("suggestion for session {session} has empty content"),
+                ));
+            }
+            c
+        }
     };
 
     let host = host(&state)?;
@@ -343,6 +357,23 @@ mod tests {
         )
         .await;
         assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    /// Безопасность (forge-4ww0): произвольный `text` БЕЗ активного предложения
+    /// для сессии не должен доставляться в tmux — отбиваем 404 и send_keys
+    /// не вызывается.
+    #[tokio::test]
+    async fn send_arbitrary_text_without_suggestion_is_rejected() {
+        let (state, stub) = make_state().await;
+        let (status, _) = req_json(
+            state,
+            "POST",
+            "/api/echo/next-steps/ghost/send",
+            Some(serde_json::json!({ "text": "rm -rf /" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert!(stub.sent.lock().unwrap().is_empty(), "send_keys must not fire without a suggestion");
     }
 
     #[tokio::test]

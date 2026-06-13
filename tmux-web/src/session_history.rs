@@ -53,6 +53,12 @@ use crate::tmux::{self, SessionInfo, WindowInfo};
 /// Имя файла-хранилища внутри data-каталога forge.
 const FILE_NAME: &str = "session_history.json";
 
+/// Максимум записей в журнале истории. Сессии приходят/уходят, ключ —
+/// `name + path`, поэтому без ограничения карта растёт неограниченно (каждая
+/// уникальная сессия за всё время существования forge). Держим только самые
+/// свежие по `last_seen`, лишнее (давно не виденное) выбрасываем.
+const MAX_HISTORY_ENTRIES: usize = 500;
+
 /// Описание одного окна сессии в истории.
 ///
 /// Хранит только стабильные, человеко-значимые поля (`index` + `name`).
@@ -196,6 +202,22 @@ impl HistoryStore {
                         last_seen: now,
                     });
             }
+
+            // Ограничиваем журнал: оставляем MAX_HISTORY_ENTRIES самых свежих
+            // по last_seen, выкидываем самые старые. Дёшево, т.к. порог
+            // превышается редко (только после очень долгой работы).
+            if inner.sessions.len() > MAX_HISTORY_ENTRIES {
+                let mut by_recency: Vec<(String, i64)> = inner
+                    .sessions
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.last_seen))
+                    .collect();
+                // Сортируем по last_seen убыв.; всё после порога удаляем.
+                by_recency.sort_by(|a, b| b.1.cmp(&a.1));
+                for (key, _) in by_recency.into_iter().skip(MAX_HISTORY_ENTRIES) {
+                    inner.sessions.remove(&key);
+                }
+            }
         }
         self.persist();
     }
@@ -229,20 +251,27 @@ impl HistoryStore {
     /// необходимости. Ошибки логируются через `tracing::warn!`, но не
     /// паникуют — потеря снимка не должна валить процесс.
     pub fn persist(&self) {
-        let inner = self.inner.read().expect("HistoryStore lock poisoned");
+        // Сериализуем снимок и копируем целевой путь ПОД read-guard'ом, затем
+        // СРАЗУ дропаем guard — блокирующий fs::write/rename выполняется уже
+        // без удержания RwLock, чтобы не сериализовать конкурентные snapshot/
+        // list/remove (watcher_loop вызывает snapshot каждый тик ~1.5с).
+        let (body, file) = {
+            let inner = self.inner.read().expect("HistoryStore lock poisoned");
 
-        let mut list: Vec<&HistorySession> = inner.sessions.values().collect();
-        list.sort_by(|a, b| b.last_seen.cmp(&a.last_seen));
+            let mut list: Vec<&HistorySession> = inner.sessions.values().collect();
+            list.sort_by(|a, b| b.last_seen.cmp(&a.last_seen));
 
-        let body = match serde_json::to_vec_pretty(&list) {
-            Ok(b) => b,
-            Err(e) => {
-                tracing::warn!(error = ?e, "failed to serialize session history");
-                return;
-            }
+            let body = match serde_json::to_vec_pretty(&list) {
+                Ok(b) => b,
+                Err(e) => {
+                    tracing::warn!(error = ?e, "failed to serialize session history");
+                    return;
+                }
+            };
+            (body, inner.file.clone())
         };
 
-        if let Some(parent) = inner.file.parent() {
+        if let Some(parent) = file.parent() {
             if !parent.as_os_str().is_empty() {
                 if let Err(e) = std::fs::create_dir_all(parent) {
                     tracing::warn!(
@@ -255,7 +284,7 @@ impl HistoryStore {
             }
         }
 
-        let mut tmp = inner.file.clone();
+        let mut tmp = file.clone();
         let mut tmp_name = tmp.file_name().map(|s| s.to_owned()).unwrap_or_default();
         tmp_name.push(".tmp");
         tmp.set_file_name(tmp_name);
@@ -264,10 +293,10 @@ impl HistoryStore {
             tracing::warn!(path = %tmp.display(), error = ?e, "failed to write session_history tmp");
             return;
         }
-        if let Err(e) = std::fs::rename(&tmp, &inner.file) {
+        if let Err(e) = std::fs::rename(&tmp, &file) {
             tracing::warn!(
                 from = %tmp.display(),
-                to = %inner.file.display(),
+                to = %file.display(),
                 error = ?e,
                 "failed to rename session_history tmp into place"
             );
@@ -386,6 +415,25 @@ mod tests {
         std::fs::write(dir.join(FILE_NAME), b"{not valid json").unwrap();
         let store = HistoryStore::load(&dir);
         assert!(store.list().is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn snapshot_caps_history_to_max_entries() {
+        let dir = tempdir("cap");
+        let store = HistoryStore::load(&dir);
+        // Заливаем заметно больше порога уникальных сессий.
+        let total = MAX_HISTORY_ENTRIES + 50;
+        for i in 0..total {
+            let s = session(&format!("sess-{i}"), &format!("/p/{i}"));
+            store.snapshot(&[(s, vec![window(0, "main")])]);
+        }
+        let list = store.list();
+        assert_eq!(
+            list.len(),
+            MAX_HISTORY_ENTRIES,
+            "history must be capped at MAX_HISTORY_ENTRIES"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

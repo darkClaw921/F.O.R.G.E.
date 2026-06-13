@@ -147,11 +147,14 @@ pub async fn list_commits(
         "--max-count=2000".to_string(),
         "--pretty=format:%H%x1f%ct%x1f%an%x1f%s".to_string(),
     ];
+    // `@<unix>` явно говорит git, что это unix-timestamp; голое число попадает
+    // в approxidate-эвристику и может быть истолковано иначе. Унифицировано с
+    // echo_host.rs (там тоже `@{since}`).
     if let Some(v) = since_unix {
-        args.push(format!("--since={v}"));
+        args.push(format!("--since=@{v}"));
     }
     if let Some(v) = until_unix {
-        args.push(format!("--until={v}"));
+        args.push(format!("--until=@{v}"));
     }
 
     let output = match Command::new("git")

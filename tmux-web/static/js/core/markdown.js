@@ -104,6 +104,29 @@ export function renderMarkdownInto(container, text) {
     }
 }
 
+/**
+ * Проверяет, что URL ссылки имеет безопасную схему. Разрешены только
+ * http/https/mailto и относительные ссылки (без схемы). Блокирует
+ * `javascript:`, `data:`, `vbscript:` и прочие XSS-векторы в href.
+ *
+ * @param {string} url
+ * @returns {boolean}
+ */
+function isSafeUrl(url) {
+    const s = String(url).trim();
+    // Относительные/якорные ссылки без схемы безопасны.
+    // Схема = последовательность [a-z0-9+.-] перед первым ':' до '/', '?', '#'.
+    const schemeMatch = s.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):/);
+    if (!schemeMatch) {
+        // Нет явной схемы — относительная ссылка. Но отвергаем хитрые случаи
+        // вроде " javascript:..." (ведущие пробелы уже сняты trim) и
+        // protocol-relative '//host' оставляем как безопасные (наследует http/https).
+        return true;
+    }
+    const scheme = schemeMatch[1].toLowerCase();
+    return scheme === 'http' || scheme === 'https' || scheme === 'mailto';
+}
+
 function appendInline(parent, text) {
     // Inline: `code`, **bold**, *italic*, [text](url)
     // Простой regex-token парсер. Не покрывает все edge-cases markdown,
@@ -131,7 +154,7 @@ function appendInline(parent, text) {
             parent.appendChild(i);
         } else if (tok.startsWith('[')) {
             const linkMatch = tok.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
-            if (linkMatch) {
+            if (linkMatch && isSafeUrl(linkMatch[2])) {
                 const a = document.createElement('a');
                 a.href = linkMatch[2];
                 a.textContent = linkMatch[1];
@@ -139,6 +162,9 @@ function appendInline(parent, text) {
                 a.rel = 'noopener noreferrer';
                 parent.appendChild(a);
             } else {
+                // Невалидная схема (javascript:/data: и пр.) или битый токен —
+                // не создаём <a>, рендерим как обычный текст. Закрывает XSS
+                // через markdown-ссылки в ответах Claude.
                 parent.appendChild(document.createTextNode(tok));
             }
         }

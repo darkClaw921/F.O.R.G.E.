@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>tmux-web</title>
 
-    <!-- xterm.js core CSS (5.3.0) -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
+    <!-- xterm.js core CSS (5.3.0) — завендорено локально (/vendor/xterm),
+         чтобы не зависеть от внешнего CDN и исключить риск подмены кода. -->
+    <link rel="stylesheet" href="/vendor/xterm/xterm.min.css">
 
     <!-- Локальные стили layout -->
     <link rel="stylesheet" href="/style.css">
@@ -254,12 +255,14 @@
     <!-- Phase 5: Echo toast уведомления (общий компонент, доступен из любой вкладки) -->
     <div id="echo-toasts" class="echo-toasts" role="status" aria-live="polite"></div>
 
-    <!-- xterm.js core (5.3.0) -->
-    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+    <!-- xterm.js core (5.3.0) + addons — завендорено локально (/vendor/xterm)
+         вместо внешнего CDN: устраняет внешнюю зависимость и риск supply-chain
+         подмены. Версии: xterm 5.3.0, addon-fit 0.8.0, addon-web-links 0.9.0. -->
+    <script src="/vendor/xterm/xterm.min.js"></script>
     <!-- FitAddon -->
-    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+    <script src="/vendor/xterm/xterm-addon-fit.min.js"></script>
     <!-- WebLinksAddon -->
-    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.min.js"></script>
+    <script src="/vendor/xterm/xterm-addon-web-links.min.js"></script>
 
     <!-- Приложение (ES Modules, Phase 1 refactor) -->
     <script type="module" src="/js/main.js"></script>

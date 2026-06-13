@@ -1,0 +1,3 @@
+# EchoConfig
+
+plugins/echo/src/config.rs. Полная конфигурация плагина Echo, cheap-clonable. Поля: cli_path, db_path, max_parallel_runs(4), default_model, capture_lines(200), autonomous_max_tokens_per_day(200K), user_message_rate_limit_per_min(30), run_timeout_secs(300, новое — таймаут на Claude-run). load(): defaults -> ~/.config/forge/echo.toml -> env FORGE_ECHO_* (CLI_PATH/DB_PATH/MAX_PARALLEL_RUNS/DEFAULT_MODEL/CAPTURE_LINES/AUTONOMOUS_MAX_TOKENS_PER_DAY/USER_MESSAGE_RATE_LIMIT_PER_MIN/RUN_TIMEOUT_SECS) -> validate_and_fix. ВАЖНО: main.rs теперь вызывает forge_echo::init_with_config(EchoConfig::load()) вместо init(EchoConfigStub::default()) — раньше echo.toml и env молча игнорировались.

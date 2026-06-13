@@ -4,7 +4,7 @@
 //! рассылает реальные `ServerMsg` (см. [`ws::protocol::ServerMsg`]).
 //! `Db` уже подключён с Phase 2. `HostApi` — slot, заполняется в `register_routes`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex};
 use tokio::task::JoinHandle;
@@ -157,6 +157,12 @@ pub struct EchoState {
     /// долгоживущие задачи (scheduler, memory loop, WS reader-loop)
     /// должны слушать `state.shutdown.cancelled()` и завершаться.
     pub shutdown: CancellationToken,
+    /// In-memory множество id автономных задач, для которых сейчас идёт
+    /// `run_task`. Защищает от двойного запуска ОДНОЙ задачи как из
+    /// scheduler-tick'а, так и из ручного `POST /run-now`. Раньше set жил
+    /// только внутри scheduler::spawn → ручной run-now его не видел и мог
+    /// запустить параллельный дубль уже исполняемой задачи. Теперь общий.
+    pub running_tasks: Arc<Mutex<HashSet<String>>>,
 }
 
 impl EchoState {
@@ -173,7 +179,12 @@ impl EchoState {
         runner: Arc<ClaudeRunner>,
         config: EchoConfig,
     ) -> Self {
-        let (broadcast, _) = broadcast::channel(256);
+        // Буфер 1024: один streaming-ответ Claude может дать сотни мелких
+        // text_delta-чанков подряд; при 256 медленный/много-вкладочный клиент
+        // легко обгонялся (Lagged) и терял хвост ответа. Увеличенный буфер
+        // снижает частоту Lagged; на сам случай Lagged ws-handler шлёт
+        // ServerMsg::Resync (см. forge-ji1b).
+        let (broadcast, _) = broadcast::channel(1024);
         Self {
             host: Arc::new(tokio::sync::OnceCell::new()),
             broadcast,
@@ -184,6 +195,7 @@ impl EchoState {
             next_steps: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             config: Arc::new(config),
             shutdown: CancellationToken::new(),
+            running_tasks: Arc::new(Mutex::new(HashSet::new())),
         }
     }
 
@@ -196,6 +208,15 @@ impl EchoState {
         actions: Vec<Action>,
     ) -> Vec<crate::ws::protocol::ActionDescriptor> {
         let now = chrono::Utc::now().timestamp();
+        // Перезаписываем id каждого action на серверный UUID. LLM генерирует
+        // короткие id (p1/s1...), которые легко коллизят между сообщениями;
+        // find_action ищет по id в ГЛОБАЛЬНОМ реестре, поэтому при коллизии
+        // мог сработать чужой action. UUID гарантирует уникальность. Descriptor
+        // (и invoke с клиента) несут уже новый id.
+        let actions: Vec<Action> = actions
+            .into_iter()
+            .map(|a| a.with_id(uuid::Uuid::new_v4().to_string()))
+            .collect();
         let mut map = self.action_registry.lock().await;
         // Эвикция старых.
         map.retain(|_k, v| now - v.created_at < ACTION_REGISTRY_TTL_SECS);
@@ -226,13 +247,14 @@ impl EchoState {
 
     /// Регистрирует JoinHandle background-worker'а — он будет abort'нут
     /// при `shutdown_workers`. Вызывается из [`crate::spawn_workers`].
-    pub fn register_worker(&self, handle: JoinHandle<()>) {
-        let workers = self.workers.clone();
-        // Не блокируем caller'а на async-локе — спавним детачнутый task
-        // чтобы добавить handle в вектор.
-        tokio::spawn(async move {
-            workers.lock().await.push(handle);
-        });
+    ///
+    /// Async и берёт lock напрямую: раньше push шёл в детачнутой таске, и при
+    /// быстром shutdown (`shutdown_workers` дренировал вектор ДО того как
+    /// детачнутая таска успевала push'нуть) handle терялся и worker переживал
+    /// shutdown. Прямой await гарантирует, что после возврата из
+    /// `register_worker` handle уже в векторе.
+    pub async fn register_worker(&self, handle: JoinHandle<()>) {
+        self.workers.lock().await.push(handle);
     }
 
     /// Корректно останавливает все зарегистрированные фоновые worker'ы.

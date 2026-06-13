@@ -1,0 +1,3 @@
+# resolve_server
+
+tmux-web/src/remote_proxy.rs. Резолвит server_id в owned-копию RemoteServer под КОРОТКИМ read-lock state.remotes. Введён чтобы устранить deadlock: tokio RwLock справедлив (FIFO), и долгоживущий read-guard (на всё время proxy-WS или сетевого запроса) блокировал любой write (POST/PATCH/DELETE /api/remote-servers) и за ним все новые read/WS. proxy_request и proxy_websocket теперь принимают &RemoteServer (owned-данные), а не &store+server_id; все call-sites (ws.rs attach/lazygit/lazydocker/telescope, ws_todos, ws_tasks, main.rs dispatch/tasks/healthz) сначала вызывают resolve_server под коротким guard, дропают guard и только потом делают сетевой вызов. Возвращает Err(ProxyError::UnknownServer) если записи нет.

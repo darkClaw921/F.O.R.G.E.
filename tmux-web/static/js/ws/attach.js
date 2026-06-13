@@ -19,6 +19,10 @@ import { hideScreensaver } from '../screensaver/screensaver.js';
 export function connectWs(sessionName, origin) {
     // На всякий случай закрываем старый.
     disconnectWs();
+    // disconnectWs() ставит флаг attachWsClosedByUs=true; сбрасываем его,
+    // иначе любой неожиданный разрыв нового соединения будет трактоваться как
+    // «закрыто нами» и авто-реконнект не запустится (по образцу connectTasksWs).
+    state.attachWsClosedByUs = false;
 
     if (!state.term) {
         console.error('terminal not initialized');

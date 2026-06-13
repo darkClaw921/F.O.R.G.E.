@@ -160,6 +160,13 @@ async fn notifier_loop(
         }
     };
 
+    // Сверка wait_previous-очередей при старте: пока notifier был выключен,
+    // отслеживаемая «предыдущая» задача могла закрыться — событие Upsert{closed}
+    // мы бы пропустили, и head-job очереди завис бы навсегда. Проверяем
+    // фактический статус каждой last_promoted_open_id через `br show` и, если
+    // задача уже не открыта (closed/отсутствует), продвигаем очередь.
+    reconcile_wait_previous_on_startup(&project_root, &mut state, &state_path).await;
+
     fire_due_immediate_and_overdue(&mut state, &state_path).await;
 
     loop {
@@ -317,7 +324,14 @@ async fn handle_enqueue(state: &mut NotifyState, job: NotifyJob, state_path: &st
 
             let last_open = state.last_promoted_open_id.get(&key).cloned();
             let nothing_to_wait = match (previous_task_id.as_ref(), last_open.as_ref()) {
-                (None, _) if queue_was_empty => true,
+                // Нет явного предшественника И нет открытой задачи в этом
+                // корне И очередь пуста — ждать нечего, стреляем сразу.
+                (None, None) if queue_was_empty => true,
+                // Нет явного предшественника, но есть открытая задача —
+                // job должен дождаться её закрытия (FIFO wait_previous).
+                (None, Some(_)) => false,
+                // Явный предшественник уже закрыт (нет открытой) и очередь
+                // пуста — ждать нечего.
                 (Some(_), None) if queue_was_empty => true,
                 _ => false,
             };
@@ -411,6 +425,73 @@ async fn fire_due_delayed(state: &mut NotifyState, state_path: &std::path::Path)
 
     if let Err(e) = save_state(state_path, state) {
         tracing::warn!(error = ?e, "save_state after delayed fire failed");
+    }
+}
+
+/// Проверяет фактический статус задачи через `br show <id> --json`.
+/// Возвращает:
+/// - `Some(true)` — задача существует и всё ещё открыта (open/in_progress);
+/// - `Some(false)` — задача существует, но закрыта;
+/// - `None` — задача не найдена / `br` недоступен / непарсимый ответ.
+///
+/// При `None` (не смогли узнать) мы НЕ продвигаем очередь, чтобы не доставить
+/// уведомление преждевременно при временной недоступности `br`.
+async fn task_is_open(project_root: &std::path::Path, task_id: &str) -> Option<bool> {
+    let val = crate::tasks::run_br(&["show", task_id, "--json"], project_root)
+        .await
+        .ok()?;
+    // br show может вернуть объект задачи либо {issue: {...}} — пробуем оба.
+    let status = val
+        .get("status")
+        .or_else(|| val.get("issue").and_then(|i| i.get("status")))
+        .and_then(|s| s.as_str())?;
+    Some(matches!(status, "open" | "in_progress"))
+}
+
+/// Стартовая сверка wait_previous: см. вызов в [`notifier_loop`]. Для каждой
+/// записи `last_promoted_open_id` проверяет реальный статус задачи; если она
+/// уже закрыта (или отсутствует), вызывает [`handle_task_closed`], как если бы
+/// пришло пропущенное событие закрытия.
+async fn reconcile_wait_previous_on_startup(
+    project_root: &std::path::Path,
+    state: &mut NotifyState,
+    state_path: &std::path::Path,
+) {
+    // Снимок отслеживаемых (root -> task_id), чтобы не держать заём state.
+    let tracked: Vec<(String, String)> = state
+        .last_promoted_open_id
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    if tracked.is_empty() {
+        return;
+    }
+
+    for (_root, task_id) in tracked {
+        match task_is_open(project_root, &task_id).await {
+            Some(true) => { /* всё ещё открыта — ждём события закрытия */ }
+            Some(false) => {
+                // Задача закрылась, пока notifier был выключен — событие
+                // Upsert{closed} мы пропустили. Продвигаем очередь так же,
+                // как при реальном закрытии.
+                tracing::info!(
+                    task_id = %task_id,
+                    "reconcile: previous task closed while offline, advancing wait queue"
+                );
+                handle_task_closed(state, &task_id, state_path).await;
+            }
+            None => {
+                // Не смогли определить статус (br недоступен / непарсимо).
+                // Сознательно НЕ продвигаем очередь, чтобы не доставить
+                // уведомление преждевременно при транзиентной ошибке `br`.
+                // Очередь продвинется при следующем реальном Upsert{closed}
+                // или при перезапуске, когда `br` снова ответит.
+                tracing::warn!(
+                    task_id = %task_id,
+                    "reconcile: could not determine previous task status; leaving queue as is"
+                );
+            }
+        }
     }
 }
 

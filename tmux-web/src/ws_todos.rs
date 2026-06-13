@@ -131,10 +131,19 @@ pub async fn todos_ws(
         }
         let upstream_query = rebuild_query_without_server(&raw);
         return ws.on_upgrade(move |socket| async move {
-            let store = state.remotes.read().await;
+            let server = {
+                let store = state.remotes.read().await;
+                remote_proxy::resolve_server(&store, &server_id)
+            };
+            let server = match server {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::trace!(error = %e, server_id, "ws/todos: unknown remote server");
+                    return;
+                }
+            };
             if let Err(e) = remote_proxy::proxy_websocket(
-                &store,
-                &server_id,
+                &server,
                 "/ws/todos",
                 &upstream_query,
                 socket,
@@ -166,7 +175,15 @@ async fn handle_socket(socket: WebSocket, state: AppState, subscribed_root: Opti
     let (ws_tx, mut ws_rx) = socket.split();
     let ws_tx = Arc::new(Mutex::new(ws_tx));
 
-    // 1) Snapshot текущего состояния TODO для подписного root (или [] если без фильтра).
+    // 1) Подписываемся на broadcast ДО снятия snapshot. Иначе мутации,
+    //    произошедшие в окне между snapshot и subscribe, теряются (snapshot их
+    //    не содержит, а broadcast-подписки ещё нет). Subscribe сначала →
+    //    snapshot потом гарантирует: всё, что не попало в snapshot, придёт
+    //    событием (в худшем случае с дублем — клиент идемпотентно
+    //    апсертит по id).
+    let mut rx = state.todos_tx.subscribe();
+
+    // 2) Snapshot текущего состояния TODO для подписного root (или [] если без фильтра).
     let todos = match subscribed_root.as_deref() {
         Some(root) => state.todos.list(root),
         None => Vec::new(),
@@ -179,9 +196,6 @@ async fn handle_socket(socket: WebSocket, state: AppState, subscribed_root: Opti
         tracing::debug!(error = ?e, "ws/todos: snapshot send failed; closing");
         return;
     }
-
-    // 2) Подписываемся на broadcast.
-    let mut rx = state.todos_tx.subscribe();
 
     // 3) Heartbeat таймер.
     let mut heartbeat = tokio::time::interval(HEARTBEAT_INTERVAL);

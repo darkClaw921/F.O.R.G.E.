@@ -1,0 +1,3 @@
+# EchoState
+
+Глобальное состояние Echo-плагина (plugins/echo/src/state.rs). Cheap-clone обёртка над Arc/broadcast. Поля: host (OnceCell HostApi), broadcast (broadcast::Sender<ServerEvent>, буфер 1024 — увеличен с 256 чтобы burst стрим-чанков Claude не вызывал Lagged), db, runner (ClaudeRunner), workers, action_registry, next_steps, config, shutdown, running_tasks (Arc<Mutex<HashSet<String>>> — общий со scheduler RunningSet, защищает от двойного запуска автономной задачи из tick и из run-now). register_actions присваивает каждому action серверный UUID (Action::with_id) перед регистрацией, чтобы LLM-сгенерированные id (p1/s1) не коллизили в глобальном реестре.

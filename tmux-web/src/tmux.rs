@@ -393,7 +393,8 @@ pub async fn find_claude_pane(session: &str) -> anyhow::Result<Option<String>> {
 ///    `:` обязателен — для числовых имён без него tmux резолвит target как
 ///    окно чужой сессии, тот же баг, что был у `capture_pane`).
 /// 4. Многострочный текст разбивается по символу новой строки. Для каждой строки
-///    выполняется `tmux send-keys -t <target> -l <line>`, после неё —
+///    выполняется `tmux send-keys -t <target> -l -- <line>` (разделитель `--`
+///    защищает строки, начинающиеся с `-`, от трактовки как флаг), после неё —
 ///    отдельный `tmux send-keys -t <target> Enter`. Это эквивалентно
 ///    набору пользователем строки за строкой и нажатию Enter после
 ///    каждой.
@@ -432,8 +433,11 @@ pub async fn send_keys(session: &str, text: &str) -> anyhow::Result<()> {
 
     for line in text.split('\n') {
         if !line.is_empty() {
+            // `--` завершает разбор опций: без него строка, начинающаяся с
+            // `-` (например `-t`, `--help`), парсилась бы tmux как флаг даже
+            // при наличии `-l`. Литеральный текст идёт строго после `--`.
             let output = Command::new("tmux")
-                .args(["send-keys", "-t", &target, "-l", line])
+                .args(["send-keys", "-t", &target, "-l", "--", line])
                 .output()
                 .await
                 .context("failed to spawn `tmux send-keys -l`")?;
@@ -644,6 +648,86 @@ pub async fn new_window(session: &str, name: Option<&str>) -> anyhow::Result<()>
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(anyhow!(
             "tmux new-window failed (exit {:?}): {}",
+            output.status.code(),
+            stderr.trim()
+        ));
+    }
+    Ok(())
+}
+
+/// Создаёт окно по ЯВНОМУ индексу (`tmux new-window -t <session>:<index>`).
+///
+/// Используется при восстановлении сессии из истории, чтобы сохранить
+/// оригинальные (возможно разрежённые) индексы окон — например `0, 2, 5`.
+/// Обычный [`new_window`] назначил бы следующий свободный индекс и потерял бы
+/// исходную раскладку.
+///
+/// Требует, чтобы целевой индекс был свободен (иначе tmux вернёт
+/// "index N in use"). Caller обязан это гарантировать.
+pub async fn new_window_at(
+    session: &str,
+    index: u32,
+    name: Option<&str>,
+) -> anyhow::Result<()> {
+    if !is_valid_session_name(session) {
+        bail!(
+            "invalid session name `{}` (allowed: [A-Za-z0-9_-]+, non-empty)",
+            session
+        );
+    }
+    let target = format!("{session}:{index}");
+    let mut args: Vec<&str> = vec![
+        "new-window",
+        "-t",
+        &target,
+        "-c",
+        "#{pane_current_path}",
+    ];
+    if let Some(n) = name {
+        if !n.is_empty() {
+            args.push("-n");
+            args.push(n);
+        }
+    }
+
+    let output = Command::new("tmux")
+        .args(&args)
+        .output()
+        .await
+        .context("failed to spawn `tmux new-window` (explicit index)")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!(
+            "tmux new-window -t {target} failed (exit {:?}): {}",
+            output.status.code(),
+            stderr.trim()
+        ));
+    }
+    Ok(())
+}
+
+/// Перемещает окно на новый индекс (`tmux move-window -s <src> -t <dst>`).
+/// Используется при восстановлении, когда авто-созданное окно 0 нужно сдвинуть
+/// на исторический индекс (если 0 отсутствует в истории).
+pub async fn move_window(session: &str, from: u32, to: u32) -> anyhow::Result<()> {
+    if !is_valid_session_name(session) {
+        bail!(
+            "invalid session name `{}` (allowed: [A-Za-z0-9_-]+, non-empty)",
+            session
+        );
+    }
+    let src = format!("{session}:{from}");
+    let dst = format!("{session}:{to}");
+    let output = Command::new("tmux")
+        .args(["move-window", "-s", &src, "-t", &dst])
+        .output()
+        .await
+        .context("failed to spawn `tmux move-window`")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!(
+            "tmux move-window {src}->{dst} failed (exit {:?}): {}",
             output.status.code(),
             stderr.trim()
         ));

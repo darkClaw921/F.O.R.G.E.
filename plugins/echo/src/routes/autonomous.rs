@@ -215,11 +215,42 @@ async fn run_now(
         .ok_or_else(|| ApiError(StatusCode::SERVICE_UNAVAILABLE, "host adapter not set".into()))?;
 
     let task_id = task.id.clone();
-    let state_clone = state.clone();
-    tokio::spawn(async move {
-        if let Err(e) = runner::run_task(state_clone, host, task).await {
-            tracing::warn!(task_id, error = %e, "run-now: run_task failed");
+
+    // Анти-дубль: атомарно проверяем и резервируем task_id в общем
+    // RunningSet (общий со scheduler-tick'ом через EchoState). Если задача
+    // уже исполняется (tick'ом или предыдущим run-now) — не спавним второй
+    // параллельный run, возвращаем spawned=false.
+    {
+        let mut set = state.running_tasks.lock().await;
+        if set.contains(&task_id) {
+            tracing::debug!(task_id = %task_id, "run-now: task already running, skip duplicate");
+            return Ok(Json(serde_json::json!({
+                "ok": true,
+                "task_id": id,
+                "spawned": false,
+                "reason": "already_running",
+            })));
         }
+        set.insert(task_id.clone());
+    }
+
+    let state_clone = state.clone();
+    let running_state = state.clone();
+    let tid = task_id.clone();
+    tokio::spawn(async move {
+        // catch_unwind: panic внутри run_task не должна оставить task_id в
+        // RunningSet навсегда (см. forge-1y9z) — иначе задача залипнет.
+        use futures_util::FutureExt;
+        let res = std::panic::AssertUnwindSafe(runner::run_task(state_clone, host, task))
+            .catch_unwind()
+            .await;
+        match res {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => tracing::warn!(task_id = %tid, error = %e, "run-now: run_task failed"),
+            Err(_panic) => tracing::error!(task_id = %tid, "run-now: run_task PANICKED — task unblocked"),
+        }
+        // Снимаем резерв всегда (включая panic-путь через catch_unwind).
+        running_state.running_tasks.lock().await.remove(&tid);
     });
 
     Ok(Json(serde_json::json!({

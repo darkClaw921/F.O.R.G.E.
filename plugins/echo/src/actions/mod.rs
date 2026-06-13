@@ -87,6 +87,16 @@ impl Action {
             Action::Prompt { id, .. } | Action::System { id, .. } => id,
         }
     }
+    /// Перезаписывает id (consume + return). Используется при регистрации в
+    /// [`crate::state::EchoState::register_actions`] для замены LLM-сгенери­
+    /// рованного id (который может коллизить между сообщениями) на серверный
+    /// UUID — гарантия глобальной уникальности в action_registry.
+    pub fn with_id(mut self, new_id: String) -> Self {
+        match &mut self {
+            Action::Prompt { id, .. } | Action::System { id, .. } => *id = new_id,
+        }
+        self
+    }
     pub fn label(&self) -> &str {
         match self {
             Action::Prompt { label, .. } | Action::System { label, .. } => label,

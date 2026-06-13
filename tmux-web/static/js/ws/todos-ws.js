@@ -20,21 +20,32 @@ function sessionPathOrNull() {
     return sess && sess.path ? sess.path : null;
 }
 
+// Epoch-счётчик: при быстром переключении сессий запросы перекрываются, и
+// поздний ответ старого запроса мог перезатереть todos данными чужого path.
+// Запоминаем epoch и path на входе и сверяем перед записью в state.
+let _fetchTodosEpoch = 0;
 export async function fetchTodos(path) {
+    const epoch = ++_fetchTodosEpoch;
     const p = path || currentTodosPath();
     try {
         const url = p ? '/api/todos?path=' + encodeURIComponent(p) : '/api/todos';
         const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        // Ответ устарел (ушёл более свежий fetch или сменился path) — игнор.
+        if (epoch !== _fetchTodosEpoch || p !== (path || currentTodosPath())) return;
         if (!r.ok) {
+            // Транзиентная HTTP-ошибка не должна стирать список: сохраняем
+            // последний снапшот.
             console.warn('GET /api/todos failed:', r.status);
-            state.todosData = [];
+            state.todosData = state.todosData || [];
             renderTasks();
             return;
         }
         const data = await r.json();
+        if (epoch !== _fetchTodosEpoch) return; // повторная сверка после await json()
         state.todosData = Array.isArray(data) ? data : [];
         renderTasks();
     } catch (e) {
+        if (epoch !== _fetchTodosEpoch) return;
         console.warn('fetchTodos failed', e);
         state.todosData = state.todosData || [];
         renderTasks();

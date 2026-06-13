@@ -187,7 +187,15 @@ async fn handle_socket(socket: WebSocket, state: Arc<EchoState>, conversation_id
                         }
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                        tracing::warn!(skipped = n, conversation_id, "echo_ws: broadcast lagged, dropping events");
+                        // Этот subscriber отстал и пропустил n событий (медленный
+                        // клиент / burst чанков обогнал буфер на 256). Раньше мы
+                        // молча роняли события → клиент видел оборванный/неполный
+                        // ответ навсегда. Теперь шлём Resync — клиент перечитает
+                        // переписку через REST и восстановит целостность.
+                        tracing::warn!(skipped = n, conversation_id, "echo_ws: broadcast lagged, sending resync");
+                        if send_server_msg(&ws_tx, &ServerMsg::Resync).await.is_err() {
+                            break;
+                        }
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => {
                         tracing::debug!(conversation_id, "echo_ws: broadcast closed");
@@ -430,16 +438,40 @@ async fn run_user_message(
     let mut assistant_text = String::new();
     let mut final_usage = crate::claude::events::Usage::default();
     let mut had_result = false;
+    let mut had_error = false;
 
     while let Some(ev) = rx.recv().await {
         match &ev {
             ClaudeEvent::TextDelta { text } => assistant_text.push_str(text),
-            ClaudeEvent::Result { usage, .. } => {
+            ClaudeEvent::Result { usage, is_error, .. } => {
                 final_usage = usage.clone();
                 had_result = true;
+                // Result с is_error — это тоже ошибка для клиента.
+                if *is_error {
+                    had_error = true;
+                    let err = ServerMsg::Error {
+                        code: "claude_error".into(),
+                        message: "Claude finished with an error result".into(),
+                    };
+                    let _ = state.broadcast.send(ServerEvent::to_conversation(
+                        conversation_id.clone(),
+                        err,
+                    ));
+                }
             }
             ClaudeEvent::Error { message } => {
                 tracing::warn!(run_id, %message, "stream error event");
+                had_error = true;
+                // Раньше ошибка только логировалась → клиент молча видел
+                // пустой ответ. Теперь явно шлём ServerMsg::Error.
+                let err = ServerMsg::Error {
+                    code: "claude_error".into(),
+                    message: message.clone(),
+                };
+                let _ = state.broadcast.send(ServerEvent::to_conversation(
+                    conversation_id.clone(),
+                    err,
+                ));
             }
             _ => {}
         }
@@ -459,25 +491,38 @@ async fn run_user_message(
     }
 
     // 4) Финализация: insert assistant + stats.
-    let inserted_id = match messages::insert(
-        &state.db,
-        &conversation_id,
-        "assistant",
-        &assistant_text,
-        None,
-        None,
-        final_usage.input_tokens as i64,
-        final_usage.output_tokens as i64,
-        final_usage.cache_creation_input_tokens as i64,
-        final_usage.cache_read_input_tokens as i64,
-    )
-    .await
-    {
-        Ok(m) => m.id,
-        Err(e) => {
-            tracing::error!(error = %e, "run_user_message: insert assistant failed");
-            String::new()
+    //
+    // Не пишем пустой assistant-message, если ничего не пришло (текст пуст И
+    // не было финального result-event'а). Это случай оборванного/ошибочного
+    // стрима (Error без текста, kill по таймауту): раньше в БД оседала пустая
+    // assistant-запись, замусоривая историю чата. Клиент уже получил
+    // ServerMsg::Error выше. Если текст есть ИЛИ был result (даже пустой,
+    // но валидный финал) — сохраняем как обычно.
+    let should_persist = !assistant_text.is_empty() || had_result;
+    let inserted_id = if should_persist {
+        match messages::insert(
+            &state.db,
+            &conversation_id,
+            "assistant",
+            &assistant_text,
+            None,
+            None,
+            final_usage.input_tokens as i64,
+            final_usage.output_tokens as i64,
+            final_usage.cache_creation_input_tokens as i64,
+            final_usage.cache_read_input_tokens as i64,
+        )
+        .await
+        {
+            Ok(m) => m.id,
+            Err(e) => {
+                tracing::error!(error = %e, "run_user_message: insert assistant failed");
+                String::new()
+            }
         }
+    } else {
+        tracing::debug!(run_id, had_error, "run_user_message: empty stream, skipping assistant insert");
+        String::new()
     };
     let _ = chats::touch_updated(&state.db, &conversation_id).await;
 
@@ -678,6 +723,7 @@ mod tests {
         );
         assert!(event_to_chunk_kind(&ClaudeEvent::Result {
             usage: Default::default(),
+            is_error: false,
             raw_json: serde_json::Value::Null
         })
         .is_none());

@@ -74,6 +74,13 @@ pub const DEFAULT_AUTONOMOUS_MAX_TOKENS_PER_DAY: u64 = 200_000;
 /// Дефолтный rate-limit на user_message — 30 сообщений в минуту на WS.
 pub const DEFAULT_USER_MESSAGE_RATE_LIMIT_PER_MIN: u32 = 30;
 
+/// Дефолтный таймаут на один Claude-run (чтение стрима stdout), в секундах.
+/// Зависший CLI держит permit семафора и без таймаута выедает все
+/// `max_parallel_runs` слотов, останавливая чат, автономные задачи, next_step
+/// и memory. 300s = 5 минут — с запасом для длинных агентных прогонов, но
+/// гарантированно освобождает слот при зависании. 0 → таймаут отключён.
+pub const DEFAULT_RUN_TIMEOUT_SECS: u64 = 300;
+
 /// Полная конфигурация плагина Echo.
 ///
 /// Cheap-clonable (поля по значению). Передаётся в [`crate::init`] вместо
@@ -106,6 +113,11 @@ pub struct EchoConfig {
     /// 0 → лимит отключен (используется в тестах).
     #[serde(default = "default_user_message_rate_limit")]
     pub user_message_rate_limit_per_min: u32,
+    /// Таймаут на один Claude-run (чтение стрима), в секундах. 0 → отключён.
+    /// При превышении spawned-таска убивает дочерний процесс (`child.kill()`)
+    /// и закрывает канал, освобождая permit семафора.
+    #[serde(default = "default_run_timeout_secs")]
+    pub run_timeout_secs: u64,
 }
 
 fn default_max_parallel_runs() -> usize {
@@ -128,6 +140,10 @@ fn default_user_message_rate_limit() -> u32 {
     DEFAULT_USER_MESSAGE_RATE_LIMIT_PER_MIN
 }
 
+fn default_run_timeout_secs() -> u64 {
+    DEFAULT_RUN_TIMEOUT_SECS
+}
+
 impl Default for EchoConfig {
     fn default() -> Self {
         Self {
@@ -138,6 +154,7 @@ impl Default for EchoConfig {
             capture_lines: default_capture_lines(),
             autonomous_max_tokens_per_day: default_autonomous_cap(),
             user_message_rate_limit_per_min: default_user_message_rate_limit(),
+            run_timeout_secs: default_run_timeout_secs(),
         }
     }
 }
@@ -229,6 +246,12 @@ impl EchoConfig {
             match v.parse::<u32>() {
                 Ok(n) => self.user_message_rate_limit_per_min = n,
                 Err(_) => tracing::warn!(value = %v, "FORGE_ECHO_USER_MESSAGE_RATE_LIMIT_PER_MIN: not a u32, keeping {}", self.user_message_rate_limit_per_min),
+            }
+        }
+        if let Ok(v) = std::env::var("FORGE_ECHO_RUN_TIMEOUT_SECS") {
+            match v.parse::<u64>() {
+                Ok(n) => self.run_timeout_secs = n,
+                Err(_) => tracing::warn!(value = %v, "FORGE_ECHO_RUN_TIMEOUT_SECS: not a u64, keeping {}", self.run_timeout_secs),
             }
         }
     }

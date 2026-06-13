@@ -59,7 +59,28 @@ use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode as Tungst
 use tokio_tungstenite::tungstenite::protocol::CloseFrame as TungsteniteCloseFrame;
 use tokio_tungstenite::tungstenite::Message as TungsteniteMessage;
 
-use crate::remotes::RemoteServerStore;
+use crate::remotes::{RemoteServer, RemoteServerStore};
+
+/// Разрешает `server_id` в owned-копию [`RemoteServer`] под КОРОТКИМ read-lock.
+///
+/// `tokio::sync::RwLock` справедлив (FIFO): если read-guard `state.remotes`
+/// удерживается на всё время сетевого запроса или жизни proxy-WS, то любой
+/// write (POST/PATCH/DELETE `/api/remote-servers`) встаёт в очередь и блокирует
+/// все последующие read/WS → deadlock на «живой» remote-вкладке. Поэтому caller
+/// должен вызвать `resolve_server`, получить владеемую копию `{ id, url, token }`
+/// и дропнуть guard ДО передачи в [`proxy_request`] / [`proxy_websocket`].
+///
+/// Возвращает `Err(ProxyError::UnknownServer)`, если записи нет в реестре —
+/// caller сам решает, как доставить ошибку (HTTP 404 или закрытие WS).
+pub fn resolve_server(
+    store: &RemoteServerStore,
+    server_id: &str,
+) -> Result<RemoteServer, ProxyError> {
+    store
+        .get(server_id)
+        .cloned()
+        .ok_or_else(|| ProxyError::UnknownServer(server_id.to_string()))
+}
 
 /// Ошибки прокси-прохода.
 ///
@@ -153,25 +174,26 @@ impl From<reqwest::Error> for ProxyError {
 /// заголовок, прилетающий из реестра. `User-Agent` / `Accept` reqwest ставит
 /// сам по умолчанию.
 pub async fn proxy_request(
-    store: &RemoteServerStore,
+    server: &RemoteServer,
     client: &Client,
-    server_id: &str,
     method: Method,
     path: &str,
     query: &str,
     content_type: Option<&str>,
     body: Option<Bytes>,
 ) -> Result<(StatusCode, HeaderMap, Bytes), ProxyError> {
-    // 1) Достать url+token. Read-lock на store снимаем дальше по стеку
-    //    (вызов делается под `state.remotes.read().await`).
-    let (base_url, token) = match store.get(server_id) {
-        Some(s) => (s.url.clone(), s.token.clone()),
-        None => return Err(ProxyError::UnknownServer(server_id.to_string())),
-    };
+    // 1) url+token уже разрешены caller'ом из реестра ПОД КОРОТКИМ read-lock,
+    //    который дропнут до этого сетевого вызова (см. `resolve_server`).
+    //    Это исключает удержание read-guard `state.remotes` на всё время
+    //    запроса и связанный с этим deadlock на write (POST/PATCH/DELETE
+    //    /api/remote-servers встаёт в FIFO-очередь RwLock).
+    let base_url = &server.url;
+    let token = &server.token;
+    let server_id = server.id.as_str();
 
     // 2) Собрать target URL.
     let mut url = String::with_capacity(base_url.len() + path.len() + query.len() + 1);
-    url.push_str(&base_url);
+    url.push_str(base_url);
     if !path.starts_with('/') {
         url.push('/');
     }
@@ -225,11 +247,15 @@ pub async fn proxy_request(
             "remote_proxy: upstream non-2xx"
         );
     }
+    // Дополнительные hop-by-hop заголовки, перечисленные в `Connection`
+    // (RFC 7230 §6.1): значение Connection задаёт имена полей, действительных
+    // только для текущего соединения — их прокси тоже обязан удалить.
+    let connection_listed = collect_connection_tokens(resp.headers());
     let mut headers = HeaderMap::new();
     for (k, v) in resp.headers().iter() {
         // Hop-by-hop заголовки отфильтровываем — они specific для конкретного
         // hop'а (например, transfer-encoding не имеет смысла за прокси).
-        if is_hop_by_hop(k) {
+        if is_hop_by_hop(k) || connection_listed.contains(&k.as_str().to_ascii_lowercase()) {
             continue;
         }
         headers.insert(k.clone(), v.clone());
@@ -247,6 +273,25 @@ pub async fn proxy_request(
         }
     };
     Ok((status, headers, body))
+}
+
+/// Собирает имена заголовков, перечисленные в `Connection` (RFC 7230 §6.1),
+/// в нижнем регистре. `Connection: close` / `keep-alive` — управляющие токены,
+/// не имена заголовков; они и так в статическом hop-by-hop списке и фильтруются
+/// отдельно, поэтому их включение здесь безвредно.
+fn collect_connection_tokens(headers: &HeaderMap) -> std::collections::HashSet<String> {
+    let mut set = std::collections::HashSet::new();
+    for v in headers.get_all("connection").iter() {
+        if let Ok(s) = v.to_str() {
+            for tok in s.split(',') {
+                let t = tok.trim().to_ascii_lowercase();
+                if !t.is_empty() {
+                    set.insert(t);
+                }
+            }
+        }
+    }
+    set
 }
 
 /// Hop-by-hop заголовки (RFC 7230 §6.1). Прокси не должен их форвардить.
@@ -393,24 +438,21 @@ fn tungstenite_to_axum(msg: TungsteniteMessage) -> AxumWsMessage {
 /// 5. Все ошибки прокси логируются через `tracing::trace!` — caller обычно
 ///    не различает их (WS уже closed на этой точке).
 pub async fn proxy_websocket(
-    store: &RemoteServerStore,
-    server_id: &str,
+    server: &RemoteServer,
     upstream_path: &str,
     query: &str,
     downstream: WebSocket,
 ) -> Result<(), ProxyError> {
-    // 1) Достать URL и токен.
-    let (base_url, token) = match store.get(server_id) {
-        Some(s) => (s.url.clone(), s.token.clone()),
-        None => {
-            tracing::trace!(server_id, "proxy_websocket: unknown server");
-            close_downstream_with_error(downstream, 1011, "unknown remote server").await;
-            return Err(ProxyError::UnknownServer(server_id.to_string()));
-        }
-    };
+    // 1) url+token уже разрешены caller'ом из реестра под коротким read-lock,
+    //    дропнутым до этого вызова (см. `resolve_server`). Это исключает
+    //    удержание read-guard `state.remotes` на всё время жизни proxy-WS
+    //    сессии и связанный deadlock на write по реестру серверов.
+    let base_url = &server.url;
+    let token = &server.token;
+    let server_id = server.id.as_str();
 
     // 2) Сборка ws:// URL.
-    let ws_base = http_to_ws_url(&base_url);
+    let ws_base = http_to_ws_url(base_url);
     let mut url = String::with_capacity(ws_base.len() + upstream_path.len() + query.len() + 1);
     url.push_str(&ws_base);
     if !upstream_path.starts_with('/') {
@@ -429,7 +471,7 @@ pub async fn proxy_websocket(
     //    Для работы IntoClientRequest требуется правильно собрать минимум
     //    обязательных заголовков — проще всего использовать into_client_request()
     //    на URI и потом добавить наш Authorization.
-    let request = match build_upstream_request(&url, &token) {
+    let request = match build_upstream_request(&url, token) {
         Ok(req) => req,
         Err(e) => {
             tracing::trace!(server_id, url = %url, error = %e, "proxy_websocket: build_request failed");
@@ -702,6 +744,21 @@ mod tests {
         assert!(!is_hop_by_hop(&x_custom));
     }
 
+    #[test]
+    fn connection_listed_headers_collected_and_stripped() {
+        let mut h = HeaderMap::new();
+        h.insert("connection", HeaderValue::from_static("X-Foo, keep-alive"));
+        h.insert("x-foo", HeaderValue::from_static("secret"));
+        h.insert("content-type", HeaderValue::from_static("application/json"));
+        let tokens = collect_connection_tokens(&h);
+        assert!(tokens.contains("x-foo"));
+        assert!(tokens.contains("keep-alive"));
+        // x-foo, перечисленный в Connection, должен попасть под фильтр.
+        assert!(tokens.contains(&"x-foo".to_string()));
+        // content-type не указан → не в наборе.
+        assert!(!tokens.contains("content-type"));
+    }
+
     /// Smoke-test для `proxy_request`: достаём server из store с unknown-id
     /// и убеждаемся, что возвращается `ProxyError::UnknownServer`. Полный
     /// тест с реальным HTTP-сервером (mockito/wiremock) пока не делаем —
@@ -721,7 +778,7 @@ mod tests {
         ));
         let store = RemoteServerStore::load(PathBuf::from(&tmp)).unwrap();
         let client = Client::new();
-        let r = proxy_request(
+        let r = proxy_request_by_id(
             &store,
             &client,
             "ghost",
@@ -1109,6 +1166,24 @@ mod tests {
             .expect("reqwest client build")
     }
 
+    /// Тест-шим: резолвит `server_id` через `resolve_server` (как делают
+    /// продакшн-callers под коротким lock) и вызывает `proxy_request` с
+    /// владеемой копией сервера. Сохраняет старую эргономику тестов.
+    #[allow(clippy::too_many_arguments)]
+    async fn proxy_request_by_id(
+        store: &RemoteServerStore,
+        client: &Client,
+        server_id: &str,
+        method: Method,
+        path: &str,
+        query: &str,
+        content_type: Option<&str>,
+        body: Option<Bytes>,
+    ) -> Result<(StatusCode, HeaderMap, Bytes), ProxyError> {
+        let server = resolve_server(store, server_id)?;
+        proxy_request(&server, client, method, path, query, content_type, body).await
+    }
+
     #[tokio::test]
     async fn proxy_request_passes_200_ok() {
         use wiremock::matchers::{method, path};
@@ -1123,7 +1198,7 @@ mod tests {
 
         let (store, id) = make_store_with("Mock", &mock.uri(), "tok");
         let client = make_test_client();
-        let (status, _h, body) = proxy_request(
+        let (status, _h, body) = proxy_request_by_id(
             &store,
             &client,
             &id,
@@ -1152,7 +1227,7 @@ mod tests {
 
         let (store, id) = make_store_with("Mock", &mock.uri(), "tok");
         let client = make_test_client();
-        let (status, _h, body) = proxy_request(
+        let (status, _h, body) = proxy_request_by_id(
             &store,
             &client,
             &id,
@@ -1181,7 +1256,7 @@ mod tests {
 
         let (store, id) = make_store_with("Mock", &mock.uri(), "tok");
         let client = make_test_client();
-        let (status, _h, body) = proxy_request(
+        let (status, _h, body) = proxy_request_by_id(
             &store,
             &client,
             &id,
@@ -1210,7 +1285,7 @@ mod tests {
 
         let (store, id) = make_store_with("Mock", &mock.uri(), "tok");
         let client = make_test_client();
-        let (status, _h, body) = proxy_request(
+        let (status, _h, body) = proxy_request_by_id(
             &store,
             &client,
             &id,
@@ -1241,7 +1316,7 @@ mod tests {
 
         let (store, id) = make_store_with("Mock", &mock.uri(), "tok");
         let client = make_test_client(); // 500ms timeout
-        let r = proxy_request(
+        let r = proxy_request_by_id(
             &store,
             &client,
             &id,
@@ -1273,7 +1348,7 @@ mod tests {
 
         let (store, id) = make_store_with("Dead", &dead_url, "tok");
         let client = make_test_client();
-        let r = proxy_request(
+        let r = proxy_request_by_id(
             &store,
             &client,
             &id,
@@ -1302,7 +1377,7 @@ mod tests {
             "tok",
         );
         let client = make_test_client();
-        let r = proxy_request(
+        let r = proxy_request_by_id(
             &store,
             &client,
             &id,
@@ -1337,7 +1412,7 @@ mod tests {
 
         let (store, id) = make_store_with("Mock", &mock.uri(), "tok");
         let client = make_test_client();
-        let (status, headers, body) = proxy_request(
+        let (status, headers, body) = proxy_request_by_id(
             &store,
             &client,
             &id,
@@ -1375,7 +1450,7 @@ mod tests {
 
         let (store, id) = make_store_with("Mock", &mock.uri(), "tok");
         let client = make_test_client();
-        let (status, _h, body) = proxy_request(
+        let (status, _h, body) = proxy_request_by_id(
             &store,
             &client,
             &id,
@@ -1412,7 +1487,7 @@ mod tests {
 
         let (store, id) = make_store_with("Mock", &mock.uri(), "tok");
         let client = make_test_client();
-        let (status, headers, _body) = proxy_request(
+        let (status, headers, _body) = proxy_request_by_id(
             &store,
             &client,
             &id,
@@ -1453,7 +1528,7 @@ mod tests {
 
         let (store, id) = make_store_with("Mock", &mock.uri(), "server-secret-XYZ");
         let client = make_test_client();
-        let (status, _h, body) = proxy_request(
+        let (status, _h, body) = proxy_request_by_id(
             &store, &client, &id, Method::GET, "/protected", "", None, None,
         )
         .await
@@ -1499,13 +1574,13 @@ mod tests {
         let s_b = store.add("B", mock_b.uri(), "token-B").unwrap();
 
         let client = make_test_client();
-        let (_, _, body_a) = proxy_request(
+        let (_, _, body_a) = proxy_request_by_id(
             &store, &client, &s_a.id, Method::GET, "/x", "", None, None,
         )
         .await
         .unwrap();
         assert_eq!(&body_a[..], b"A");
-        let (_, _, body_b) = proxy_request(
+        let (_, _, body_b) = proxy_request_by_id(
             &store, &client, &s_b.id, Method::GET, "/x", "", None, None,
         )
         .await
@@ -1541,7 +1616,7 @@ mod tests {
 
         let (store, id) = make_store_with("Mock", &mock.uri(), "tok");
         let client = make_test_client();
-        let _ = proxy_request(
+        let _ = proxy_request_by_id(
             &store, &client, &id, Method::GET, "/peek", "", None, None,
         )
         .await
@@ -1592,7 +1667,7 @@ mod tests {
 
         let (store, id) = make_store_with("Mock", &mock.uri(), "tok");
         let client = make_test_client();
-        let (status, headers, _body) = proxy_request(
+        let (status, headers, _body) = proxy_request_by_id(
             &store, &client, &id, Method::GET, "/resp", "", None, None,
         )
         .await
@@ -1639,7 +1714,7 @@ mod tests {
         let (store, id) = make_store_with("Mock", &mock.uri(), "tok");
         let client = make_test_client();
         let body = Bytes::from_static(br#"{"hello":"world"}"#);
-        let (status, _h, _b) = proxy_request(
+        let (status, _h, _b) = proxy_request_by_id(
             &store,
             &client,
             &id,
@@ -1677,7 +1752,7 @@ mod tests {
             .build()
             .unwrap();
         let (store, id) = make_store_with("Mock", &mock.uri(), "tok");
-        let (status, _h, body) = proxy_request(
+        let (status, _h, body) = proxy_request_by_id(
             &store,
             &client,
             &id,

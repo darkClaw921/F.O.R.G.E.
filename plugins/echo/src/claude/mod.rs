@@ -27,6 +27,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
@@ -65,11 +66,16 @@ impl RunRequest {
 }
 
 /// Результат `one_shot` — собранный текст + итоговый usage + сырой json для аудита.
+///
+/// `is_error` — финальный `result`-event пришёл с `is_error:true`/`subtype:error_*`.
+/// Caller'ы (scheduler::runner) должны трактовать такой run как неуспешный
+/// (status=error), даже если текст частично собран.
 #[derive(Debug, Clone, Default)]
 pub struct RunResult {
     pub text: String,
     pub usage: Usage,
     pub raw: serde_json::Value,
+    pub is_error: bool,
 }
 
 /// Фасад над Claude CLI: spawn, stream, cancel.
@@ -80,6 +86,11 @@ pub struct ClaudeRunner {
     cli_path: PathBuf,
     semaphore: Arc<Semaphore>,
     running: Arc<Mutex<HashMap<RunId, AbortHandle>>>,
+    /// Таймаут на один run (чтение стрима stdout). `Duration::ZERO` → отключён.
+    /// При срабатывании spawned-таска делает `child.kill()` и закрывает канал,
+    /// освобождая permit семафора (см. [`ClaudeRunner::stream`]). Это закрывает
+    /// разом все пути run'а: чат, автономные задачи, next_step, memory.
+    run_timeout: Duration,
 }
 
 impl ClaudeRunner {
@@ -98,7 +109,16 @@ impl ClaudeRunner {
             cli_path,
             semaphore: Arc::new(Semaphore::new(permits)),
             running: Arc::new(Mutex::new(HashMap::new())),
+            run_timeout: Duration::from_secs(crate::config::DEFAULT_RUN_TIMEOUT_SECS),
         }
+    }
+
+    /// Переопределяет таймаут на один run. `secs == 0` → таймаут отключён.
+    /// Используется в [`crate::init_with_config`] для проброса
+    /// `EchoConfig::run_timeout_secs`.
+    pub fn with_run_timeout(mut self, secs: u64) -> Self {
+        self.run_timeout = Duration::from_secs(secs);
+        self
     }
 
     /// Сколько свободных permit'ов сейчас (для тестов и метрик).
@@ -122,11 +142,46 @@ impl ClaudeRunner {
         let (tx, rx) = mpsc::channel::<ClaudeEvent>(64);
         let cli_path = self.cli_path.clone();
         let semaphore = self.semaphore.clone();
-        let running = self.running.clone();
+        let run_timeout = self.run_timeout;
         let run_id = req.run_id.clone();
         let run_id_for_map = run_id.clone();
 
+        // Снятие регистрации делаем через drop-guard: он срабатывает на ЛЮБОМ
+        // выходе из таски — нормальное завершение, ранний `return` (spawn/pipe
+        // ошибки), таймаут, panic, abort (cancel/shutdown). Это закрывает течь,
+        // когда run завершался раньше, чем мы успевали удалить запись.
+        struct RunGuard {
+            running: Arc<Mutex<HashMap<RunId, AbortHandle>>>,
+            run_id: RunId,
+        }
+        impl Drop for RunGuard {
+            fn drop(&mut self) {
+                let running = self.running.clone();
+                let run_id = std::mem::take(&mut self.run_id);
+                // Lock — async, в Drop недоступен .await: снимаем регистрацию в
+                // detached-таске. try_lock покрывает быстрый путь без spawn.
+                let removed = match running.try_lock() {
+                    Ok(mut map) => {
+                        map.remove(&run_id);
+                        true
+                    }
+                    Err(_) => false,
+                };
+                if !removed {
+                    tokio::spawn(async move {
+                        running.lock().await.remove(&run_id);
+                    });
+                }
+            }
+        }
+
+        let guard_running = self.running.clone();
+        let guard_run_id = run_id.clone();
         let handle = tokio::spawn(async move {
+            let _guard = RunGuard {
+                running: guard_running,
+                run_id: guard_run_id,
+            };
             // Permit удерживаем на всё время run'а — Semaphore ограничивает
             // ОДНОВРЕМЕННЫЕ запуски, что и требовалось.
             let _permit = match semaphore.acquire_owned().await {
@@ -195,51 +250,133 @@ impl ClaudeRunner {
             };
 
             // Stderr читаем в отдельной таске для логирования (не emit'им как
-            // ClaudeEvent::Error — там бывают noisy warnings).
-            if let Some(stderr) = child.stderr.take() {
+            // ClaudeEvent::Error — там бывают noisy warnings). Дополнительно
+            // храним последние строки в кольцевом буфере: если CLI упал, ничего
+            // не написав в stdout (пустой результат), мы приложим этот хвост к
+            // финальному Error — раньше stderr тихо терялся в debug-логе.
+            const STDERR_TAIL_MAX: usize = 20;
+            let stderr_tail: Arc<Mutex<std::collections::VecDeque<String>>> =
+                Arc::new(Mutex::new(std::collections::VecDeque::with_capacity(
+                    STDERR_TAIL_MAX,
+                )));
+            let stderr_task = child.stderr.take().map(|stderr| {
                 let run_id_for_log = run_id.clone();
+                let tail = stderr_tail.clone();
                 tokio::spawn(async move {
                     let mut lines = BufReader::new(stderr).lines();
                     while let Ok(Some(line)) = lines.next_line().await {
                         tracing::debug!(run_id = %run_id_for_log, stderr = %line, "claude stderr");
+                        let mut buf = tail.lock().await;
+                        if buf.len() == STDERR_TAIL_MAX {
+                            buf.pop_front();
+                        }
+                        buf.push_back(line);
                     }
-                });
-            }
+                })
+            });
 
             let mut reader = BufReader::new(stdout).lines();
-            loop {
-                match reader.next_line().await {
-                    Ok(Some(line)) => {
-                        if let Some(ev) = events::parse_line(&line) {
-                            if tx.send(ev).await.is_err() {
-                                // Потребитель ушёл — убиваем процесс.
-                                tracing::debug!(run_id = %run_id, "receiver dropped, killing child");
-                                let _ = child.kill().await;
-                                break;
+            // Был ли получен хоть один полезный event из stdout. Если нет —
+            // run явно провалился, и stderr-хвост станет телом Error.
+            let mut emitted_any = false;
+            let mut timed_out = false;
+            // Чтение всего стрима оборачиваем в общий таймаут: зависший CLI
+            // (нет EOF, нет новых строк) иначе держал бы permit семафора
+            // навсегда и выедал все слоты max_parallel_runs. При срабатывании
+            // таймаута убиваем дочерний процесс и эмитим Error.
+            let read_loop = async {
+                loop {
+                    match reader.next_line().await {
+                        Ok(Some(line)) => {
+                            if let Some(ev) = events::parse_line(&line) {
+                                emitted_any = true;
+                                if tx.send(ev).await.is_err() {
+                                    // Потребитель ушёл — убиваем процесс.
+                                    tracing::debug!(run_id = %run_id, "receiver dropped, killing child");
+                                    break;
+                                }
                             }
                         }
+                        Ok(None) => break, // EOF
+                        Err(e) => {
+                            tracing::warn!(error = %e, "claude stdout read error");
+                            break;
+                        }
                     }
-                    Ok(None) => break, // EOF
-                    Err(e) => {
-                        tracing::warn!(error = %e, "claude stdout read error");
-                        break;
+                }
+            };
+
+            if run_timeout.is_zero() {
+                read_loop.await;
+            } else {
+                match tokio::time::timeout(run_timeout, read_loop).await {
+                    Ok(()) => {}
+                    Err(_elapsed) => {
+                        timed_out = true;
+                        let tail = {
+                            let buf = stderr_tail.lock().await;
+                            buf.iter().cloned().collect::<Vec<_>>().join("\n")
+                        };
+                        tracing::warn!(
+                            run_id = %run_id,
+                            timeout_secs = run_timeout.as_secs(),
+                            "claude run exceeded run_timeout, killing child"
+                        );
+                        let mut message = format!(
+                            "run timed out after {}s",
+                            run_timeout.as_secs()
+                        );
+                        if !tail.is_empty() {
+                            message.push_str("; stderr: ");
+                            message.push_str(&tail);
+                        }
+                        let _ = tx.send(ClaudeEvent::Error { message }).await;
                     }
                 }
             }
 
+            // Run завершился (EOF), но stdout не дал ни одного event'а —
+            // CLI почти наверняка упал. Прикладываем хвост stderr к Error,
+            // иначе caller получит пустой результат без диагностики.
+            if !emitted_any && !timed_out {
+                // Дождаться, пока stderr-таска дочитает буфер (CLI уже на EOF
+                // stdout, stderr вот-вот закроется). Короткий таймаут чтобы не
+                // зависнуть, если stderr почему-то не закрывается.
+                if let Some(t) = stderr_task {
+                    let _ = tokio::time::timeout(Duration::from_secs(2), t).await;
+                }
+                let tail = {
+                    let buf = stderr_tail.lock().await;
+                    buf.iter().cloned().collect::<Vec<_>>().join("\n")
+                };
+                let message = if tail.is_empty() {
+                    "claude run produced no output (empty result, no stderr)".to_string()
+                } else {
+                    format!("claude run produced no output; stderr: {tail}")
+                };
+                tracing::warn!(run_id = %run_id, "claude run empty; emitting stderr tail");
+                let _ = tx.send(ClaudeEvent::Error { message }).await;
+            }
+
+            // Убиваем процесс безусловно после выхода из read-loop: либо он уже
+            // завершился (kill — no-op), либо завис/потребитель ушёл/таймаут.
+            let _ = child.kill().await;
             // Дождаться завершения процесса (или kill); игнорируем код выхода —
             // для callee важны только события.
             let _ = child.wait().await;
 
-            // Снимаем регистрацию.
-            running.lock().await.remove(&req.run_id);
+            // Снятие регистрации — через `_guard` на выходе из таски.
         });
 
-        let abort_handle = handle.abort_handle();
-        self.running
-            .lock()
-            .await
-            .insert(run_id_for_map, abort_handle);
+        // Регистрируем abort-handle ДО того как таска сможет снять регистрацию:
+        // держим lock на `running` весь insert. Drop-guard внутри таски лочит
+        // тот же Mutex для удаления, поэтому пока мы держим guard здесь, таска
+        // не может выполнить cleanup раньше insert'а — гонка «remove до insert»
+        // исключена. После выхода из этого scope lock освобождается.
+        {
+            let mut map = self.running.lock().await;
+            map.insert(run_id_for_map, handle.abort_handle());
+        }
 
         rx
     }
@@ -252,14 +389,16 @@ impl ClaudeRunner {
         let mut usage = Usage::default();
         let mut raw = serde_json::Value::Null;
         let mut last_error: Option<String> = None;
+        let mut result_is_error = false;
         while let Some(ev) = rx.recv().await {
             match ev {
                 ClaudeEvent::TextDelta { text: t } => text.push_str(&t),
                 ClaudeEvent::Thinking { .. } => {}
                 ClaudeEvent::ToolUse { .. } => {}
-                ClaudeEvent::Result { usage: u, raw_json } => {
+                ClaudeEvent::Result { usage: u, is_error, raw_json } => {
                     usage = u;
                     raw = raw_json;
+                    result_is_error = is_error;
                 }
                 ClaudeEvent::Error { message } => {
                     last_error = Some(message);
@@ -272,7 +411,13 @@ impl ClaudeRunner {
                 anyhow::bail!("claude run error: {msg}");
             }
         }
-        Ok(RunResult { text, usage, raw })
+        // Финальный result с is_error: текст мог собраться частично, но run
+        // неуспешен. Если текста нет — это явный провал, bail; иначе вернём
+        // RunResult с is_error=true, чтобы caller записал status=error.
+        if result_is_error && text.is_empty() {
+            anyhow::bail!("claude run finished with error result");
+        }
+        Ok(RunResult { text, usage, raw, is_error: result_is_error })
     }
 
     /// Прерывает run по id. Возвращает `true` если run был найден и aborted.
@@ -358,6 +503,34 @@ printf '%s\n' '{"type":"result","usage":{"input_tokens":10,"output_tokens":2}}'
                 assert_eq!(usage.output_tokens, 2);
             }
             other => panic!("expected Result, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn empty_stdout_emits_error_with_stderr_tail() {
+        let dir = tempfile::tempdir().unwrap();
+        // CLI пишет диагностику в stderr и выходит, ничего не дав в stdout.
+        let script = r#"#!/bin/sh
+echo "fatal: model overloaded" 1>&2
+echo "retry later" 1>&2
+exit 1
+"#;
+        let cli = write_mock_cli(&dir, script);
+        let runner = ClaudeRunner::new(cli, 4);
+        let mut rx = runner.stream(RunRequest::new("x")).await;
+        let mut events = Vec::new();
+        while let Some(ev) = rx.recv().await {
+            events.push(ev);
+        }
+        assert_eq!(events.len(), 1, "expected single Error, got {events:?}");
+        match &events[0] {
+            ClaudeEvent::Error { message } => {
+                assert!(
+                    message.contains("stderr") && message.contains("model overloaded"),
+                    "stderr tail missing: {message}"
+                );
+            }
+            other => panic!("expected Error, got {other:?}"),
         }
     }
 

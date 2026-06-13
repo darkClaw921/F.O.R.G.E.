@@ -126,6 +126,12 @@ pub enum ServerMsg {
     },
     /// Серверная ошибка (например, run failed, model unavailable).
     Error { code: String, message: String },
+    /// Сигнал клиенту: WS-подписчик отстал (broadcast Lagged) и пропустил
+    /// часть событий (стрим-чанки/done). Клиент должен ресинхронизировать
+    /// состояние переписки через `GET /api/echo/conversations/<id>/messages`,
+    /// а не полагаться на потерянные realtime-чанки. `conversation_id` несёт
+    /// конверт `ServerEvent` (None = глобальный resync).
+    Resync,
     /// Heartbeat-ping; клиент должен ответить `pong`.
     Ping,
     /// Фича «Следующий шаг» — изменилось состояние предложения для сессии.

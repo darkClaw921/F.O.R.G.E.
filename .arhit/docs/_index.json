@@ -3962,5 +3962,93 @@
     "content": "Хелпер фронтенда (tmux-web/static/js/tasks/crud.js). Сигнатура: withTaskPath(url, origin) -> string. Добавляет ?path=<cwd текущей сессии> (sessionCwdOrNull из ws/tasks-ws.js) к URL мутаций /api/tasks — только для origin='local'/falsy; для remote origin URL не трогается (remote-сервер резолвит свой путь сам, а apiFetch добавит ?server=). Если cwd нет (сессия не выбрана/без path) — URL без изменений, сервер фолбэкнется на active_path_tx (прежнее поведение).\n\nПрименяется во всех мутациях задач: createTask (POST /api/tasks), updateTask (PATCH), closeTask (DELETE, совместим с ?reason=), purgeTask (POST /purge), reopenTask (POST /reopen). Серверная пара — task_cwd (main.rs). Причина появления: баг clean-колонки — мутации шли в каталог запуска сервера, см. док task_cwd.",
     "createdAt": "2026-06-11T17:32:28.646Z",
     "updatedAt": "2026-06-11T17:32:28.646Z"
+  },
+  {
+    "element": "csrf_guard",
+    "path": "",
+    "type": "unknown",
+    "content": "Always-on anti-CSRF/drive-by middleware (tmux-web/src/auth.rs). Подключается в main.rs как внешний layer НЕЗАВИСИМО от remote/localhost режима (bearer_auth отсутствует в localhost). Защищает от drive-by RCE: 1) для /ws/* отвергает cross-origin WebSocket-апгрейд (Origin != Host) → 403, что закрывает атаку ws://127.0.0.1/ws/attach с вредоносного сайта; 2) для мутирующих /api/* (POST/PUT/PATCH/DELETE) требует same-origin Origin (если задан) и, при наличии тела, Content-Type: application/json (лишает атакующего 'простого запроса' без CORS-preflight). Хелперы: origin_authority (парсит host:port из Origin), is_same_origin (Origin==Host или Origin отсутствует), is_json_content_type, has_request_body (Content-Length>0 или Transfer-Encoding), is_mutating_method. Native-клиенты (CLI) без Origin пропускаются.",
+    "createdAt": "2026-06-11T21:11:34.172Z",
+    "updatedAt": "2026-06-11T21:11:34.172Z"
+  },
+  {
+    "element": "resolve_server",
+    "path": "",
+    "type": "unknown",
+    "content": "tmux-web/src/remote_proxy.rs. Резолвит server_id в owned-копию RemoteServer под КОРОТКИМ read-lock state.remotes. Введён чтобы устранить deadlock: tokio RwLock справедлив (FIFO), и долгоживущий read-guard (на всё время proxy-WS или сетевого запроса) блокировал любой write (POST/PATCH/DELETE /api/remote-servers) и за ним все новые read/WS. proxy_request и proxy_websocket теперь принимают &RemoteServer (owned-данные), а не &store+server_id; все call-sites (ws.rs attach/lazygit/lazydocker/telescope, ws_todos, ws_tasks, main.rs dispatch/tasks/healthz) сначала вызывают resolve_server под коротким guard, дропают guard и только потом делают сетевой вызов. Возвращает Err(ProxyError::UnknownServer) если записи нет.",
+    "createdAt": "2026-06-11T21:11:52.656Z",
+    "updatedAt": "2026-06-11T21:11:52.656Z"
+  },
+  {
+    "element": "ClaudeRunner",
+    "path": "",
+    "type": "unknown",
+    "content": "plugins/echo/src/claude/mod.rs. Фасад над Claude CLI (spawn/stream/cancel), cheap-clonable через Arc. Поля: cli_path, semaphore (ограничивает max_parallel одновременных run), running (HashMap run_id->AbortHandle), run_timeout (Duration, ZERO=отключён). new(cli, max_parallel) ставит run_timeout=DEFAULT_RUN_TIMEOUT_SECS(300). with_run_timeout(secs) переопределяет из EchoConfig.run_timeout_secs (вызывается в init_with_config). stream(): permit берётся внутри spawned-таски и держится весь run; read-loop чтения stdout обёрнут в tokio::time::timeout(run_timeout) — по таймауту child.kill()+ClaudeEvent::Error, что освобождает permit. Это закрывает разом все пути run'а (чат, autonomous, next_step, memory), т.к. все идут через stream(). Без таймаута зависший CLI выедал бы все слоты семафора.",
+    "createdAt": "2026-06-11T21:11:52.915Z",
+    "updatedAt": "2026-06-11T21:11:52.915Z"
+  },
+  {
+    "element": "EchoConfig",
+    "path": "",
+    "type": "unknown",
+    "content": "plugins/echo/src/config.rs. Полная конфигурация плагина Echo, cheap-clonable. Поля: cli_path, db_path, max_parallel_runs(4), default_model, capture_lines(200), autonomous_max_tokens_per_day(200K), user_message_rate_limit_per_min(30), run_timeout_secs(300, новое — таймаут на Claude-run). load(): defaults -> ~/.config/forge/echo.toml -> env FORGE_ECHO_* (CLI_PATH/DB_PATH/MAX_PARALLEL_RUNS/DEFAULT_MODEL/CAPTURE_LINES/AUTONOMOUS_MAX_TOKENS_PER_DAY/USER_MESSAGE_RATE_LIMIT_PER_MIN/RUN_TIMEOUT_SECS) -> validate_and_fix. ВАЖНО: main.rs теперь вызывает forge_echo::init_with_config(EchoConfig::load()) вместо init(EchoConfigStub::default()) — раньше echo.toml и env молча игнорировались.",
+    "createdAt": "2026-06-11T21:11:53.178Z",
+    "updatedAt": "2026-06-11T21:11:53.178Z"
+  },
+  {
+    "element": "bearer_auth",
+    "path": "",
+    "type": "unknown",
+    "content": "tmux-web/src/auth.rs. Bearer-аутентификация для remote-mode (auth_token=Some). При None — passthrough (localhost). Path-исключения: /healthz, /, статика. Для /ws/* принимает токен через ?token= (браузер не ставит headers на WS). Работает В ПАРЕ с csrf_guard, который подключён всегда и закрывает localhost-режим от drive-by.",
+    "createdAt": "2026-06-11T21:11:59.252Z",
+    "updatedAt": "2026-06-11T21:11:59.252Z"
+  },
+  {
+    "element": "EchoState",
+    "path": "",
+    "type": "unknown",
+    "content": "Глобальное состояние Echo-плагина (plugins/echo/src/state.rs). Cheap-clone обёртка над Arc/broadcast. Поля: host (OnceCell HostApi), broadcast (broadcast::Sender<ServerEvent>, буфер 1024 — увеличен с 256 чтобы burst стрим-чанков Claude не вызывал Lagged), db, runner (ClaudeRunner), workers, action_registry, next_steps, config, shutdown, running_tasks (Arc<Mutex<HashSet<String>>> — общий со scheduler RunningSet, защищает от двойного запуска автономной задачи из tick и из run-now). register_actions присваивает каждому action серверный UUID (Action::with_id) перед регистрацией, чтобы LLM-сгенерированные id (p1/s1) не коллизили в глобальном реестре.",
+    "createdAt": "2026-06-11T21:38:43.414Z",
+    "updatedAt": "2026-06-11T21:38:43.414Z"
+  },
+  {
+    "element": "code-review-fixes-phase2",
+    "path": "",
+    "type": "page",
+    "content": "Фаза 2 код-ревью фиксов (эпик forge-4wyq, 19 задач MEDIUM, 2026-06-11).\n\nBACKEND (tmux-web):\n- ws_tasks.rs: при None из notify_rx заменяем receiver на вечно-pending (mpsc+forget) — устранён busy-loop 100% CPU (forge-skde). Watcher стартует ДО snapshot (forge-3p1q).\n- ws_todos.rs: subscribe ДО snapshot — события в окне не теряются (forge-3p1q).\n- attention.rs: добавлен map.retain(live) в cleanup (forge-gt1k); info-логи (pane hash changed, indicator summary) понижены до debug (forge-06oe).\n- daemon.rs read_tail: seek от конца + растущий буфер вместо read_to_string (forge-06oe).\n- tmux.rs send_keys: добавлен '--' перед литералом (forge-mhx9).\n- main.rs urlencode_minimal: blocklist→allowlist (alnum/-/_/./~), '/'→%2F закрывает path-инъекцию (forge-vt68).\n- todos.rs/session_history.rs/notifier_config.rs/remotes.rs: fs::write вынесен за пределы lock (serialize под guard, write после drop) (forge-lce4).\n\nECHO PLUGIN:\n- db/repo/messages.rs list_by_session: ORDER BY created_at DESC,rowid DESC LIMIT + reverse → последние N сообщений (forge-ubyy).\n- scheduler+routes/autonomous.rs: RunningSet перенесён в EchoState; run_now проверяет анти-дубль; run_task в catch_unwind (forge-rkuo, forge-1y9z).\n- claude/events.rs: ClaudeEvent::Result.is_error (is_error/subtype=error_*); RunResult.is_error; runner финиширует error (forge-vh7y).\n- ws/mod.rs: Error/Result{is_error}→ServerMsg::Error клиенту; пустой assistant не пишется (forge-0ob8). Lagged→ServerMsg::Resync (forge-ji1b).\n- routes/next_step.rs send: требует активного предложения, отклоняет произвольный text (forge-4ww0).\n\nFRONTEND (static/js):\n- echo/main.js openChat: проверка activeConversationId после await (forge-cfm3); handler resync перечитывает переписку (forge-ji1b).\n- daily-summary.js: токен дня после await (forge-ey19).\n- core/markdown.js: isSafeUrl allowlist http/https/mailto, иначе текст (forge-t3ib).\n- settings/notifications-tab.js+modal.js: fetchNotifierConfig возвращает {ok,error}; при ошибке UI блокирует форму, Retry (forge-gwsr).",
+    "createdAt": "2026-06-11T21:39:00.120Z",
+    "updatedAt": "2026-06-11T21:39:00.120Z"
+  },
+  {
+    "element": "code-review-phase3-low",
+    "path": "",
+    "type": "page",
+    "content": "Phase 3 code-review fixes (LOW severity, эпик forge-4wyq). 17 задач.\n\nClaudeRunner.running (claude/mod.rs): AbortHandle вставляется под удержанием Mutex после spawn; RunGuard(Drop) снимает регистрацию на всех путях выхода таски (return/timeout/abort/panic). Гонка remove-до-insert исключена.\n\nparse_line stderr (claude/mod.rs): кольцевой буфер последних 20 строк stderr; при пустом stdout или таймауте Error содержит stderr-хвост.\n\nfind_due LIMIT (db/repo/autonomous.rs): FIND_DUE_LIMIT=64, пачковая обработка просроченных задач.\n\nsession_history cap (session_history.rs): MAX_HISTORY_ENTRIES=500, в snapshot() обрезаем по last_seen.\n\ndaemon PID-recycling (daemon.rs): pid-файл хранит '<pid> <start_time>'; process_start_time (macOS proc_pidinfo PROC_PIDTBSDINFO / Linux /proc/pid/stat field22); is_recorded_process_alive сверяет перед kill. Обратная совместимость со старым форматом.\n\nqr_print token masking (qr_print.rs): при не-TTY маскирует токен (mask_token_in_url) и не печатает QR. daemon.rs создаёт лог с 0600.\n\nsummarize_day (memory/mod.rs): global-ветка исключает __autonomous__/ чаты через substr(session_id,1,15).\n\nregister_worker (state.rs): async, берёт workers-lock напрямую; spawn_workers→async. Устранена гонка с shutdown_workers.\n\ngit --since (git.rs): format!('@{v}') явный unix-timestamp, унифицировано с echo_host.rs.\n\nnotifier reconcile (notifier.rs): на старте reconcile_wait_previous_on_startup сверяет last_promoted_open_id через 'br show'; закрытые offline задачи продвигают очередь.\n\nremote_proxy Connection (remote_proxy.rs): collect_connection_tokens парсит Connection-заголовок (RFC 7230), удаляет перечисленные хедеры.\n\nrestore_one_session (main.rs + tmux.rs): new_window_at/move_window воссоздают окна по явным оригинальным индексам (разрежённые раскладки 0,2,5).\n\nFrontend: epoch-счётчики в fetchGitCommits/fetchTasks/fetchTodos (stale-response гонки); fetchTasks/Todos сохраняют снапшот при HTTP-ошибке; switchSession fallback сохраняет origin; escapeText для issue.id и textContent для e.message; xterm завендорен в static/vendor/xterm/ вместо CDN.",
+    "createdAt": "2026-06-11T22:07:41.256Z",
+    "updatedAt": "2026-06-11T22:07:41.256Z"
+  },
+  {
+    "element": "new_window_at",
+    "path": "",
+    "type": "unknown",
+    "content": "tmux.rs: создаёт окно по явному индексу (tmux new-window -t session:index). Сохраняет оригинальные индексы окон при восстановлении сессии из истории. Caller обязан гарантировать свободный индекс.",
+    "createdAt": "2026-06-11T22:07:51.843Z",
+    "updatedAt": "2026-06-11T22:07:51.843Z"
+  },
+  {
+    "element": "reconcile_wait_previous_on_startup",
+    "path": "",
+    "type": "unknown",
+    "content": "notifier.rs: на старте notifier_loop сверяет каждую last_promoted_open_id через task_is_open (br show <id> --json); если задача закрыта пока notifier был offline — вызывает handle_task_closed, продвигая wait_previous-очередь. None (br недоступен) НЕ продвигает (no premature fire).",
+    "createdAt": "2026-06-11T22:07:52.102Z",
+    "updatedAt": "2026-06-11T22:07:52.102Z"
+  },
+  {
+    "element": "process_start_time",
+    "path": "",
+    "type": "unknown",
+    "content": "daemon.rs: возвращает время старта процесса (секунды) для защиты от PID-recycling. macOS: proc_pidinfo PROC_PIDTBSDINFO -> proc_bsdinfo.pbi_start_tvsec. Linux: /proc/<pid>/stat field 22. None если процесс не существует/недоступен. Используется is_recorded_process_alive перед kill в stop/status/start.",
+    "createdAt": "2026-06-11T22:07:52.353Z",
+    "updatedAt": "2026-06-11T22:07:52.353Z"
   }
 ]

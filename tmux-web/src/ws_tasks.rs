@@ -105,10 +105,19 @@ pub async fn tasks_ws(
         }
         let upstream_query = rebuild_query_without_server(&raw);
         return ws.on_upgrade(move |socket| async move {
-            let store = state.remotes.read().await;
+            let server = {
+                let store = state.remotes.read().await;
+                remote_proxy::resolve_server(&store, &server_id)
+            };
+            let server = match server {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::trace!(error = %e, server_id, "ws/tasks: unknown remote server");
+                    return;
+                }
+            };
             if let Err(e) = remote_proxy::proxy_websocket(
-                &store,
-                &server_id,
+                &server,
                 "/ws/tasks",
                 &upstream_query,
                 socket,
@@ -189,32 +198,12 @@ async fn handle_socket(socket: WebSocket, active_path: PathBuf) {
     let (ws_tx, mut ws_rx) = socket.split();
     let ws_tx = Arc::new(Mutex::new(ws_tx));
 
-    // 1) Шлём snapshot. Если br не отвечает — отдаём пустой envelope.
-    let snapshot_data = match tasks::list_tasks(&active_path).await {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::warn!(error = ?e, path = %active_path.display(), "ws/tasks: initial list_tasks failed");
-            serde_json::json!({"issues": [], "total": 0})
-        }
-    };
-    let snapshot_msg = serde_json::json!({
-        "kind": "snapshot",
-        "data": snapshot_data,
-    });
-    if let Err(e) = send_text(&ws_tx, snapshot_msg.to_string()).await {
-        tracing::debug!(error = ?e, "ws/tasks: snapshot send failed; closing");
-        return;
-    }
-
-    // 2) Берём baseline snapshot для последующих diff'ов.
-    let mut prev = match snapshot(&active_path).await {
-        Ok(s) => s,
-        Err(_) => std::collections::HashMap::new(),
-    };
-
-    // 3) Поднимаем per-conn notify watcher если есть `.beads/`. Если нет —
-    //    остаёмся в heartbeat-only режиме (клиент получит пустой snapshot
-    //    и не будет реконнектиться впустую).
+    // 1) Поднимаем per-conn notify watcher ДО снятия snapshot. Иначе файловые
+    //    мутации `.beads/issues.jsonl`, случившиеся в окне между snapshot и
+    //    стартом watcher'а, теряются: snapshot их не видит, а watcher ещё не
+    //    подписан на inotify. Watcher сначала → snapshot потом гарантирует, что
+    //    любое изменение после baseline будет поймано debounce-diff'ом. Если
+    //    нет `.beads/` — остаёмся в heartbeat-only режиме.
     let beads_dir = find_beads_dir(&active_path);
     let (notify_tx, mut notify_rx) =
         mpsc::unbounded_channel::<notify::Result<notify::Event>>();
@@ -245,6 +234,32 @@ async fn handle_socket(socket: WebSocket, active_path: PathBuf) {
             tracing::debug!(path = %active_path.display(), "ws/tasks: no .beads/ found — heartbeat only");
             None
         }
+    };
+
+    // 2) Шлём snapshot. Если br не отвечает — отдаём пустой envelope. Snapshot
+    //    снимается ПОСЛЕ старта watcher'а: любая мутация после этого момента
+    //    придёт через debounce-diff (в худшем случае с дублирующимся upsert,
+    //    который клиент идемпотентно применяет по id).
+    let snapshot_data = match tasks::list_tasks(&active_path).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(error = ?e, path = %active_path.display(), "ws/tasks: initial list_tasks failed");
+            serde_json::json!({"issues": [], "total": 0})
+        }
+    };
+    let snapshot_msg = serde_json::json!({
+        "kind": "snapshot",
+        "data": snapshot_data,
+    });
+    if let Err(e) = send_text(&ws_tx, snapshot_msg.to_string()).await {
+        tracing::debug!(error = ?e, "ws/tasks: snapshot send failed; closing");
+        return;
+    }
+
+    // 3) Берём baseline snapshot для последующих diff'ов.
+    let mut prev = match snapshot(&active_path).await {
+        Ok(s) => s,
+        Err(_) => std::collections::HashMap::new(),
     };
 
     // 4) Heartbeat таймер.
@@ -295,10 +310,16 @@ async fn handle_socket(socket: WebSocket, active_path: PathBuf) {
             event = notify_rx.recv() => {
                 match event {
                     None => {
-                        // Канал закрыт (watcher дропнут). Продолжаем — heartbeat
-                        // и inbound остаются. Без watcher'а просто не будет
-                        // realtime-обновлений до reconnect клиента.
-                        tracing::debug!("ws/tasks: notify channel closed");
+                        // Канал закрыт (watcher дропнут). recv() закрытого
+                        // unbounded-канала возвращает None мгновенно на каждой
+                        // итерации select → busy-loop 100% CPU. Заменяем rx на
+                        // вечно-pending канал (sender забыт), чтобы эта ветка
+                        // больше не срабатывала. Heartbeat и inbound остаются;
+                        // realtime-обновлений не будет до reconnect клиента.
+                        tracing::debug!("ws/tasks: notify channel closed — switching to pending receiver");
+                        let (tx, rx) = mpsc::unbounded_channel::<notify::Result<notify::Event>>();
+                        std::mem::forget(tx);
+                        notify_rx = rx;
                     }
                     Some(Err(e)) => {
                         tracing::warn!(error = ?e, "ws/tasks: notify error event");

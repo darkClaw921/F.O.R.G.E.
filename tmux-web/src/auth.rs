@@ -214,13 +214,186 @@ pub async fn bearer_auth(
     }
 }
 
+// =============================================================================
+// CSRF / drive-by guard (forge-cgzf)
+// =============================================================================
+//
+// В дефолтном localhost-режиме bearer_auth не подключается вообще
+// (auth_token=None), а WebSocket-апгрейд и мутирующие REST-эндпоинты не
+// проверяли Origin. Любой вредоносный сайт, открытый в браузере пользователя,
+// мог:
+//   - открыть `ws://127.0.0.1:7331/ws/attach?session=X` и писать команды в
+//     shell через PTY tmux attach (drive-by RCE);
+//   - сделать `fetch('http://127.0.0.1:7331/api/todos', {method:'POST', ...})`
+//     с `Content-Type: text/plain` — простой запрос без CORS-preflight,
+//     который браузер отправит cross-origin, → promote → tmux send-keys Enter
+//     в shell-панель.
+//
+// `csrf_guard` подключается ВСЕГДА (и в localhost, и в remote) внешним слоем и:
+//   1) для `/ws/*` — требует, чтобы `Origin` (если он есть) совпадал с `Host`.
+//      Браузер ВСЕГДА шлёт Origin на WebSocket, поэтому cross-origin drive-by
+//      отбивается. Native-клиенты (CLI, мобильное приложение) Origin не шлют —
+//      их пропускаем.
+//   2) для мутирующих `/api/*` (POST/PUT/PATCH/DELETE) — требует same-origin
+//      `Origin` (если он присутствует) И `Content-Type: application/json`.
+//      Это лишает атакующего «простого запроса» (form/text/plain без
+//      preflight): браузер обязан сделать CORS-preflight, который мы не
+//      разрешаем (нет CORS-заголовков в ответах), и реальный мутирующий
+//      запрос не уйдёт.
+
+/// Извлекает `host:port` (authority) из значения заголовка `Origin`.
+/// `Origin` имеет вид `scheme://host[:port]`. Возвращает `None` для `null`
+/// (sandboxed iframe / file://) и для синтаксически кривых значений.
+fn origin_authority(origin: &str) -> Option<&str> {
+    let o = origin.trim();
+    if o.is_empty() || o.eq_ignore_ascii_case("null") {
+        return None;
+    }
+    let rest = o.split_once("://").map(|(_, r)| r)?;
+    // authority заканчивается на первом '/', '?' или '#' (которых в Origin
+    // обычно нет, но отрезаем для надёжности).
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let authority = &rest[..end];
+    if authority.is_empty() {
+        None
+    } else {
+        Some(authority)
+    }
+}
+
+/// Проверяет, что Origin (если задан) принадлежит тому же хосту, что и Host.
+/// Возвращает:
+/// - `true`, если Origin отсутствует (native-клиент) ИЛИ совпадает с Host;
+/// - `false`, если Origin задан и НЕ совпадает с Host (cross-origin).
+fn is_same_origin(req: &Request<Body>) -> bool {
+    let origin = match req.headers().get(axum::http::header::ORIGIN) {
+        Some(v) => match v.to_str() {
+            Ok(s) => s,
+            Err(_) => return false, // не-ASCII Origin — отвергаем
+        },
+        None => return true, // нет Origin → не браузерный cross-origin запрос
+    };
+    let origin_auth = match origin_authority(origin) {
+        Some(a) => a,
+        None => return false, // "null" / кривой Origin → отвергаем
+    };
+    let host = req
+        .headers()
+        .get(axum::http::header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .unwrap_or("");
+    if host.is_empty() {
+        return false;
+    }
+    origin_auth.eq_ignore_ascii_case(host)
+}
+
+/// Проверяет `Content-Type: application/json` (с возможным `; charset=...`).
+fn is_json_content_type(req: &Request<Body>) -> bool {
+    req.headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|ct| {
+            let main = ct.split(';').next().unwrap_or("").trim();
+            main.eq_ignore_ascii_case("application/json")
+        })
+        .unwrap_or(false)
+}
+
+/// Возвращает `true`, если у запроса есть тело (по заголовкам, до его чтения).
+/// Учитываем `Content-Length > 0` и `Transfer-Encoding` (chunked). Bodyless
+/// мутирующие запросы (например `POST /select`, `DELETE /api/...`) тело не
+/// несут — для них JSON-Content-Type не требуем (CSRF-вектора через тело нет,
+/// same-origin-проверка уже отработала).
+fn has_request_body(req: &Request<Body>) -> bool {
+    if req.headers().contains_key(axum::http::header::TRANSFER_ENCODING) {
+        return true;
+    }
+    req.headers()
+        .get(axum::http::header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .map(|n| n > 0)
+        .unwrap_or(false)
+}
+
+/// Возвращает `true`, если HTTP-метод мутирующий (меняет состояние сервера).
+fn is_mutating_method(method: &axum::http::Method) -> bool {
+    matches!(
+        *method,
+        axum::http::Method::POST
+            | axum::http::Method::PUT
+            | axum::http::Method::PATCH
+            | axum::http::Method::DELETE
+    )
+}
+
+/// Axum middleware: anti-CSRF / drive-by guard. Подключается ВСЕГДА (см.
+/// `main.rs`), независимо от remote/localhost режима.
+///
+/// Логика:
+/// - `/ws/*` — если `Origin` задан и не same-origin → 403; иначе пропуск.
+/// - мутирующий `/api/*` — требует same-origin Origin (если задан) И
+///   `Content-Type: application/json` → иначе 403.
+/// - всё остальное (GET/HEAD, статика, healthz) — пропуск.
+pub async fn csrf_guard(req: Request<Body>, next: Next) -> Response {
+    let path = req.uri().path();
+    let method = req.method().clone();
+
+    // WebSocket-апгрейд: блокируем cross-origin (drive-by RCE через /ws/attach).
+    if path.starts_with("/ws/") {
+        if !is_same_origin(&req) {
+            tracing::warn!(
+                path,
+                origin = ?req.headers().get(axum::http::header::ORIGIN),
+                "csrf_guard: rejected cross-origin WebSocket upgrade"
+            );
+            return (StatusCode::FORBIDDEN, "cross-origin websocket rejected").into_response();
+        }
+        return next.run(req).await;
+    }
+
+    // Мутирующие REST `/api/*`: требуем same-origin + JSON Content-Type.
+    if path.starts_with("/api/") && is_mutating_method(&method) {
+        if !is_same_origin(&req) {
+            tracing::warn!(
+                path,
+                %method,
+                origin = ?req.headers().get(axum::http::header::ORIGIN),
+                "csrf_guard: rejected cross-origin mutating request"
+            );
+            return (StatusCode::FORBIDDEN, "cross-origin request rejected").into_response();
+        }
+        // Тело есть → обязателен application/json. Это лишает атакующего
+        // «простого запроса» (text/plain, form-urlencoded, multipart): такой
+        // cross-origin запрос с JSON-Content-Type браузер обязан предварить
+        // CORS-preflight'ом, который мы не разрешаем.
+        if has_request_body(&req) && !is_json_content_type(&req) {
+            tracing::warn!(
+                path,
+                %method,
+                content_type = ?req.headers().get(axum::http::header::CONTENT_TYPE),
+                "csrf_guard: rejected mutating request with body but without application/json Content-Type"
+            );
+            return (
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                "Content-Type: application/json required",
+            )
+                .into_response();
+        }
+    }
+
+    next.run(req).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use axum::{
         body::Body,
         http::{header, Method, Request, StatusCode},
-        middleware::from_fn_with_state,
+        middleware::{from_fn, from_fn_with_state},
         routing::get,
         Router,
     };
@@ -520,6 +693,208 @@ mod tests {
             ))
             .await
             .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    // -------------------------------------------------------------------------
+    // csrf_guard (forge-cgzf)
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn origin_authority_parsing() {
+        assert_eq!(
+            origin_authority("http://127.0.0.1:7331"),
+            Some("127.0.0.1:7331")
+        );
+        assert_eq!(
+            origin_authority("https://evil.example.com"),
+            Some("evil.example.com")
+        );
+        assert_eq!(origin_authority("null"), None);
+        assert_eq!(origin_authority(""), None);
+        assert_eq!(origin_authority("garbage-no-scheme"), None);
+        assert_eq!(
+            origin_authority("http://host:9/path?x"),
+            Some("host:9")
+        );
+    }
+
+    /// Собирает router с ВСЕГДА-включённым csrf_guard и тестовыми маршрутами.
+    fn csrf_app() -> Router {
+        use axum::routing::{delete, post};
+        Router::new()
+            .route("/ws/attach", get(ok_handler))
+            .route("/api/todos", post(ok_handler))
+            .route("/api/todos/:id", delete(ok_handler))
+            .route("/api/sessions", get(ok_handler))
+            .layer(from_fn(csrf_guard))
+    }
+
+    /// Собирает запрос для csrf-тестов. `body_len` имитирует Content-Length,
+    /// который в реальном HTTP проставляет клиент/hyper (в unit-тесте
+    /// `Request::builder().body()` его не выставляет).
+    fn csrf_req(
+        method: Method,
+        uri: &str,
+        origin: Option<&str>,
+        host: Option<&str>,
+        content_type: Option<&str>,
+        body: &'static str,
+    ) -> Request<Body> {
+        let mut b = Request::builder().method(method).uri(uri);
+        if let Some(o) = origin {
+            b = b.header(header::ORIGIN, o);
+        }
+        if let Some(h) = host {
+            b = b.header(header::HOST, h);
+        }
+        if let Some(ct) = content_type {
+            b = b.header(header::CONTENT_TYPE, ct);
+        }
+        if !body.is_empty() {
+            b = b.header(header::CONTENT_LENGTH, body.len());
+        }
+        b.body(Body::from(body)).unwrap()
+    }
+
+    #[tokio::test]
+    async fn ws_cross_origin_rejected() {
+        let app = csrf_app();
+        let resp = app
+            .oneshot(csrf_req(
+                Method::GET,
+                "/ws/attach",
+                Some("http://evil.example.com"),
+                Some("127.0.0.1:7331"),
+                None,
+                "",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn ws_same_origin_allowed() {
+        let app = csrf_app();
+        let resp = app
+            .oneshot(csrf_req(
+                Method::GET,
+                "/ws/attach",
+                Some("http://127.0.0.1:7331"),
+                Some("127.0.0.1:7331"),
+                None,
+                "",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn ws_no_origin_allowed_native_client() {
+        // CLI/native клиент не шлёт Origin — drive-by невозможен, пропускаем.
+        let app = csrf_app();
+        let resp = app
+            .oneshot(csrf_req(
+                Method::GET,
+                "/ws/attach",
+                None,
+                Some("127.0.0.1:7331"),
+                None,
+                "",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn mutating_cross_origin_rejected() {
+        let app = csrf_app();
+        let resp = app
+            .oneshot(csrf_req(
+                Method::POST,
+                "/api/todos",
+                Some("http://evil.example.com"),
+                Some("127.0.0.1:7331"),
+                Some("application/json"),
+                "{}",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn mutating_with_body_non_json_rejected() {
+        // Cross-origin «простой запрос» text/plain без preflight — блок.
+        let app = csrf_app();
+        let resp = app
+            .oneshot(csrf_req(
+                Method::POST,
+                "/api/todos",
+                None,
+                Some("127.0.0.1:7331"),
+                Some("text/plain"),
+                "hello",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+
+    #[tokio::test]
+    async fn mutating_same_origin_json_allowed() {
+        let app = csrf_app();
+        let resp = app
+            .oneshot(csrf_req(
+                Method::POST,
+                "/api/todos",
+                Some("http://127.0.0.1:7331"),
+                Some("127.0.0.1:7331"),
+                Some("application/json; charset=utf-8"),
+                "{}",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn bodyless_delete_no_content_type_allowed() {
+        // Bodyless DELETE без Content-Type — легитимный фронтовый паттерн.
+        let app = csrf_app();
+        let resp = app
+            .oneshot(csrf_req(
+                Method::DELETE,
+                "/api/todos/42",
+                Some("http://127.0.0.1:7331"),
+                Some("127.0.0.1:7331"),
+                None,
+                "",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn get_request_not_affected() {
+        let app = csrf_app();
+        let resp = app
+            .oneshot(csrf_req(
+                Method::GET,
+                "/api/sessions",
+                Some("http://evil.example.com"),
+                Some("127.0.0.1:7331"),
+                None,
+                "",
+            ))
+            .await
+            .unwrap();
+        // GET — не мутирующий, Origin не проверяем (read-only, защита на чтении
+        // не нужна и сломала бы навигацию). Пропуск.
         assert_eq!(resp.status(), StatusCode::OK);
     }
 }

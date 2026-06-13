@@ -198,7 +198,14 @@ pub async fn set_next_run(db: &Db, id: &str, next_run_at: i64) -> anyhow::Result
     Ok(())
 }
 
-/// Scheduler-tick: вернёт все enabled-задачи с `next_run_at <= now_unix`.
+/// Максимум задач, выбираемых за один scheduler-tick. Защищает планировщик
+/// от всплеска нагрузки, если после долгого простоя/рассинхрона часов
+/// одновременно «просрочилось» очень много задач: запускаем их пачками по
+/// тикам, а не все сразу (что забило бы семафор Claude и БД).
+pub const FIND_DUE_LIMIT: i64 = 64;
+
+/// Scheduler-tick: вернёт enabled-задачи с `next_run_at <= now_unix`,
+/// не более [`FIND_DUE_LIMIT`] за вызов (самые «просроченные» первыми).
 /// Использует составной index `idx_autonomous_enabled_next`.
 pub async fn find_due(db: &Db, now_unix: i64) -> anyhow::Result<Vec<AutonomousTask>> {
     db.conn()
@@ -208,9 +215,10 @@ pub async fn find_due(db: &Db, now_unix: i64) -> anyhow::Result<Vec<AutonomousTa
                         project_id, last_run_at, next_run_at, created_at \
                  FROM autonomous_tasks \
                  WHERE enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ?1 \
-                 ORDER BY next_run_at ASC",
+                 ORDER BY next_run_at ASC \
+                 LIMIT ?2",
             )?;
-            let it = stmt.query_map(rusqlite::params![now_unix], row_to_task)?;
+            let it = stmt.query_map(rusqlite::params![now_unix, FIND_DUE_LIMIT], row_to_task)?;
             let collected: Result<Vec<_>, _> = it.collect();
             Ok(collected?)
         })

@@ -32,7 +32,7 @@ export function buildTaskFormHtml(initial, isEdit) {
         .map((p) => `<option value="${p}"${sel(p, (typeof i.priority === 'number') ? i.priority : 2)}>P${p}</option>`).join('');
 
     const labelsCsv = Array.isArray(i.labels) ? i.labels.join(',') : (i.labels || '');
-    const idLine = isEdit && i.id ? `<div class="modal-id">${i.id}</div>` : '';
+    const idLine = isEdit && i.id ? `<div class="modal-id">${escapeText(i.id)}</div>` : '';
     const statusBlock = isEdit
         ? `<label>Status<br><select id="tm-status">${statusOptions}</select></label>`
         : '';

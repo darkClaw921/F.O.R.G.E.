@@ -201,24 +201,36 @@ export function handleTasksWsMessage(raw) {
     }
 }
 
+// Epoch-счётчик: при быстром переключении сессий запросы перекрываются, и
+// поздний ответ старого запроса мог перезатереть доску данными чужого cwd.
+// Запоминаем epoch и cwd на входе и сверяем перед записью в state.
+let _fetchTasksEpoch = 0;
 export async function fetchTasks() {
+    const epoch = ++_fetchTasksEpoch;
+    const cwd = sessionCwdOrNull();
     try {
-        const cwd = sessionCwdOrNull();
         const url = cwd
             ? `/api/tasks?path=${encodeURIComponent(cwd)}`
             : '/api/tasks';
         const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        // Ответ устарел (ушёл более свежий fetch или сменился cwd) — игнор.
+        if (epoch !== _fetchTasksEpoch || cwd !== sessionCwdOrNull()) return;
         if (!r.ok) {
+            // Транзиентная HTTP-ошибка НЕ должна стирать доску: сохраняем
+            // последний снапшот, показываем только статус ошибки.
             console.warn('GET /api/tasks failed:', r.status);
-            state.tasksData = { issues: [], total: 0 };
             setTasksStatus('error', 'tasks: HTTP ' + r.status);
             renderTasks();
             return;
         }
-        state.tasksData = await r.json();
+        const json = await r.json();
+        if (epoch !== _fetchTasksEpoch) return; // повторная сверка после await json()
+        state.tasksData = json;
         setTasksStatus('ok', '');
         renderTasks();
     } catch (e) {
+        if (epoch !== _fetchTasksEpoch) return;
+        // Сетевая ошибка — тоже сохраняем последний снапшот, не обнуляем доску.
         console.warn('fetchTasks failed', e);
         state.tasksData = state.tasksData || { issues: [], total: 0 };
         setTasksStatus('error', 'tasks: network');

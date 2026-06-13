@@ -79,16 +79,17 @@ pub async fn init_with_config(cfg: EchoConfig) -> anyhow::Result<Arc<EchoState>>
     db.migrate().await?;
     tracing::info!(target: "forge_echo", path = %cfg.db_path.display(), "forge-echo: DB initialized");
 
-    let runner = Arc::new(claude::ClaudeRunner::new(
-        cfg.cli_path.clone(),
-        cfg.max_parallel_runs,
-    ));
+    let runner = Arc::new(
+        claude::ClaudeRunner::new(cfg.cli_path.clone(), cfg.max_parallel_runs)
+            .with_run_timeout(cfg.run_timeout_secs),
+    );
     tracing::info!(
         target: "forge_echo",
         max_parallel = cfg.max_parallel_runs,
         default_model = %cfg.default_model,
         capture_lines = cfg.capture_lines,
         autonomous_max_tokens_per_day = cfg.autonomous_max_tokens_per_day,
+        run_timeout_secs = cfg.run_timeout_secs,
         "forge-echo: ClaudeRunner ready"
     );
 
@@ -161,15 +162,15 @@ pub async fn shutdown(state: &Arc<EchoState>) {
 /// Фича «Следующий шаг» добавляет воркер [`next_step::spawn`] — он каждые 2с
 /// опрашивает [`HostApi::idle_sessions`] и для затихших сессий генерирует
 /// предложение следующего шага.
-pub fn spawn_workers(state: &Arc<EchoState>, host: Arc<dyn HostApi>) {
+pub async fn spawn_workers(state: &Arc<EchoState>, host: Arc<dyn HostApi>) {
     let scheduler_handle = scheduler::spawn(state.clone(), host.clone());
-    state.register_worker(scheduler_handle);
+    state.register_worker(scheduler_handle).await;
     let memory_handle = memory::scheduler::spawn(state.clone(), host.clone());
-    state.register_worker(memory_handle);
+    state.register_worker(memory_handle).await;
     let daily_report_handle = daily_report::scheduler::spawn(state.clone(), host.clone());
-    state.register_worker(daily_report_handle);
+    state.register_worker(daily_report_handle).await;
     let next_step_handle = next_step::spawn(state.clone(), host);
-    state.register_worker(next_step_handle);
+    state.register_worker(next_step_handle).await;
     tracing::info!(target: "forge_echo", "forge-echo: spawn_workers (scheduler + memory rollover + daily_report + next_step started)");
 }
 
@@ -192,9 +193,7 @@ mod tests {
         let handle = tokio::spawn(async move {
             token_for_worker.cancelled().await;
         });
-        state.register_worker(handle);
-        // Дать spawn-task'е добавить handle в vec.
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        state.register_worker(handle).await;
 
         assert!(!state.shutdown.is_cancelled());
         shutdown(&state).await;

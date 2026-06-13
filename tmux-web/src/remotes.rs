@@ -132,6 +132,30 @@ struct RemotesFile {
     servers: Vec<RemoteServer>,
 }
 
+/// Снимок реестра для отложенной записи: сериализованное тело + целевой/tmp
+/// путь. Готовится под guard'ом ([`RemoteServerStore::serialize`]), пишется
+/// уже без guard'а ([`write_remotes_snapshot`]).
+pub struct RemotesSnapshot {
+    body: Vec<u8>,
+    file_path: PathBuf,
+    tmp: PathBuf,
+}
+
+/// Атомарно пишет снимок реестра на диск БЕЗ удерживаемого lock'а.
+/// Пишем в `<file>.tmp`, затем `rename` поверх (POSIX-атомарно).
+pub fn write_remotes_snapshot(snap: &RemotesSnapshot) -> Result<()> {
+    std::fs::write(&snap.tmp, &snap.body)
+        .with_context(|| format!("failed to write tmp {}", snap.tmp.display()))?;
+    std::fs::rename(&snap.tmp, &snap.file_path).with_context(|| {
+        format!(
+            "failed to rename {} -> {}",
+            snap.tmp.display(),
+            snap.file_path.display()
+        )
+    })?;
+    Ok(())
+}
+
 /// In-memory реестр + путь к файлу.
 ///
 /// Доступ из axum-state — `Arc<RwLock<RemoteServerStore>>`. Не Clone намеренно.
@@ -172,12 +196,25 @@ impl RemoteServerStore {
         })
     }
 
-    /// Атомарно сохраняет реестр в `self.file_path`.
+    /// Атомарно сохраняет реестр в `self.file_path` (блокирующий I/O).
+    ///
+    /// ВНИМАНИЕ: держит блокирующую запись внутри себя. В async-хендлерах,
+    /// которые удерживают `state.remotes` write-guard, предпочтительно
+    /// использовать [`RemoteServerStore::serialize`] + [`write_remotes_snapshot`]
+    /// и писать ПОСЛЕ дропа guard'а, чтобы fs I/O не сериализовал реестр
+    /// (tokio RwLock справедлив — долгий guard блокирует и читателей). Метод
+    /// сохранён для тестов и не-async путей.
     ///
     /// Стратегия: пишем в `<file>.tmp`, затем `rename` поверх старого.
     /// На POSIX rename атомарен в пределах одного mount-point. Совпадает с
     /// паттерном `projects::ProjectStore::save` и `server_config::save_to`.
     pub fn save(&self) -> Result<()> {
+        write_remotes_snapshot(&self.serialize()?)
+    }
+
+    /// Готовит снимок для записи (сериализация + пути) БЕЗ обращения к диску.
+    /// Вызывается под guard'ом; запись делается отдельно [`write_remotes_snapshot`].
+    pub fn serialize(&self) -> Result<RemotesSnapshot> {
         let envelope = RemotesFile {
             servers: self.servers.clone(),
         };
@@ -192,16 +229,11 @@ impl RemoteServerStore {
         tmp_name.push(".tmp");
         tmp.set_file_name(tmp_name);
 
-        std::fs::write(&tmp, &body)
-            .with_context(|| format!("failed to write tmp {}", tmp.display()))?;
-        std::fs::rename(&tmp, &self.file_path).with_context(|| {
-            format!(
-                "failed to rename {} -> {}",
-                tmp.display(),
-                self.file_path.display()
-            )
-        })?;
-        Ok(())
+        Ok(RemotesSnapshot {
+            body,
+            file_path: self.file_path.clone(),
+            tmp,
+        })
     }
 
     /// Возвращает копию списка серверов.

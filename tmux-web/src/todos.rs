@@ -260,8 +260,11 @@ impl TodoStore {
         // После миграции пишем сразу в новом формате (даже если файл
         // отсутствовал — создаём первый раз с импортированными legacy).
         if needs_migration || imported_legacy > 0 {
-            save_locked(&inner)
-                .context("failed to save migrated todos.json")?;
+            // Здесь `inner` ещё локальный (не за RwLock) — contention нет,
+            // но используем те же helper'ы для единообразия.
+            let snap = serialize_locked(&inner)
+                .context("failed to serialize migrated todos.json")?;
+            write_snapshot(&snap).context("failed to save migrated todos.json")?;
         }
 
         Ok(Self {
@@ -327,13 +330,16 @@ impl TodoStore {
             updated_at: now,
             origin: default_origin_local(),
         };
-        let mut inner = self.inner.write().expect("TodoStore lock poisoned");
-        inner
-            .by_path
-            .entry(root_path.to_string())
-            .or_default()
-            .push(todo.clone());
-        save_locked(&inner)?;
+        let snap = {
+            let mut inner = self.inner.write().expect("TodoStore lock poisoned");
+            inner
+                .by_path
+                .entry(root_path.to_string())
+                .or_default()
+                .push(todo.clone());
+            serialize_locked(&inner)?
+        };
+        write_snapshot(&snap)?;
         Ok(todo)
     }
 
@@ -374,29 +380,37 @@ impl TodoStore {
         plan_mode: Option<bool>,
         auto_promote: Option<bool>,
     ) -> Result<Option<Todo>> {
-        let mut inner = self.inner.write().expect("TodoStore lock poisoned");
-        let mut found: Option<Todo> = None;
-        for list in inner.by_path.values_mut() {
-            if let Some(t) = list.iter_mut().find(|t| t.id == id) {
-                if let Some(new_title) = title {
-                    t.title = new_title;
+        let (found, snap) = {
+            let mut inner = self.inner.write().expect("TodoStore lock poisoned");
+            let mut found: Option<Todo> = None;
+            for list in inner.by_path.values_mut() {
+                if let Some(t) = list.iter_mut().find(|t| t.id == id) {
+                    if let Some(new_title) = title {
+                        t.title = new_title;
+                    }
+                    if let Some(new_desc) = description {
+                        t.description = new_desc;
+                    }
+                    if let Some(pm) = plan_mode {
+                        t.plan_mode = pm;
+                    }
+                    if let Some(ap) = auto_promote {
+                        t.auto_promote = ap;
+                    }
+                    t.updated_at = now_rfc3339();
+                    found = Some(t.clone());
+                    break;
                 }
-                if let Some(new_desc) = description {
-                    t.description = new_desc;
-                }
-                if let Some(pm) = plan_mode {
-                    t.plan_mode = pm;
-                }
-                if let Some(ap) = auto_promote {
-                    t.auto_promote = ap;
-                }
-                t.updated_at = now_rfc3339();
-                found = Some(t.clone());
-                break;
             }
-        }
-        if found.is_some() {
-            save_locked(&inner)?;
+            let snap = if found.is_some() {
+                Some(serialize_locked(&inner)?)
+            } else {
+                None
+            };
+            (found, snap)
+        };
+        if let Some(snap) = snap {
+            write_snapshot(&snap)?;
         }
         Ok(found)
     }
@@ -411,55 +425,67 @@ impl TodoStore {
     /// Используется PATCH /api/todos/:id, когда клиент шлёт новое значение
     /// `path` в body (move между корнями cwd-группировки).
     pub fn move_to_root(&self, id: &str, new_root: &str) -> Result<Option<Todo>> {
-        let mut inner = self.inner.write().expect("TodoStore lock poisoned");
-        // 1) Найти и удалить из старого bucket.
-        let mut found_old_root: Option<String> = None;
-        let mut taken: Option<Todo> = None;
-        for (root, list) in inner.by_path.iter_mut() {
-            if let Some(pos) = list.iter().position(|t| t.id == id) {
-                taken = Some(list.remove(pos));
-                found_old_root = Some(root.clone());
-                break;
+        let (clone, snap) = {
+            let mut inner = self.inner.write().expect("TodoStore lock poisoned");
+            // 1) Найти и удалить из старого bucket.
+            let mut found_old_root: Option<String> = None;
+            let mut taken: Option<Todo> = None;
+            for (root, list) in inner.by_path.iter_mut() {
+                if let Some(pos) = list.iter().position(|t| t.id == id) {
+                    taken = Some(list.remove(pos));
+                    found_old_root = Some(root.clone());
+                    break;
+                }
             }
-        }
-        // Зачистка пустых bucket'ов (опционально, но симметрично загрузке).
-        if let Some(ref old) = found_old_root {
-            let is_empty = inner.by_path.get(old).map(|v| v.is_empty()).unwrap_or(false);
-            if is_empty {
-                inner.by_path.remove(old);
+            // Зачистка пустых bucket'ов (опционально, но симметрично загрузке).
+            if let Some(ref old) = found_old_root {
+                let is_empty = inner.by_path.get(old).map(|v| v.is_empty()).unwrap_or(false);
+                if is_empty {
+                    inner.by_path.remove(old);
+                }
             }
-        }
-        // 2) Положить в новый bucket с обновлёнными полями.
-        let mut todo = match taken {
-            Some(t) => t,
-            None => return Ok(None),
+            // 2) Положить в новый bucket с обновлёнными полями.
+            let mut todo = match taken {
+                Some(t) => t,
+                None => return Ok(None),
+            };
+            todo.root_path = new_root.to_string();
+            todo.updated_at = now_rfc3339();
+            let clone = todo.clone();
+            inner
+                .by_path
+                .entry(new_root.to_string())
+                .or_default()
+                .push(todo);
+            let snap = serialize_locked(&inner)?;
+            (clone, snap)
         };
-        todo.root_path = new_root.to_string();
-        todo.updated_at = now_rfc3339();
-        let clone = todo.clone();
-        inner
-            .by_path
-            .entry(new_root.to_string())
-            .or_default()
-            .push(todo);
-        save_locked(&inner)?;
+        write_snapshot(&snap)?;
         Ok(Some(clone))
     }
 
     /// Удаляет TODO по `id`. Возвращает `true`, если удалили.
     pub fn delete(&self, id: &str) -> Result<bool> {
-        let mut inner = self.inner.write().expect("TodoStore lock poisoned");
-        let mut removed = false;
-        for list in inner.by_path.values_mut() {
-            let before = list.len();
-            list.retain(|t| t.id != id);
-            if list.len() != before {
-                removed = true;
-                break;
+        let (removed, snap) = {
+            let mut inner = self.inner.write().expect("TodoStore lock poisoned");
+            let mut removed = false;
+            for list in inner.by_path.values_mut() {
+                let before = list.len();
+                list.retain(|t| t.id != id);
+                if list.len() != before {
+                    removed = true;
+                    break;
+                }
             }
-        }
-        if removed {
-            save_locked(&inner)?;
+            let snap = if removed {
+                Some(serialize_locked(&inner)?)
+            } else {
+                None
+            };
+            (removed, snap)
+        };
+        if let Some(snap) = snap {
+            write_snapshot(&snap)?;
         }
         Ok(removed)
     }
@@ -468,18 +494,27 @@ impl TodoStore {
     /// Используется в тестах и при экстренном flush.
     #[allow(dead_code)]
     pub fn save(&self) -> Result<()> {
-        let inner = self.inner.read().expect("TodoStore lock poisoned");
-        save_locked(&inner)
+        let snap = {
+            let inner = self.inner.read().expect("TodoStore lock poisoned");
+            serialize_locked(&inner)?
+        };
+        write_snapshot(&snap)
     }
 }
 
-/// Атомарно сохраняет состояние под (write|read)-lock'ом.
-///
-/// Стратегия (как в `projects::ProjectStore::save`): пишем в
-/// `<file>.tmp`, затем `rename` поверх. На POSIX rename атомарен в
-/// рамках одного mount-point — даже при kill -9 в момент записи
-/// получим либо старый, либо новый файл, но не битый.
-fn save_locked(inner: &Inner) -> Result<()> {
+/// Снимок для записи на диск: сериализованное тело + целевой путь + tmp-путь.
+/// Готовится ПОД lock'ом ([`serialize_locked`]), а сама запись
+/// ([`write_snapshot`]) выполняется уже ПОСЛЕ дропа guard'а — чтобы блокирующий
+/// файловый I/O (write+rename, потенциально десятки мс на медленном диске) не
+/// держал `RwLock` и не сериализовал все конкурентные REST-хендлеры.
+struct SaveSnapshot {
+    body: Vec<u8>,
+    file_path: PathBuf,
+    tmp: PathBuf,
+}
+
+/// Готовит снимок состояния под (write|read)-lock'ом. НЕ трогает диск.
+fn serialize_locked(inner: &Inner) -> Result<SaveSnapshot> {
     let mut all: Vec<Todo> = Vec::new();
     for list in inner.by_path.values() {
         all.extend(list.iter().cloned());
@@ -493,13 +528,27 @@ fn save_locked(inner: &Inner) -> Result<()> {
     tmp_name.push(".tmp");
     tmp.set_file_name(tmp_name);
 
-    std::fs::write(&tmp, &body)
-        .with_context(|| format!("failed to write tmp {}", tmp.display()))?;
-    std::fs::rename(&tmp, &inner.file_path).with_context(|| {
+    Ok(SaveSnapshot {
+        body,
+        file_path: inner.file_path.clone(),
+        tmp,
+    })
+}
+
+/// Атомарно пишет снимок на диск. Вызывается БЕЗ удерживаемого lock'а.
+///
+/// Стратегия (как в `projects::ProjectStore::save`): пишем в
+/// `<file>.tmp`, затем `rename` поверх. На POSIX rename атомарен в
+/// рамках одного mount-point — даже при kill -9 в момент записи
+/// получим либо старый, либо новый файл, но не битый.
+fn write_snapshot(snap: &SaveSnapshot) -> Result<()> {
+    std::fs::write(&snap.tmp, &snap.body)
+        .with_context(|| format!("failed to write tmp {}", snap.tmp.display()))?;
+    std::fs::rename(&snap.tmp, &snap.file_path).with_context(|| {
         format!(
             "failed to rename {} -> {}",
-            tmp.display(),
-            inner.file_path.display()
+            snap.tmp.display(),
+            snap.file_path.display()
         )
     })?;
     Ok(())

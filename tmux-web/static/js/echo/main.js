@@ -137,7 +137,13 @@ async function refreshChatsList() {
     try {
         data = await listConversations(null);
     } catch (e) {
-        $echoConversationsList.innerHTML = `<li class="echo-empty">Ошибка: ${e.message || e}</li>`;
+        // Сообщение ошибки может содержать произвольный текст — вставляем как
+        // textContent, чтобы исключить HTML-инъекцию.
+        $echoConversationsList.innerHTML = '';
+        const errLi = document.createElement('li');
+        errLi.className = 'echo-empty';
+        errLi.textContent = `Ошибка: ${(e && e.message) || e}`;
+        $echoConversationsList.appendChild(errLi);
         return;
     }
     const items = (data && data.items) || [];
@@ -181,8 +187,14 @@ async function openChat(conversationId) {
     clearMessages();
     try {
         const data = await listMessages(conversationId, { limit: 200 });
+        // Гонка: пока ждали ответ listMessages, пользователь мог переключиться
+        // на другой чат. Без этой проверки сообщения старого чата отрендерились
+        // бы в активный (чужой) — отбрасываем устаревший ответ.
+        if (state.activeConversationId !== conversationId) return;
         renderConversation((data && data.items) || []);
     } catch (e) {
+        // Та же гонка для пути ошибки — не показываем тост о чужом чате.
+        if (state.activeConversationId !== conversationId) return;
         notify({ level: 'error', title: 'Load failed', body: e.message });
     }
     // Подключим WS к этой conversation.
@@ -261,6 +273,23 @@ function buildHandlers() {
         },
         error: (msg) => {
             notify({ level: 'error', title: msg.code || 'Error', body: msg.message || '' });
+        },
+        resync: () => {
+            // Сервер сообщил, что WS-подписчик отстал и пропустил часть
+            // realtime-чанков (broadcast Lagged). Перечитываем переписку через
+            // REST, чтобы восстановить целостность вместо показа оборванного
+            // ответа.
+            const cid = state.activeConversationId;
+            if (!cid) return;
+            listMessages(cid, { limit: 200 })
+                .then((data) => {
+                    if (state.activeConversationId !== cid) return;
+                    clearMessages();
+                    renderConversation((data && data.items) || []);
+                })
+                .catch((e) => {
+                    notify({ level: 'error', title: 'Resync failed', body: e.message });
+                });
         },
         open: () => {
             // Можно подсветить статус-индикатор.

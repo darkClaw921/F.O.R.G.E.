@@ -225,6 +225,19 @@ pub async fn run_task(
         }
     };
 
+    // Финальный result-event пришёл с is_error (error_max_turns /
+    // error_during_execution): run неуспешен, даже если текст частично собран.
+    // Раньше это писалось со status=success — теперь помечаем error.
+    if result.is_error {
+        return finish_with_error(
+            &state,
+            &task,
+            &run_id,
+            "claude: result reported is_error/subtype=error",
+        )
+        .await;
+    }
+
     // (4) Сохранить assistant-message.
     let assistant_msg = match messages::insert(
         &state.db,

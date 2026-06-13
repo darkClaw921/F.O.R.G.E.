@@ -168,10 +168,21 @@ pub async fn attach(
         }
         let upstream_query = rebuild_query_without_server(&raw);
         return ws.on_upgrade(move |socket| async move {
-            let store = state.remotes.read().await;
+            // Разрешаем сервер под коротким read-lock и дропаем guard ДО
+            // жизни proxy-WS (иначе deadlock на write по реестру серверов).
+            let server = {
+                let store = state.remotes.read().await;
+                remote_proxy::resolve_server(&store, &server_id)
+            };
+            let server = match server {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::trace!(error = %e, server_id, "ws/attach: unknown remote server");
+                    return;
+                }
+            };
             if let Err(e) = remote_proxy::proxy_websocket(
-                &store,
-                &server_id,
+                &server,
                 "/ws/attach",
                 &upstream_query,
                 socket,
@@ -567,10 +578,19 @@ pub async fn lazygit_attach(
         }
         let upstream_query = rebuild_query_without_server(&raw);
         return ws.on_upgrade(move |socket| async move {
-            let store = state.remotes.read().await;
+            let server = {
+                let store = state.remotes.read().await;
+                remote_proxy::resolve_server(&store, &server_id)
+            };
+            let server = match server {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::trace!(error = %e, server_id, "ws/lazygit: unknown remote server");
+                    return;
+                }
+            };
             if let Err(e) = remote_proxy::proxy_websocket(
-                &store,
-                &server_id,
+                &server,
                 "/ws/lazygit",
                 &upstream_query,
                 socket,
@@ -612,10 +632,19 @@ pub async fn lazydocker_attach(
         }
         let upstream_query = rebuild_query_without_server(&raw);
         return ws.on_upgrade(move |socket| async move {
-            let store = state.remotes.read().await;
+            let server = {
+                let store = state.remotes.read().await;
+                remote_proxy::resolve_server(&store, &server_id)
+            };
+            let server = match server {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::trace!(error = %e, server_id, "ws/lazydocker: unknown remote server");
+                    return;
+                }
+            };
             if let Err(e) = remote_proxy::proxy_websocket(
-                &store,
-                &server_id,
+                &server,
                 "/ws/lazydocker",
                 &upstream_query,
                 socket,
@@ -657,10 +686,19 @@ pub async fn telescope_attach(
         }
         let upstream_query = rebuild_query_without_server(&raw);
         return ws.on_upgrade(move |socket| async move {
-            let store = state.remotes.read().await;
+            let server = {
+                let store = state.remotes.read().await;
+                remote_proxy::resolve_server(&store, &server_id)
+            };
+            let server = match server {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::trace!(error = %e, server_id, "ws/telescope: unknown remote server");
+                    return;
+                }
+            };
             if let Err(e) = remote_proxy::proxy_websocket(
-                &store,
-                &server_id,
+                &server,
                 "/ws/telescope",
                 &upstream_query,
                 socket,

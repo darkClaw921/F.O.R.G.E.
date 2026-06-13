@@ -388,7 +388,10 @@ export function switchSession(name) {
         syncDockerToCurrentSession();
     } catch (e) {
         console.warn('switch failed', e);
+        // Сохраняем origin (local/server_id) до disconnectWs, чтобы fallback-
+        // реконнект не свалился в local-режим, потеряв remote-привязку сессии.
+        const origin = state.attachWsOrigin || null;
         disconnectWs();
-        connectWs(name);
+        connectWs(name, origin);
     }
 }

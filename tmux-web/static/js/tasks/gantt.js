@@ -782,28 +782,43 @@ function positionPopover(line) {
 // URL: /api/git/commits?path=<enc cwd>[&since=<unix>][&until=<unix>]; если
 // cwd null — без path. При ok → state.gitCommits = json.commits||[]; при
 // ошибке/non-ok → [] + warn. В конце всегда вызывает renderGantt().
+// Epoch-счётчик для защиты от stale-response гонок: при быстром переключении
+// сессии/диапазона запросы перекрываются, и поздний ответ старого запроса мог
+// перезатереть state.gitCommits данными не той сессии/окна. Запоминаем epoch и
+// ключ (cwd|since|until) на входе и сверяем перед записью в state.
+let _gitCommitsEpoch = 0;
 export async function fetchGitCommits() {
+    const epoch = ++_gitCommitsEpoch;
+    const cwd = sessionCwdOrNull();
+    const win = ganttWindow(null);
+    const reqKey = `${cwd || ''}|${win.since}|${win.until}`;
     try {
-        const cwd = sessionCwdOrNull();
         const params = [];
         if (cwd) params.push('path=' + encodeURIComponent(cwd));
-        const win = ganttWindow(null);
         if (win.since !== null) params.push('since=' + win.since);
         if (win.until !== null) params.push('until=' + win.until);
         const qs = params.length ? '?' + params.join('&') : '';
         const url = '/api/git/commits' + qs;
         const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        // Пока ждали ответ, мог уйти более свежий запрос (или сменился cwd/окно).
+        // Тогда наш ответ устарел — молча выходим, не трогая state/рендер.
+        if (epoch !== _gitCommitsEpoch || reqKey !== `${sessionCwdOrNull() || ''}|${ganttWindow(null).since}|${ganttWindow(null).until}`) {
+            return;
+        }
         if (!r.ok) {
             console.warn('GET /api/git/commits failed:', r.status);
             state.gitCommits = [];
         } else {
             const json = await r.json();
+            if (epoch !== _gitCommitsEpoch) return; // повторная сверка после await json()
             state.gitCommits = Array.isArray(json && json.commits) ? json.commits : [];
         }
     } catch (e) {
+        if (epoch !== _gitCommitsEpoch) return;
         console.warn('fetchGitCommits failed', e);
         state.gitCommits = [];
     }
+    if (epoch !== _gitCommitsEpoch) return;
     renderGantt();
 }
 

@@ -88,6 +88,14 @@ window.fetch = function (input, init) {
 
 // Добавляет token-query к WS-URL. Если токена нет — возвращает URL без
 // изменений (legacy localhost-mode).
+//
+// ПРИМЕЧАНИЕ по безопасности: токен идёт в query-string WS-URL. Это
+// сознательное ограничение браузера: WebSocket API не позволяет задать
+// произвольные заголовки (нет аналога Authorization для рукопожатия), поэтому
+// query-параметр — единственный способ передать токен из браузера. Сервер
+// принимает токен и из заголовка, и из query (см. auth middleware). Риск
+// (попадание в access-логи прокси) принимается; на сервере доступ к WS-URL
+// логируется без query-части там, где это контролируется нами.
 export function withWsToken(wsUrl) {
     const token = getAuthToken();
     if (!token) return wsUrl;

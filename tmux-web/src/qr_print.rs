@@ -53,6 +53,13 @@ pub fn print_startup_qr(
         _ => String::new(),
     };
 
+    // Если stdout не TTY (например, daemon перенаправляет вывод в лог-файл) —
+    // токен в URL осёл бы в plaintext-логе. В этом режиме маскируем токен в
+    // печатаемых URL и не рендерим QR (QR в логе так же раскодируется в токен).
+    // На реальном терминале показываем всё как есть — это интерактивный вывод.
+    let is_tty = std::io::IsTerminal::is_terminal(&std::io::stdout());
+    let has_token = !token_suffix.is_empty();
+
     let lan = detect_lan_ip();
     let bind_url = bind_url(bind_host, port).map(|u| format!("{u}{token_suffix}"));
     let lan_url = lan.map(|ip| format!("http://{ip}:{port}{token_suffix}"));
@@ -86,7 +93,19 @@ pub fn print_startup_qr(
     println!();
 
     for (label, url) in &shown {
-        print_one_qr(label, url);
+        if is_tty {
+            print_one_qr(label, url);
+        } else {
+            // Не-TTY: маскируем токен и не печатаем QR (он раскодируется в токен).
+            println!("  {label}:  {}", mask_token_in_url(url));
+        }
+    }
+
+    if !is_tty && has_token {
+        println!();
+        println!(
+            "ℹ  Токен скрыт в логе. Полный URL с токеном — на терминале (devforge run)."
+        );
     }
 
     // Warning, если default-bind 127.0.0.1 без --remote — телефон в той же
@@ -99,6 +118,19 @@ pub fn print_startup_qr(
             "   перезапустите с флагом --remote (или укажите --bind 0.0.0.0)."
         );
         println!();
+    }
+}
+
+/// Маскирует `#token=<token>` в URL для безопасного вывода в лог: оставляет
+/// первые 4 символа токена для узнаваемости, остальное — `***`. URL без токена
+/// возвращается как есть.
+fn mask_token_in_url(url: &str) -> String {
+    match url.split_once("#token=") {
+        Some((base, token)) if !token.is_empty() => {
+            let head: String = token.chars().take(4).collect();
+            format!("{base}#token={head}***")
+        }
+        _ => url.to_string(),
     }
 }
 
@@ -170,4 +202,27 @@ fn print_one_qr(label: &str, url: &str) {
         }
     }
     println!();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::mask_token_in_url;
+
+    #[test]
+    fn masks_token_keeping_prefix() {
+        let masked = mask_token_in_url("http://1.2.3.4:8080#token=abcdef123456");
+        assert_eq!(masked, "http://1.2.3.4:8080#token=abcd***");
+    }
+
+    #[test]
+    fn url_without_token_unchanged() {
+        let u = "http://127.0.0.1:8080";
+        assert_eq!(mask_token_in_url(u), u);
+    }
+
+    #[test]
+    fn short_token_still_masked() {
+        let masked = mask_token_in_url("http://x#token=ab");
+        assert_eq!(masked, "http://x#token=ab***");
+    }
 }

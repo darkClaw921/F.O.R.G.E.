@@ -97,12 +97,18 @@ pub async fn list_by_session(
     let session_id = session_id.to_string();
     db.conn()
         .call(move |c| {
-            let rows: Vec<Message> = if let Some(before) = before_ts {
+            // Берём ПОСЛЕДНИЕ `limit` сообщений: сортируем по убыванию
+            // (created_at DESC, rowid DESC как тай-брейк для сообщений в одну
+            // секунду), затем reverse() → хронологический порядок для клиента.
+            // Прежняя версия делала ORDER BY created_at ASC LIMIT, из-за чего в
+            // длинных чатах возвращались самые СТАРЫЕ сообщения, а хвост
+            // (актуальная переписка) обрезался.
+            let mut rows: Vec<Message> = if let Some(before) = before_ts {
                 let mut stmt = c.prepare(
                     "SELECT id, session_id, role, content, content_json, parent_id, created_at,\
                             tokens_in, tokens_out, cache_creation, cache_read \
                      FROM messages WHERE session_id = ?1 AND created_at < ?2 \
-                     ORDER BY created_at ASC LIMIT ?3",
+                     ORDER BY created_at DESC, rowid DESC LIMIT ?3",
                 )?;
                 let it =
                     stmt.query_map(rusqlite::params![session_id, before, limit], row_to_message)?;
@@ -113,12 +119,13 @@ pub async fn list_by_session(
                     "SELECT id, session_id, role, content, content_json, parent_id, created_at,\
                             tokens_in, tokens_out, cache_creation, cache_read \
                      FROM messages WHERE session_id = ?1 \
-                     ORDER BY created_at ASC LIMIT ?2",
+                     ORDER BY created_at DESC, rowid DESC LIMIT ?2",
                 )?;
                 let it = stmt.query_map(rusqlite::params![session_id, limit], row_to_message)?;
                 let collected: Result<Vec<_>, _> = it.collect();
                 collected?
             };
+            rows.reverse();
             Ok(rows)
         })
         .await

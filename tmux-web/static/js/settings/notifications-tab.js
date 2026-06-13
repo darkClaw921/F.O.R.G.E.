@@ -10,8 +10,15 @@
 
 /**
  * Загружает текущий глобальный notifier-config с бэкенда.
- * При ошибке возвращает дефолты (template="", delay_minutes=0,
- * wait_previous=false, session=null) и пишет warning в console.
+ *
+ * Возвращает discriminated-результат:
+ *   - `{ ok: true, config }`  — снапшот NotifierConfig.
+ *   - `{ ok: false, error }`  — текст ошибки (HTTP/сеть).
+ *
+ * РАНЬШЕ при ошибке возвращались дефолты (template="", delay=0, ...). Это было
+ * опасно: пользователь видел «пустые» настройки и при сохранении ЗАТИРАЛ ими
+ * реальный конфиг на бэкенде. Теперь ошибка явно прокидывается, чтобы UI
+ * показал её и заблокировал Save (см. modal.js renderNotifierPanel).
  */
 export async function fetchNotifierConfig() {
     try {
@@ -19,13 +26,14 @@ export async function fetchNotifierConfig() {
             headers: { 'Accept': 'application/json' },
         });
         if (!r.ok) {
+            const text = await r.text().catch(() => '');
             console.warn('GET /api/notifier-config failed:', r.status);
-            return { template: '', delay_minutes: 0, wait_previous: false, session: null };
+            return { ok: false, error: text || ('HTTP ' + r.status) };
         }
-        return await r.json();
+        return { ok: true, config: await r.json() };
     } catch (e) {
         console.warn('fetchNotifierConfig failed', e);
-        return { template: '', delay_minutes: 0, wait_previous: false, session: null };
+        return { ok: false, error: e && e.message ? e.message : String(e) };
     }
 }
 

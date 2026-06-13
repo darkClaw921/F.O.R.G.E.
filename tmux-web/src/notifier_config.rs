@@ -183,10 +183,13 @@ impl NotifierConfigStore {
     /// на диск atomic save. Возвращает финальный снимок (для удобства
     /// echo-ответа клиенту).
     pub fn put(&self, new_cfg: NotifierConfig) -> Result<NotifierConfig> {
-        let mut inner = self.inner.write().expect("NotifierConfigStore lock poisoned");
-        inner.cfg = new_cfg;
-        save_locked(&inner)?;
-        Ok(inner.cfg.clone())
+        let (snap, cfg) = {
+            let mut inner = self.inner.write().expect("NotifierConfigStore lock poisoned");
+            inner.cfg = new_cfg;
+            (serialize_locked(&inner)?, inner.cfg.clone())
+        };
+        write_snapshot(&snap)?;
+        Ok(cfg)
     }
 
     /// Частичный patch (`PATCH /api/notifier-config`). Только поля `Some(..)`
@@ -211,39 +214,59 @@ impl NotifierConfigStore {
             // Sentinel: пустая строка ⇒ сброс в None.
             inner.cfg.session = if v.trim().is_empty() { None } else { Some(v) };
         }
-        save_locked(&inner)?;
-        Ok(inner.cfg.clone())
+        let snap = serialize_locked(&inner)?;
+        let cfg = inner.cfg.clone();
+        drop(inner);
+        write_snapshot(&snap)?;
+        Ok(cfg)
     }
 }
 
-/// Атомарно сохраняет состояние под write-lock'ом.
-///
-/// Стратегия идентична `user_settings::save_locked` и `todos::save_locked`:
-/// пишем в `<file>.tmp`, затем `rename` поверх. На POSIX rename атомарен
-/// в рамках одного mount-point.
-fn save_locked(inner: &Inner) -> Result<()> {
+/// Снимок для записи: сериализованное тело + целевой и tmp-путь. Готовится под
+/// lock'ом ([`serialize_locked`]), пишется уже без guard'а ([`write_snapshot`])
+/// — чтобы блокирующий fs I/O не держал RwLock.
+struct SaveSnapshot {
+    body: Vec<u8>,
+    path: PathBuf,
+    tmp: PathBuf,
+}
+
+/// Готовит снимок состояния под write-lock'ом. НЕ трогает диск.
+fn serialize_locked(inner: &Inner) -> Result<SaveSnapshot> {
     let body =
         serde_json::to_vec_pretty(&inner.cfg).context("failed to serialize NotifierConfig")?;
-
-    if let Some(parent) = inner.path.parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create parent dir {}", parent.display()))?;
-        }
-    }
 
     let mut tmp = inner.path.clone();
     let mut tmp_name = tmp.file_name().map(|s| s.to_owned()).unwrap_or_default();
     tmp_name.push(".tmp");
     tmp.set_file_name(tmp_name);
 
-    std::fs::write(&tmp, &body)
-        .with_context(|| format!("failed to write tmp {}", tmp.display()))?;
-    std::fs::rename(&tmp, &inner.path).with_context(|| {
+    Ok(SaveSnapshot {
+        body,
+        path: inner.path.clone(),
+        tmp,
+    })
+}
+
+/// Атомарно пишет снимок на диск БЕЗ удерживаемого lock'а.
+///
+/// Стратегия идентична `user_settings` и `todos`: пишем в `<file>.tmp`, затем
+/// `rename` поверх. На POSIX rename атомарен в рамках одного mount-point.
+fn write_snapshot(snap: &SaveSnapshot) -> Result<()> {
+    if let Some(parent) = snap.path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create parent dir {}", parent.display()))?;
+        }
+    }
+
+    std::fs::write(&snap.tmp, &snap.body)
+        .with_context(|| format!("failed to write tmp {}", snap.tmp.display()))?;
+    std::fs::rename(&snap.tmp, &snap.path).with_context(|| {
         format!(
             "failed to rename {} -> {}",
-            tmp.display(),
-            inner.path.display()
+            snap.tmp.display(),
+            snap.path.display()
         )
     })?;
     Ok(())
