@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-19T20:16:58.549Z",
+  "generatedAt": "2026-06-25T10:15:04.654Z",
   "dependencies": [
     {
       "from": "tmux-web/static/command-dock.js",
@@ -3354,6 +3354,13 @@
       "type": "call",
       "fromElement": "bootstrap",
       "toElement": "connectEchoWs"
+    },
+    {
+      "from": "tmux-web/static/js/core/bootstrap.js",
+      "to": "tmux-web/static/js/core/bootstrap.js",
+      "type": "call",
+      "fromElement": "bootstrap",
+      "toElement": "window.dispatchEvent"
     },
     {
       "from": "tmux-web/static/js/core/dom.js",
@@ -10825,6 +10832,2042 @@
       "to": "tmux-web/static/js/daily-summary/daily-summary.js",
       "type": "import",
       "toElement": "hideDailySummary"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "toElement": "res.json"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "toElement": "disablePwa"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "toElement": "injectHead"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "toElement": "import"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "toElement": "mod.registerServiceWorker"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "toElement": "loadInstall"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "toElement": "loadPush"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "toElement": "loadMobile"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "toElement": "handleLaunchParams"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "loadInstall",
+      "toElement": "import"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "loadInstall",
+      "toElement": "mod.initInstall"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "loadInstall",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "loadPush",
+      "toElement": "import"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "loadPush",
+      "toElement": "mod.initPush"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "loadPush",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "loadMobile",
+      "toElement": "import"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "loadMobile",
+      "toElement": "mod.initMobile"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "loadMobile",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "whenAppReady",
+      "toElement": "resolve"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "whenAppReady",
+      "toElement": "window.removeEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "whenAppReady",
+      "toElement": "resolve"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "whenAppReady",
+      "toElement": "finish"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "whenAppReady",
+      "toElement": "window.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "whenAppReady",
+      "toElement": "Date.now"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "whenAppReady",
+      "toElement": "finish"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "whenAppReady",
+      "toElement": "Date.now"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "whenAppReady",
+      "toElement": "finish"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "whenAppReady",
+      "toElement": "setTimeout"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "whenAppReady",
+      "toElement": "setTimeout"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "handleLaunchParams",
+      "toElement": "params.get"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "handleLaunchParams",
+      "toElement": "params.get"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "handleLaunchParams",
+      "toElement": "params.get"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "handleLaunchParams",
+      "toElement": "whenAppReady"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "handleLaunchParams",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "handleLaunchParams",
+      "toElement": "routeShareTarget"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "handleLaunchParams",
+      "toElement": "routeView"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "handleLaunchParams",
+      "toElement": "routeTab"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "handleLaunchParams",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "routeTab",
+      "toElement": "allowed.includes"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "routeTab",
+      "toElement": "import"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "routeTab",
+      "toElement": "mod.switchTab"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "routeView",
+      "toElement": "import"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "routeView",
+      "toElement": "mod.showDailySummary"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "routeShareTarget",
+      "toElement": "params.get"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "routeShareTarget",
+      "toElement": "params.get"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "routeShareTarget",
+      "toElement": "params.get"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "routeShareTarget",
+      "toElement": "routeTab"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "routeShareTarget",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "routeShareTarget",
+      "toElement": "input.value.replace"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "routeShareTarget",
+      "toElement": "input.dispatchEvent"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "routeShareTarget",
+      "toElement": "input.focus"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "routeShareTarget",
+      "toElement": "setTimeout"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "routeShareTarget",
+      "toElement": "tryInsert"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "routeShareTarget",
+      "toElement": "tryInsert"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "disablePwa",
+      "toElement": "navigator.serviceWorker.getRegistrations"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "disablePwa",
+      "toElement": "Promise.all"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "disablePwa",
+      "toElement": "regs.map"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "disablePwa",
+      "toElement": "reg.unregister"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "disablePwa",
+      "toElement": "caches.keys"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "disablePwa",
+      "toElement": "Promise.all"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "disablePwa",
+      "toElement": "key.startsWith"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "disablePwa",
+      "toElement": "caches.delete"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "injectHead",
+      "toElement": "ensureEl"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "injectHead",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "injectHead",
+      "toElement": "ensureEl"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "injectHead",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "injectHead",
+      "toElement": "ensureMeta"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "injectHead",
+      "toElement": "ensureMeta"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "injectHead",
+      "toElement": "ensureMeta"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "injectHead",
+      "toElement": "ensureMeta"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "injectHead",
+      "toElement": "ensureEl"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "injectHead",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "injectHead",
+      "toElement": "ensureEl"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "injectHead",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "injectHead",
+      "toElement": "l.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "ensureEl",
+      "toElement": "head.querySelector"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "ensureEl",
+      "toElement": "factory"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "ensureEl",
+      "toElement": "el.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "ensureEl",
+      "toElement": "head.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "ensureMeta",
+      "toElement": "head.querySelector"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "ensureMeta",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "ensureMeta",
+      "toElement": "m.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/bootstrap.js",
+      "to": "tmux-web/static/js/pwa/bootstrap.js",
+      "type": "call",
+      "fromElement": "ensureMeta",
+      "toElement": "head.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "initInstall",
+      "toElement": "isStandalone"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "initInstall",
+      "toElement": "window.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "initInstall",
+      "toElement": "window.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "initInstall",
+      "toElement": "isIos"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "initInstall",
+      "toElement": "isStandalone"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "initInstall",
+      "toElement": "maybeShowIosHint"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "onBeforeInstallPrompt",
+      "toElement": "ev.preventDefault"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "onBeforeInstallPrompt",
+      "toElement": "showInstallChip"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "onAppInstalled",
+      "toElement": "hideInstallChip"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "showInstallChip",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "showInstallChip",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "showInstallChip",
+      "toElement": "chip.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "showInstallChip",
+      "toElement": "chip.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "showInstallChip",
+      "toElement": "bar.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "onInstallClick",
+      "toElement": "hideInstallChip"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "onInstallClick",
+      "toElement": "deferredPrompt.prompt"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "onInstallClick",
+      "toElement": "hideInstallChip"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "onInstallClick",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "maybeShowIosHint",
+      "toElement": "isDismissed"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "maybeShowIosHint",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "maybeShowIosHint",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "maybeShowIosHint",
+      "toElement": "hint.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "maybeShowIosHint",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "maybeShowIosHint",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "maybeShowIosHint",
+      "toElement": "dismiss.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "maybeShowIosHint",
+      "toElement": "dismiss.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "maybeShowIosHint",
+      "toElement": "setDismissed"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "maybeShowIosHint",
+      "toElement": "hint.remove"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "maybeShowIosHint",
+      "toElement": "hint.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "maybeShowIosHint",
+      "toElement": "hint.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "maybeShowIosHint",
+      "toElement": "document.body.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "maybeShowIosHint",
+      "toElement": "requestAnimationFrame"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "maybeShowIosHint",
+      "toElement": "hint.classList.add"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "isDismissed",
+      "toElement": "localStorage.getItem"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "setDismissed",
+      "toElement": "localStorage.setItem"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "isStandalone",
+      "toElement": "window.matchMedia"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/install.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "call",
+      "fromElement": "isStandalone",
+      "toElement": "window.matchMedia"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/core/state.js",
+      "type": "import",
+      "toElement": "state"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/terminal/xterm.js",
+      "type": "import",
+      "toElement": "scheduleResizeFromTerm"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initMobile",
+      "toElement": "document.body.classList.add"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initMobile",
+      "toElement": "safe"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initMobile",
+      "toElement": "safe"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initMobile",
+      "toElement": "safe"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initMobile",
+      "toElement": "safe"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "safe",
+      "toElement": "fn"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "safe",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initKeyboardViewport",
+      "toElement": "Math.max"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initKeyboardViewport",
+      "toElement": "Math.round"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initKeyboardViewport",
+      "toElement": "root.style.setProperty"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initKeyboardViewport",
+      "toElement": "document.body.classList.add"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initKeyboardViewport",
+      "toElement": "root.style.setProperty"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initKeyboardViewport",
+      "toElement": "document.body.classList.remove"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initKeyboardViewport",
+      "toElement": "refitTerminal"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initKeyboardViewport",
+      "toElement": "requestAnimationFrame"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initKeyboardViewport",
+      "toElement": "vv.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initKeyboardViewport",
+      "toElement": "vv.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initKeyboardViewport",
+      "toElement": "apply"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "refitTerminal",
+      "toElement": "state.fitAddon.fit"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "refitTerminal",
+      "toElement": "scheduleResizeFromTerm"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initAppBadge",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initAppBadge",
+      "toElement": "resp.json"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initAppBadge",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initAppBadge",
+      "toElement": "data.filter"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initAppBadge",
+      "toElement": "updateBadge"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initAppBadge",
+      "toElement": "poll"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initAppBadge",
+      "toElement": "setInterval"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initAppBadge",
+      "toElement": "clearInterval"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initAppBadge",
+      "toElement": "document.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initAppBadge",
+      "toElement": "stop"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initAppBadge",
+      "toElement": "start"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initAppBadge",
+      "toElement": "start"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "updateBadge",
+      "toElement": "navigator.setAppBadge"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "updateBadge",
+      "toElement": "navigator.clearAppBadge"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "updateBadge",
+      "toElement": "navigator.setAppBadge"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initWakeLock",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initWakeLock",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initWakeLock",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initWakeLock",
+      "toElement": "btn.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initWakeLock",
+      "toElement": "btn.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initWakeLock",
+      "toElement": "bar.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initWakeLock",
+      "toElement": "btn.classList.toggle"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initWakeLock",
+      "toElement": "btn.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initWakeLock",
+      "toElement": "btn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initWakeLock",
+      "toElement": "reflect"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initWakeLock",
+      "toElement": "acquireWakeLock"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initWakeLock",
+      "toElement": "releaseWakeLock"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initWakeLock",
+      "toElement": "document.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initWakeLock",
+      "toElement": "acquireWakeLock"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "acquireWakeLock",
+      "toElement": "navigator.wakeLock.request"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "acquireWakeLock",
+      "toElement": "wakeLock.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "acquireWakeLock",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "releaseWakeLock",
+      "toElement": "wakeLock.release"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initOnlineBanner",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initOnlineBanner",
+      "toElement": "el.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initOnlineBanner",
+      "toElement": "document.body.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initOnlineBanner",
+      "toElement": "ensureBanner"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initOnlineBanner",
+      "toElement": "banner.classList.toggle"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initOnlineBanner",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initOnlineBanner",
+      "toElement": "dot.classList.toggle"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initOnlineBanner",
+      "toElement": "window.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initOnlineBanner",
+      "toElement": "window.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/mobile.js",
+      "to": "tmux-web/static/js/pwa/mobile.js",
+      "type": "call",
+      "fromElement": "initOnlineBanner",
+      "toElement": "apply"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "import",
+      "toElement": "isStandalone"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/install.js",
+      "type": "import",
+      "toElement": "isIos"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "initPush",
+      "toElement": "pushSupported"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "initPush",
+      "toElement": "tryInjectIntoOpenModal"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "initPush",
+      "toElement": "node.querySelector"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "initPush",
+      "toElement": "injectPushSection"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "initPush",
+      "toElement": "node.querySelector"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "initPush",
+      "toElement": "modalObserver.observe"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "tryInjectIntoOpenModal",
+      "toElement": "document.querySelector"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "tryInjectIntoOpenModal",
+      "toElement": "injectPushSection"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "injectPushSection",
+      "toElement": "panel.querySelector"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "injectPushSection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "injectPushSection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "injectPushSection",
+      "toElement": "section.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "injectPushSection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "injectPushSection",
+      "toElement": "section.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "injectPushSection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "injectPushSection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "injectPushSection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "injectPushSection",
+      "toElement": "row.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "injectPushSection",
+      "toElement": "row.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "injectPushSection",
+      "toElement": "section.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "injectPushSection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "injectPushSection",
+      "toElement": "section.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "injectPushSection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "injectPushSection",
+      "toElement": "section.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "injectPushSection",
+      "toElement": "panel.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "injectPushSection",
+      "toElement": "toggle.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "injectPushSection",
+      "toElement": "onToggleChange"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "injectPushSection",
+      "toElement": "testBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "injectPushSection",
+      "toElement": "onTestClick"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "injectPushSection",
+      "toElement": "refreshState"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "refreshState",
+      "toElement": "isIos"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "refreshState",
+      "toElement": "isStandalone"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "refreshState",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "refreshState",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "refreshState",
+      "toElement": "reg.pushManager.getSubscription"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "refreshState",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "refreshState",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "onToggleChange",
+      "toElement": "enablePush"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "onToggleChange",
+      "toElement": "disablePush"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "enablePush",
+      "toElement": "getVapidKey"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "enablePush",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "enablePush",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "enablePush",
+      "toElement": "Notification.requestPermission"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "enablePush",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "enablePush",
+      "toElement": "urlBase64ToUint8Array"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "enablePush",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "enablePush",
+      "toElement": "reg.pushManager.subscribe"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "enablePush",
+      "toElement": "postSubscribe"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "enablePush",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "enablePush",
+      "toElement": "sub.unsubscribe"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "enablePush",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "enablePush",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "enablePush",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "disablePush",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "disablePush",
+      "toElement": "reg.pushManager.getSubscription"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "disablePush",
+      "toElement": "sub.unsubscribe"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "disablePush",
+      "toElement": "postUnsubscribe"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "disablePush",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "disablePush",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "disablePush",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "disablePush",
+      "toElement": "refreshState"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "onTestClick",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "onTestClick",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "onTestClick",
+      "toElement": "r.json"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "onTestClick",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "onTestClick",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "onTestClick",
+      "toElement": "setStatus"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "postSubscribe",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "postSubscribe",
+      "toElement": "JSON.stringify"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "postSubscribe",
+      "toElement": "subscription.toJSON"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "postSubscribe",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "postUnsubscribe",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "postUnsubscribe",
+      "toElement": "JSON.stringify"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "postUnsubscribe",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "urlBase64ToUint8Array",
+      "toElement": "atob"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/push.js",
+      "to": "tmux-web/static/js/pwa/push.js",
+      "type": "call",
+      "fromElement": "urlBase64ToUint8Array",
+      "toElement": "rawData.charCodeAt"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "registerServiceWorker",
+      "toElement": "navigator.serviceWorker.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "registerServiceWorker",
+      "toElement": "window.location.reload"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "registerServiceWorker",
+      "toElement": "navigator.serviceWorker.register"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "registerServiceWorker",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "registerServiceWorker",
+      "toElement": "showUpdateBanner"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "registerServiceWorker",
+      "toElement": "reg.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "registerServiceWorker",
+      "toElement": "installing.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "registerServiceWorker",
+      "toElement": "showUpdateBanner"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "showUpdateBanner",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "showUpdateBanner",
+      "toElement": "banner.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "showUpdateBanner",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "showUpdateBanner",
+      "toElement": "banner.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "showUpdateBanner",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "showUpdateBanner",
+      "toElement": "btn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "showUpdateBanner",
+      "toElement": "waiting.postMessage"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "showUpdateBanner",
+      "toElement": "window.location.reload"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "showUpdateBanner",
+      "toElement": "banner.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "showUpdateBanner",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "showUpdateBanner",
+      "toElement": "dismiss.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "showUpdateBanner",
+      "toElement": "dismiss.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "showUpdateBanner",
+      "toElement": "hideUpdateBanner"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "showUpdateBanner",
+      "toElement": "banner.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "showUpdateBanner",
+      "toElement": "document.body.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "showUpdateBanner",
+      "toElement": "requestAnimationFrame"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "showUpdateBanner",
+      "toElement": "banner.classList.add"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "hideUpdateBanner",
+      "toElement": "el.classList.remove"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "hideUpdateBanner",
+      "toElement": "setTimeout"
+    },
+    {
+      "from": "tmux-web/static/js/pwa/register.js",
+      "to": "tmux-web/static/js/pwa/register.js",
+      "type": "call",
+      "fromElement": "hideUpdateBanner",
+      "toElement": "el.remove"
     },
     {
       "from": "tmux-web/static/js/remote/healthz.js",
@@ -29424,6 +31467,408 @@
       "to": "tmux-web/static/quick-cmd.js",
       "type": "call",
       "toElement": "init"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "self.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "event.waitUntil"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "caches.open"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "cache.addAll"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "SHELL_ASSETS.map"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "self.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "event.waitUntil"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "Promise.all"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "key.startsWith"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "CURRENT_CACHES.has"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "caches.delete"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "self.clients.claim"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "self.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "url.pathname.startsWith"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "request.headers.get"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "event.respondWith"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "navigationStrategy"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "isDataAllowlisted"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "event.respondWith"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "networkFirstData"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "path.startsWith"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "path.startsWith"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "isStaticAsset"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "event.respondWith"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "staleWhileRevalidate"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "fromElement": "isDataAllowlisted",
+      "toElement": "DATA_ALLOWLIST.some"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "fromElement": "isDataAllowlisted",
+      "toElement": "path.startsWith"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "fromElement": "isDataAllowlisted",
+      "toElement": "path.startsWith"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "fromElement": "isStaticAsset",
+      "toElement": "path.startsWith"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "fromElement": "isStaticAsset",
+      "toElement": "path.startsWith"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "fromElement": "isStaticAsset",
+      "toElement": "path.startsWith"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "fromElement": "isStaticAsset",
+      "toElement": "path.startsWith"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "fromElement": "navigationStrategy",
+      "toElement": "caches.open"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "fromElement": "navigationStrategy",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "fromElement": "navigationStrategy",
+      "toElement": "cache.put"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "fromElement": "navigationStrategy",
+      "toElement": "response.clone"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "fromElement": "navigationStrategy",
+      "toElement": "cache.match"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "fromElement": "navigationStrategy",
+      "toElement": "cache.match"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "fromElement": "staleWhileRevalidate",
+      "toElement": "caches.open"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "fromElement": "staleWhileRevalidate",
+      "toElement": "cache.match"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "fromElement": "staleWhileRevalidate",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "fromElement": "staleWhileRevalidate",
+      "toElement": "cache.put"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "fromElement": "staleWhileRevalidate",
+      "toElement": "response.clone"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "fromElement": "networkFirstData",
+      "toElement": "caches.open"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "fromElement": "networkFirstData",
+      "toElement": "dataCacheName"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "fromElement": "networkFirstData",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "fromElement": "networkFirstData",
+      "toElement": "cache.put"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "fromElement": "networkFirstData",
+      "toElement": "response.clone"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "fromElement": "networkFirstData",
+      "toElement": "cache.match"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "self.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "self.skipWaiting"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "self.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "event.data.json"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "event.data.text"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "event.waitUntil"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "self.registration.showNotification"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "self.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "event.notification.close"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "event.waitUntil"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "client.focus"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "c.navigate"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "client.focus"
+    },
+    {
+      "from": "tmux-web/static/sw.js",
+      "to": "tmux-web/static/sw.js",
+      "type": "call",
+      "toElement": "self.clients.openWindow"
     },
     {
       "from": "tmux-web/static/vendor/xterm/xterm-addon-fit.min.js",

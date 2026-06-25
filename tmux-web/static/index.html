@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
     <title>tmux-web</title>
 
     <!-- xterm.js core CSS (5.3.0) — завендорено локально (/vendor/xterm),
@@ -272,5 +272,9 @@
     <script src="/command-dock.js"></script>
     <!-- Горячие клавиши (vim-style + Cmd-hint mode) -->
     <script src="/hotkeys.js"></script>
+    <!-- PWA bootstrap (always-loaded opt-in гейт): сам решает по /api/pwa/config,
+         включать ли PWA. Без флага --pwa снимает регистрацию SW и чистит кэши;
+         manifest-link/apple-meta/theme-color инжектятся только при enabled. -->
+    <script type="module" src="/js/pwa/bootstrap.js"></script>
 </body>
 </html>

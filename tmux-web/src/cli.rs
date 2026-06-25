@@ -52,6 +52,12 @@ pub struct RunOptions {
     /// `--token <hex>` или env DEVFORGE_AUTH_TOKEN. None ⇒ при remote
     /// генерируется автоматически.
     pub token: Option<String>,
+    /// `--pwa` (bool flag). True ⇒ включает opt-in PWA-функционал
+    /// (config-эндпоинт, VAPID, web-push). False (default) ⇒ поведение
+    /// байт-в-байт как раньше: ни роутов `/api/pwa/*`, ни файла
+    /// `~/.forge/vapid.json`. Источник истины для гейтинга —
+    /// [`crate::server_config::EffectiveConfig::pwa_enabled`].
+    pub pwa: bool,
 }
 
 impl Default for RunOptions {
@@ -61,6 +67,7 @@ impl Default for RunOptions {
             remote: false,
             bind: None,
             token: None,
+            pwa: false,
         }
     }
 }
@@ -146,6 +153,7 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
     let mut remote = false;
     let mut bind: Option<String> = None;
     let mut token: Option<String> = None;
+    let mut pwa = false;
 
     while let Some(a) = iter.next() {
         match a.as_str() {
@@ -160,6 +168,9 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
             }
             "--remote" => {
                 remote = true;
+            }
+            "--pwa" => {
+                pwa = true;
             }
             "--bind" => {
                 let v = iter
@@ -205,12 +216,13 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
     }
 
     let port = port.unwrap_or(DEFAULT_PORT);
-    let has_run_only_flags = remote || bind.is_some() || token.is_some();
+    let has_run_only_flags = remote || bind.is_some() || token.is_some() || pwa;
     let run_opts = RunOptions {
         port,
         remote,
         bind,
         token,
+        pwa,
     };
 
     let mode = match subcmd.as_deref() {
@@ -221,7 +233,7 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
                 bail!("`--port` is not valid for `stop` (PID is read from pid-file)");
             }
             if has_run_only_flags {
-                bail!("`--remote`/`--bind`/`--token` are not valid for `stop`");
+                bail!("`--remote`/`--bind`/`--token`/`--pwa` are not valid for `stop`");
             }
             Mode::Stop
         }
@@ -230,7 +242,7 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
                 bail!("`--port` is not valid for `status`");
             }
             if has_run_only_flags {
-                bail!("`--remote`/`--bind`/`--token` are not valid for `status`");
+                bail!("`--remote`/`--bind`/`--token`/`--pwa` are not valid for `status`");
             }
             Mode::Status
         }
@@ -411,6 +423,7 @@ pub fn run_pair(opts: &PairOptions) -> Result<()> {
             auth_token: Some(token.clone()),
             bind: Some("0.0.0.0".to_string()),
             port: Some(DEFAULT_PORT),
+            ..Default::default()
         },
     };
     crate::server_config::save_to(&path, &merged)
@@ -560,6 +573,7 @@ pub fn help_text() -> String {
                  --remote      Enable remote/public mode (bind 0.0.0.0, Bearer-auth required).\n    \
                  --bind <ADDR> Bind address. Default: {DEFAULT_BIND} (localhost), or 0.0.0.0 if --remote.\n    \
                  --token <HEX> Bearer token (64-hex). Env: ${ENV_AUTH_TOKEN}. Auto-generated if --remote without token.\n    \
+                 --pwa         Enable PWA mode (installable web app + Web Push). Opt-in; off by default.\n    \
              -h, --help        Show this help message\n\
          \n\
          EXAMPLES:\n    \
@@ -631,6 +645,46 @@ mod tests {
         assert_eq!(o.bind, None);
         // token может прийти из env — для теста очищать env неудобно,
         // оставляем только проверку remote=true.
+    }
+
+    #[test]
+    fn parse_pwa_flag_default_false() {
+        // Без флага --pwa поле должно остаться false (opt-in инвариант).
+        let m = parse_from(args(&[])).unwrap();
+        assert!(!expect_run(m).pwa);
+        let m = parse_from(args(&["run"])).unwrap();
+        assert!(!expect_run(m).pwa);
+    }
+
+    #[test]
+    fn parse_pwa_flag_sets_true() {
+        let m = parse_from(args(&["run", "--pwa"])).unwrap();
+        assert!(expect_run(m).pwa);
+        // Комбинируется с другими флагами run.
+        let m = parse_from(args(&["run", "--remote", "--pwa"])).unwrap();
+        let o = expect_run(m);
+        assert!(o.pwa);
+        assert!(o.remote);
+    }
+
+    #[test]
+    fn parse_pwa_carried_by_start() {
+        let m = parse_from(args(&["start", "--pwa"])).unwrap();
+        match m {
+            Mode::Start(o) => assert!(o.pwa),
+            _ => panic!("expected Start"),
+        }
+    }
+
+    #[test]
+    fn parse_pwa_rejected_for_stop_status() {
+        assert!(parse_from(args(&["stop", "--pwa"])).is_err());
+        assert!(parse_from(args(&["status", "--pwa"])).is_err());
+    }
+
+    #[test]
+    fn help_text_mentions_pwa() {
+        assert!(help_text().contains("--pwa"));
     }
 
     #[test]
@@ -817,6 +871,7 @@ mod tests {
             auth_token: Some(token.clone()),
             bind: Some("0.0.0.0".to_string()),
             port: Some(DEFAULT_PORT),
+            ..Default::default()
         };
         crate::server_config::save_to(&path, &cfg).unwrap();
         let loaded = crate::server_config::load_from(&path).unwrap().unwrap();
@@ -967,6 +1022,7 @@ mod tests {
             auth_token: Some(existing_token.to_string()),
             bind: Some("0.0.0.0".to_string()),
             port: Some(DEFAULT_PORT),
+            ..Default::default()
         };
         crate::server_config::save_to(&path, &cfg).unwrap();
 
@@ -976,6 +1032,7 @@ mod tests {
             port: DEFAULT_PORT,
             auth_token: Some(existing_token.to_string()),
             remote_mode: true,
+            pwa_enabled: false,
         };
         let got = crate::server_config::finalize_token_at(&eff, &path).unwrap();
         assert_eq!(

@@ -215,4 +215,13 @@ export async function bootstrap() {
             }
         }
     });
+
+    // Сигнал готовности UI для PWA-bootstrap (Фаза 5): обработка
+    // shortcuts/share-target из manifest (?tab=/?view=/?share-target=) ждёт
+    // этого флага/события, чтобы switchTab/showDailySummary не вызвались до
+    // полной инициализации. Без --pwa слушателей нет — no-op побочный эффект.
+    window.__FORGE_APP_READY = true;
+    try {
+        window.dispatchEvent(new Event('forge:app-ready'));
+    } catch (_) { /* старые браузеры без Event-конструктора — флага достаточно */ }
 }

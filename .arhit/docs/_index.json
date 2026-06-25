@@ -963,9 +963,9 @@
     "element": "static_embed",
     "path": "",
     "type": "unknown",
-    "content": "Модуль tmux-web/src/static_embed.rs — embedded-static fallback для axum-роутера devforge.\n\nЧто делает:\nВстраивает содержимое каталога tmux-web/static/ (index.html, app.js, hotkeys.js, style.css и т.д.) непосредственно в бинарь на этапе компиляции через rust-embed (feature interpolate-folder-path) и отдаёт их через axum-handler с корректным Content-Type. Полностью устраняет зависимость от cwd или каталога рядом с исполняемым файлом — бинарь self-contained и работает откуда угодно (Homebrew, cargo install, /tmp).\n\nКлючевые элементы:\n- pub struct StaticAssets — #[derive(RustEmbed)] #[folder = \"\\$CARGO_MANIFEST_DIR/static/\"]. \\$CARGO_MANIFEST_DIR резолвится в путь до tmux-web/Cargo.toml, поэтому фактический folder — tmux-web/static/. pub чтобы при необходимости обращаться к ассетам из других модулей.\n- pub async fn serve_static(uri: Uri) -> Response — axum Handler. Логика: trim_start_matches('/'); пустой путь → index.html; trailing-slash → <path>index.html (повторяет поведение ServeDir::append_index_html_on_directories); ищет в StaticAssets::get(&path); 200 + Content-Type (mime_guess::from_path) или 404 Not Found.\n\nЗависимости (Cargo.toml):\n- rust-embed = { version = \"8\", features = [\"interpolate-folder-path\"] } — без feature \\$CARGO_MANIFEST_DIR не работает.\n- mime_guess = \"2\" — определение Content-Type.\n\nСвязи:\n- Подключается в crate::main как mod static_embed (после mod pty).\n- Используется в Router как .fallback(static_embed::serve_static) — после .with_state(app_state), перед .layer(TraceLayer::new_for_http()).\n- Заменил собой удалённые fn resolve_static_dir() и use tower_http::services::ServeDir.\n\nПример запроса:\n- GET / → 200 text/html, тело = static/index.html\n- GET /app.js → 200 text/javascript, тело = static/app.js\n- GET /unknown → 404 Not Found",
+    "content": "static_embed::serve_static — axum-handler embedded-static (rust-embed). Edge-тесты (#[cfg(test)] mod tests, #[tokio::test], 11 тестов): sw.js и manifest.webmanifest → Cache-Control: no-cache (точное == path, не contains); app.js/style.css/index.html/icon.png → БЕЗ Cache-Control; mime через mime_guess 2.0.5 (js→text/javascript, css→text/css, png→image/png, html→text/html); 404 для отсутствующего пути с телом '404 Not Found'; '/' → index.html; trailing-slash → <dir>/index.html (404 для несуществующего); query-string не ломает резолюцию имени (/sw.js?v=123); вложенный js/sw.js != строгий 'sw.js'; идемпотентность повторных вызовов. Заголовки читаются ДО into_body(); body через axum::body::to_bytes.",
     "createdAt": "2026-05-13T12:06:52.193Z",
-    "updatedAt": "2026-05-13T12:06:52.193Z"
+    "updatedAt": "2026-06-25T10:32:45.111Z"
   },
   {
     "element": "main",
@@ -1046,9 +1046,9 @@
     "element": "main.rs",
     "path": "main.rs",
     "type": "file",
-    "content": "Главный entry-point devforge.\n\nPhase 1 (remote mode):\n- main() парсит CLI через cli::parse() и обрабатывает Mode::Start/Stop/Status немедленно (daemon-команды).\n- Для Mode::Run(opts): загружает server_config.json через server_config::load() (Err — печатает warning, продолжает с CLI-only), затем server_config::resolve(&opts, file_cfg) даёт EffectiveConfig (bind/port/auth_token/remote_mode по приоритетам CLI > file > env > default). server_config::finalize_token(&effective) возвращает финальный токен: при remote_mode=true без существующего — генерирует 64-hex и сохраняет в файл, печатает банер.\n- AppState: дополнено полями remote_mode: bool и auth_token: Arc<Option<String>>. Передаётся в healthz через State<AppState>.\n- Router сначала строится без auth, после .with_state — условно навешивает axum::middleware::from_fn_with_state(auth::AuthState::new(Some(token)), auth::bearer_auth) ТОЛЬКО если auth_token=Some. Path-exclusion (/healthz, /, /assets/*, /static/*) — внутри bearer_auth.\n- Финальный bind: при remote_mode=false hardcoded SocketAddr::from(([127,0,0,1], port)) (legacy invariant); при remote_mode=true — <bind_host>:<port>.\n\nhealthz handler:\n- Принимает State<AppState>.\n- Возвращает Json(HealthzResponse{status:'ok', remote_mode: state.remote_mode, version: env!('CARGO_PKG_VERSION')}).\n- Content-Type автоматически application/json (axum::Json).\n- Покрыт unit-тестами healthz_response_shape_remote_mode_off/on (mod tests внизу файла).\n\nНе меняет: ни одного существующего endpoint'а или DTO; добавляет только новые поля в AppState и заменяет return string на JSON-структуру в healthz.",
+    "content": "Точка входа devforge (axum + tmux + WS). PWA wire-up (opt-in --pwa): pwa_ctx: Option<PwaCtx{vapid,subs}> инициализируется при pwa_enabled (~457) — VapidStore::load_or_generate + PushSubscriptionStore::new в ~/.forge; перемещается в AppState.pwa (~586). Роуты /api/pwa/config + /api/push/{subscribe,unsubscribe,test} регистрируются только при app_state.pwa.is_some() до auth-layer (~800). Push-воркер доставки: сразу после tokio::spawn(attention::watcher_loop(...)) условный спавн — if let Some(ctx)=app_state.pwa.as_ref() { tokio::spawn(push::attention_watcher(attention.clone(), ctx.subs.clone(), ctx.vapid.clone(), '/'.to_string())) }. Без --pwa pwa==None -> воркер не спавнится, push-роуты 404 (opt-in инвариант). mod push/push_store без allow(dead_code) (Фаза 3 потребляет все элементы).",
     "createdAt": "2026-05-14T09:12:08.884Z",
-    "updatedAt": "2026-05-14T09:12:08.884Z"
+    "updatedAt": "2026-06-25T08:56:48.517Z"
   },
   {
     "element": "HealthzResponse",
@@ -1478,9 +1478,9 @@
     "element": "server_config",
     "path": "",
     "type": "unknown",
-    "content": "Конфигурация сервера (tmux-web/src/server_config.rs).\n\n## Файл ~/.config/forge/server_config.json\nФормат: {auth_token?, bind?, port?}. Все поля опциональны. Отсутствующий файл → Ok(None).\n\n## API\n- load() / load_from(&Path) → Result<Option<ServerConfig>>. None при отсутствии файла.\n- save() / save_to(&Path, &ServerConfig) → atomic write tmp + rename.\n- resolve(&RunOptions, Option<&ServerConfig>) → EffectiveConfig. Priority: CLI > file > env > default.\n- finalize_token(&EffectiveConfig) / finalize_token_at — авто-генерирует 64-hex Bearer при remote_mode=true без token; сохраняет файл.\n- is_localhost_bind(&str) → bool. True для 127.x, ::1, localhost. False для 0.0.0.0, fe80::1 (link-local), :: (unspecified), 192.168.*, [::1] (bracket-форма не распознаётся — известный case).\n- print_public_bind_warning() — banner про HTTP-without-TLS на public bind'е.\n- print_auto_token_banner() — banner про auto-generated token.\n\n## Контракт (закреплён тестами Phase 8 .6)\n- Невалидный JSON → Err с file path в message.\n- 0-байтный файл → Err (JSON требует хотя бы {}).\n- {} → Default-ServerConfig (все поля None).\n- Лишние поля игнорируются (serde без deny_unknown_fields).\n- save_to на read-only dir → Err не панику.\n- is_localhost_bind:\n  - '::1' — true (loopback)\n  - '[::1]' — false (bracket-форма не поддерживается)\n  - 'fe80::1' — false (link-local публичен)\n  - '::' — false (unspecified = публичен)\n- resolve в legacy-mode (remote=false) принудительно понижает bind до 127.0.0.1, даже если CLI/файл указали 0.0.0.0 — defense-in-depth.\n\n## Auto-remote\nServerConfig::implies_remote() = true если auth_token.is_some() || bind.is_some(). resolve() активирует remote_mode при таком файле даже без --remote в CLI.\n\n## Тесты\n30 unit-тестов в server_config::tests (Phase 1 + Phase 8 .6).",
+    "content": "server_config — резолюция EffectiveConfig.pwa_enabled (CLI > file > env DEVFORGE_PWA > default false; логическое ИЛИ, не first-wins). Edge-тесты (42): CLI true перебивает file:false; pwa ортогонален remote_mode; env truthy побеждает file:false (нет veto); мусорный env не включает; env_flag_is_truthy расширенная матрица (регистр/пробелы/мусор); pwa_env_matrix — ЕДИНСТВЕННЫЙ env-мутирующий тест (вся DEVFORGE_PWA-матрица в одном последовательном #[test] с восстановлением env, т.к. env не thread-safe при параллельном cargo test); print_public_bind_warning ветки pwa true/false × localhost/public × битый/короткий/пустой токен — no-panic, web-push строка только при public+pwa_enabled, localhost → ранний return.",
     "createdAt": "2026-05-14T12:03:11.128Z",
-    "updatedAt": "2026-05-14T12:03:11.128Z"
+    "updatedAt": "2026-06-25T10:32:45.423Z"
   },
   {
     "element": "cli",
@@ -4073,5 +4073,216 @@
     "aliases": [
       "команды уходят за экран справа не прокручиваются"
     ]
+  },
+  {
+    "element": "vapid.rs",
+    "path": "vapid.rs",
+    "type": "file",
+    "content": "tmux-web/src/vapid.rs — VAPID P-256 keypair store (~/.forge/vapid.json, atomic tmp+rename) + ES256 подпись для Web Push. Тесты в #[cfg(test)] mod tests расширены краевыми случаями: генерация даёт приватник ровно 32 байта + публичный 65 байт 0x04-prefix; рассинхрон кэша public_key_b64 в файле → публичный ключ выводится заново из приватника (не из подменённого кэша); пустой файл→Err парсинга (не NotFound, не перегенерация); JSON без обязательных полей→Err; невалидный base64url приватника (мусор/padding/'+'/'/'); приватник длиннее 32 байт (33/64)→Err; криптографически невалидный 32-байт скаляр (0 и 0xFF*32)→Err; толерантность к whitespace вокруг приватника (.trim()); чтение каталога вместо файла (не-NotFound)→Err без генерации; идемпотентность reload не переписывает байты файла; отсутствующий родительский каталог→Err (нет auto-create, fail-soft); детерминизм derive_public_b64; public_key_b64 base64url-no-pad; Debug не печатает приватник (<redacted>); default_vapid_path с HOME→.forge/vapid.json и без HOME→Err (set/remove_var + restore в одном тесте против гонок env).",
+    "createdAt": "2026-06-25T08:18:32.560Z",
+    "updatedAt": "2026-06-25T10:14:56.647Z"
+  },
+  {
+    "element": "pwa.rs",
+    "path": "pwa.rs",
+    "type": "file",
+    "content": "PWA HTTP-хендлеры + DTO (opt-in PWA, флаг --pwa). Файл: tmux-web/src/pwa.rs.\n\nНАЗНАЧЕНИЕ: REST-эндпоинты PWA. Все роуты регистрируются в main.rs ТОЛЬКО при app_state.pwa.is_some() (если --pwa) и ДО auth-layer — поэтому в remote-mode попадают под Bearer-auth + csrf_guard (same-origin + Content-Type:application/json). Без --pwa роутов нет -> 404 (fallback на статику), что для фронтового bootstrap.js = 'PWA выключено'.\n\nЭНДПОИНТЫ:\n- GET /api/pwa/config (get_pwa_config) -> 200 {enabled:true, vapidPublicKey:<b64url>} (PwaConfig, serde camelCase). vapidPublicKey = публичный VAPID-ключ (65-байт uncompressed point, base64url-no-pad) для pushManager.subscribe({applicationServerKey}). Если state.pwa==None (теоретический рассинхрон) -> 404.\n- POST /api/push/subscribe (post_push_subscribe): тело SubscribeReq {endpoint, keys:{p256dh,auth}, device_label?} = браузерный PushSubscription. Сервер ставит created_at (RFC3339) и делает store.upsert (дедуп по endpoint) -> 200 {ok:true}. 404 без PWA, 500 при ошибке записи.\n- POST /api/push/unsubscribe (post_push_unsubscribe): тело {endpoint}. store.remove, идемпотентно (повтор/несуществующий endpoint тоже 200) -> 200 {ok:true}.\n- POST /api/push/test (post_push_test): реальная RFC8291-доставка тестового пуша всем подпискам через push::send_to_all (Фаза 3; раньше Фаза 2 — заглушка sent:0). Шифрует payload {title,body,data:{url}}, прикладывает VAPID-JWT, POST на endpoint; мёртвые (404/410) прунятся -> 200 {sent, pruned}. HTTP-клиент создаётся на вызов (дёргается редко).\n\nDTO: PwaConfig (camelCase enabled/vapidPublicKey), SubscribeReq/SubscribeKeys/UnsubscribeReq (deserialize браузерной формы), OkResp{ok}, TestResp{sent,pruned}.\n\nЗАВИСИМОСТИ: AppState.pwa (PwaCtx с vapid+subs), push_store (upsert/remove), push (send_to_all для /test), vapid (public_key для config). Регистрация роутов: main.rs блок 'if app_state.pwa.is_some()'. Тесты: config camelCase, subscribe browser-shape deserialize, device_label optional, ok_resp, created_at rfc3339 utc.",
+    "createdAt": "2026-06-25T08:18:46.027Z",
+    "updatedAt": "2026-06-25T09:44:02.645Z"
+  },
+  {
+    "element": "push.rs",
+    "path": "push.rs",
+    "type": "file",
+    "content": "tmux-web/src/push.rs — Web Push доставка (Фаза 3): VAPID-JWT (ES256) + RFC 8291/8188 aes128gcm шифрование + воркер attention_watcher + транспорт send_one/send_to_all. Тесты в #[cfg(test)] mod tests расширены краевыми случаями: ECE roundtrip (пустой/UTF-8/бинарь/граница RECORD_SIZE/oversize-без-паники), негативы ключей подписки (битый base64url, padding, неверная длина 64/66, prefix!=0x04, точка не на кривой, auth!=16), свежесть salt/server-key (10 вызовов уникальны), целостность GCM (подмена ciphertext/salt/AAD/порядка ua||as ломает decrypt), изоляция per-subscription. VAPID-JWT: no-pad сегменты, P1363 raw 64-байт подпись+verify своим pubkey, exp в [now, now+24h], aud==origin endpoint, непустой sub, header k==public_key. Транспорт (wiremock, #[tokio::test multi_thread]): 404/410→prune, 401/403→Auth-без-prune, 500/connection-refused→Transient-без-prune, 2xx→sent++, смесь живых/мёртвых, битый ключ→Crypto-до-HTTP, обязательные заголовки (Content-Encoding/TTL/Urgency/Authorization vapid t=), opt-in lazy file creation, конкурентность send_to_all с upsert/remove. Edge-trigger воркера через зеркальную newly_attention: стабильный true не повторяет пуш, пустые входы без триггера, смешанные фазы сессий.",
+    "createdAt": "2026-06-25T08:18:46.379Z",
+    "updatedAt": "2026-06-25T10:14:48.496Z"
+  },
+  {
+    "element": "push_store.rs",
+    "path": "push_store.rs",
+    "type": "file",
+    "content": "Хранилище push-подписок Web Push (opt-in PWA, флаг --pwa). Файл: tmux-web/src/push_store.rs.\n\nНАЗНАЧЕНИЕ: персистентное хранилище подписок устройств на push-уведомления. Каждый браузер/устройство, согласившийся получать Web Push, шлёт свой PushSubscription на POST /api/push/subscribe; подписка сохраняется здесь и переживает рестарт сервера (иначе после перезапуска некому слать пуши). Файл ~/.forge/push_subscriptions.json (рядом с user_settings.json и vapid.json), резолвится от HOME через default_subscriptions_path().\n\nМОДЕЛЬ: StoredSubscription = сериализованный браузерный PushSubscription + серверные метаданные. Поля: endpoint (URL push-сервиса FCM/Mozilla/Apple — уникальный идентификатор, дедуп и удаление по нему); keys.p256dh (публичный ECDH-ключ браузера, 65-байт uncompressed point, base64url) + keys.auth (auth-secret 16б, base64url) — нужны push.rs для RFC8291-шифрования; device_label (опциональная метка устройства для UI); created_at (RFC3339, ставит сервер при subscribe).\n\nКЛЮЧЕВЫЕ МЕТОДЫ PushSubscriptionStore (Arc<RwLock<Inner>>, cheap-clone, один экземпляр на процесс в PwaCtx.subs): new(path) — конструктор с путём; upsert(sub) — вставка/обновление с дедупом по endpoint + atomic save; remove(endpoint) -> Ok(bool) — идемпотентное удаление (false если не было, без записи на диск); prune(&[endpoint]) — батч-удаление мёртвых подписок (вызывается push::send_to_all для 404/410); list()/snapshot — чтение для воркера доставки.\n\nPERSISTENCE: паттерн UserSettingsStore — atomic save (tmp + fs::rename поверх; на POSIX rename атомарен в рамках mount-point: при kill -9 на диске либо старый, либо новый файл, не битый). Политика 'битый файл не блокирует работу': повреждённый JSON -> пустой список (no panic).\n\nЗАВИСИМОСТИ: используется pwa.rs (subscribe/unsubscribe/test хендлеры), push.rs (send_to_all читает подписки и прунит мёртвые), main.rs (инициализация PwaCtx.subs при --pwa). Тесты: upsert dedup, prune batch, idempotent remove, atomic write, corrupt-file -> empty.",
+    "createdAt": "2026-06-25T08:18:46.684Z",
+    "updatedAt": "2026-06-25T09:43:03.562Z"
+  },
+  {
+    "element": "PwaCtx",
+    "path": "",
+    "type": "unknown",
+    "content": "PWA-контекст (tmux-web/src/main.rs), opt-in под флагом --pwa. Живёт в AppState.pwa как Option<PwaCtx>: Some => PWA включён (роуты /api/pwa/* + /api/push/* зарегистрированы, файлы ~/.forge/{vapid.json,push_subscriptions.json} созданы/загружены); None => поведение байт-в-байт как раньше (жёсткий opt-in инвариант, 404 на все PWA-роуты, никаких файловых операций в ~/.forge). Cheap-clonable. Поля: vapid: vapid::VapidStore (VAPID P-256 пара — публичный отдаётся через GET /api/pwa/config, приватный для ES256-JWT в Фазе 3); subs: push_store::PushSubscriptionStore (Фаза 2 — хранилище push-подписок ~/.forge/push_subscriptions.json, пишется эндпоинтами subscribe/unsubscribe, читается push-воркером доставки Фазы 3). Инициализируется в main.rs внутри блока if pwa_enabled: резолв default_vapid_path() + create_dir_all(~/.forge) + VapidStore::load_or_generate, затем default_subscriptions_path() + PushSubscriptionStore::new. Любая ошибка резолва/загрузки -> warn + старт без PWA (None), не fail-fast (терминал/WS важнее опционального PWA).",
+    "createdAt": "2026-06-25T08:18:59.969Z",
+    "updatedAt": "2026-06-25T08:33:42.756Z"
+  },
+  {
+    "element": "EffectiveConfig",
+    "path": "",
+    "type": "unknown",
+    "content": "Эффективная конфигурация сервера (server_config.rs) после применения приоритетов CLI > file > env > default. Поля: bind, port, auth_token (Option), remote_mode (bool), pwa_enabled (bool, добавлено в PWA Фазе 1). pwa_enabled резолвится в resolve() как CLI(--pwa) || file(ServerConfig.pwa: Option<bool>) || env(DEVFORGE_PWA truthy: 1/true/yes/on) — default false (opt-in инвариант). Это источник истины для гейтинга всех backend-фич PWA в main.rs. Резолвится из resolve(cli_opts: &RunOptions, file_cfg: Option<&ServerConfig>). EffectiveConfig НЕ derive Default (тест-конструкторы задают pwa_enabled явно).",
+    "createdAt": "2026-06-25T08:19:00.287Z",
+    "updatedAt": "2026-06-25T08:19:14.553Z",
+    "aliases": [
+      "pwa_enabled"
+    ]
+  },
+  {
+    "element": "PushSubscriptionStore",
+    "path": "",
+    "type": "unknown",
+    "content": "Хранилище push-подписок PWA (tmux-web/src/push_store.rs), opt-in под флагом --pwa. Персистит браузерные Web Push подписки в ~/.forge/push_subscriptions.json, чтобы они переживали рестарт сервера (иначе после перезапуска некому слать пуши).\n\nМодель StoredSubscription { endpoint: String (URL push-сервиса браузера, первичный ключ для дедупа/удаления), keys: SubscriptionKeys { p256dh, auth } (base64url ECDH-ключ + auth-secret браузера, нужны Фазе 3 для RFC8188-шифрования payload), device_label: Option<String> (метка устройства для UI, не участвует в дедупе), created_at: String (RFC3339, ставит сервер при subscribe) }.\n\nPushSubscriptionStore — Arc<RwLock<Inner>> (cheap-clone, один экземпляр на процесс в PwaCtx.subs), паттерн копирует UserSettingsStore. Методы:\n- new(path) -> Self: грузит существующие подписки; отсутствующий файл -> [] (без warn); битый/нечитаемый -> [] + warn (битый файл не блокирует работу, не паника); файл НЕ создаётся (lazy creation, сохраняет opt-in инвариант).\n- list() -> Vec<StoredSubscription>: снимок под read-lock (для итерации без удержания лока при сетевых запросах в Фазе 3).\n- upsert(sub) -> Result<()>: вставка или замена по endpoint (идемпотентно — повторный subscribe не плодит дубли; заменяет запись целиком, включая ротированные keys), atomic save.\n- remove(endpoint) -> Result<bool>: удаление по endpoint, идемпотентно (не найден -> Ok(false) без записи; удалён -> Ok(true) + atomic save). Эндпоинт unsubscribe отвечает 200 в любом случае.\n- prune(&[String]) -> Result<usize>: батч-удаление мёртвых endpoint'ов (404/410 от push-сервиса в Фазе 3) ОДНОЙ записью на диск; возвращает число удалённых; 0 совпадений -> диск не трогается.\n\nsave_locked: atomic write (serde_json::to_vec_pretty в <file>.tmp, затем fs::rename поверх; POSIX-атомарен). default_subscriptions_path() резолвит ~/.forge/push_subscriptions.json от HOME.\n\nЗависимости: используется в pwa.rs (хендлеры subscribe/unsubscribe/test) и push.rs (Фаза 3, доставка). Подключается в AppState.pwa.subs (PwaCtx) только при pwa_enabled.",
+    "createdAt": "2026-06-25T08:27:14.337Z",
+    "updatedAt": "2026-06-25T08:27:14.337Z"
+  },
+  {
+    "element": "post_push_subscribe",
+    "path": "",
+    "type": "unknown",
+    "content": "Хендлер POST /api/push/subscribe (tmux-web/src/pwa.rs), Фаза 2 PWA. Тело = браузерный PushSubscription (subscription.toJSON()): { endpoint: String, keys: { p256dh, auth }, device_label?: Option<String> } — DTO SubscribeReq/SubscribeKeys (device_label через #[serde(default)], опционально). Сервер ставит created_at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true) (RFC3339 UTC, секундная точность, заканчивается на Z; клиент НЕ задаёт таймстемп), собирает StoredSubscription и вызывает ctx.subs.upsert (дедуп по endpoint — повторный subscribe не плодит дубли, заменяет запись целиком включая ротированные keys). Ответ 200 { ok: true } (OkResp); ошибка записи на диск -> 500. На случай рассинхрона state.pwa == None -> 404. Регистрируется в main.rs только при app_state.pwa.is_some(), до auth-layer (в remote-mode под Bearer-auth + csrf_guard same-origin + application/json).",
+    "createdAt": "2026-06-25T08:33:41.904Z",
+    "updatedAt": "2026-06-25T08:33:41.904Z"
+  },
+  {
+    "element": "post_push_unsubscribe",
+    "path": "",
+    "type": "unknown",
+    "content": "Хендлер POST /api/push/unsubscribe (tmux-web/src/pwa.rs), Фаза 2 PWA. Тело { endpoint } (DTO UnsubscribeReq). Вызывает ctx.subs.remove(endpoint). ИДЕМПОТЕНТЕН: повторная отписка или отписка несуществующего endpoint тоже 200 { ok: true } — store.remove в этом случае не пишет на диск (Ok(false)). Ошибка записи на диск при фактическом удалении -> 500. state.pwa == None -> 404.",
+    "createdAt": "2026-06-25T08:33:42.183Z",
+    "updatedAt": "2026-06-25T08:33:42.183Z"
+  },
+  {
+    "element": "post_push_test",
+    "path": "",
+    "type": "unknown",
+    "content": "Хендлер POST /api/push/test (tmux-web/src/pwa.rs), Фаза 2 PWA — ЗАГЛУШКА. Контракт ответа TestResp { sent: usize, pruned: usize } стабилен с Фазы 2. Сейчас всегда 200 { sent: 0, pruned: 0 } — реальная доставка (RFC8188 aes128gcm шифрование payload + ES256 VAPID-JWT + HTTP POST на push-сервис через push::send_to_all, prune мёртвых 404/410) реализуется в Фазе 3 на RustCrypto без openssl. Здесь намеренно НЕ тянутся крейты отправки. state.pwa == None -> 404. TODO(Фаза 3) помечен в коде.",
+    "createdAt": "2026-06-25T08:33:42.468Z",
+    "updatedAt": "2026-06-25T08:33:42.468Z"
+  },
+  {
+    "element": "pwa::post_push_test",
+    "path": "",
+    "type": "unknown",
+    "content": "Хендлер POST /api/push/test (Фаза 3 — реальная доставка, не заглушка). state.pwa==None -> 404. Создаёт reqwest::Client (timeout 10с) на вызов (эндпоинт дёргается редко вручную), тестовый payload JSON {title:'FORGE тест',body:'Push-уведомления работают',data:{url:'/'}} (.as_bytes(), кириллица -> str т.к. byte-string только ASCII), вызывает push::send_to_all(&client,&ctx.subs,&ctx.vapid,payload) -> SendReport, возвращает Json TestResp{sent,pruned}. Доставка: каждая подписка шифруется RFC8291 aes128gcm + VAPID ES256-JWT, POST на endpoint; 404/410 прунятся батчем, транзиентные/auth/crypto логируются и не удаляют подписку. Ошибка создания клиента -> 500.",
+    "createdAt": "2026-06-25T08:56:48.199Z",
+    "updatedAt": "2026-06-25T08:56:48.199Z"
+  },
+  {
+    "element": "pwa-frontend-phase4",
+    "path": "",
+    "type": "page",
+    "content": "PWA Frontend (Фаза 4) — installability + офлайн app-shell для devforge. СТРОГИЙ OPT-IN: всё активно только при запуске сервера с флагом --pwa (backend GET /api/pwa/config отдаёт {enabled,vapidPublicKey} или 404).\n\nФайлы:\n- tmux-web/static/manifest.webmanifest — Web App Manifest: id '/', name 'F.O.R.G.E. — DevForge', short_name FORGE, start_url /?source=pwa, scope /, display standalone + display_override [standalone,minimal-ui], theme/background #0e1116, иконки 192/512 any + 192/512 maskable, shortcuts (Tasks /?tab=tasks, Э.Х.О /?tab=echo, Daily summary /?view=daily-summary), share_target GET → /?share-target=1 (title/text/url).\n- tmux-web/static/sw.js — классический Service Worker, scope /. install: precache app-shell (/, style.css, vendor/xterm/*, /js/main.js + /quick-cmd.js + /command-dock.js + /hotkeys.js + /js/pwa/bootstrap.js + /icons/icon-192.png + /manifest.webmanifest) БЕЗ skipWaiting. activate: чистка forge-*-кэшей прошлых версий + clients.claim(). fetch (только GET): navigate → network-first+fallback кэш /; статика → stale-while-revalidate; read-only data allowlist (sessions/tasks/todos/echo conversations|memories|daily-reports) → network-first+cache fallback; /api/*+/healthz не кэшируются; /ws/* НИКОГДА не перехватывается. message SKIP_WAITING → skipWaiting. push → showNotification (icon-192/badge-72/vibrate/data.url). notificationclick → focus+navigate или openWindow. CACHE_VERSION='forge-pwa-v1'. data-партиционирование по хэшу токена — TODO (SW не имеет токена локально).\n- tmux-web/static/js/pwa/bootstrap.js — ЕДИНСТВЕННЫЙ always-loaded PWA-модуль (подключён в index.html). fetch /api/pwa/config: не-200/enabled!=true → disablePwa() (unregister всех SW + delete forge-* кэшей, разметку не трогает); enabled → window.__FORGE_PWA={enabled,vapidPublicKey}, injectHead (manifest-link/theme-color/apple-meta/apple-touch-icon/pwa.css), import register.js → registerServiceWorker. Хук Фазы 5 (install/push/mobile.js + location.search) — TODO.\n- tmux-web/static/js/pwa/register.js — registerServiceWorker(): register('/sw.js'), update-flow БЕЗ авто-skipWaiting: updatefound→installed+есть controller → баннер .pwa-update-banner «Обновить»; клик → reg.waiting.postMessage(SKIP_WAITING); controllerchange (guard refreshing) → один reload. Первая установка баннер не показывает.\n- tmux-web/static/css/pwa.css — safe-area (--pwa-safe-* из env(safe-area-inset-*)), @media display-mode standalone/minimal-ui, .pwa-update-banner, .pwa-offline-banner (заготовка), .pwa-install-chip (заготовка). Инжектится только при enabled.\n- tmux-web/static/index.html — viewport +viewport-fit=cover +interactive-widget=resizes-content; один <script type=module src=/js/pwa/bootstrap.js>. Статических manifest/apple/theme-color НЕТ (инжектит bootstrap).\n- tmux-web/static/icons/ — icon-192/512.png (any), maskable-192/512.png, apple-touch-icon.png (180, без alpha), badge-72.png (моно), shortcut-tasks/echo/summary.png (96), favicon-32.png. Исходники: assets/icon.svg, assets/icon-maskable.svg, assets/badge.svg (rsvg-convert, ImageMagick нет — padding запечён в SVG).\n- tmux-web/src/static_embed.rs — serve_static: для sw.js и manifest.webmanifest добавлен Cache-Control: no-cache (надёжный update-flow SW).",
+    "createdAt": "2026-06-25T09:13:17.543Z",
+    "updatedAt": "2026-06-25T09:13:27.504Z",
+    "aliases": [
+      "service worker",
+      "manifest installable offline"
+    ]
+  },
+  {
+    "element": "serve_static",
+    "path": "",
+    "type": "unknown",
+    "content": "Axum fallback-handler embedded-static (rust-embed StaticAssets). Отдаёт файлы из tmux-web/static/ с mime по расширению. СПЕЦ-СЛУЧАЙ (Фаза 4 PWA): для path=='sw.js' и path=='manifest.webmanifest' добавляет заголовок Cache-Control: no-cache, чтобы браузер всегда сверял service worker/manifest и update-flow PWA был надёжным (иначе старый sw.js залипает в HTTP-кэше). Прочая статика — без Cache-Control. Нормализует пустой путь и trailing-slash к index.html, 404 при отсутствии.",
+    "createdAt": "2026-06-25T09:13:26.925Z",
+    "updatedAt": "2026-06-25T09:13:26.925Z"
+  },
+  {
+    "element": "install.js",
+    "path": "install.js",
+    "type": "file",
+    "content": "PWA install UI (Фаза 5, tmux-web/static/js/pwa/install.js). Лениво импортируется из bootstrap.js ТОЛЬКО при enabled (opt-in). initInstall() (идемпотентна через window.__FORGE_PWA_INSTALL_INIT): на Android/desktop ловит beforeinstallprompt (preventDefault + сохраняет deferredPrompt) и показывает кастомный чип .pwa-install-chip '#pwa-install-chip' в #settings-bar; клик -> deferredPrompt.prompt() + await userChoice (event одноразовый); appinstalled -> скрывает чип. На iOS (isIos(): iphone/ipad/ipod UA + iPadOS-детект через macintosh UA & maxTouchPoints>1) и не standalone -> одноразовая текстовая подсказка .pwa-ios-hint 'Поделиться -> На экран Домой', dismiss сохраняется в localStorage key 'forge-pwa-ios-install-dismissed'. Экспорты: initInstall, isStandalone (display-mode standalone/minimal-ui или navigator.standalone), isIos. Стили в css/pwa.css (.pwa-install-chip уже была; .pwa-ios-hint добавлена в Фазе 5). Самодостаточен — не зависит от app-модулей.",
+    "createdAt": "2026-06-25T09:20:34.269Z",
+    "updatedAt": "2026-06-25T09:20:34.269Z"
+  },
+  {
+    "element": "push.js",
+    "path": "push.js",
+    "type": "file",
+    "content": "PWA Web Push UI (Фаза 5, tmux-web/static/js/pwa/push.js). Лениво из bootstrap при enabled. initPush() (идемпотентна, guard pushSupported(): serviceWorker+PushManager+Notification): MutationObserver на body ловит открытие Settings-модала (#ps-panel-notifications вкладка Notifications), injectPushSection вставляет секцию .pwa-push-section с тогглом #pwa-push-toggle + статусом + кнопкой #pwa-push-test-btn. ВКЛЮЧЕНИЕ: Notification.requestPermission() вызывается СИНХРОННО в стеке обработчика change (iOS user-gesture, без предшествующего await) -> .then: при granted reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey: urlBase64ToUint8Array(vapid)}) -> POST /api/push/subscribe тело=subscription.toJSON() ({endpoint, keys:{p256dh,auth}}; backend SubscribeReq без deny_unknown_fields игнорит expirationTime), Content-Type application/json + credentials same-origin (csrf + remote-token через подменённый fetch core/auth.js). При неудаче backend — откат sub.unsubscribe(). ВЫКЛЮЧЕНИЕ: getSubscription -> sub.unsubscribe() + POST /api/push/unsubscribe({endpoint}). refreshState при открытии: iOS&!standalone -> toggle disabled + подсказка установить; Notification.permission==denied -> disabled+warn; иначе getSubscription() определяет checked/test-btn. Кнопка теста POST /api/push/test. vapidPublicKey из window.__FORGE_PWA. Экспорты: initPush, urlBase64ToUint8Array (base64url->base64 +padding -> atob -> Uint8Array). Импортирует isIos/isStandalone из install.js.",
+    "createdAt": "2026-06-25T09:22:36.917Z",
+    "updatedAt": "2026-06-25T09:22:36.917Z"
+  },
+  {
+    "element": "mobile.js",
+    "path": "tmux-web/static/js/sidebar/mobile.js",
+    "type": "file",
+    "content": "PWA мобильные улучшения (Фаза 5, tmux-web/static/js/pwa/mobile.js). Лениво из bootstrap при enabled. initMobile() (идемпотентна) добавляет body.pwa-active (гейт CSS-правил safe-area/overscroll в css/pwa.css — opt-in) и запускает 4 фичи через safe()-обёртку (try/catch-изоляция). КРИТ: (1) initKeyboardViewport — visualViewport resize/scroll -> высота клавиатуры = innerHeight - vv.height - vv.offsetTop -> CSS-var --pwa-keyboard-height + body.pwa-keyboard-open -> refitTerminal (state.fitAddon.fit() + scheduleResizeFromTerm() из terminal/xterm.js), ввод xterm над клавиатурой; (2) overscroll-behavior:contain на #terminal/#tasks-board/#tasks — в css/pwa.css под body.pwa-active (блок pull-to-refresh, не рвёт WS); (3) safe-area — #tab-bar/#settings-bar padding под нотч в css/pwa.css. NICE: initAppBadge (navigator.setAppBadge/clearAppBadge, count=число needs_attention из лёгкого поллинга /api/sessions раз в 5с, стоп при document.hidden), initWakeLock (кнопка #pwa-wakelock-toggle в #settings-bar, navigator.wakeLock.request('screen'), re-acquire на visibilitychange если wakeLockWanted), initOnlineBanner (.pwa-offline-banner + status-dot.pwa-offline по navigator.onLine + online/offline события). vibrate НЕ дублируется (уже в sw.js push-handler). Импортирует state (core/state.js), scheduleResizeFromTerm (terminal/xterm.js). Экспорт initMobile.",
+    "createdAt": "2026-06-25T09:25:07.659Z",
+    "updatedAt": "2026-06-25T09:25:07.659Z"
+  },
+  {
+    "element": "bootstrap.js",
+    "path": "tmux-web/static/js/core/bootstrap.js",
+    "type": "file",
+    "content": "Единственный ВСЕГДА-загружаемый PWA-файл devforge (tmux-web/static/js/pwa/bootstrap.js). Подключён статически из index.html. fetch('/api/pwa/config'): не-200/enabled!=true -> disablePwa() (unregister всех SW + чистка forge-* кэшей, разметку не трогает — строгий opt-out). enabled=true -> window.__FORGE_PWA={enabled,vapidPublicKey}, injectHead() (manifest/theme-color/apple-meta/apple-touch-icon/css-pwa), import register.js -> registerServiceWorker(). ФАЗА 5: loadInstall()/loadPush()/loadMobile() — ленивые import install.js/push.js/mobile.js (каждый в try/catch, вызывает init*()). handleLaunchParams(): разбирает location.search shortcuts/share-target из manifest — ?tab=tasks|echo|... -> routeTab (import tabs.js switchTab), ?view=daily-summary -> routeView (import daily-summary.js showDailySummary), ?share-target=1 +title/text/url -> routeShareTarget (switchTab echo + вставка объединённого текста в #echo-input с retry-поллингом + dispatch input event). Все маршруты ждут whenAppReady() (флаг window.__FORGE_APP_READY + событие forge:app-ready, выставляются в core/bootstrap.js по завершении init; фолбэк-поллинг 8с) — иначе switchTab/showDailySummary упадут до инициализации main.js. Без relevant-параметра дефолтное поведение не меняется. Без enabled — никаких побочных эффектов на разметку (opt-in).",
+    "createdAt": "2026-06-25T09:26:54.737Z",
+    "updatedAt": "2026-06-25T09:26:54.737Z"
+  },
+  {
+    "element": "sw.js",
+    "path": "tmux-web/static/sw.js",
+    "type": "file",
+    "content": "Service Worker devforge (Фаза 4 PWA). Файл: tmux-web/static/sw.js. Классический (не module) worker, scope '/'. Регистрируется register.js ТОЛЬКО когда bootstrap.js увидел enabled=true от /api/pwa/config (строгий opt-in).\n\nLIFECYCLE:\n- install: precache критического app-shell (SHELL_ASSETS: /, /style.css, xterm-вендор, /js/main.js, quick-cmd/command-dock/hotkeys.js, /js/pwa/bootstrap.js, /icons/icon-192.png, /manifest.webmanifest). БЕЗ skipWaiting — новый SW ждёт подтверждения пользователя (баннер обновления). Граф модулей под /js/main.js НЕ precache'им — подтянется через runtime SWR.\n- activate: удалить все кэши с именем != текущей версии + clients.claim().\n- fetch (только GET, прочее early return к сети): navigate(HTML) -> network-first с fallback на кэш '/' (офлайн app-shell); статика js/css/vendor/icons/style.css/manifest -> stale-while-revalidate; read-only data allowlist (DATA_ALLOWLIST: /api/sessions, /api/tasks, /api/todos, /api/echo/conversations|memories|daily-reports) -> network-first + cache fallback (офлайн-чтение последних данных); прочие /api/*, /healthz, /api/push/*, /api/pwa/config -> НЕ кэшировать; /ws/* -> НИКОГДА не перехватывать (WebSocket).\n- message{SKIP_WAITING} -> skipWaiting() (по клику в баннере register.js).\n- push -> showNotification (payload из push.rs Фаза 3: {title, body, data:{url}}).\n- notificationclick -> focus существующего клиента или openWindow(data.url).\n\nВЕРСИОНИРОВАНИЕ КЭШЕЙ: CACHE_VERSION='forge-pwa-v1' — единая точка бампа. SHELL_CACHE/RUNTIME_CACHE/DATA_CACHE = forge-{shell,runtime,data}-{version}. Префикс 'forge-' — bootstrap.js при enabled=false удаляет всё начинающееся с 'forge-' (строгий opt-out). При изменении app-shell поднимаем CACHE_VERSION -> activate удалит старые кэши, register.js покажет баннер 'Доступно обновление'.\n\nCACHE-CONTROL: static_embed.rs отдаёт sw.js и manifest.webmanifest с Cache-Control: no-cache (браузер всегда сверяет с сетью, иначе старый SW залипает в HTTP-кэше и update-flow ломается).\n\nЗАВИСИМОСТИ: register.js (регистрация + update-flow), bootstrap.js (gate по /api/pwa/config), push.rs (payload пушей), static_embed.rs (отдача из бинаря + no-cache).",
+    "createdAt": "2026-06-25T09:44:44.808Z",
+    "updatedAt": "2026-06-25T09:44:44.808Z"
+  },
+  {
+    "element": "register.js",
+    "path": "tmux-web/static/js/pwa/register.js",
+    "type": "file",
+    "content": "Регистрация Service Worker + ненавязчивый update-flow (Фаза 4 PWA). Файл: tmux-web/static/js/pwa/register.js. Экспортирует registerServiceWorker(), вызывается из bootstrap.js при enabled=true.\n\nЛОГИКА: navigator.serviceWorker.register('/sw.js', {scope:'/'}). На событие 'updatefound' ждёт reg.installing -> state==='installed'; если в этот момент есть navigator.serviceWorker.controller (значит это ОБНОВЛЕНИЕ, не первая установка) -> показывает баннер 'Доступно обновление — Обновить'. Первая установка (controller отсутствует) баннер НЕ показывает — нечего обновлять.\n\nUPDATE-FLOW: клик 'Обновить' -> reg.waiting.postMessage({type:'SKIP_WAITING'}) -> новый SW вызывает skipWaiting()->activate->'controllerchange' -> на controllerchange (ОДНОКРАТНО, guard refreshing против петли перезагрузок) -> location.reload(). Итог: один reload на новую версию без зависания. Также проверяет reg.waiting при старте (если SW уже ждёт + есть controller -> сразу баннер).\n\nUI: баннер .pwa-update-banner (стили из css/pwa.css), role=status, кнопка 'Обновить'. Создаётся один раз (guard bannerEl).\n\nЗАВИСИМОСТИ: sw.js (регистрируемый worker, обрабатывает SKIP_WAITING), bootstrap.js (вызывает registerServiceWorker), css/pwa.css (.pwa-update-banner). Связь с CACHE_VERSION в sw.js: бамп версии -> новый sw.js -> updatefound -> баннер.",
+    "createdAt": "2026-06-25T09:44:45.086Z",
+    "updatedAt": "2026-06-25T09:44:45.086Z"
+  },
+  {
+    "element": "pwa-bootstrap-js",
+    "path": "",
+    "type": "page",
+    "content": "bootstrap.js — единственный ВСЕГДА-загружаемый PWA-файл devforge. Файл: tmux-web/static/js/pwa/bootstrap.js (НЕ путать с js/core/bootstrap.js). Подключён статически из index.html (<script type=module src=/js/pwa/bootstrap.js>). Грузится всегда (это статика в бинаре), но сам решает включать ли PWA — строгий opt-in через /api/pwa/config.\n\nЛОГИКА (самовызывающаяся async-функция pwaBootstrap):\n1) fetch('/api/pwa/config', cache:no-store, credentials:same-origin):\n   - не-200 / enabled !== true -> PWA ВЫКЛЮЧЕНО: disablePwa() — снять регистрацию ЛЮБОГО SW (getRegistrations -> unregister), удалить все кэши с именем на 'forge-', выйти НЕ трогая разметку. Гарантирует opt-out при рестарте сервера БЕЗ --pwa (config станет 404).\n   - enabled === true -> PWA ВКЛЮЧЕНО: window.__FORGE_PWA={enabled:true, vapidPublicKey} (для push.js); injectHead() — <link rel=manifest>, theme-color, apple-*-meta, apple-touch-icon, <link rel=stylesheet href=/css/pwa.css>, body-класс .pwa-active; import('./register.js')->registerServiceWorker(); ленивый импорт install.js/push.js/mobile.js (каждый в своём try/catch); handleLaunchParams() — разбор location.search (?tab=/?view=/?share-target=) после whenAppReady.\n\nКЛЮЧЕВЫЕ ФУНКЦИИ: disablePwa (opt-out cleanup), injectHead (<head>-инъекции + pwa.css), loadInstall/loadPush/loadMobile (ленивые импорты Фазы 5), handleLaunchParams/routeTab/routeView/routeShareTarget (shortcuts + share_target из manifest), whenAppReady (ждёт инициализации main.js перед switchTab), ensureMeta/ensureEl (идемпотентная вставка meta/link).\n\nБИЗНЕС-ЛОГИКА: без enabled НИКАКИХ побочных эффектов на разметку — поведение страницы как без PWA (строгий opt-in, ценой одного кадра theme-color). Config не кэшируем (no-store) — opt-in/opt-out срабатывает сразу. Сеть недоступна -> считаем PWA выключенным (безопасный дефолт).\n\nЗАВИСИМОСТИ: /api/pwa/config (pwa.rs), register.js, install.js, push.js, mobile.js, css/pwa.css, manifest.webmanifest, index.html (статический <script>).",
+    "createdAt": "2026-06-25T09:45:19.084Z",
+    "updatedAt": "2026-06-25T09:45:19.653Z",
+    "aliases": [
+      "bootstrap.js",
+      "pwa bootstrap"
+    ]
+  },
+  {
+    "element": "pwa-mobile-js",
+    "path": "",
+    "type": "page",
+    "content": "mobile.js — мобильные улучшения PWA devforge (Фаза 5). Файл: tmux-web/static/js/pwa/mobile.js (НЕ путать с js/sidebar/mobile.js). Лениво импортируется из bootstrap.js ТОЛЬКО при enabled===true (opt-in). Каждая фича feature-detected + try/catch — отсутствие API не ломает остальное. Точка входа initMobile() идемпотентна (guard window.__FORGE_PWA_MOBILE_INIT).\n\nКРИТИЧНЫЕ ФИЧИ:\n1) safe-area — правила в css/pwa.css; JS ставит body-класс .pwa-active чтобы правила применялись только при enabled.\n2) visualViewport keyboard — при сжатии вьюпорта экранной клавиатурой ставит CSS-var --pwa-keyboard-height и пересчитывает xterm (state.fitAddon.fit() + scheduleResizeFromTerm()) — ввод в терминал работает над клавиатурой.\n3) overscroll — overscroll-behavior:contain на #terminal/#tasks-board (css/pwa.css), блокирует pull-to-refresh (иначе случайный reload рвёт WebSocket).\n\nNICE-TO-HAVE: App Badge — navigator.setAppBadge(count) где count=число сессий с needs_attention (лёгкий поллинг /api/sessions); Screen Wake Lock — тоггл 'Не гасить экран', re-acquire на visibilitychange; online/offline баннер — navigator.onLine + события, синхронизация со status-dot. vibrate — уже в sw.js (push), здесь не дублируется.\n\nЗАВИСИМОСТИ: bootstrap.js (ленивый импорт), core/state.js (state.fitAddon), terminal/xterm.js (scheduleResizeFromTerm), css/pwa.css (safe-area/overscroll/keyboard правила), /api/sessions (badge poll).",
+    "createdAt": "2026-06-25T09:45:19.932Z",
+    "updatedAt": "2026-06-25T09:45:20.229Z",
+    "aliases": [
+      "pwa mobile"
+    ]
+  },
+  {
+    "element": "pwa-feature",
+    "path": "",
+    "type": "page",
+    "content": "PWA (Progressive Web App) для devforge — opt-in фича. Эпик forge-pwa-*, Фазы 1-6 завершены.\n\n=== НАЗНАЧЕНИЕ ===\nПревращает веб-UI devforge в устанавливаемое приложение с офлайн app-shell, иконкой на 'Домой', standalone-режимом и Web Push-уведомлениями 'требуется внимание' (когда сессия Claude поднимает permission-prompt). Полезно для управления с телефона.\n\n=== OPT-IN ИНВАРИАНТ (жёсткий) ===\nВся фича активируется ТОЛЬКО флагом старта --pwa (или server_config.json pwa:true / env DEVFORGE_PWA). По умолчанию (без флага) поведение байт-в-байт как раньше: НЕТ роутов /api/pwa/* и /api/push/* (404), НЕ создаются ~/.forge/vapid.json и push_subscriptions.json, push-воркер НЕ спавнится. Источник гейтинга: server_config::EffectiveConfig.pwa_enabled -> AppState.pwa: Option<PwaCtx>. На фронте bootstrap.js всегда грузится (статика), но при config!=enabled снимает регистрацию SW и чистит forge-* кэши без правок разметки (строгий opt-out при рестарте без флага). Файлы /manifest.webmanifest и /sw.js всегда в бинаре (статика), но безвредны пока bootstrap не включил PWA.\n\n=== АРХИТЕКТУРА BACKEND (Rust, tmux-web/src/) ===\n- server_config.rs: резолв pwa_enabled (CLI>file>env>default false); print_public_bind_warning с доп. строкой про HTTPS для web push при --pwa.\n- main.rs: при pwa_enabled создаёт PwaCtx{vapid: VapidStore, subs: PushSubscriptionStore}, кладёт в AppState.pwa=Some; регистрирует роуты в блоке 'if app_state.pwa.is_some()' ДО auth-layer (в remote-mode под Bearer+csrf_guard); спавнит push::attention_watcher.\n- vapid.rs: VAPID ECDSA P-256 пара (RFC8292), ~/.forge/vapid.json, load_or_generate (переиспользуется между рестартами).\n- push_store.rs: PushSubscriptionStore (Arc<RwLock>, atomic save), ~/.forge/push_subscriptions.json, upsert/remove/prune.\n- pwa.rs: хендлеры GET /api/pwa/config (отдаёт vapidPublicKey), POST /api/push/{subscribe,unsubscribe,test}.\n- push.rs: RFC8291 (aes128gcm) шифрование + VAPID-JWT (ES256) на чистом RustCrypto; send_one/send_to_all (POST на endpoint, прун 404/410); attention_watcher (edge-trigger false->true раз в 1.5с).\n\n=== АРХИТЕКТУРА FRONTEND (tmux-web/static/) ===\n- manifest.webmanifest: name/short_name/icons(192/512/maskable)/shortcuts(Tasks/Echo/Daily)/share_target/display:standalone. icons/ — PNG-иконки.\n- sw.js: Service Worker (scope /), precache app-shell, network-first navigate + SWR статика + офлайн read-only data allowlist, push->showNotification, CACHE_VERSION='forge-pwa-v1'.\n- js/pwa/bootstrap.js: всегда-загружаемый gate по /api/pwa/config (opt-in/opt-out).\n- js/pwa/register.js: регистрация SW + update-flow (баннер 'Обновить'->SKIP_WAITING->один reload).\n- js/pwa/install.js: install UI (beforeinstallprompt chip + iOS-подсказка).\n- js/pwa/push.js: тоггл подписки в Settings>Notifications (requestPermission в user-gesture, pushManager.subscribe).\n- js/pwa/mobile.js: safe-area, visualViewport keyboard для xterm, overscroll-contain, App Badge, Wake Lock.\n- css/pwa.css: PWA-стили (.pwa-active, safe-area, баннер обновления).\n- static_embed.rs: Cache-Control:no-cache для sw.js и manifest.webmanifest (надёжный update-flow).\n\n=== СТЕК ШИФРОВАНИЯ — ПОЧЕМУ НЕ web-push ===\nКрейт web-push НЕ используется: он безусловно тянет ece с backend-openssl (у ece нет rust-crypto-фичи) и фиксирует hyper 0.14, несовместимый с axum 0.7. Весь проект на rustls. Поэтому VAPID-JWT и RFC8291/8188-шифрование реализованы на ЧИСТОМ RustCrypto: p256, ecdsa, aes-gcm, hkdf, hmac, sha2. reqwest 0.12 на rustls 0.23. ИНВАРИАНТ: cargo tree -i openssl/ece/web-push — ПУСТО.\n\n=== ОГРАНИЧЕНИЯ iOS / HTTPS ===\nWeb push с телефона/iOS требует ВАЛИДНОГО HTTPS (Service Worker и Push API только в secure context; localhost — исключение, но удалённый телефон ходит по IP/домену). iOS 16.4+ принимает только валидный серт (самоподписанный отвергается); web push на iOS работает ТОЛЬКО в установленном на 'Домой' PWA (standalone) — в браузерном iOS тоггл задизейблен с подсказкой установить. Поставить TLS: reverse-proxy Caddy/nginx/Traefik или Tailscale с TLS. По plain HTTP push с телефона не заработает (warning печатается в remote-mode при --pwa).\n\n=== КАК ВКЛЮЧИТЬ ===\ndevforge run --pwa  (localhost: push работает только на самом устройстве, secure-context exception для localhost).\ndevforge run --remote --pwa  (+ HTTPS-прокси для push с телефона). Проверить: GET /api/pwa/config -> {enabled:true, vapidPublicKey}. В Chrome DevTools>Application: manifest валиден, SW зарегистрирован, install доступен. Подписка: Settings>Notifications>тоггл Push.\n\n=== ВЕРИФИКАЦИЯ (Фаза 6) ===\ncargo build зелёный 0 warnings; 383 unit + 5 integration тестов; cargo tree -i openssl/ece/web-push пусто. Opt-in инвариант подтверждён e2e (с флагом и без, изолированный HOME). Push-флоу подтверждён мок-сервисом (subscribe->test{sent,pruned}->410 prune; реальный attention_watcher доставил пуш по edge-триггеру). Ручная проверка: Lighthouse PWA installable в DevTools и реальное устройство по HTTPS.",
+    "createdAt": "2026-06-25T09:46:17.891Z",
+    "updatedAt": "2026-06-25T09:46:18.756Z",
+    "aliases": [
+      "pwa",
+      "web push",
+      "progressive web app"
+    ]
+  },
+  {
+    "element": "push_store",
+    "path": "",
+    "type": "unknown",
+    "content": "PushSubscriptionStore — персистентное opt-in хранилище Web Push подписок (~/.forge/push_subscriptions.json, Arc<RwLock<Inner>>, atomic save tmp+rename, дедуп по endpoint). Edge-тесты (#[cfg(test)] mod tests, 32 теста): ротация всех keys (p256dh+auth)+label при upsert; сохранение порядка вставки и in-place обновление; remove несуществующего на свежем сторе не создаёт файл (lazy creation); prune empty/nonmatching не трогают диск, prune all пишет валидный []; prune дедуп повторов в срезе; roundtrip device_label=Some с unicode; битый JSON/объект-вместо-массива/missing-field/пустой файл/[] → пустой список без паники; created_at verbatim; диск всегда валиден между мутациями; create_dir_all для parent; pretty-JSON формат; конкурентные upsert distinct/same + churn upsert/remove под RwLock без потерь/паники; list() независимый снимок; clone шарит Arc-состояние; upsert Err при недоступной записи без паники; default_subscriptions_path с/без HOME.",
+    "createdAt": "2026-06-25T10:32:24.393Z",
+    "updatedAt": "2026-06-25T10:32:24.393Z"
+  },
+  {
+    "element": "pwa",
+    "path": "",
+    "type": "unknown",
+    "content": "pwa.rs — PWA HTTP-хендлеры + DTO. Edge-тесты в pwa.rs mod tests (17, DTO-слой): lenient serde — SubscribeReq игнорирует expirationTime (null/число) и contentEncoding (нет deny_unknown_fields, защита от тихой регрессии браузеров); отклонение тел без keys/endpoint/auth, битого JSON/пустого/null; unicode device_label + длинный endpoint без обрезки; UnsubscribeReq требует endpoint; PwaConfig camelCase; TestResp/OkResp контракт. Handler-уровневые тесты в main.rs mod tests (7, через test_app_state(Option<PwaCtx>)): opt-in 404-инвариант (get_pwa_config/post_push_subscribe/unsubscribe/test при pwa=None → 404); 200 с реальным VAPID public key при pwa=Some; subscribe ставит серверный created_at + дедуп по endpoint; идемпотентный unsubscribe; push_test пустой стор → {sent:0,pruned:0} без сети.",
+    "createdAt": "2026-06-25T10:32:45.786Z",
+    "updatedAt": "2026-06-25T10:32:45.786Z"
   }
 ]

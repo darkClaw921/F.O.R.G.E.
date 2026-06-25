@@ -1,0 +1,3 @@
+# pwa::post_push_test
+
+Хендлер POST /api/push/test (Фаза 3 — реальная доставка, не заглушка). state.pwa==None -> 404. Создаёт reqwest::Client (timeout 10с) на вызов (эндпоинт дёргается редко вручную), тестовый payload JSON {title:'FORGE тест',body:'Push-уведомления работают',data:{url:'/'}} (.as_bytes(), кириллица -> str т.к. byte-string только ASCII), вызывает push::send_to_all(&client,&ctx.subs,&ctx.vapid,payload) -> SendReport, возвращает Json TestResp{sent,pruned}. Доставка: каждая подписка шифруется RFC8291 aes128gcm + VAPID ES256-JWT, POST на endpoint; 404/410 прунятся батчем, транзиентные/auth/crypto логируются и не удаляют подписку. Ошибка создания клиента -> 500.

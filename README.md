@@ -358,6 +358,43 @@ git config core.hooksPath .githooks
 
 ---
 
+## 📱 PWA (опционально, флаг `--pwa`)
+
+DevForge можно установить как Progressive Web App: иконка на «Домой», standalone-режим,
+офлайн app-shell и Web Push-уведомления «требуется внимание», когда сессия Claude
+поднимает permission-prompt. Фича **строго opt-in** — без флага поведение не меняется.
+
+```bash
+devforge run --pwa                 # PWA включён (localhost)
+devforge run --remote --pwa        # публичный режим + PWA (для push с телефона нужен HTTPS)
+```
+
+**Что даёт:**
+
+- устанавливаемое приложение (manifest + Service Worker, scope `/`);
+- офлайн app-shell и read-only кэш (`/api/sessions`, `/api/tasks`, `/api/todos`, Echo) для чтения без сети;
+- Web Push: edge-trigger на `needs_attention` (`false→true`) шлёт пуш на устройство;
+- мобильные улучшения: safe-area, ввод в терминал над экранной клавиатурой, App Badge, Wake Lock;
+- ненавязчивый update-flow (баннер «Обновить» при бампе `CACHE_VERSION` в `sw.js`).
+
+**Без `--pwa`:** `GET /api/pwa/config` и `/api/push/*` отдают 404, файлы `~/.forge/vapid.json`
+и `~/.forge/push_subscriptions.json` не создаются, push-воркер не запускается, фронт не
+регистрирует Service Worker. Полный opt-out.
+
+**Стек шифрования:** VAPID-JWT (ES256) и RFC 8291/8188 (`aes128gcm`) реализованы на чистом
+RustCrypto (`p256`, `aes-gcm`, `hkdf`, `sha2`), а не через крейт `web-push` — тот безусловно
+тянет `openssl` (через `ece`) и несовместимый `hyper`. Весь транспорт на `rustls`
+(инвариант: `cargo tree -i openssl` пуст).
+
+**⚠️ HTTPS для push с телефона:** Web Push с телефона/iOS требует **валидного HTTPS**
+(Service Worker и Push API доступны только в secure context; `localhost` — исключение, но
+удалённый телефон ходит по IP/домену). iOS 16.4+ принимает только валидный сертификат
+(самоподписанный отвергается), а push на iOS работает **только в установленном на «Домой»
+PWA** (standalone). Поставьте TLS: reverse-proxy (Caddy / nginx / Traefik) или Tailscale с TLS.
+По plain HTTP push с телефона не заработает.
+
+---
+
 ## 📡 REST API
 
 | Method                      | Path                                | Описание                                   |
@@ -378,6 +415,12 @@ git config core.hooksPath .githooks
 | GET (WS)                    | `/ws/lazydocker?cwd=&cols=&rows=` | lazydocker TUI в cwd сессии.              |
 | GET (WS)                    | `/ws/telescope?cwd=&cols=&rows=`  | television (`tv`) fuzzy-finder.                  |
 | GET (WS)                    | `/ws/tasks?path=<cwd>` / `/ws/todos?path=<cwd>` | Live-стримы JSON по cwd. |
+| GET                         | `/api/pwa/config`                 | PWA: VAPID public key (только при `--pwa`, иначе 404). |
+| POST                        | `/api/push/subscribe`             | PWA: сохранить push-подписку (только при `--pwa`). |
+| POST                        | `/api/push/unsubscribe`           | PWA: удалить push-подписку (идемпотентно). |
+| POST                        | `/api/push/test`                  | PWA: тестовый пуш всем подписчикам → `{sent, pruned}`. |
+
+> `/api/pwa/*` и `/api/push/*` регистрируются только с флагом `--pwa` (см. раздел PWA выше).
 
 ---
 

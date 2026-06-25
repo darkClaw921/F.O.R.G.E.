@@ -1,6 +1,6 @@
 {
   "root": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E.",
-  "generatedAt": "2026-06-19T20:16:54.723Z",
+  "generatedAt": "2026-06-25T10:15:00.970Z",
   "nodes": [
     {
       "id": "tmux-web/static/app.js",
@@ -3384,6 +3384,682 @@
       "path": "tmux-web/static/js/public-api.js",
       "exports": [],
       "children": []
+    },
+    {
+      "id": "tmux-web/static/js/pwa/bootstrap.js",
+      "name": "bootstrap.js",
+      "type": "file",
+      "path": "tmux-web/static/js/pwa/bootstrap.js",
+      "exports": [],
+      "children": [
+        {
+          "id": "tmux-web/static/js/pwa/bootstrap.js:loadInstall",
+          "name": "loadInstall",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/bootstrap.js",
+          "line": 89,
+          "signature": "loadInstall()",
+          "docComment": "Лениво грузит install.js (кнопка установки + iOS-подсказка).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/bootstrap.js:loadPush",
+          "name": "loadPush",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/bootstrap.js",
+          "line": 99,
+          "signature": "loadPush()",
+          "docComment": "Лениво грузит push.js (тоггл push в Settings + subscribe/unsubscribe).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/bootstrap.js:loadMobile",
+          "name": "loadMobile",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/bootstrap.js",
+          "line": 109,
+          "signature": "loadMobile()",
+          "docComment": "Лениво грузит mobile.js (safe-area, клавиатура, overscroll, badge, …).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/bootstrap.js:whenAppReady",
+          "name": "whenAppReady",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/bootstrap.js",
+          "line": 127,
+          "signature": "whenAppReady(timeoutMs = 8000)",
+          "docComment": "Ждёт готовности основного UI приложения. main.js выставляет\nwindow.__FORGE_APP_READY = true и диспатчит событие 'forge:app-ready' по\nзавершении инициализации. Если флаг уже стоит — резолвимся сразу; иначе\nслушаем событие с таймаут-фолбэком (чтобы не зависнуть, если событие не\nпридёт — тогда просто пробуем разобрать параметры как есть).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/bootstrap.js:handleLaunchParams",
+          "name": "handleLaunchParams",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/bootstrap.js",
+          "line": 162,
+          "signature": "handleLaunchParams()",
+          "docComment": "Разбирает launch-параметры из manifest shortcuts / share_target:\n  • ?tab=tasks|echo|git|docker|telescope|terminal → switchTab(name)\n  • ?view=daily-summary                           → showDailySummary()\n  • ?share-target=1 (+ title/text/url)            → вставить в Echo-композер\nНикакого backend-роута: share_target в manifest — метод GET, обработка чисто\nклиентская (csrf не задействован). Делается ПОСЛЕ готовности UI.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/bootstrap.js:routeTab",
+          "name": "routeTab",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/bootstrap.js",
+          "line": 197,
+          "signature": "routeTab(name)",
+          "docComment": "Переключает активную вкладку через существующий switchTab из tabs.js.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/bootstrap.js:routeView",
+          "name": "routeView",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/bootstrap.js",
+          "line": 205,
+          "signature": "routeView(view)",
+          "docComment": "Открывает представление по ?view= (сейчас — только daily-summary).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/bootstrap.js:routeShareTarget",
+          "name": "routeShareTarget",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/bootstrap.js",
+          "line": 216,
+          "signature": "routeShareTarget(params)",
+          "docComment": "Обрабатывает share-target: открывает вкладку Echo и вставляет переданный\nконтент (title/text/url) в композер чата. Если Echo-инпут недоступен —\nмягко выходим (без ошибок).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/bootstrap.js:disablePwa",
+          "name": "disablePwa",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/bootstrap.js",
+          "line": 248,
+          "signature": "disablePwa()",
+          "docComment": "Полный opt-out: снимаем регистрацию любого SW и чистим forge-* кэши.\nВызывается, когда сервер запущен БЕЗ --pwa (config 404 или enabled=false).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/bootstrap.js:injectHead",
+          "name": "injectHead",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/bootstrap.js",
+          "line": 282,
+          "signature": "injectHead()",
+          "docComment": "Инжект PWA-метаданных в <head>. Идемпотентно (по data-атрибуту), чтобы\nповторный вызов не плодил дубликаты. Все элементы помечены\ndata-forge-pwa для отладки.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/bootstrap.js:ensureEl",
+          "name": "ensureEl",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/bootstrap.js",
+          "line": 326,
+          "signature": "ensureEl(head, selector, factory)",
+          "docComment": "Создать элемент через factory, если его ещё нет (по селектору).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/bootstrap.js:ensureMeta",
+          "name": "ensureMeta",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/bootstrap.js",
+          "line": 334,
+          "signature": "ensureMeta(head, name, content)",
+          "docComment": "Создать <meta name=.. content=..>, если такого имени ещё нет.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/bootstrap.js:CONFIG_URL",
+          "name": "CONFIG_URL",
+          "type": "variable",
+          "path": "tmux-web/static/js/pwa/bootstrap.js",
+          "line": 29,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/bootstrap.js:CACHE_PREFIX",
+          "name": "CACHE_PREFIX",
+          "type": "variable",
+          "path": "tmux-web/static/js/pwa/bootstrap.js",
+          "line": 30,
+          "exports": []
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/pwa/install.js",
+      "name": "install.js",
+      "type": "file",
+      "path": "tmux-web/static/js/pwa/install.js",
+      "exports": [
+        "initInstall",
+        "isStandalone",
+        "isIos"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/pwa/install.js:initInstall",
+          "name": "initInstall",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/install.js",
+          "line": 36,
+          "signature": "initInstall()",
+          "docComment": "Точка входа модуля. Вызывается из bootstrap.js (initInstall()).\nИдемпотентна: повторный вызов не плодит обработчиков/элементов.",
+          "exports": [
+            "initInstall"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/pwa/install.js:onBeforeInstallPrompt",
+          "name": "onBeforeInstallPrompt",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/install.js",
+          "line": 55,
+          "signature": "onBeforeInstallPrompt(ev)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/install.js:onAppInstalled",
+          "name": "onAppInstalled",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/install.js",
+          "line": 62,
+          "signature": "onAppInstalled()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/install.js:showInstallChip",
+          "name": "showInstallChip",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/install.js",
+          "line": 70,
+          "signature": "showInstallChip()",
+          "docComment": "Показывает кастомную кнопку «Установить приложение» в #settings-bar.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/install.js:hideInstallChip",
+          "name": "hideInstallChip",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/install.js",
+          "line": 91,
+          "signature": "hideInstallChip()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/install.js:onInstallClick",
+          "name": "onInstallClick",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/install.js",
+          "line": 95,
+          "signature": "onInstallClick()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/install.js:maybeShowIosHint",
+          "name": "maybeShowIosHint",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/install.js",
+          "line": 123,
+          "signature": "maybeShowIosHint()",
+          "docComment": "Показывает одноразовую подсказку для iOS Safari: «Поделиться → На экран\n„Домой“». На iOS нет beforeinstallprompt, установка делается вручную через\nменю «Поделиться». Закрытие сохраняется в localStorage и не показывается\nповторно.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/install.js:isDismissed",
+          "name": "isDismissed",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/install.js",
+          "line": 157,
+          "signature": "isDismissed()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/install.js:setDismissed",
+          "name": "setDismissed",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/install.js",
+          "line": 165,
+          "signature": "setDismissed()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/install.js:isStandalone",
+          "name": "isStandalone",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/install.js",
+          "line": 176,
+          "signature": "isStandalone()",
+          "docComment": "Запущено ли приложение в standalone-режиме (установлено на устройство).",
+          "exports": [
+            "isStandalone"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/pwa/install.js:isIos",
+          "name": "isIos",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/install.js",
+          "line": 188,
+          "signature": "isIos()",
+          "docComment": "iOS-детект (iPhone / iPad / iPod), включая iPadOS, маскирующийся под Mac.",
+          "exports": [
+            "isIos"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/pwa/install.js:IOS_HINT_DISMISS_KEY",
+          "name": "IOS_HINT_DISMISS_KEY",
+          "type": "variable",
+          "path": "tmux-web/static/js/pwa/install.js",
+          "line": 25,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/install.js:deferredPrompt",
+          "name": "deferredPrompt",
+          "type": "variable",
+          "path": "tmux-web/static/js/pwa/install.js",
+          "line": 28,
+          "docComment": "Сохранённый event beforeinstallprompt (доступен до prompt()).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/install.js:installChip",
+          "name": "installChip",
+          "type": "variable",
+          "path": "tmux-web/static/js/pwa/install.js",
+          "line": 30,
+          "docComment": "Ссылка на чип установки, чтобы скрывать его по appinstalled.",
+          "exports": []
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/pwa/mobile.js",
+      "name": "mobile.js",
+      "type": "file",
+      "path": "tmux-web/static/js/pwa/mobile.js",
+      "exports": [
+        "initMobile"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/pwa/mobile.js:initMobile",
+          "name": "initMobile",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/mobile.js",
+          "line": 37,
+          "signature": "initMobile()",
+          "docComment": "Точка входа. Вызывается из bootstrap.js. Инициализирует все мобильные фичи;\nкаждая — в своём try/catch. Идемпотентна.",
+          "exports": [
+            "initMobile"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/pwa/mobile.js:safe",
+          "name": "safe",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/mobile.js",
+          "line": 54,
+          "signature": "safe(fn)",
+          "docComment": "Обёртка: запускает фичу, глуша любые ошибки (изоляция фич).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/mobile.js:initKeyboardViewport",
+          "name": "initKeyboardViewport",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/mobile.js",
+          "line": 69,
+          "signature": "initKeyboardViewport()",
+          "docComment": "Слушает visualViewport resize/scroll. При появлении экранной клавиатуры\n(visualViewport.height < layout height) выставляет --pwa-keyboard-height и\nпересчитывает раскладку xterm, чтобы строка ввода была видна над клавиатурой.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/mobile.js:refitTerminal",
+          "name": "refitTerminal",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/mobile.js",
+          "line": 105,
+          "signature": "refitTerminal()",
+          "docComment": "Пересчитывает раскладку xterm под новый размер вьюпорта.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/mobile.js:initAppBadge",
+          "name": "initAppBadge",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/mobile.js",
+          "line": 125,
+          "signature": "initAppBadge()",
+          "docComment": "App Badge API: число на иконке установленного приложения = количество сессий\nс needs_attention. Источник — /api/sessions (тот же, что у сайдбара). Лёгкий\nсамостоятельный поллинг (раз в 5с), чтобы не завязываться на app-модули.\nОстанавливается, когда вкладка скрыта (экономия), возобновляется на показе.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/mobile.js:updateBadge",
+          "name": "updateBadge",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/mobile.js",
+          "line": 163,
+          "signature": "updateBadge(count)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/mobile.js:initWakeLock",
+          "name": "initWakeLock",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/mobile.js",
+          "line": 188,
+          "signature": "initWakeLock()",
+          "docComment": "Screen Wake Lock: тоггл «Не гасить экран» (полезно при мониторинге сессий на\nтелефоне). Кнопка добавляется в #settings-bar. Wake Lock автоматически\nснимается ОС при скрытии вкладки, поэтому re-acquire на visibilitychange,\nесли пользователь его включал.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/mobile.js:acquireWakeLock",
+          "name": "acquireWakeLock",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/mobile.js",
+          "line": 230,
+          "signature": "acquireWakeLock()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/mobile.js:releaseWakeLock",
+          "name": "releaseWakeLock",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/mobile.js",
+          "line": 243,
+          "signature": "releaseWakeLock()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/mobile.js:initOnlineBanner",
+          "name": "initOnlineBanner",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/mobile.js",
+          "line": 259,
+          "signature": "initOnlineBanner()",
+          "docComment": "Тонкий баннер «Офлайн — показаны сохранённые данные» (вверху), управляемый\nnavigator.onLine + события online/offline. Синхронизируется со status-dot:\nпри офлайне добавляет ему класс .pwa-offline (визуальная согласованность).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/mobile.js:badgePollTimer",
+          "name": "badgePollTimer",
+          "type": "variable",
+          "path": "tmux-web/static/js/pwa/mobile.js",
+          "line": 116,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/mobile.js:lastBadgeCount",
+          "name": "lastBadgeCount",
+          "type": "variable",
+          "path": "tmux-web/static/js/pwa/mobile.js",
+          "line": 117,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/mobile.js:wakeLock",
+          "name": "wakeLock",
+          "type": "variable",
+          "path": "tmux-web/static/js/pwa/mobile.js",
+          "line": 179,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/mobile.js:wakeLockWanted",
+          "name": "wakeLockWanted",
+          "type": "variable",
+          "path": "tmux-web/static/js/pwa/mobile.js",
+          "line": 180,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/mobile.js:offlineBanner",
+          "name": "offlineBanner",
+          "type": "variable",
+          "path": "tmux-web/static/js/pwa/mobile.js",
+          "line": 252,
+          "exports": []
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/pwa/push.js",
+      "name": "push.js",
+      "type": "file",
+      "path": "tmux-web/static/js/pwa/push.js",
+      "exports": [
+        "initPush",
+        "urlBase64ToUint8Array"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/pwa/push.js:initPush",
+          "name": "initPush",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/push.js",
+          "line": 41,
+          "signature": "initPush()",
+          "docComment": "Точка входа. Вызывается из bootstrap.js. Навешивает MutationObserver на\n<body>, который при открытии Settings-модала инжектит push-секцию во вкладку\nNotifications. Идемпотентна.",
+          "exports": [
+            "initPush"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/pwa/push.js:pushSupported",
+          "name": "pushSupported",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/push.js",
+          "line": 66,
+          "signature": "pushSupported()",
+          "docComment": "Поддержка Web Push: SW + PushManager + Notification API.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/push.js:tryInjectIntoOpenModal",
+          "name": "tryInjectIntoOpenModal",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/push.js",
+          "line": 74,
+          "signature": "tryInjectIntoOpenModal()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/push.js:injectPushSection",
+          "name": "injectPushSection",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/push.js",
+          "line": 86,
+          "signature": "injectPushSection(panel)",
+          "docComment": "Вставляет секцию push в панель Notifications Settings-модала. Идемпотентно\n(по SECTION_ID). После вставки синхронизирует UI с реальным состоянием\n(Notification.permission + getSubscription()).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/push.js:refreshState",
+          "name": "refreshState",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/push.js",
+          "line": 152,
+          "signature": "refreshState(ui)",
+          "docComment": "Синхронизирует тоггл/статус/кнопку теста с реальным состоянием:\nNotification.permission + pushManager.getSubscription(). Также применяет\niOS-ограничение (push только в standalone).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/push.js:setStatus",
+          "name": "setStatus",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/push.js",
+          "line": 194,
+          "signature": "setStatus(ui, text, kind)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/push.js:onToggleChange",
+          "name": "onToggleChange",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/push.js",
+          "line": 201,
+          "signature": "onToggleChange(ui)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/push.js:enablePush",
+          "name": "enablePush",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/push.js",
+          "line": 215,
+          "signature": "enablePush(ui)",
+          "docComment": "Включение push. КРИТИЧНО: Notification.requestPermission() вызывается\nсинхронно в стеке обработчика клика (без предшествующего await) — иначе\niOS отклонит запрос (теряется user-gesture). requestPermission возвращает\nPromise, но сам ВЫЗОВ синхронный; дальнейшая работа — уже в .then-цепочке.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/push.js:disablePush",
+          "name": "disablePush",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/push.js",
+          "line": 279,
+          "signature": "disablePush(ui)",
+          "docComment": "Выключение push: unsubscribe() + POST /api/push/unsubscribe({endpoint}).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/push.js:onTestClick",
+          "name": "onTestClick",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/push.js",
+          "line": 301,
+          "signature": "onTestClick(ui)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/push.js:postSubscribe",
+          "name": "postSubscribe",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/push.js",
+          "line": 324,
+          "signature": "postSubscribe(subscription)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/push.js:postUnsubscribe",
+          "name": "postUnsubscribe",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/push.js",
+          "line": 340,
+          "signature": "postUnsubscribe(endpoint)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/push.js:getVapidKey",
+          "name": "getVapidKey",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/push.js",
+          "line": 356,
+          "signature": "getVapidKey()",
+          "docComment": "VAPID public key (base64url) из bootstrap (window.__FORGE_PWA).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/push.js:urlBase64ToUint8Array",
+          "name": "urlBase64ToUint8Array",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/push.js",
+          "line": 365,
+          "signature": "urlBase64ToUint8Array(base64String)",
+          "docComment": "Стандартный helper: VAPID public key в base64url → Uint8Array для\napplicationServerKey. base64url ('-'/'_', без паддинга) → base64\n('+'/'/' + '='-паддинг до кратности 4) → atob → байты.",
+          "exports": [
+            "urlBase64ToUint8Array"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/pwa/push.js:PANEL_SELECTOR",
+          "name": "PANEL_SELECTOR",
+          "type": "variable",
+          "path": "tmux-web/static/js/pwa/push.js",
+          "line": 31,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/push.js:SECTION_ID",
+          "name": "SECTION_ID",
+          "type": "variable",
+          "path": "tmux-web/static/js/pwa/push.js",
+          "line": 32,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/push.js:modalObserver",
+          "name": "modalObserver",
+          "type": "variable",
+          "path": "tmux-web/static/js/pwa/push.js",
+          "line": 34,
+          "exports": []
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/pwa/register.js",
+      "name": "register.js",
+      "type": "file",
+      "path": "tmux-web/static/js/pwa/register.js",
+      "exports": [
+        "registerServiceWorker"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/pwa/register.js:registerServiceWorker",
+          "name": "registerServiceWorker",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/register.js",
+          "line": 29,
+          "signature": "registerServiceWorker()",
+          "docComment": "Зарегистрировать SW и навесить update-flow.",
+          "exports": [
+            "registerServiceWorker"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/pwa/register.js:showUpdateBanner",
+          "name": "showUpdateBanner",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/register.js",
+          "line": 82,
+          "signature": "showUpdateBanner(reg)",
+          "docComment": "Показать ненавязчивый баннер обновления. Стили — .pwa-update-banner из\ncss/pwa.css. По клику «Обновить» постим SKIP_WAITING ожидающему SW.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/register.js:hideUpdateBanner",
+          "name": "hideUpdateBanner",
+          "type": "function",
+          "path": "tmux-web/static/js/pwa/register.js",
+          "line": 127,
+          "signature": "hideUpdateBanner()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/register.js:refreshing",
+          "name": "refreshing",
+          "type": "variable",
+          "path": "tmux-web/static/js/pwa/register.js",
+          "line": 23,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/pwa/register.js:bannerEl",
+          "name": "bannerEl",
+          "type": "variable",
+          "path": "tmux-web/static/js/pwa/register.js",
+          "line": 75,
+          "exports": []
+        }
+      ]
     },
     {
       "id": "tmux-web/static/js/remote/healthz.js",
@@ -6865,6 +7541,137 @@
       "path": "tmux-web/static/quick-cmd.js",
       "exports": [],
       "children": []
+    },
+    {
+      "id": "tmux-web/static/sw.js",
+      "name": "sw.js",
+      "type": "file",
+      "path": "tmux-web/static/sw.js",
+      "exports": [],
+      "children": [
+        {
+          "id": "tmux-web/static/sw.js:isDataAllowlisted",
+          "name": "isDataAllowlisted",
+          "type": "function",
+          "path": "tmux-web/static/sw.js",
+          "line": 163,
+          "signature": "isDataAllowlisted(path)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/sw.js:isStaticAsset",
+          "name": "isStaticAsset",
+          "type": "function",
+          "path": "tmux-web/static/sw.js",
+          "line": 169,
+          "signature": "isStaticAsset(path)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/sw.js:navigationStrategy",
+          "name": "navigationStrategy",
+          "type": "function",
+          "path": "tmux-web/static/sw.js",
+          "line": 188,
+          "signature": "navigationStrategy(request)",
+          "docComment": "Навигация: пытаемся сеть, при ошибке отдаём закэшированный '/'.\nСвежий ответ кладём в SHELL_CACHE под ключ '/' (app-shell обновляется).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/sw.js:staleWhileRevalidate",
+          "name": "staleWhileRevalidate",
+          "type": "function",
+          "path": "tmux-web/static/sw.js",
+          "line": 208,
+          "signature": "staleWhileRevalidate(request)",
+          "docComment": "Stale-while-revalidate: мгновенно отдаём из кэша (если есть) и параллельно\nобновляем кэш свежим ответом из сети. Если кэша нет — ждём сеть.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/sw.js:networkFirstData",
+          "name": "networkFirstData",
+          "type": "function",
+          "path": "tmux-web/static/sw.js",
+          "line": 236,
+          "signature": "networkFirstData(request)",
+          "docComment": "Network-first для read-only data: свежий ответ кэшируем и отдаём; при\nсетевой ошибке — отдаём последнюю закэшированную версию (офлайн-чтение).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/sw.js:dataCacheName",
+          "name": "dataCacheName",
+          "type": "function",
+          "path": "tmux-web/static/sw.js",
+          "line": 258,
+          "signature": "dataCacheName()",
+          "docComment": "Имя data-кэша. В remote-mode желательно партиционировать кэш по короткому\nхэшу Bearer-токена, чтобы данные одного сервера не утекали в другой.\nTODO(Фаза 5/remote): SW не имеет прямого доступа к токену (он в памяти\nклиента) — пробросить хэш через postMessage из bootstrap при регистрации\nи хранить в self. Пока используем единый DATA_CACHE (локальный режим).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/sw.js:CACHE_VERSION",
+          "name": "CACHE_VERSION",
+          "type": "variable",
+          "path": "tmux-web/static/sw.js",
+          "line": 29,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/sw.js:SHELL_CACHE",
+          "name": "SHELL_CACHE",
+          "type": "variable",
+          "path": "tmux-web/static/sw.js",
+          "line": 30,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/sw.js:RUNTIME_CACHE",
+          "name": "RUNTIME_CACHE",
+          "type": "variable",
+          "path": "tmux-web/static/sw.js",
+          "line": 31,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/sw.js:DATA_CACHE",
+          "name": "DATA_CACHE",
+          "type": "variable",
+          "path": "tmux-web/static/sw.js",
+          "line": 32,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/sw.js:CACHE_PREFIX",
+          "name": "CACHE_PREFIX",
+          "type": "variable",
+          "path": "tmux-web/static/sw.js",
+          "line": 36,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/sw.js:SHELL_ASSETS",
+          "name": "SHELL_ASSETS",
+          "type": "variable",
+          "path": "tmux-web/static/sw.js",
+          "line": 44,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/sw.js:DATA_ALLOWLIST",
+          "name": "DATA_ALLOWLIST",
+          "type": "variable",
+          "path": "tmux-web/static/sw.js",
+          "line": 65,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/sw.js:CURRENT_CACHES",
+          "name": "CURRENT_CACHES",
+          "type": "variable",
+          "path": "tmux-web/static/sw.js",
+          "line": 92,
+          "exports": []
+        }
+      ]
     },
     {
       "id": "tmux-web/static/vendor/xterm/xterm-addon-fit.min.js",

@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="F.O.R.G.E. maskable icon">
+  <defs>
+    <linearGradient id="steelGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#cbd5e1"/>
+      <stop offset="50%" stop-color="#64748b"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <linearGradient id="anvilGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#475569"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="emberGrad" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#3a0a00"/>
+      <stop offset="35%" stop-color="#c2410c"/>
+      <stop offset="70%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#fde68a"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#fde68a" stop-opacity="0.9"/>
+      <stop offset="60%" stop-color="#f97316" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#7c2d12" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="sparkBlur" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="1.2"/>
+    </filter>
+  </defs>
+
+  <!-- Full-bleed dark tile (maskable bg must fill the whole canvas) -->
+  <rect x="0" y="0" width="512" height="512" fill="#0e1116"/>
+
+  <!-- Mark scaled to ~60% and centred → leaves ~20% safe-zone on all sides
+       (the maskable safe area is the central 80% circle; mark sits inside it).
+       scale 0.95 puts the mark inside the central ~290px region. -->
+  <g transform="translate(256,272) scale(0.95) translate(-135,-70)">
+    <!-- ember glow behind anvil -->
+    <ellipse cx="135" cy="78" rx="120" ry="50" fill="url(#glow)"/>
+
+    <!-- ANVIL -->
+    <g>
+      <path d="M50,40 Q90,30 120,38 L120,55 L50,55 Z" fill="url(#anvilGrad)"/>
+      <rect x="110" y="30" width="140" height="22" rx="3" fill="url(#anvilGrad)"/>
+      <rect x="250" y="34" width="18" height="16" fill="#0f172a"/>
+      <path d="M135,52 L245,52 L230,82 L150,82 Z" fill="#1e293b"/>
+      <rect x="105" y="82" width="170" height="20" rx="3" fill="#0f172a"/>
+      <rect x="112" y="32" width="138" height="3" fill="#94a3b8" opacity="0.55"/>
+      <ellipse cx="185" cy="32" rx="34" ry="6" fill="url(#emberGrad)" opacity="0.95"/>
+      <ellipse cx="185" cy="30" rx="20" ry="3" fill="#fde68a"/>
+    </g>
+
+    <!-- HAMMER -->
+    <g transform="translate(215,-45) rotate(-22)">
+      <rect x="-5" y="0" width="10" height="100" rx="2" fill="#78350f"/>
+      <rect x="-5" y="0" width="10" height="100" rx="2" fill="url(#steelGrad)" opacity="0.15"/>
+      <rect x="-34" y="-26" width="68" height="34" rx="3" fill="url(#steelGrad)" stroke="#0f172a" stroke-width="1.5"/>
+      <rect x="-34" y="-26" width="68" height="7" fill="#e2e8f0" opacity="0.6"/>
+      <rect x="-12" y="-26" width="24" height="34" fill="#1e293b" opacity="0.25"/>
+    </g>
+
+    <!-- sparks -->
+    <g fill="#fbbf24" filter="url(#sparkBlur)">
+      <circle cx="285" cy="14" r="3.5"/>
+      <circle cx="270" cy="36" r="3"/>
+      <circle cx="40" cy="20" r="2.5"/>
+    </g>
+  </g>
+</svg>

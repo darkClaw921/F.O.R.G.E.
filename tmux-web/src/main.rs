@@ -38,6 +38,17 @@ mod qr_print;
 mod remote_proxy;
 mod remotes;
 mod git;
+// PWA (opt-in, активируется флагом --pwa). Все четыре модуля гейтятся под
+// `pwa_enabled` — без флага ни роутов `/api/pwa/*`, ни файлов `~/.forge/`.
+//   - `vapid`      — генерация/загрузка VAPID P-256 пары (Фаза 1).
+//   - `pwa`        — HTTP-хендлеры + DTO (`GET /api/pwa/config`, Фаза 1).
+//   - `push`       — крипто (RFC8291 aes128gcm + VAPID ES256) + воркер
+//                    доставки web-push `attention_watcher` (Фаза 3).
+//   - `push_store` — хранилище push-подписок (Фаза 2).
+mod vapid;
+mod pwa;
+mod push;
+mod push_store;
 mod server_config;
 mod session_history;
 mod static_embed;
@@ -77,6 +88,24 @@ use crate::tmux::SessionInfo;
 use crate::todos::TodoStore;
 use crate::user_settings::{PatchUserSettingsReq, UserSettings, UserSettingsStore};
 use crate::ws_todos::TodoEvent;
+
+/// PWA-контекст (opt-in, активируется флагом `--pwa`). Живёт в
+/// `AppState.pwa` как `Option`: `Some` ⇒ PWA включён (есть роуты
+/// `/api/pwa/*`, файл `~/.forge/vapid.json` создан/загружен); `None` ⇒
+/// поведение байт-в-байт как раньше (жёсткий opt-in инвариант).
+///
+/// Cheap-clonable: внутри [`vapid::VapidStore`] (`SigningKey` + короткие
+/// строки) и [`push_store::PushSubscriptionStore`] (`Arc<RwLock<…>>`).
+#[derive(Clone, Debug)]
+struct PwaCtx {
+    /// VAPID-ключи: публичный отдаётся фронту через `GET /api/pwa/config`,
+    /// приватный используется push-доставкой в Фазе 3.
+    vapid: vapid::VapidStore,
+    /// Хранилище push-подписок (`~/.forge/push_subscriptions.json`). Пишется
+    /// эндпоинтами `POST /api/push/{subscribe,unsubscribe}` (Фаза 2),
+    /// читается push-воркером доставки (Фаза 3).
+    subs: push_store::PushSubscriptionStore,
+}
 
 /// Глобальное состояние axum-приложения.
 ///
@@ -179,6 +208,11 @@ struct AppState {
     /// промоутит следующую верхнюю TODO с флагом `auto_promote`. Не
     /// персистится (MVP, self-heal через ручной promote).
     auto_chain: auto_promote::AutoChainMap,
+    /// PWA-контекст (opt-in, флаг `--pwa`). `Some` ⇒ PWA включён (VAPID
+    /// загружен, роуты `/api/pwa/*` зарегистрированы); `None` (default) ⇒
+    /// PWA выключен, никаких файловых операций в `~/.forge/` и `GET
+    /// /api/pwa/config` → 404. Источник гейтинга — `effective.pwa_enabled`.
+    pwa: Option<PwaCtx>,
 }
 
 #[tokio::main]
@@ -255,6 +289,7 @@ async fn main() -> anyhow::Result<()> {
     let port = effective.port;
     let bind_host = effective.bind.clone();
     let remote_mode = effective.remote_mode;
+    let pwa_enabled = effective.pwa_enabled;
 
     // Инициализация логирования. По умолчанию: info для всего + debug для tmux_web.
     // Переопределяется переменной окружения RUST_LOG.
@@ -406,6 +441,82 @@ async fn main() -> anyhow::Result<()> {
         "user_settings store initialized"
     );
 
+    // PWA-контекст (opt-in, флаг `--pwa`). ЖЁСТКИЙ ИНВАРИАНТ: всё внутри
+    // блока гейтится под `pwa_enabled` — без флага create_dir_all /
+    // load_or_generate НЕ вызываются, поэтому `~/.forge/vapid.json` не
+    // создаётся и поведение байт-в-байт как раньше.
+    //
+    // Путь `~/.forge/vapid.json` резолвится рядом с user_settings.json. Если
+    // VAPID не удалось загрузить/сгенерировать (нет HOME / read-only FS /
+    // битый файл) — логируем warning и стартуем БЕЗ PWA (pwa_ctx = None), а
+    // не падаем: терминал/WS важнее опционального PWA.
+    let pwa_ctx: Option<PwaCtx> = if pwa_enabled {
+        match vapid::default_vapid_path() {
+            Ok(vapid_path) => {
+                if let Some(parent) = vapid_path.parent() {
+                    if let Err(e) = std::fs::create_dir_all(parent) {
+                        tracing::warn!(
+                            path = %parent.display(),
+                            error = ?e,
+                            "failed to create ~/.forge dir for VAPID; PWA disabled"
+                        );
+                    }
+                }
+                match vapid::VapidStore::load_or_generate(&vapid_path) {
+                    Ok(store) => {
+                        tracing::info!(
+                            path = %vapid_path.display(),
+                            "PWA enabled: VAPID key loaded/generated"
+                        );
+                        // Хранилище push-подписок резолвится рядом с
+                        // vapid.json (тот же ~/.forge, каталог уже создан
+                        // create_dir_all выше). Битый/отсутствующий файл —
+                        // не фатально (стор стартует с пустым списком), а
+                        // если HOME не резолвится (что странно — vapid_path
+                        // выше уже его использовал) — стартуем без PWA, чтобы
+                        // не держать VAPID без места для подписок.
+                        match push_store::default_subscriptions_path() {
+                            Ok(subs_path) => {
+                                let subs =
+                                    push_store::PushSubscriptionStore::new(subs_path.clone());
+                                tracing::info!(
+                                    path = %subs_path.display(),
+                                    "PWA enabled: push subscriptions store initialized"
+                                );
+                                Some(PwaCtx { vapid: store, subs })
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    error = ?format!("{e:#}"),
+                                    "cannot resolve ~/.forge/push_subscriptions.json path; PWA disabled"
+                                );
+                                None
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            path = %vapid_path.display(),
+                            error = ?format!("{e:#}"),
+                            "failed to load/generate VAPID key; PWA disabled"
+                        );
+                        None
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = ?format!("{e:#}"),
+                    "cannot resolve ~/.forge/vapid.json path; PWA disabled"
+                );
+                None
+            }
+        }
+    } else {
+        // Opt-in: без --pwa никаких файловых операций в ~/.forge/.
+        None
+    };
+
     // Phase 3 — глобальный notifier-config: `~/.config/forge/notifier.json`.
     // Файл создаётся лениво при первом PATCH/PUT. parent-каталог создаём
     // eagerly, чтобы первая запись не падала из-за отсутствия `~/.config/forge/`.
@@ -466,6 +577,9 @@ async fn main() -> anyhow::Result<()> {
         // In-memory; persist намеренно не делаем (MVP). `std::sync::RwLock`
         // явно, т.к. в main.rs `RwLock` импортирован из `tokio::sync`.
         auto_chain: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+        // PWA-контекст: Some только при --pwa и успешной инициализации VAPID
+        // (см. блок pwa_ctx выше). None ⇒ PWA выключен.
+        pwa: pwa_ctx,
     };
 
     // Subscribe для воркера авто-промоута ДО move'а `tasks_tx` в watcher
@@ -544,6 +658,25 @@ async fn main() -> anyhow::Result<()> {
     // Фильтрация по проекту не нужна: фронтенду требуются флаги для всех
     // сессий (cross-project visibility).
     tokio::spawn(attention::watcher_loop(app_state.attention.clone()));
+
+    // Spawn push-воркера доставки web-push — ТОЛЬКО при включённом PWA
+    // (`app_state.pwa == Some`). Воркер `push::attention_watcher` читает тот же
+    // снапшот attention раз в 1.5с и на edge-trigger `false→true` шлёт пуш
+    // «требуется внимание» на все подписки (см. push.rs). Без `--pwa` блок не
+    // выполняется → воркер не спавнится (opt-in инвариант сохранён).
+    //
+    // `base_url` = "/" — относительный (фронт в notificationclick откроет URL
+    // в scope текущего PWA-инстанса); публичный адрес здесь неизвестен и не
+    // нужен, т.к. уведомление кликается на том же origin, где установлен PWA.
+    if let Some(ctx) = app_state.pwa.as_ref() {
+        tokio::spawn(push::attention_watcher(
+            app_state.attention.clone(),
+            ctx.subs.clone(),
+            ctx.vapid.clone(),
+            "/".to_string(),
+        ));
+        tracing::info!("push attention_watcher spawned (PWA enabled)");
+    }
 
     // Spawn периодический snapshot-воркер истории сессий. Раз в час (а также
     // сразу на первом тике — `tokio::time::interval` по умолчанию срабатывает
@@ -674,6 +807,26 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("registered /api/remote-servers routes (remote mode)");
     }
 
+    // PWA config-эндпоинт (opt-in, флаг `--pwa`). Регистрируется ТОЛЬКО при
+    // включённом PWA — по образцу блока remotes выше и ДО auth-layer ниже,
+    // чтобы в remote-mode роут попал под Bearer-auth и csrf_guard. Без флага
+    // роут не существует → `GET /api/pwa/config` отдаёт 404 (fallback на
+    // статику), что для фронтового bootstrap'а = «PWA выключено».
+    if app_state.pwa.is_some() {
+        let pwa_router: Router<AppState> = Router::new()
+            .route("/api/pwa/config", get(pwa::get_pwa_config))
+            // Фаза 2 — управление push-подписками. POST-мутации: в remote-mode
+            // под Bearer-auth и csrf_guard (same-origin + application/json),
+            // которые покрывают весь префикс /api/ через auth-layer ниже.
+            .route("/api/push/subscribe", post(pwa::post_push_subscribe))
+            .route("/api/push/unsubscribe", post(pwa::post_push_unsubscribe))
+            .route("/api/push/test", post(pwa::post_push_test));
+        app = app.merge(pwa_router.with_state(app_state.clone()));
+        tracing::info!(
+            "registered /api/pwa/config + /api/push/{{subscribe,unsubscribe,test}} routes (PWA enabled)"
+        );
+    }
+
     // Phase 1 (Echo) — регистрация плагина forge-echo.
     //
     // ВАЖНО: register_routes вызывается ДО .layer(...) ниже, чтобы
@@ -755,6 +908,7 @@ async fn main() -> anyhow::Result<()> {
             &bind_host,
             port,
             auth_token_value.as_deref(),
+            pwa_enabled,
         );
     }
 
@@ -3945,6 +4099,235 @@ mod tests {
         // path-инъекция в format!("/api/.../{}", encode(name)).
         assert_eq!(urlencode_minimal("a/b"), "a%2Fb");
         assert_eq!(urlencode_minimal("../admin"), "..%2Fadmin");
+    }
+
+    // =========================================================================
+    // PWA opt-in инвариант — хендлеры при state.pwa == None → 404.
+    //
+    // `AppState`/`PwaCtx` приватны в main.rs, поэтому handler-уровневые тесты
+    // живут именно здесь (integration-тесты в tests/ их не видят: крейт
+    // бинарный, без [lib]). Собираем заглушечный AppState с pwa=None и
+    // проверяем, что все четыре PWA-хендлера отвечают 404 без паники/500.
+    // Это эквивалент «PWA выключено» для фронта.
+    //
+    // Доставка пушей / mock-сервер покрыты на уровне push::send_to_all
+    // (15 тестов в push.rs); DTO-контракты — в pwa.rs. Здесь — opt-in gate.
+    // =========================================================================
+
+    /// Минимальный AppState для handler-тестов. Все поля — дешёвые заглушки
+    /// (каналы, пустые сторы на tmp-путях). `pwa` управляется аргументом.
+    fn test_app_state(pwa: Option<PwaCtx>) -> AppState {
+        let (tasks_tx, _) = broadcast::channel::<TaskEvent>(8);
+        let initial = std::env::temp_dir();
+        let (active_path_tx, _rx) = watch::channel(initial.clone());
+        let active_path_tx = Arc::new(active_path_tx);
+        let notify = notifier::start(initial.clone(), tasks_tx.subscribe());
+        let todos = TodoStore::new(initial.clone()).expect("todos store");
+        let (todos_tx, _) = broadcast::channel::<TodoEvent>(8);
+
+        let uniq = uuid::Uuid::new_v4();
+        let user_settings = UserSettingsStore::new(
+            std::env::temp_dir().join(format!("devforge_test_user_settings_{uniq}.json")),
+        );
+        let notifier_config = NotifierConfigStore::new(
+            std::env::temp_dir().join(format!("devforge_test_notifier_cfg_{uniq}.json")),
+        );
+        let remotes = remotes::RemoteServerStore::load(
+            std::env::temp_dir().join(format!("devforge_test_remotes_{uniq}.json")),
+        )
+        .expect("remotes store");
+        let history = session_history::HistoryStore::load(&std::env::temp_dir());
+        let themes_state = themes::load(&std::env::temp_dir());
+
+        AppState {
+            tasks_tx,
+            active_path_tx,
+            attention: Arc::new(attention::AttentionState::new()),
+            notify,
+            todos,
+            todos_tx,
+            themes: Arc::new(RwLock::new(themes_state)),
+            themes_dir: std::env::temp_dir(),
+            remote_mode: false,
+            auth_token: Arc::new(None),
+            remotes: Arc::new(RwLock::new(remotes)),
+            http: reqwest::Client::new(),
+            user_settings,
+            notifier_config,
+            history,
+            auto_chain: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+            pwa,
+        }
+    }
+
+    #[tokio::test]
+    async fn get_pwa_config_returns_404_when_disabled() {
+        let state = test_app_state(None);
+        let resp = pwa::get_pwa_config(axum::extract::State(state)).await;
+        assert_eq!(resp.status(), axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn post_push_subscribe_returns_404_when_disabled() {
+        let state = test_app_state(None);
+        let req = pwa::SubscribeReq {
+            endpoint: "https://push.example/x".to_string(),
+            keys: pwa::SubscribeKeys {
+                p256dh: "B".to_string(),
+                auth: "A".to_string(),
+            },
+            device_label: None,
+        };
+        let resp = pwa::post_push_subscribe(axum::extract::State(state), axum::Json(req)).await;
+        assert_eq!(resp.status(), axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn post_push_unsubscribe_returns_404_when_disabled() {
+        let state = test_app_state(None);
+        let req = pwa::UnsubscribeReq {
+            endpoint: "https://push.example/x".to_string(),
+        };
+        let resp = pwa::post_push_unsubscribe(axum::extract::State(state), axum::Json(req)).await;
+        assert_eq!(resp.status(), axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn post_push_test_returns_404_when_disabled() {
+        let state = test_app_state(None);
+        let resp = pwa::post_push_test(axum::extract::State(state)).await;
+        assert_eq!(resp.status(), axum::http::StatusCode::NOT_FOUND);
+    }
+
+    /// Позитив: при pwa=Some(...) get_pwa_config → 200 с реальным VAPID
+    /// public key из ctx.vapid.public_key_b64() (непустой base64url).
+    #[tokio::test]
+    async fn get_pwa_config_returns_200_when_enabled() {
+        let uniq = uuid::Uuid::new_v4();
+        let vapid_path =
+            std::env::temp_dir().join(format!("devforge_test_vapid_{uniq}.json"));
+        let subs_path =
+            std::env::temp_dir().join(format!("devforge_test_subs_{uniq}.json"));
+        let vapid = vapid::VapidStore::load_or_generate(&vapid_path).expect("vapid");
+        let expected_key = vapid.public_key_b64().to_string();
+        assert!(!expected_key.is_empty(), "VAPID public key непустой");
+        let subs = push_store::PushSubscriptionStore::new(subs_path.clone());
+
+        let state = test_app_state(Some(PwaCtx { vapid, subs }));
+        let resp = pwa::get_pwa_config(axum::extract::State(state)).await;
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v.get("enabled").and_then(|x| x.as_bool()), Some(true));
+        assert_eq!(
+            v.get("vapidPublicKey").and_then(|x| x.as_str()),
+            Some(expected_key.as_str())
+        );
+
+        let _ = std::fs::remove_file(&vapid_path);
+        let _ = std::fs::remove_file(&subs_path);
+    }
+
+    /// Позитив: subscribe при pwa=Some сохраняет подписку с серверным
+    /// created_at и идемпотентен по endpoint; unsubscribe несуществующего
+    /// endpoint → 200 (идемпотентно, без 404/500).
+    #[tokio::test]
+    async fn subscribe_and_idempotent_unsubscribe_when_enabled() {
+        let uniq = uuid::Uuid::new_v4();
+        let vapid_path =
+            std::env::temp_dir().join(format!("devforge_test_vapid2_{uniq}.json"));
+        let subs_path =
+            std::env::temp_dir().join(format!("devforge_test_subs2_{uniq}.json"));
+        let vapid = vapid::VapidStore::load_or_generate(&vapid_path).expect("vapid");
+        let subs = push_store::PushSubscriptionStore::new(subs_path.clone());
+        let ctx = PwaCtx {
+            vapid,
+            subs: subs.clone(),
+        };
+        let state = test_app_state(Some(ctx));
+
+        // subscribe → 200, подписка сохранена с серверным created_at.
+        let req = pwa::SubscribeReq {
+            endpoint: "https://push.example/e".to_string(),
+            keys: pwa::SubscribeKeys {
+                p256dh: "B".to_string(),
+                auth: "A".to_string(),
+            },
+            device_label: Some("dev".to_string()),
+        };
+        let resp =
+            pwa::post_push_subscribe(axum::extract::State(state.clone()), axum::Json(req)).await;
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+        let list = subs.list();
+        assert_eq!(list.len(), 1);
+        assert!(
+            list[0].created_at.ends_with('Z'),
+            "created_at ставит сервер (RFC3339 UTC): {}",
+            list[0].created_at
+        );
+
+        // повторный subscribe того же endpoint (другой label) → дедуп, 1 запись.
+        let req2 = pwa::SubscribeReq {
+            endpoint: "https://push.example/e".to_string(),
+            keys: pwa::SubscribeKeys {
+                p256dh: "B2".to_string(),
+                auth: "A2".to_string(),
+            },
+            device_label: Some("dev2".to_string()),
+        };
+        let resp2 =
+            pwa::post_push_subscribe(axum::extract::State(state.clone()), axum::Json(req2)).await;
+        assert_eq!(resp2.status(), axum::http::StatusCode::OK);
+        assert_eq!(subs.list().len(), 1, "дедуп по endpoint");
+
+        // unsubscribe несуществующего → 200 (идемпотентно).
+        let ureq = pwa::UnsubscribeReq {
+            endpoint: "https://push.example/never".to_string(),
+        };
+        let uresp =
+            pwa::post_push_unsubscribe(axum::extract::State(state.clone()), axum::Json(ureq)).await;
+        assert_eq!(uresp.status(), axum::http::StatusCode::OK);
+
+        // unsubscribe существующего → 200, запись удалена.
+        let ureq2 = pwa::UnsubscribeReq {
+            endpoint: "https://push.example/e".to_string(),
+        };
+        let uresp2 =
+            pwa::post_push_unsubscribe(axum::extract::State(state), axum::Json(ureq2)).await;
+        assert_eq!(uresp2.status(), axum::http::StatusCode::OK);
+        assert!(subs.list().is_empty());
+
+        let _ = std::fs::remove_file(&vapid_path);
+        let _ = std::fs::remove_file(&subs_path);
+    }
+
+    /// test при ПУСТОМ сторе → 200 {sent:0, pruned:0} без сетевых запросов
+    /// (send_to_all по пустому списку не делает HTTP).
+    #[tokio::test]
+    async fn push_test_empty_store_no_network() {
+        let uniq = uuid::Uuid::new_v4();
+        let vapid_path =
+            std::env::temp_dir().join(format!("devforge_test_vapid3_{uniq}.json"));
+        let subs_path =
+            std::env::temp_dir().join(format!("devforge_test_subs3_{uniq}.json"));
+        let vapid = vapid::VapidStore::load_or_generate(&vapid_path).expect("vapid");
+        let subs = push_store::PushSubscriptionStore::new(subs_path.clone());
+        let state = test_app_state(Some(PwaCtx { vapid, subs }));
+
+        let resp = pwa::post_push_test(axum::extract::State(state)).await;
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v.get("sent").and_then(|x| x.as_u64()), Some(0));
+        assert_eq!(v.get("pruned").and_then(|x| x.as_u64()), Some(0));
+
+        let _ = std::fs::remove_file(&vapid_path);
+        let _ = std::fs::remove_file(&subs_path);
     }
 }
 

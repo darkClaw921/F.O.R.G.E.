@@ -1,6 +1,6 @@
 [package]
 name = "devforge"
-version = "0.1.44"
+version = "0.1.45"
 edition = "2021"
 description = "Web-viewer для tmux сессий через WebSocket + xterm.js"
 license = "MIT"
@@ -78,6 +78,65 @@ echo-host-api = { path = "../plugins/echo-host-api" }
 # async-trait нужен в tmux-web потому что EchoHostAdapter имплементит
 # echo_host_api::HostApi (trait объявлен через #[async_trait]).
 async-trait = "0.1"
+
+# PWA / Web Push (opt-in, флаг --pwa). Базовый набор (p256/rand_core/base64)
+# добавлен в Фазе 1 — Фаза 2 их НЕ дублирует, лишь добавляет chrono для
+# RFC3339-таймстемпов подписок (см. ниже). Крейт web-push НЕ подключается
+# (тянет openssl безусловно — см. подробное обоснование ниже).
+#
+# PWA / VAPID — генерация и хранение P-256 ключевой пары для Web Push.
+#
+# ВАЖНОЕ ОТКЛОНЕНИЕ ОТ ИСХОДНОГО ПЛАНА (задокументировано в vapid.rs и в
+# отчёте Фазы 1): план предлагал `web-push 0.11` для VapidSignatureBuilder.
+# Однако web-push 0.11 БЕЗУСЛОВНО (не опционально) зависит от крейта `ece`
+# с дефолтным `backend-openssl`, а любой его HTTP-клиент (`isahc-client`
+# по умолчанию ИЛИ `hyper-client`) дополнительно тянет openssl и hyper 0.14.
+# То есть web-push 0.11 НЕВОЗМОЖНО подключить без openssl ни с какими
+# features. Это прямо нарушает жёсткое требование проекта
+# «openssl НЕ подтянулся, hyper совместим с axum 0.7 (rustls-стек)».
+#
+# Решение: VAPID — это всего лишь ECDSA P-256 + ES256-JWT-подпись, что
+# полностью покрывается чистым Rust-крейтом `p256` (без openssl,
+# консистентно с rustls-стеком reqwest/tokio-tungstenite). Поэтому
+# web-push НЕ подключаем; VapidStore реализован на p256 напрямую
+# (генерация пары, base64url-хранение приватника, ES256-подпись для JWT).
+#
+# p256 0.13 (features `ecdsa` для подписи, `jwk`/`pem` не нужны):
+#   - SigningKey::random(OsRng) → VAPID-приватник (raw 32-байт скаляр);
+#   - VerifyingKey::to_encoded_point(false) → 65-байт uncompressed pubkey
+#     (формат applicationServerKey для браузерного pushManager.subscribe).
+# Фаза 3 добавляет фичу `ecdh` — server↔subscription Diffie-Hellman
+# (`p256::ecdh::diffie_hellman`) для RFC 8291 key-derivation в push.rs.
+p256 = { version = "0.13", features = ["ecdsa", "ecdh"] }
+# rand_core 0.6 с `getrandom` — источник OsRng для p256 SigningKey::random.
+# Версия 0.6 совместима с RNG-трейтами, которые ожидает p256 0.13.
+rand_core = { version = "0.6", features = ["getrandom"] }
+# base64 0.22 — base64url-no-pad кодирование приватного ключа VAPID при
+# хранении в ~/.forge/vapid.json и публичного ключа для отдачи фронту.
+base64 = "0.22"
+# chrono — RFC3339-таймстемпы `created_at` для push-подписок
+# (push_store::StoredSubscription). Уже в [workspace.dependencies] и
+# Cargo.lock (echo-плагин), поэтому подключение через `.workspace = true`
+# НЕ добавляет новый крейт в дерево и НЕ тянет openssl. Дефолтные фичи
+# (включая `now` для `Utc::now`) сохранены; `serde` — на будущее.
+chrono = { workspace = true }
+
+# PWA / Web Push доставка (Фаза 3, push.rs) — ручная реализация шифрования
+# payload по RFC 8291 (`aes128gcm`) + RFC 8188 на чистом RustCrypto, БЕЗ
+# openssl. Крейт `ece` (его тянет web-push) имеет ТОЛЬКО `backend-openssl`
+# (нет rust-crypto-фичи), поэтому ECE реализован вручную:
+#   - aes-gcm 0.10 — AES-128-GCM (AEAD) для шифрования одной ECE-записи.
+#     default-features (включая `aes` и `alloc`) достаточно; openssl не тянет.
+#   - hkdf 0.12 — HKDF-SHA256 для вывода CEK (key_info) и nonce (nonce_info)
+#     из ECDH-секрета и auth-secret подписки (RFC 8291 §3.4).
+# Версии 0.10/0.12 — матч-сет RustCrypto к уже подключённым sha2 0.10 / hmac
+# 0.12 / p256 0.13 (один общий generic-array/digest ecosystem). p256 здесь
+# получает доп. фичу `ecdh` (см. ниже) для server↔subscription ECDH.
+aes-gcm = "0.10"
+hkdf = "0.12"
+# sha2 уже в дереве транзитивно (digest-экосистема); пинуем явно — нужен как
+# hash для HKDF-SHA256 и для ES256-JWT (SHA-256 digest перед ECDSA-подписью).
+sha2 = "0.10"
 
 # Daemon-режим (devforge start) — нужен setsid(2) чтобы детачнуть дочерний
 # процесс от controlling terminal, иначе он умрёт при закрытии shell.

@@ -1,0 +1,3 @@
+# EffectiveConfig
+
+Эффективная конфигурация сервера (server_config.rs) после применения приоритетов CLI > file > env > default. Поля: bind, port, auth_token (Option), remote_mode (bool), pwa_enabled (bool, добавлено в PWA Фазе 1). pwa_enabled резолвится в resolve() как CLI(--pwa) || file(ServerConfig.pwa: Option<bool>) || env(DEVFORGE_PWA truthy: 1/true/yes/on) — default false (opt-in инвариант). Это источник истины для гейтинга всех backend-фич PWA в main.rs. Резолвится из resolve(cli_opts: &RunOptions, file_cfg: Option<&ServerConfig>). EffectiveConfig НЕ derive Default (тест-конструкторы задают pwa_enabled явно).

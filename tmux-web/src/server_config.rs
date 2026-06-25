@@ -53,6 +53,11 @@ pub struct ServerConfig {
     pub bind: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub port: Option<u16>,
+    /// Opt-in PWA-режим из файла. `Some(true)` ⇒ включает PWA даже без
+    /// CLI-флага `--pwa` (file-источник в цепочке приоритетов CLI > file >
+    /// env > default). `None`/`Some(false)` ⇒ файл не настаивает на PWA.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pwa: Option<bool>,
 }
 
 
@@ -71,6 +76,26 @@ pub struct EffectiveConfig {
     /// True ⇒ публичный режим (auth+bind expansion). False ⇒ legacy
     /// localhost (текущее поведение до Phase 1).
     pub remote_mode: bool,
+    /// Opt-in PWA-режим (см. [`resolve`]). True ⇒ активирован через
+    /// `--pwa` / `server_config.json` / env `DEVFORGE_PWA`. False (default)
+    /// ⇒ поведение байт-в-байт как раньше: ни роутов `/api/pwa/*`, ни файла
+    /// `~/.forge/vapid.json`. Источник истины для гейтинга всех backend-фич
+    /// PWA в `main.rs`.
+    pub pwa_enabled: bool,
+}
+
+/// Имя env-переменной, включающей PWA-режим (низший приоритет после CLI и
+/// файла). Принимает truthy-значения `1`/`true`/`yes`/`on` (case-insensitive).
+pub const ENV_PWA: &str = "DEVFORGE_PWA";
+
+/// Парсинг truthy-значения env-флага: `1`/`true`/`yes`/`on` (любой регистр)
+/// ⇒ `true`; всё остальное ⇒ `false`.
+fn env_flag_is_truthy(val: &str) -> bool {
+    let v = val.trim();
+    v.eq_ignore_ascii_case("1")
+        || v.eq_ignore_ascii_case("true")
+        || v.eq_ignore_ascii_case("yes")
+        || v.eq_ignore_ascii_case("on")
 }
 
 /// `~/.config/forge/server_config.json` (стиль `cli::pid_path`).
@@ -198,11 +223,24 @@ pub fn resolve(cli_opts: &RunOptions, file_cfg: Option<&ServerConfig>) -> Effect
         None
     };
 
+    // PWA opt-in: CLI (--pwa) > file (pwa: true) > env (DEVFORGE_PWA) > default(false).
+    // CLI-флаг булев (true только при наличии), поэтому «не задано» = false —
+    // в этом случае спускаемся к файлу, затем env, затем default. Любой из
+    // источников, давший true, включает режим (логическое ИЛИ по убыванию
+    // приоритета; для bool-флага без «явного false» это эквивалентно цепочке
+    // приоритетов).
+    let pwa_enabled = cli_opts.pwa
+        || file_cfg.and_then(|f| f.pwa).unwrap_or(false)
+        || std::env::var(ENV_PWA)
+            .map(|v| env_flag_is_truthy(&v))
+            .unwrap_or(false);
+
     EffectiveConfig {
         bind,
         port,
         auth_token,
         remote_mode,
+        pwa_enabled,
     }
 }
 
@@ -257,6 +295,7 @@ pub fn finalize_token_at(eff: &EffectiveConfig, path: &Path) -> Option<String> {
             auth_token: Some(token.clone()),
             bind: Some(eff.bind.clone()),
             port: Some(eff.port),
+            ..Default::default()
         },
     };
     if let Some(parent) = path.parent() {
@@ -324,7 +363,15 @@ pub fn finalize_token(eff: &EffectiveConfig) -> Option<String> {
 ///
 /// Вызывается из `main.rs` ПОСЛЕ resolve конфигурации и ДО `axum::serve`,
 /// чтобы пользователь увидел warning раньше первых запросов.
-pub fn print_public_bind_warning(bind: &str, port: u16, token: Option<&str>) {
+///
+/// `pwa_enabled` ⇒ при включённом флаге `--pwa` добавляется отдельная строка
+/// про web push: пуши с телефона/iOS требуют валидного HTTPS (reverse-proxy
+/// Caddy/nginx/Traefik или Tailscale c TLS). По plain HTTP `pushManager.subscribe`
+/// на телефоне не выполнится (Service Worker и Push API доступны только в
+/// secure context; localhost — исключение, но удалённый телефон обращается по
+/// IP/домену, а не localhost). Самоподписанный сертификат iOS не примет.
+/// Строка печатается только при `pwa_enabled`, чтобы не шуметь когда PWA выкл.
+pub fn print_public_bind_warning(bind: &str, port: u16, token: Option<&str>, pwa_enabled: bool) {
     if is_localhost_bind(bind) {
         return;
     }
@@ -346,6 +393,14 @@ pub fn print_public_bind_warning(bind: &str, port: u16, token: Option<&str>) {
         println!("║     - SSH tunnel:  ssh -L 8787:127.0.0.1:8787 user@host                 ║");
         println!("║     - WireGuard / Tailscale / ZeroTier private network                  ║");
         println!("║     - Reverse-proxy с HTTPS (Caddy / nginx / Traefik) перед devforge    ║");
+    }
+    if pwa_enabled {
+        println!("║                                                                            ║");
+        println!("║   PWA (--pwa): web push с телефона/iOS требует ВАЛИДНОГО HTTPS.         ║");
+        println!("║   Service Worker и Push API работают только в secure context — по       ║");
+        println!("║   plain HTTP подписка на пуши с телефона НЕ выполнится. iOS 16.4+        ║");
+        println!("║   принимает только валидный серт (самоподписанный отвергается).         ║");
+        println!("║   Поставьте TLS: reverse-proxy (Caddy/nginx) или Tailscale с TLS.       ║");
     }
     println!("╚══════════════════════════════════════════════════════════════════════════╝");
     println!();
@@ -404,6 +459,7 @@ mod tests {
             auth_token: Some("deadbeef".repeat(8)),
             bind: Some("0.0.0.0".to_string()),
             port: Some(8080),
+            ..Default::default()
         };
         save_to(&path, &cfg).unwrap();
         let loaded = load_from(&path).unwrap().expect("file should exist");
@@ -420,6 +476,67 @@ mod tests {
         assert_eq!(eff.bind, "127.0.0.1");
         assert_eq!(eff.port, DEFAULT_PORT);
         assert!(eff.auth_token.is_none());
+    }
+
+    #[test]
+    fn resolve_pwa_default_false() {
+        // Без --pwa, без файла, без env → pwa_enabled == false (opt-in инвариант).
+        // Env DEVFORGE_PWA в CI обычно не выставлен; тест документирует дефолт.
+        let cli = RunOptions::default();
+        let eff = resolve(&cli, None);
+        // Если в окружении выставлен DEVFORGE_PWA, пропускаем строгую проверку
+        // (тест-as-spec, не должен флапать на чужом env).
+        if std::env::var(ENV_PWA).is_err() {
+            assert!(!eff.pwa_enabled, "default без источников → false");
+        }
+    }
+
+    #[test]
+    fn resolve_pwa_cli_flag_enables() {
+        let cli = RunOptions {
+            pwa: true,
+            ..Default::default()
+        };
+        let eff = resolve(&cli, None);
+        assert!(eff.pwa_enabled, "--pwa → pwa_enabled true");
+    }
+
+    #[test]
+    fn resolve_pwa_file_enables_without_cli() {
+        // CLI без --pwa, но файл говорит pwa: true → включено (file-источник).
+        let cli = RunOptions::default();
+        let file = ServerConfig {
+            pwa: Some(true),
+            ..Default::default()
+        };
+        let eff = resolve(&cli, Some(&file));
+        assert!(eff.pwa_enabled, "file pwa:true включает PWA");
+    }
+
+    #[test]
+    fn resolve_pwa_file_false_stays_off() {
+        let cli = RunOptions::default();
+        let file = ServerConfig {
+            pwa: Some(false),
+            ..Default::default()
+        };
+        let eff = resolve(&cli, Some(&file));
+        if std::env::var(ENV_PWA).is_err() {
+            assert!(!eff.pwa_enabled, "file pwa:false → off");
+        }
+    }
+
+    #[test]
+    fn env_flag_is_truthy_matrix() {
+        assert!(env_flag_is_truthy("1"));
+        assert!(env_flag_is_truthy("true"));
+        assert!(env_flag_is_truthy("TRUE"));
+        assert!(env_flag_is_truthy("Yes"));
+        assert!(env_flag_is_truthy(" on "));
+        assert!(!env_flag_is_truthy("0"));
+        assert!(!env_flag_is_truthy("false"));
+        assert!(!env_flag_is_truthy(""));
+        assert!(!env_flag_is_truthy("nope"));
     }
 
     #[test]
@@ -441,11 +558,13 @@ mod tests {
             remote: true,
             bind: Some("192.168.1.5".into()),
             token: Some("cli-token".into()),
+            ..Default::default()
         };
         let file = ServerConfig {
             auth_token: Some("file-token".into()),
             bind: Some("0.0.0.0".into()),
             port: Some(8888),
+            ..Default::default()
         };
         let eff = resolve(&cli, Some(&file));
         assert!(eff.remote_mode);
@@ -464,6 +583,7 @@ mod tests {
             auth_token: Some("file-token".into()),
             bind: None,
             port: None,
+            ..Default::default()
         };
         let eff = resolve(&cli, Some(&file));
         assert!(eff.remote_mode);
@@ -482,6 +602,7 @@ mod tests {
             auth_token: Some("auto".into()),
             bind: Some("0.0.0.0".into()),
             port: None,
+            ..Default::default()
         };
         let eff = resolve(&cli, Some(&file));
         assert!(!eff.remote_mode);
@@ -506,6 +627,7 @@ mod tests {
             auth_token: None,
             bind: None,
             port: Some(8000),
+            ..Default::default()
         };
         let eff = resolve(&cli, Some(&file));
         assert!(!eff.remote_mode);
@@ -561,6 +683,7 @@ mod tests {
             port: DEFAULT_PORT,
             auth_token: None,
             remote_mode: false,
+            pwa_enabled: false,
         };
         let got = finalize_token_at(&eff, &path);
         assert!(got.is_none(), "non-remote → no token");
@@ -576,6 +699,7 @@ mod tests {
             port: 7331,
             auth_token: Some("existing-token".into()),
             remote_mode: true,
+            pwa_enabled: false,
         };
         let got = finalize_token_at(&eff, &path).expect("token preserved");
         assert_eq!(got, "existing-token");
@@ -592,6 +716,7 @@ mod tests {
             port: 7331,
             auth_token: None,
             remote_mode: true,
+            pwa_enabled: false,
         };
         let token = finalize_token_at(&eff, &path).expect("token generated");
         assert_eq!(token.len(), 64);
@@ -613,6 +738,7 @@ mod tests {
             auth_token: None,
             bind: Some("0.0.0.0".into()),
             port: Some(9999),
+            ..Default::default()
         };
         save_to(&path, &pre).unwrap();
 
@@ -621,6 +747,7 @@ mod tests {
             port: 7331,
             auth_token: None,
             remote_mode: true,
+            pwa_enabled: false,
         };
         let token = finalize_token_at(&eff, &path).expect("token generated");
 
@@ -660,11 +787,14 @@ mod tests {
     // token / коротком token / unicode-bind.
     #[test]
     fn print_public_bind_warning_no_panic_corner_cases() {
-        print_public_bind_warning("127.0.0.1", 8787, Some("anything"));
-        print_public_bind_warning("0.0.0.0", 8787, None);
-        print_public_bind_warning("0.0.0.0", 8787, Some(""));
-        print_public_bind_warning("0.0.0.0", 8787, Some("short"));
-        print_public_bind_warning("[::]", 8787, Some("abcdef0123456789"));
+        print_public_bind_warning("127.0.0.1", 8787, Some("anything"), false);
+        print_public_bind_warning("0.0.0.0", 8787, None, false);
+        print_public_bind_warning("0.0.0.0", 8787, Some(""), false);
+        print_public_bind_warning("0.0.0.0", 8787, Some("short"), false);
+        print_public_bind_warning("[::]", 8787, Some("abcdef0123456789"), false);
+        // PWA-ветка (--pwa) — печатает доп. строку про HTTPS для web push.
+        print_public_bind_warning("0.0.0.0", 8787, Some("abcdef0123456789"), true);
+        print_public_bind_warning("127.0.0.1", 8787, Some("anything"), true);
     }
 
     // =========================================================================
@@ -735,6 +865,7 @@ mod tests {
             auth_token: Some("x".into()),
             bind: Some("0.0.0.0".into()),
             port: Some(7331),
+            ..Default::default()
         };
         let r = save_to(&path, &cfg);
 
@@ -799,5 +930,214 @@ mod tests {
             eff.bind, "127.0.0.1",
             "legacy mode принудительно понижает bind до loopback"
         );
+    }
+
+    // =========================================================================
+    // PWA-резолюция — матрица приоритетов CLI > file > env(DEVFORGE_PWA) >
+    // default(false). НЕ дублирует существующие resolve_pwa_* тесты.
+    //
+    // ВНИМАНИЕ ПРО ENV: DEVFORGE_PWA — process-global. cargo гоняет тесты
+    // параллельно в потоках одного процесса, поэтому set_var/remove_var
+    // НЕБЕЗОПАСНЫ при параллелизме. ВСЕ env-зависимые проверки собраны в один
+    // последовательный тест `pwa_env_matrix` с гарантированным восстановлением
+    // env в конце. Не-env тесты используют guard `if env::var(ENV_PWA).is_err()`.
+    // =========================================================================
+
+    /// CLI --pwa перебивает file pwa:false (CLI — старший приоритет).
+    /// Env-независимо: CLI true даёт true до любого обращения к env.
+    #[test]
+    fn resolve_pwa_cli_true_overrides_file_false() {
+        let cli = RunOptions {
+            pwa: true,
+            ..Default::default()
+        };
+        let file = ServerConfig {
+            pwa: Some(false),
+            ..Default::default()
+        };
+        let eff = resolve(&cli, Some(&file));
+        assert!(eff.pwa_enabled, "CLI true перебивает file false");
+    }
+
+    /// pwa_enabled ортогонален remote_mode (CLI true → true и при remote=false,
+    /// и при remote=true). Env-независимо (CLI true короткозамыкает.).
+    #[test]
+    fn resolve_pwa_orthogonal_to_remote_mode() {
+        let local = resolve(
+            &RunOptions {
+                pwa: true,
+                remote: false,
+                ..Default::default()
+            },
+            None,
+        );
+        let remote = resolve(
+            &RunOptions {
+                pwa: true,
+                remote: true,
+                ..Default::default()
+            },
+            None,
+        );
+        assert!(local.pwa_enabled);
+        assert!(remote.pwa_enabled);
+    }
+
+    /// CLI true побеждает любую комбинацию нижних источников (env=0 + file:false).
+    #[test]
+    fn resolve_pwa_cli_true_beats_env0_and_file_false() {
+        // CLI true короткозамыкает `||` до обращения к env, поэтому тест
+        // детерминирован независимо от внешнего DEVFORGE_PWA.
+        let cli = RunOptions {
+            pwa: true,
+            ..Default::default()
+        };
+        let file = ServerConfig {
+            pwa: Some(false),
+            ..Default::default()
+        };
+        let eff = resolve(&cli, Some(&file));
+        assert!(eff.pwa_enabled);
+    }
+
+    /// resolve остаётся pure: не пишет на диск и не генерит токен при
+    /// вычислении pwa_enabled. Проверяем отсутствие side-effects через файл,
+    /// которого resolve не должен создавать (он не принимает путь вовсе).
+    #[test]
+    fn resolve_pwa_is_pure_no_side_effects() {
+        let cli = RunOptions {
+            pwa: true,
+            ..Default::default()
+        };
+        // resolve не принимает путь и физически не может писать на диск —
+        // тест-as-spec фиксирует, что гейтинг фич (VAPID/роуты) делает main.rs,
+        // а не resolve. Просто проверяем результат без падений.
+        let eff = resolve(&cli, None);
+        assert!(eff.pwa_enabled);
+        assert!(eff.auth_token.is_none(), "resolve токен не генерит");
+    }
+
+    /// Расширенная truthy-матрица env_flag_is_truthy: регистр, пробелы, мусор.
+    /// Дополняет существующий env_flag_is_truthy_matrix граничными формами.
+    #[test]
+    fn env_flag_is_truthy_extended_matrix() {
+        // truthy
+        for v in ["1", "true", "TRUE", "Yes", " on ", "On", "YES", "tRuE"] {
+            assert!(env_flag_is_truthy(v), "ожидался truthy: {v:?}");
+        }
+        // falsy — мусор, отрицания, частичные совпадения
+        for v in [
+            "0", "false", "", "nope", "2", "enable", "o n", "truee", "1 0", " ",
+            "yess", "onn", "disable",
+        ] {
+            assert!(!env_flag_is_truthy(v), "ожидался falsy: {v:?}");
+        }
+    }
+
+    /// Единственный env-мутирующий тест: вся матрица DEVFORGE_PWA в одном
+    /// последовательном #[test] (нет внутреннего параллелизма). Env
+    /// восстанавливается в конце.
+    ///
+    /// Покрывает edge_cases:
+    ///   - env=1 включает без CLI и file
+    ///   - env truthy побеждает file pwa:false (логическое ИЛИ, нет veto)
+    ///   - мусорный env не включает (спуск к default false)
+    ///   - default false когда env снят и нет других источников
+    ///   - file pwa:false + env снят → off
+    #[test]
+    fn pwa_env_matrix() {
+        let saved = std::env::var(ENV_PWA).ok();
+
+        // env=1, нет CLI/file → включено (env, третий приоритет).
+        std::env::set_var(ENV_PWA, "1");
+        assert!(resolve(&RunOptions::default(), None).pwa_enabled, "env=1 включает");
+        // file.pwa=None не блокирует env.
+        let file_none = ServerConfig { pwa: None, ..Default::default() };
+        assert!(
+            resolve(&RunOptions::default(), Some(&file_none)).pwa_enabled,
+            "file None не блокирует env"
+        );
+
+        // ИНВАРИАНТ OR: env truthy побеждает даже при file pwa:false (нет veto).
+        std::env::set_var(ENV_PWA, "true");
+        let file_false = ServerConfig { pwa: Some(false), ..Default::default() };
+        assert!(
+            resolve(&RunOptions::default(), Some(&file_false)).pwa_enabled,
+            "truthy env включает несмотря на file:false (резолюция = ИЛИ, не first-wins)"
+        );
+
+        // Мусорный env → не включает (спуск к default false).
+        for junk in ["nope", "0", "false", "", "2", "enable"] {
+            std::env::set_var(ENV_PWA, junk);
+            assert!(
+                !resolve(&RunOptions::default(), None).pwa_enabled,
+                "мусорный env {junk:?} не включает PWA"
+            );
+        }
+
+        // CLI true при env=0 и file:false → всё равно true (CLI старший).
+        std::env::set_var(ENV_PWA, "0");
+        let cli_pwa = RunOptions { pwa: true, ..Default::default() };
+        assert!(
+            resolve(&cli_pwa, Some(&file_false)).pwa_enabled,
+            "CLI true побеждает env=0 и file:false"
+        );
+
+        // env снят: default false без источников; file:false тоже off.
+        std::env::remove_var(ENV_PWA);
+        assert!(
+            !resolve(&RunOptions::default(), None).pwa_enabled,
+            "без CLI/file/env → default false"
+        );
+        assert!(
+            !resolve(&RunOptions::default(), Some(&file_false)).pwa_enabled,
+            "file:false + env снят → off"
+        );
+        // file:true достаточно без env.
+        let file_true = ServerConfig { pwa: Some(true), ..Default::default() };
+        assert!(
+            resolve(&RunOptions::default(), Some(&file_true)).pwa_enabled,
+            "file:true включает без env"
+        );
+
+        // Восстановить env.
+        match saved {
+            Some(v) => std::env::set_var(ENV_PWA, v),
+            None => std::env::remove_var(ENV_PWA),
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // print_public_bind_warning — расширение веток (pwa_enabled true/false ×
+    // localhost/public × битый токен). Печать в stdout не ассертим — проверяем
+    // отсутствие паники и корректность guard'ов (is_localhost_bind).
+    // -------------------------------------------------------------------------
+
+    /// PWA web-push строка печатается только при public bind + pwa_enabled
+    /// (no-panic на public+pwa). Также: localhost+pwa → ранний return (no-op);
+    /// public + pwa выкл → без pwa-блока.
+    #[test]
+    fn print_public_bind_warning_pwa_branches_no_panic() {
+        // public + pwa → печатает web-push строку.
+        print_public_bind_warning("0.0.0.0", 8787, Some("abcdef0123456789"), true);
+        // localhost + pwa → ранний return по is_localhost_bind, ничего не печатает.
+        print_public_bind_warning("127.0.0.1", 8787, Some("anything"), true);
+        print_public_bind_warning("::1", 8787, Some("anything"), true);
+        print_public_bind_warning("localhost", 8787, Some("anything"), true);
+        // public + pwa выкл → обычный warning без pwa-блока.
+        print_public_bind_warning("0.0.0.0", 8787, Some("abcdef0123456789"), false);
+    }
+
+    /// no-panic на битом/пустом/коротком токене + bracket/unicode bind при
+    /// pwa_enabled=true (срез &t[..8]/&t[len-4..] защищён len>=8).
+    #[test]
+    fn print_public_bind_warning_corner_tokens_with_pwa() {
+        print_public_bind_warning("0.0.0.0", 8787, None, true);
+        print_public_bind_warning("0.0.0.0", 8787, Some(""), true);
+        print_public_bind_warning("0.0.0.0", 8787, Some("short"), true);
+        print_public_bind_warning("[::]", 8787, Some("abcdef0123456789"), true);
+        print_public_bind_warning("192.168.1.5", 65535, Some("7"), true);
+        // ровно 8 символов — граница len>=8.
+        print_public_bind_warning("0.0.0.0", 1, Some("12345678"), true);
     }
 }

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" width="72" height="72" role="img" aria-label="F.O.R.G.E. badge">
+  <!-- Monochrome white-on-transparent silhouette for notification badges.
+       Android masks the badge to a single colour, so keep it a flat glyph. -->
+  <g fill="#ffffff" transform="translate(36,40) scale(0.165) translate(-135,-70)">
+    <!-- ANVIL silhouette -->
+    <path d="M50,40 Q90,30 120,38 L120,55 L50,55 Z"/>
+    <rect x="110" y="30" width="140" height="22" rx="3"/>
+    <rect x="250" y="34" width="18" height="16"/>
+    <path d="M135,52 L245,52 L230,82 L150,82 Z"/>
+    <rect x="105" y="82" width="170" height="20" rx="3"/>
+    <!-- HAMMER silhouette -->
+    <g transform="translate(215,-45) rotate(-22)">
+      <rect x="-5" y="0" width="10" height="100" rx="2"/>
+      <rect x="-34" y="-26" width="68" height="34" rx="3"/>
+    </g>
+  </g>
+</svg>
