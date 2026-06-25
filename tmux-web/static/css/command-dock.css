@@ -91,9 +91,18 @@
     align-items: center;
     gap: 5px;
 }
-.cmd-dock-pinned { flex: 0 0 auto; }
+/* min-width:0 + flex-shrink:1 обязательны: без них неужимаемый flex-item
+ * (flex:0 0 auto) раздувается до max-content — все chip'ы в одну строку,
+ * внутренний flex-wrap не срабатывает, и chip'ы уходят за экран вправо
+ * (body имеет overflow-x:hidden — без прокрутки). С возможностью ужатия
+ * wrap работает; при избытке включается вертикальный скролл body (45vh). */
+.cmd-dock-pinned {
+    flex: 0 1 auto;
+    min-width: 0;
+}
 .cmd-dock-frequent {
     flex: 1 1 auto;
+    min-width: 0;
     padding-left: 7px;
     border-left: 1px solid var(--border-soft-2);
 }

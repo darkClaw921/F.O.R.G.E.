@@ -82,6 +82,13 @@ pub struct NotifyJob {
     pub target_session: String,
     pub text: String,
     pub mode: NotifyMode,
+    /// Если `true` — перед доставкой `text` отправить в `target_session`
+    /// команду `/clear`, подождать 2 секунды и только затем отправить сам
+    /// текст задачи (сброс контекста Claude-сессии перед новой задачей).
+    /// `#[serde(default)]` сохраняет совместимость со старыми
+    /// `notify_state.json`, где поля ещё нет.
+    #[serde(default)]
+    pub clear_context: bool,
     #[serde(default)]
     pub created_at_unix_ms: u64,
 }
@@ -559,7 +566,33 @@ async fn handle_task_closed(
 }
 
 /// Выполнение одного job'а: tmux::send_keys с retry x3 (backoff 500/1000/2000ms).
+///
+/// Если у job'а взведён `clear_context`, перед доставкой текста мы отправляем
+/// в сессию команду `/clear` и ждём 2 секунды, чтобы Claude успел сбросить
+/// контекст и вернуть готовый prompt. Ошибку доставки `/clear` логируем как
+/// warn, но НЕ прерываем доставку основного текста — сброс контекста best-effort.
 async fn fire_job(job: &NotifyJob) {
+    if job.clear_context {
+        match tmux::send_keys(&job.target_session, "/clear").await {
+            Ok(()) => {
+                tracing::info!(
+                    job_id = %job.id,
+                    session = %job.target_session,
+                    "clear_context: /clear sent, ожидаем 2с перед доставкой текста"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    job_id = %job.id,
+                    session = %job.target_session,
+                    error = ?e,
+                    "clear_context: /clear send failed; продолжаем доставку текста"
+                );
+            }
+        }
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+
     let backoffs = [500u64, 1000, 2000];
     for (attempt, backoff_ms) in backoffs.iter().enumerate() {
         match tmux::send_keys(&job.target_session, &job.text).await {
@@ -606,6 +639,7 @@ pub fn new_job(
     target_session: String,
     text: String,
     mode: NotifyMode,
+    clear_context: bool,
 ) -> NotifyJob {
     NotifyJob {
         id: uuid::Uuid::new_v4().to_string(),
@@ -614,6 +648,7 @@ pub fn new_job(
         target_session,
         text,
         mode,
+        clear_context,
         created_at_unix_ms: now_unix_ms(),
     }
 }
@@ -660,6 +695,7 @@ mod tests {
             mode: NotifyMode::Delayed {
                 fire_at_unix_ms: 9_999_999_999_999,
             },
+            clear_context: false,
             created_at_unix_ms: 1,
         });
         state
@@ -692,6 +728,7 @@ mod tests {
             mode: NotifyMode::Delayed {
                 fire_at_unix_ms: now_unix_ms() + 10_000,
             },
+            clear_context: false,
             created_at_unix_ms: 0,
         });
         state.pending.push(NotifyJob {
@@ -703,6 +740,7 @@ mod tests {
             mode: NotifyMode::Delayed {
                 fire_at_unix_ms: now_unix_ms() + 1_000,
             },
+            clear_context: false,
             created_at_unix_ms: 0,
         });
         state.pending.push(NotifyJob {
@@ -712,6 +750,7 @@ mod tests {
             target_session: "s".into(),
             text: "x".into(),
             mode: NotifyMode::Immediate,
+            clear_context: false,
             created_at_unix_ms: 0,
         });
         let dl = next_delayed_deadline(&state);
@@ -773,6 +812,7 @@ mod tests {
             "s".into(),
             "hello".into(),
             NotifyMode::Immediate,
+            false,
         );
         assert_eq!(j.id.len(), 36);
         assert!(j.created_at_unix_ms > 0);

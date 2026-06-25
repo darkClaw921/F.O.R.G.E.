@@ -2320,6 +2320,11 @@ struct CreateTodoReq {
     /// суффикс PLAN_MODE_SUFFIX. Default false.
     #[serde(default)]
     plan_mode: bool,
+    /// Очистка контекста: если true → при promote notifier перед доставкой
+    /// текста отправит в сессию `/clear`, подождёт 2с и затем сам текст.
+    /// Default false.
+    #[serde(default)]
+    clear_context: bool,
 }
 
 /// `POST /api/todos` — создаёт новую TODO-карточку.
@@ -2359,7 +2364,13 @@ async fn create_todo(
     }
     let root = paths::resolve_root(std::path::Path::new(cwd));
     let root_key = root.to_string_lossy().to_string();
-    match state.todos.create(&root_key, title, req.description.clone(), req.plan_mode) {
+    match state.todos.create(
+        &root_key,
+        title,
+        req.description.clone(),
+        req.plan_mode,
+        req.clear_context,
+    ) {
         Ok(t) => {
             // Broadcast — игнорируем Err (нет подписчиков, ОК).
             let _ = state.todos_tx.send(ws_todos::upsert(t.clone()));
@@ -2391,6 +2402,10 @@ struct PatchTodoReq {
     /// `None` (поля нет) → не трогать. `Some(true|false)` → перезаписать.
     #[serde(default)]
     plan_mode: Option<bool>,
+    /// `None` (поля нет) → не трогать. `Some(true|false)` → записать флаг
+    /// очистки контекста (отправка `/clear` перед доставкой текста при promote).
+    #[serde(default)]
+    clear_context: Option<bool>,
     /// `None` (поля нет) → не трогать. `Some(true|false)` → записать
     /// флаг авто-промоута TODO по очереди.
     #[serde(default)]
@@ -2459,6 +2474,7 @@ async fn patch_todo(
             req.title.clone(),
             req.description.clone(),
             req.plan_mode,
+            req.clear_context,
             req.auto_promote,
         )
     {
@@ -2817,6 +2833,7 @@ pub(crate) async fn promote_todo_core(
             session,
             text,
             mode,
+            todo.clear_context,
         );
 
         if let Err(e) = state.notify.enqueue(job).await {

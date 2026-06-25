@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-11T22:07:59.826Z",
+  "generatedAt": "2026-06-19T20:16:58.549Z",
   "dependencies": [
     {
       "from": "tmux-web/static/command-dock.js",
@@ -22655,6 +22655,13 @@
       "to": "tmux-web/static/js/tasks/modals.js",
       "type": "call",
       "fromElement": "openCreateModal",
+      "toElement": "card.querySelector"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/modals.js",
+      "to": "tmux-web/static/js/tasks/modals.js",
+      "type": "call",
+      "fromElement": "openCreateModal",
       "toElement": "close"
     },
     {
@@ -23055,6 +23062,13 @@
       "type": "call",
       "fromElement": "openTodoEditModal",
       "toElement": "document.body.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/tasks/modals.js",
+      "to": "tmux-web/static/js/tasks/modals.js",
+      "type": "call",
+      "fromElement": "openTodoEditModal",
+      "toElement": "card.querySelector"
     },
     {
       "from": "tmux-web/static/js/tasks/modals.js",

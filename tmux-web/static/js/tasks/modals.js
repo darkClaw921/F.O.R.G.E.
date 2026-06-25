@@ -78,10 +78,15 @@ export function openCreateModal(preset) {
         ? `<label class="checkbox-row"><input type="checkbox" id="tm-plan-mode"${todoPlanDefault ? ' checked' : ''}> Включить план мод
              <span class="hint">— при promote добавит «Создай план для этой задачи»</span></label>`
         : '';
+    const clearContextBlock = isTodo
+        ? `<label class="checkbox-row"><input type="checkbox" id="tm-clear-context"> Очищать контекст перед выполнением задачи
+             <span class="hint">— перед отправкой задачи пошлёт в сессию «/clear» и подождёт 2с</span></label>`
+        : '';
     card.innerHTML = `
         <h2>${heading}</h2>
         ${buildTaskFormHtml(initial, false)}
         ${planModeBlock}
+        ${clearContextBlock}
         <div class="modal-actions">
             <button type="button" id="tm-cancel">Cancel</button>
             <button type="button" id="tm-save" class="primary">Create</button>
@@ -117,11 +122,13 @@ export function openCreateModal(preset) {
                 return;
             }
             const $planMode = card.querySelector('#tm-plan-mode');
+            const $clearContext = card.querySelector('#tm-clear-context');
             const todoPayload = {
                 path,
                 title,
                 description: ($desc.value || '').trim() || undefined,
                 plan_mode: $planMode ? !!$planMode.checked : false,
+                clear_context: $clearContext ? !!$clearContext.checked : false,
             };
             close();
             try {
@@ -262,6 +269,7 @@ export function openTodoEditModal(todo) {
     }
 
     const planChecked = todo.plan_mode ? ' checked' : '';
+    const clearChecked = todo.clear_context ? ' checked' : '';
     const autoChecked = todo.auto_promote ? ' checked' : '';
     card.innerHTML = `
         <h2>Edit TODO</h2>
@@ -270,6 +278,8 @@ export function openTodoEditModal(todo) {
         <label>Description<br><textarea id="td-desc" placeholder="Подробности (опционально)">${escapeText(todo.description || '')}</textarea></label>
         <label class="checkbox-row"><input type="checkbox" id="td-plan-mode"${planChecked}> Включить план мод
             <span class="hint">— при promote добавит «Создай план для этой задачи»</span></label>
+        <label class="checkbox-row"><input type="checkbox" id="td-clear-context"${clearChecked}> Очищать контекст перед выполнением задачи
+            <span class="hint">— перед отправкой задачи пошлёт в сессию «/clear» и подождёт 2с</span></label>
         <label class="checkbox-row"><input type="checkbox" id="td-auto-promote"${autoChecked}> Авто-запуск после предыдущей задачи в очереди
             <span class="hint">— карточка сама стартует, когда закроется предыдущая помеченная задача</span></label>
         <label>Promote → tmux session<br><input type="text" id="td-session" value="${escapeAttr(defaultSession)}" placeholder="${escapeAttr(defaultSession || 'session name')}"></label>
@@ -288,6 +298,7 @@ export function openTodoEditModal(todo) {
     const $desc = card.querySelector('#td-desc');
     const $session = card.querySelector('#td-session');
     const $planMode = card.querySelector('#td-plan-mode');
+    const $clearContext = card.querySelector('#td-clear-context');
     const $autoPromote = card.querySelector('#td-auto-promote');
     $title.focus();
 
@@ -309,6 +320,8 @@ export function openTodoEditModal(todo) {
         if (newDesc !== (todo.description || '')) patch.description = newDesc;
         const newPlanMode = $planMode ? !!$planMode.checked : false;
         if (newPlanMode !== !!todo.plan_mode) patch.plan_mode = newPlanMode;
+        const newClearContext = $clearContext ? !!$clearContext.checked : !!todo.clear_context;
+        if (newClearContext !== !!todo.clear_context) patch.clear_context = newClearContext;
         const newAuto = $autoPromote ? !!$autoPromote.checked : !!todo.auto_promote;
         if (newAuto !== !!todo.auto_promote) patch.auto_promote = newAuto;
         if (Object.keys(patch).length === 0) {

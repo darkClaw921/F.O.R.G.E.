@@ -297,6 +297,7 @@ mod tests {
             issue_type: "task".to_string(),
             labels: Vec::new(),
             plan_mode: false,
+            clear_context: false,
             auto_promote,
             created_at: "2026-05-27T00:00:00Z".to_string(),
             updated_at: updated_at.to_string(),

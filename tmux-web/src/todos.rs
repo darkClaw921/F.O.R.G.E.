@@ -22,7 +22,7 @@
 //! - [`Todo`] — карточка с `id` (UUID v4), `root_path`, `title`,
 //!   `description`, `priority` (`u8`, 0..=4), `issue_type` (`String`),
 //!   `labels` (`Vec<String>`), `created_at`, `updated_at` (RFC3339-строки
-//!   UTC), `plan_mode`, `auto_promote`, `origin`.
+//!   UTC), `plan_mode`, `clear_context`, `auto_promote`, `origin`.
 //! - [`TodoStore`] — `Arc<RwLock<Inner>>`-обёртка над
 //!   `HashMap<root_path, Vec<Todo>>`, с lazy-load из todos.json и
 //!   atomic save.
@@ -101,6 +101,13 @@ pub struct Todo {
     pub labels: Vec<String>,
     #[serde(default)]
     pub plan_mode: bool,
+    /// Очищать ли контекст Claude-сессии перед отправкой промпта при promote.
+    /// При `true` notifier перед доставкой текста задачи отправит в сессию
+    /// команду `/clear`, подождёт 2 секунды и только затем отправит сам текст.
+    /// По умолчанию `false` (через `#[serde(default)]`, обеспечивает
+    /// backward-compat со старыми `todos.json`, где поля ещё нет).
+    #[serde(default)]
+    pub clear_context: bool,
     /// Помечена ли карточка для авто-промоута по очереди. При `true` карточка
     /// участвует в цепочке: после закрытия предыдущей промоутнутой задачи
     /// верхняя помеченная TODO-карточка автоматически промоутится. По умолчанию
@@ -314,6 +321,7 @@ impl TodoStore {
         title: &str,
         description: Option<String>,
         plan_mode: bool,
+        clear_context: bool,
     ) -> Result<Todo> {
         let now = now_rfc3339();
         let todo = Todo {
@@ -325,6 +333,7 @@ impl TodoStore {
             issue_type: default_issue_type(),
             labels: Vec::new(),
             plan_mode,
+            clear_context,
             auto_promote: false,
             created_at: now.clone(),
             updated_at: now,
@@ -352,9 +361,16 @@ impl TodoStore {
         title: &str,
         description: Option<String>,
         plan_mode: bool,
+        clear_context: bool,
     ) -> Result<Todo> {
         let root = paths::resolve_root(cwd);
-        self.create(&root.to_string_lossy(), title, description, plan_mode)
+        self.create(
+            &root.to_string_lossy(),
+            title,
+            description,
+            plan_mode,
+            clear_context,
+        )
     }
 
     /// Обновляет `title` и/или `description`/`plan_mode`/`auto_promote`
@@ -367,6 +383,8 @@ impl TodoStore {
     /// - `description: Some(Some(s))` — записать строку.
     /// - `plan_mode: None` — не трогать.
     /// - `plan_mode: Some(b)` — записать b.
+    /// - `clear_context: None` — не трогать.
+    /// - `clear_context: Some(b)` — записать b.
     /// - `auto_promote: None` — не трогать.
     /// - `auto_promote: Some(b)` — записать b.
     ///
@@ -378,6 +396,7 @@ impl TodoStore {
         title: Option<String>,
         description: Option<Option<String>>,
         plan_mode: Option<bool>,
+        clear_context: Option<bool>,
         auto_promote: Option<bool>,
     ) -> Result<Option<Todo>> {
         let (found, snap) = {
@@ -393,6 +412,9 @@ impl TodoStore {
                     }
                     if let Some(pm) = plan_mode {
                         t.plan_mode = pm;
+                    }
+                    if let Some(cc) = clear_context {
+                        t.clear_context = cc;
                     }
                     if let Some(ap) = auto_promote {
                         t.auto_promote = ap;
@@ -828,7 +850,7 @@ mod tests {
         let store = TodoStore::load(f.clone()).unwrap();
 
         let t = store
-            .create("/tmp/root", "First task", Some("with desc".into()), false)
+            .create("/tmp/root", "First task", Some("with desc".into()), false, false)
             .unwrap();
         assert_eq!(t.title, "First task");
         assert_eq!(t.root_path, "/tmp/root");
@@ -842,7 +864,7 @@ mod tests {
         assert_eq!(fetched.id, t.id);
 
         let updated = store
-            .update(&t.id, Some("Renamed".into()), Some(None), Some(true), None)
+            .update(&t.id, Some("Renamed".into()), Some(None), Some(true), None, None)
             .unwrap()
             .unwrap();
         assert_eq!(updated.title, "Renamed");
@@ -881,7 +903,7 @@ mod tests {
         let f = tmpfile("add-list");
         let store = TodoStore::load_with_projects(f.clone(), None).unwrap();
         let t = store
-            .create("/abs/root/a", "task a", None, false)
+            .create("/abs/root/a", "task a", None, false, false)
             .unwrap();
         assert_eq!(t.root_path, "/abs/root/a");
 
@@ -898,9 +920,9 @@ mod tests {
     fn remove_by_id_searches_across_paths() {
         let f = tmpfile("rm-cross");
         let store = TodoStore::load_with_projects(f.clone(), None).unwrap();
-        let _a1 = store.create("/r1", "a1", None, false).unwrap();
-        let b1 = store.create("/r2", "b1", None, false).unwrap();
-        let _b2 = store.create("/r2", "b2", None, false).unwrap();
+        let _a1 = store.create("/r1", "a1", None, false, false).unwrap();
+        let b1 = store.create("/r2", "b1", None, false, false).unwrap();
+        let _b2 = store.create("/r2", "b2", None, false, false).unwrap();
 
         // удаляем из /r2 — list /r2 уменьшается
         assert!(store.delete(&b1.id).unwrap());
@@ -916,11 +938,11 @@ mod tests {
     fn update_by_id_searches_across_paths() {
         let f = tmpfile("upd-cross");
         let store = TodoStore::load_with_projects(f.clone(), None).unwrap();
-        let _ = store.create("/r1", "first", None, false).unwrap();
-        let t = store.create("/r2", "second", None, false).unwrap();
+        let _ = store.create("/r1", "first", None, false, false).unwrap();
+        let t = store.create("/r2", "second", None, false, false).unwrap();
 
         let updated = store
-            .update(&t.id, Some("renamed".into()), None, None, None)
+            .update(&t.id, Some("renamed".into()), None, None, None, None)
             .unwrap()
             .unwrap();
         assert_eq!(updated.title, "renamed");
@@ -931,7 +953,7 @@ mod tests {
 
         // несуществующий id — None
         assert!(store
-            .update("no-such-id", Some("x".into()), None, None, None)
+            .update("no-such-id", Some("x".into()), None, None, None, None)
             .unwrap()
             .is_none());
         let _ = std::fs::remove_dir_all(f.parent().unwrap());
@@ -1048,9 +1070,9 @@ mod tests {
         let f = tmpfile("roundtrip");
         {
             let store = TodoStore::load_with_projects(f.clone(), None).unwrap();
-            store.create("/abs/r1", "t1", Some("desc".into()), false).unwrap();
-            store.create("/abs/r1", "t2", None, true).unwrap();
-            store.create("/abs/r2", "t3", None, false).unwrap();
+            store.create("/abs/r1", "t1", Some("desc".into()), false, false).unwrap();
+            store.create("/abs/r1", "t2", None, true, false).unwrap();
+            store.create("/abs/r2", "t3", None, false, false).unwrap();
         }
         // Заново открываем — все данные на месте.
         let store2 = TodoStore::load_with_projects(f.clone(), None).unwrap();
@@ -1073,13 +1095,13 @@ mod tests {
             let store = TodoStore::load_with_projects(f.clone(), None).unwrap();
             // Новый TODO стартует с auto_promote=false (через дефолт поля).
             let t = store
-                .create("/abs/r1", "queued task", None, false)
+                .create("/abs/r1", "queued task", None, false, false)
                 .unwrap();
             assert!(!t.auto_promote, "новый TODO по умолчанию не помечен");
 
             // Помечаем для авто-промоута.
             let updated = store
-                .update(&t.id, None, None, None, Some(true))
+                .update(&t.id, None, None, None, None, Some(true))
                 .unwrap()
                 .unwrap();
             assert!(updated.auto_promote, "auto_promote записан в Some(true)");
@@ -1102,7 +1124,7 @@ mod tests {
         let f = tmpfile("move-root");
         let store = TodoStore::load_with_projects(f.clone(), None).unwrap();
         let t = store
-            .create("/abs/r1", "task to move", Some("desc".into()), false)
+            .create("/abs/r1", "task to move", Some("desc".into()), false, false)
             .unwrap();
         let original_updated = t.updated_at.clone();
         // Sleep чуть-чуть чтобы updated_at сдвинулся (1 мс granularity).
@@ -1144,7 +1166,7 @@ mod tests {
         let id;
         {
             let store = TodoStore::load_with_projects(f.clone(), None).unwrap();
-            let t = store.create("/abs/old", "x", None, false).unwrap();
+            let t = store.create("/abs/old", "x", None, false, false).unwrap();
             id = t.id.clone();
             store.move_to_root(&id, "/abs/new").unwrap().unwrap();
         }
