@@ -11,6 +11,7 @@ import {
     $tasksReload, $tasksNew,
     $projectSettings, $screensaverToggle,
     $btnSidebarToggle, $sidebarOverlay, $layout,
+    $claudeMemoryBtn,
 } from './dom.js';
 import {
     _mqlMobile, isMobileViewport, applyTerminalFontSize,
@@ -43,6 +44,7 @@ import { initTooltips } from '../ui/tooltip.js';
 import { initNextStepPopup } from '../sessions/next-step-popup.js';
 import { fetchUserSettings } from '../settings/user-settings-api.js';
 import { openCreateModal } from '../tasks/modals.js';
+import { openClaudeMemoryModal } from '../sessions/claude-memory.js';
 import {
     initEcho, connectEchoWs, disconnectEchoWs, teardownEcho, _debugState as echoDebug,
 } from '../echo/main.js';
@@ -148,6 +150,10 @@ export async function bootstrap() {
 
     if ($projectSettings) {
         $projectSettings.addEventListener('click', openSettingsModal);
+    }
+
+    if ($claudeMemoryBtn) {
+        $claudeMemoryBtn.addEventListener('click', openClaudeMemoryModal);
     }
 
     if ($screensaverToggle) {

@@ -1,6 +1,6 @@
 {
   "root": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E.",
-  "generatedAt": "2026-06-25T10:15:00.970Z",
+  "generatedAt": "2026-07-15T13:05:16.879Z",
   "nodes": [
     {
       "id": "tmux-web/static/app.js",
@@ -165,7 +165,7 @@
           "name": "bootstrap",
           "type": "function",
           "path": "tmux-web/static/js/core/bootstrap.js",
-          "line": 117,
+          "line": 119,
           "signature": "bootstrap()",
           "exports": [
             "bootstrap"
@@ -235,6 +235,7 @@
         "$telescopeInstallList",
         "$telescopeChannelBar",
         "$projectSettings",
+        "$claudeMemoryBtn",
         "$screensaverToggle",
         "$screensaver",
         "$screensaverBack",
@@ -846,11 +847,21 @@
           ]
         },
         {
+          "id": "tmux-web/static/js/core/dom.js:$claudeMemoryBtn",
+          "name": "$claudeMemoryBtn",
+          "type": "variable",
+          "path": "tmux-web/static/js/core/dom.js",
+          "line": 90,
+          "exports": [
+            "$claudeMemoryBtn"
+          ]
+        },
+        {
           "id": "tmux-web/static/js/core/dom.js:$screensaverToggle",
           "name": "$screensaverToggle",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 94,
+          "line": 97,
           "exports": [
             "$screensaverToggle"
           ]
@@ -860,7 +871,7 @@
           "name": "$screensaver",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 95,
+          "line": 98,
           "exports": [
             "$screensaver"
           ]
@@ -870,7 +881,7 @@
           "name": "$screensaverBack",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 96,
+          "line": 99,
           "exports": [
             "$screensaverBack"
           ]
@@ -880,7 +891,7 @@
           "name": "$ssStage",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 97,
+          "line": 100,
           "exports": [
             "$ssStage"
           ]
@@ -890,7 +901,7 @@
           "name": "$originTabs",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 100,
+          "line": 103,
           "exports": [
             "$originTabs"
           ]
@@ -900,7 +911,7 @@
           "name": "$home",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 103,
+          "line": 106,
           "exports": [
             "$home"
           ]
@@ -910,7 +921,7 @@
           "name": "$homeCards",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 104,
+          "line": 107,
           "exports": [
             "$homeCards"
           ]
@@ -920,7 +931,7 @@
           "name": "$homeRestoreAll",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 105,
+          "line": 108,
           "exports": [
             "$homeRestoreAll"
           ]
@@ -930,7 +941,7 @@
           "name": "$homeRestoreSelected",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 106,
+          "line": 109,
           "exports": [
             "$homeRestoreSelected"
           ]
@@ -940,7 +951,7 @@
           "name": "$homeEmpty",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 107,
+          "line": 110,
           "exports": [
             "$homeEmpty"
           ]
@@ -950,7 +961,7 @@
           "name": "$dailySummary",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 114,
+          "line": 117,
           "exports": [
             "$dailySummary"
           ]
@@ -960,7 +971,7 @@
           "name": "$dailySummaryBack",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 115,
+          "line": 118,
           "exports": [
             "$dailySummaryBack"
           ]
@@ -970,7 +981,7 @@
           "name": "$dailySummaryPrev",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 116,
+          "line": 119,
           "exports": [
             "$dailySummaryPrev"
           ]
@@ -980,7 +991,7 @@
           "name": "$dailySummaryToday",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 117,
+          "line": 120,
           "exports": [
             "$dailySummaryToday"
           ]
@@ -990,7 +1001,7 @@
           "name": "$dailySummaryNext",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 118,
+          "line": 121,
           "exports": [
             "$dailySummaryNext"
           ]
@@ -1000,7 +1011,7 @@
           "name": "$dailySummaryDay",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 119,
+          "line": 122,
           "exports": [
             "$dailySummaryDay"
           ]
@@ -1010,7 +1021,7 @@
           "name": "$dailySummaryRegen",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 120,
+          "line": 123,
           "exports": [
             "$dailySummaryRegen"
           ]
@@ -1020,7 +1031,7 @@
           "name": "$dailySummaryStatus",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 121,
+          "line": 124,
           "exports": [
             "$dailySummaryStatus"
           ]
@@ -1030,7 +1041,7 @@
           "name": "$dailySummaryContent",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 122,
+          "line": 125,
           "exports": [
             "$dailySummaryContent"
           ]
@@ -1040,7 +1051,7 @@
           "name": "$dailySummarySuggestions",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 123,
+          "line": 126,
           "exports": [
             "$dailySummarySuggestions"
           ]
@@ -1050,7 +1061,7 @@
           "name": "$dailySummaryEmpty",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 124,
+          "line": 127,
           "exports": [
             "$dailySummaryEmpty"
           ]
@@ -1060,7 +1071,7 @@
           "name": "$dailySummaryGenerate",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 125,
+          "line": 128,
           "exports": [
             "$dailySummaryGenerate"
           ]
@@ -1070,7 +1081,7 @@
           "name": "$tabEcho",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 133,
+          "line": 136,
           "exports": [
             "$tabEcho"
           ]
@@ -1080,7 +1091,7 @@
           "name": "$echoEl",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 134,
+          "line": 137,
           "exports": [
             "$echoEl"
           ]
@@ -1090,7 +1101,7 @@
           "name": "$echoSidebar",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 135,
+          "line": 138,
           "exports": [
             "$echoSidebar"
           ]
@@ -1100,7 +1111,7 @@
           "name": "$echoSidebarTabChats",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 136,
+          "line": 139,
           "exports": [
             "$echoSidebarTabChats"
           ]
@@ -1110,7 +1121,7 @@
           "name": "$echoSidebarTabAuto",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 137,
+          "line": 140,
           "exports": [
             "$echoSidebarTabAuto"
           ]
@@ -1120,7 +1131,7 @@
           "name": "$echoSidebarTabMemory",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 138,
+          "line": 141,
           "exports": [
             "$echoSidebarTabMemory"
           ]
@@ -1130,7 +1141,7 @@
           "name": "$echoConversations",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 139,
+          "line": 142,
           "exports": [
             "$echoConversations"
           ]
@@ -1140,7 +1151,7 @@
           "name": "$echoConversationsList",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 140,
+          "line": 143,
           "exports": [
             "$echoConversationsList"
           ]
@@ -1150,7 +1161,7 @@
           "name": "$echoNewChat",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 141,
+          "line": 144,
           "exports": [
             "$echoNewChat"
           ]
@@ -1160,7 +1171,7 @@
           "name": "$echoAutonomous",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 142,
+          "line": 145,
           "exports": [
             "$echoAutonomous"
           ]
@@ -1170,7 +1181,7 @@
           "name": "$echoAutonomousList",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 143,
+          "line": 146,
           "exports": [
             "$echoAutonomousList"
           ]
@@ -1180,7 +1191,7 @@
           "name": "$echoNewAuto",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 144,
+          "line": 147,
           "exports": [
             "$echoNewAuto"
           ]
@@ -1190,7 +1201,7 @@
           "name": "$echoMemory",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 145,
+          "line": 148,
           "exports": [
             "$echoMemory"
           ]
@@ -1200,7 +1211,7 @@
           "name": "$echoMemoryList",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 146,
+          "line": 149,
           "exports": [
             "$echoMemoryList"
           ]
@@ -1210,7 +1221,7 @@
           "name": "$echoMemoryRegen",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 147,
+          "line": 150,
           "exports": [
             "$echoMemoryRegen"
           ]
@@ -1220,7 +1231,7 @@
           "name": "$echoMain",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 148,
+          "line": 151,
           "exports": [
             "$echoMain"
           ]
@@ -1230,7 +1241,7 @@
           "name": "$echoHeader",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 149,
+          "line": 152,
           "exports": [
             "$echoHeader"
           ]
@@ -1240,7 +1251,7 @@
           "name": "$echoModelPicker",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 150,
+          "line": 153,
           "exports": [
             "$echoModelPicker"
           ]
@@ -1250,7 +1261,7 @@
           "name": "$echoStatus",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 151,
+          "line": 154,
           "exports": [
             "$echoStatus"
           ]
@@ -1260,7 +1271,7 @@
           "name": "$echoStatsCanvas",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 152,
+          "line": 155,
           "exports": [
             "$echoStatsCanvas"
           ]
@@ -1270,7 +1281,7 @@
           "name": "$echoStatsText",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 153,
+          "line": 156,
           "exports": [
             "$echoStatsText"
           ]
@@ -1280,7 +1291,7 @@
           "name": "$echoMessages",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 154,
+          "line": 157,
           "exports": [
             "$echoMessages"
           ]
@@ -1290,7 +1301,7 @@
           "name": "$echoInputWrap",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 155,
+          "line": 158,
           "exports": [
             "$echoInputWrap"
           ]
@@ -1300,7 +1311,7 @@
           "name": "$echoInput",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 156,
+          "line": 159,
           "exports": [
             "$echoInput"
           ]
@@ -1310,7 +1321,7 @@
           "name": "$echoSend",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 157,
+          "line": 160,
           "exports": [
             "$echoSend"
           ]
@@ -1320,7 +1331,7 @@
           "name": "$echoToasts",
           "type": "variable",
           "path": "tmux-web/static/js/core/dom.js",
-          "line": 158,
+          "line": 161,
           "exports": [
             "$echoToasts"
           ]
@@ -4829,6 +4840,66 @@
           "path": "tmux-web/static/js/screensaver/screensaver.js",
           "line": 460,
           "exports": []
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/sessions/claude-memory.js",
+      "name": "claude-memory.js",
+      "type": "file",
+      "path": "tmux-web/static/js/sessions/claude-memory.js",
+      "exports": [
+        "openClaudeMemoryModal"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/sessions/claude-memory.js:currentSessionPath",
+          "name": "currentSessionPath",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/claude-memory.js",
+          "line": 14,
+          "signature": "currentSessionPath()",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/sessions/claude-memory.js:wireInternalMemoryLinks",
+          "name": "wireInternalMemoryLinks",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/claude-memory.js",
+          "line": 31,
+          "signature": "wireInternalMemoryLinks(body, sectionsById, backStack, onNavigate)",
+          "docComment": "Перехватывает клики по относительным `*.md`-ссылкам внутри отрендеренной\nпамяти (например `[Title](filename.md)` в MEMORY.md — это ссылка на\nдругой файл ТОЙ ЖЕ папки памяти, а не URL этого веб-сервера; без\nперехвата браузер уходил на несуществующий `http://<host>/filename.md`).\n\n`sectionsById` — карта «имя файла» → `id` заголовка его секции (уже\nотрендеренной на странице). Если секция найдена — скроллит к ней,\nпредварительно запомнив текущую позицию в `backStack`, чтобы кнопка\n«↑ Назад» могла вернуть на неё. Если не найдена — блокирует переход и\nпомечает ссылку визуально.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/sessions/claude-memory.js:buildMemorySection",
+          "name": "buildMemorySection",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/claude-memory.js",
+          "line": 70,
+          "signature": "buildMemorySection(file, ctx)",
+          "docComment": "Строит одну редактируемую секцию памяти (MEMORY.md либо один связанный\nфайл). Возвращает `{el, id}` — `el` уже содержит заголовок с кнопкой ✎\nи view/edit-переключение, `id` — id заголовка (для кросс-ссылок).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/sessions/claude-memory.js:renderMemory",
+          "name": "renderMemory",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/claude-memory.js",
+          "line": 158,
+          "signature": "renderMemory(body, backBtn, backStack, path)",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/sessions/claude-memory.js:openClaudeMemoryModal",
+          "name": "openClaudeMemoryModal",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/claude-memory.js",
+          "line": 210,
+          "signature": "openClaudeMemoryModal()",
+          "exports": [
+            "openClaudeMemoryModal"
+          ]
         }
       ]
     },

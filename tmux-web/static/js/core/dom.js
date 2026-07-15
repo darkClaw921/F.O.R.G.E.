@@ -86,6 +86,9 @@ export const $telescopeChannelBar = document.getElementById('telescope-channel-b
 // ---- Settings bar ----
 export const $projectSettings = document.getElementById('project-settings');
 
+// ---- Claude memory button (шапка сессии tmux) ----
+export const $claudeMemoryBtn = document.getElementById('claude-memory-btn');
+
 // ---- Screensaver (заставка «таверна дворфов») ----
 //
 // Кнопка-переключатель в #settings-bar и полноэкранная вью #screensaver в

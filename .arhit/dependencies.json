@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-25T10:15:04.654Z",
+  "generatedAt": "2026-07-15T13:05:20.601Z",
   "dependencies": [
     {
       "from": "tmux-web/static/command-dock.js",
@@ -2557,6 +2557,12 @@
     },
     {
       "from": "tmux-web/static/js/core/bootstrap.js",
+      "to": "tmux-web/static/js/core/dom.js",
+      "type": "import",
+      "toElement": "$claudeMemoryBtn"
+    },
+    {
+      "from": "tmux-web/static/js/core/bootstrap.js",
       "to": "tmux-web/static/js/core/viewport.js",
       "type": "import",
       "toElement": "_mqlMobile"
@@ -2800,6 +2806,12 @@
       "to": "tmux-web/static/js/tasks/modals.js",
       "type": "import",
       "toElement": "openCreateModal"
+    },
+    {
+      "from": "tmux-web/static/js/core/bootstrap.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "import",
+      "toElement": "openClaudeMemoryModal"
     },
     {
       "from": "tmux-web/static/js/core/bootstrap.js",
@@ -3361,6 +3373,12 @@
       "type": "call",
       "fromElement": "bootstrap",
       "toElement": "window.dispatchEvent"
+    },
+    {
+      "from": "tmux-web/static/js/core/dom.js",
+      "to": "tmux-web/static/js/core/dom.js",
+      "type": "call",
+      "toElement": "document.getElementById"
     },
     {
       "from": "tmux-web/static/js/core/dom.js",
@@ -14649,6 +14667,667 @@
       "type": "call",
       "fromElement": "closeScreensaver",
       "toElement": "fetchSessions"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/core/state.js",
+      "type": "import",
+      "toElement": "state"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/core/utils.js",
+      "type": "import",
+      "toElement": "buildModalOverlay"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/core/utils.js",
+      "type": "import",
+      "toElement": "escapeText"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/core/markdown.js",
+      "type": "import",
+      "toElement": "renderMarkdownInto"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "wireInternalMemoryLinks",
+      "toElement": "body.querySelectorAll"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "wireInternalMemoryLinks",
+      "toElement": "a.getAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "wireInternalMemoryLinks",
+      "toElement": "href.startsWith"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "wireInternalMemoryLinks",
+      "toElement": "href.startsWith"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "wireInternalMemoryLinks",
+      "toElement": "href.toLowerCase"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "wireInternalMemoryLinks",
+      "toElement": "a.removeAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "wireInternalMemoryLinks",
+      "toElement": "sectionsById.get"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "wireInternalMemoryLinks",
+      "toElement": "a.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "wireInternalMemoryLinks",
+      "toElement": "ev.preventDefault"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "wireInternalMemoryLinks",
+      "toElement": "document.getElementById"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "wireInternalMemoryLinks",
+      "toElement": "backStack.push"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "wireInternalMemoryLinks",
+      "toElement": "onNavigate"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "wireInternalMemoryLinks",
+      "toElement": "el.scrollIntoView"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "wireInternalMemoryLinks",
+      "toElement": "a.classList.add"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "wireInternalMemoryLinks",
+      "toElement": "a.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "wireInternalMemoryLinks",
+      "toElement": "ev.preventDefault"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "name.replace"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "head.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "head.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "section.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "content.trim"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "renderMarkdownInto"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "viewEl.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "section.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "editBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "section.replaceChild"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "textarea.focus"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "editActions.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "editActions.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "section.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "section.replaceChild"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "section.removeChild"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "cancelBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "saveBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "JSON.stringify"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "resp.text"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "ctx.onSaved"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "buildMemorySection",
+      "toElement": "window.alert"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "renderMemory",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "renderMemory",
+      "toElement": "body.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "renderMemory",
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "renderMemory",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "renderMemory",
+      "toElement": "resp.json"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "renderMemory",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "renderMemory",
+      "toElement": "escapeText"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "renderMemory",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "renderMemory",
+      "toElement": "body.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "renderMemory",
+      "toElement": "renderMemory"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "renderMemory",
+      "toElement": "buildMemorySection"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "renderMemory",
+      "toElement": "sectionsById.set"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "renderMemory",
+      "toElement": "body.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "renderMemory",
+      "toElement": "buildMemorySection"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "renderMemory",
+      "toElement": "sectionsById.set"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "renderMemory",
+      "toElement": "body.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "renderMemory",
+      "toElement": "wireInternalMemoryLinks"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "openClaudeMemoryModal",
+      "toElement": "buildModalOverlay"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "openClaudeMemoryModal",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "openClaudeMemoryModal",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "openClaudeMemoryModal",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "openClaudeMemoryModal",
+      "toElement": "header.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "openClaudeMemoryModal",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "openClaudeMemoryModal",
+      "toElement": "header.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "openClaudeMemoryModal",
+      "toElement": "card.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "openClaudeMemoryModal",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "openClaudeMemoryModal",
+      "toElement": "card.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "openClaudeMemoryModal",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "openClaudeMemoryModal",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "openClaudeMemoryModal",
+      "toElement": "closeBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "openClaudeMemoryModal",
+      "toElement": "overlay.remove"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "openClaudeMemoryModal",
+      "toElement": "actions.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "openClaudeMemoryModal",
+      "toElement": "card.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "openClaudeMemoryModal",
+      "toElement": "overlay.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "openClaudeMemoryModal",
+      "toElement": "overlay.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "openClaudeMemoryModal",
+      "toElement": "overlay.remove"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "openClaudeMemoryModal",
+      "toElement": "document.body.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "openClaudeMemoryModal",
+      "toElement": "backBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "openClaudeMemoryModal",
+      "toElement": "backStack.pop"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "openClaudeMemoryModal",
+      "toElement": "body.scrollTo"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "openClaudeMemoryModal",
+      "toElement": "currentSessionPath"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/claude-memory.js",
+      "to": "tmux-web/static/js/sessions/claude-memory.js",
+      "type": "call",
+      "fromElement": "openClaudeMemoryModal",
+      "toElement": "renderMemory"
     },
     {
       "from": "tmux-web/static/js/sessions/next-step-popup.js",

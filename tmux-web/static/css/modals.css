@@ -275,3 +275,156 @@
     flex: 1 1 auto;
 }
 
+/* ===== Claude memory modal ===== */
+
+.modal-card.claude-memory-modal {
+    min-width: 480px;
+    max-width: 800px;
+    width: 60vw;
+}
+
+.claude-memory-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.claude-memory-header h2 {
+    margin: 0;
+}
+
+.claude-memory-back-btn {
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-family: inherit;
+    font-size: 0.75rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 100ms ease, border-color 100ms ease;
+}
+
+.claude-memory-back-btn:hover {
+    background: var(--bg-input-hover);
+    border-color: var(--border-input-hover);
+}
+
+.claude-memory-back-btn[hidden] {
+    display: none;
+}
+
+.claude-memory-body {
+    max-height: 60vh;
+    overflow-y: auto;
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+.claude-memory-error {
+    color: var(--danger-soft);
+}
+
+.claude-memory-section + .claude-memory-section {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-input-soft);
+}
+
+.claude-memory-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.claude-memory-section-title.echo-md-h {
+    scroll-margin-top: 8px;
+    margin: 0;
+    color: var(--fg-soft);
+}
+
+.claude-memory-section-empty {
+    color: var(--fg-placeholder);
+    font-style: italic;
+    margin: 6px 0;
+}
+
+.claude-memory-edit-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--fg-tab-inactive);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    flex: 0 0 auto;
+}
+
+.claude-memory-edit-btn:hover {
+    background: var(--bg-input);
+    border-color: var(--border-input);
+}
+
+.claude-memory-edit-btn[hidden] {
+    display: none;
+}
+
+.claude-memory-edit-textarea {
+    width: 100%;
+    margin-top: 6px;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    font-size: 0.8rem;
+    line-height: 1.45;
+    min-height: 140px;
+    resize: vertical;
+}
+
+.claude-memory-edit-textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.claude-memory-edit-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.claude-memory-edit-actions button {
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-family: inherit;
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+
+.claude-memory-edit-actions button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.claude-memory-edit-save {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--fg-on-accent);
+}
+
+.claude-memory-link-missing {
+    color: var(--fg-placeholder);
+    text-decoration: line-through;
+    cursor: not-allowed;
+}
+

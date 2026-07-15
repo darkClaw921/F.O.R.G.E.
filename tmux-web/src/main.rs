@@ -13,6 +13,7 @@ mod auth;
 // AutoChainMap используются `AppState.auto_chain` и `promote_todo_core`
 // (Фаза 3); фоновый воркер `run` добавит Фаза 4b.
 mod auto_promote;
+mod claude_memory;
 mod cli;
 mod daemon;
 // Phase 1 Echo plugin — адаптер AppState → echo_host_api::HostApi.
@@ -739,6 +740,8 @@ async fn main() -> anyhow::Result<()> {
         // Git commits (для гант-диаграммы вкладки Tasks).
         .route("/api/git/commits", get(get_git_commits))
         .route("/api/git/commit", get(get_git_commit))
+        // Память Claude Code для проекта активной tmux-сессии (кнопка 🧠).
+        .route("/api/claude-memory", get(get_claude_memory).put(put_claude_memory))
         // Todos API (Phase 3).
         .route("/api/todos", get(get_todos).post(create_todo))
         .route("/api/todos/:id", patch(patch_todo).delete(delete_todo))
@@ -2000,6 +2003,89 @@ async fn get_git_commits(
         .await
         .unwrap_or_default();
     Ok(Json(serde_json::json!({ "commits": commits })).into_response())
+}
+
+/// `GET /api/claude-memory` — текст памяти Claude Code
+/// (`~/.claude/projects/<encoded-cwd>/memory/`) для проекта текущей
+/// tmux-сессии. Питает кнопку «🧠» в шапке сессии.
+///
+/// Параметры query:
+/// - `path=<abs>` — cwd сессии, для которой ищется память. Если не задан —
+///   берётся `state.active_path_tx`, как у `get_tasks`/`get_git_commits`.
+/// - `server=<id>` — remote не проксируем: память — чисто локальная фича
+///   этого devforge-инстанса, поэтому для удалённых серверов сразу
+///   отдаём `exists=false`.
+///
+/// Ответ: `{"dir": "...", "exists": bool, "index": "...", "files": [{"name","content"}, ...]}`.
+/// `index` — сырой `MEMORY.md`; `files` — остальные `*.md` файлы папки
+/// памяти по алфавиту, каждый с оригинальным (не склеенным) содержимым,
+/// пригодным для редактирования и обратной записи через `PUT` (см. ниже).
+async fn get_claude_memory(
+    State(state): State<AppState>,
+    Query(q): Query<HashMap<String, String>>,
+) -> Result<Response, (StatusCode, String)> {
+    if extract_server_id(&q).is_some() {
+        return Ok(Json(serde_json::json!({
+            "dir": "",
+            "exists": false,
+            "index": "",
+            "files": [],
+        }))
+        .into_response());
+    }
+
+    let cwd = if let Some(p) = q.get("path").map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        PathBuf::from(p)
+    } else {
+        state.active_path_tx.borrow().clone()
+    };
+
+    let mem = claude_memory::load_project_memory(&cwd).await;
+    Ok(Json(mem).into_response())
+}
+
+/// Тело запроса `PUT /api/claude-memory`.
+#[derive(Debug, Deserialize)]
+struct PutClaudeMemoryReq {
+    /// cwd сессии (как у `?path=` в `GET`); если не задан/пуст — fallback
+    /// на `state.active_path_tx`.
+    path: Option<String>,
+    /// Простое имя файла в папке памяти (`MEMORY.md` либо любой связанный
+    /// `*.md`, ранее пришедший в ответе `GET`). Валидируется на сервере —
+    /// без `/`, `\`, `..`, обязательно `.md`.
+    file: String,
+    content: String,
+}
+
+/// `PUT /api/claude-memory` — перезаписывает один файл памяти Claude Code
+/// (`MEMORY.md` или связанный `*.md`) для проекта текущей tmux-сессии.
+/// Питает редактирование в модалке кнопки «🧠».
+///
+/// Не создаёт новую папку памяти: если для резолвнутого cwd папки памяти
+/// ещё нет на диске — `404`. Некорректное имя файла (path traversal,
+/// не `.md`) — `400`. Успех — `204 No Content`.
+async fn put_claude_memory(
+    State(state): State<AppState>,
+    Json(req): Json<PutClaudeMemoryReq>,
+) -> Result<Response, (StatusCode, String)> {
+    let cwd = match req.path.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(p) => PathBuf::from(p),
+        None => state.active_path_tx.borrow().clone(),
+    };
+
+    match claude_memory::save_project_memory_file(&cwd, &req.file, &req.content).await {
+        Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
+        Err(claude_memory::SaveError::InvalidFileName) => {
+            Err((StatusCode::BAD_REQUEST, "invalid memory file name".to_string()))
+        }
+        Err(claude_memory::SaveError::MemoryDirNotFound) => Err((
+            StatusCode::NOT_FOUND,
+            "no Claude memory directory found for this project".to_string(),
+        )),
+        Err(claude_memory::SaveError::Io(e)) => {
+            Err((StatusCode::INTERNAL_SERVER_ERROR, format!("{e}")))
+        }
+    }
 }
 
 /// `GET /api/git/commit` — детали одного git-коммита (мета + тело + список
