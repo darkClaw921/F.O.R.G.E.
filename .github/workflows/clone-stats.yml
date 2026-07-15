@@ -1,0 +1,38 @@
+name: Clone stats
+
+# Ежедневно тянет GitHub Traffic API (скользящее окно 14 дней) и
+# накапливает счётчик git-клонов в badges/ (см. scripts/update-clone-badge.py
+# за подробностями схемы накопления). README читает badges/git-clones.json
+# через shields.io endpoint-бейдж — https://img.shields.io/endpoint?url=...
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  update-badges:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update clone-stats badge
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python3 scripts/update-clone-badge.py
+
+      - name: Commit badge update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add badges/
+          if git diff --cached --quiet; then
+            echo "No badge changes."
+          else
+            git commit -m "chore: update clone-stats badge [skip ci]"
+            git push
+          fi

@@ -18,6 +18,15 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/darkClaw921/F.O.R.G.E./releases/latest"><img src="https://img.shields.io/github/v/release/darkClaw921/F.O.R.G.E." alt="Latest release"/></a>
+  <a href="https://github.com/darkClaw921/F.O.R.G.E./releases"><img src="https://img.shields.io/github/downloads/darkClaw921/F.O.R.G.E./total" alt="GitHub release downloads"/></a>
+  <a href="https://github.com/darkClaw921/F.O.R.G.E."><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FdarkClaw921%2FF.O.R.G.E.%2Fmaster%2Fbadges%2Fgit-clones.json" alt="Git clones"/></a>
+  <a href="https://github.com/darkClaw921/F.O.R.G.E./stargazers"><img src="https://img.shields.io/github/stars/darkClaw921/F.O.R.G.E." alt="GitHub stars"/></a>
+  <a href="https://aur.archlinux.org/packages/devforge"><img src="https://img.shields.io/aur/version/devforge" alt="AUR version"/></a>
+  <a href="https://aur.archlinux.org/packages/devforge"><img src="https://img.shields.io/aur/votes/devforge" alt="AUR votes"/></a>
+</p>
+
+<p align="center">
   <a href="#-возможности">Возможности</a> ·
   <a href="#-архитектура">Архитектура</a> ·
   <a href="#-быстрый-старт">Старт</a> ·
