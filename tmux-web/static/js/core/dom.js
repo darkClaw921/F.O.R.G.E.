@@ -28,6 +28,7 @@ export const $placeholder = document.getElementById('placeholder');
 export const $windowBar = document.getElementById('window-bar');
 export const $windowTabs = document.getElementById('window-tabs');
 export const $windowNewBtn = document.getElementById('window-new');
+export const $windowNewWorktreeBtn = document.getElementById('window-new-worktree');
 export const $statusDot = document.getElementById('status-dot');
 export const $statusText = document.getElementById('status-text');
 

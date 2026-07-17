@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-15T13:05:20.601Z",
+  "generatedAt": "2026-07-16T13:44:30.177Z",
   "dependencies": [
     {
       "from": "tmux-web/static/command-dock.js",
@@ -2481,6 +2481,12 @@
       "from": "tmux-web/static/js/core/bootstrap.js",
       "to": "tmux-web/static/js/core/dom.js",
       "type": "import",
+      "toElement": "$windowNewWorktreeBtn"
+    },
+    {
+      "from": "tmux-web/static/js/core/bootstrap.js",
+      "to": "tmux-web/static/js/core/dom.js",
+      "type": "import",
       "toElement": "$tabTerminal"
     },
     {
@@ -2716,6 +2722,12 @@
       "to": "tmux-web/static/js/sessions/windows.js",
       "type": "import",
       "toElement": "createWindow"
+    },
+    {
+      "from": "tmux-web/static/js/core/bootstrap.js",
+      "to": "tmux-web/static/js/sessions/windows.js",
+      "type": "import",
+      "toElement": "createWorktreeWindow"
     },
     {
       "from": "tmux-web/static/js/core/bootstrap.js",
@@ -3373,6 +3385,12 @@
       "type": "call",
       "fromElement": "bootstrap",
       "toElement": "window.dispatchEvent"
+    },
+    {
+      "from": "tmux-web/static/js/core/dom.js",
+      "to": "tmux-web/static/js/core/dom.js",
+      "type": "call",
+      "toElement": "document.getElementById"
     },
     {
       "from": "tmux-web/static/js/core/dom.js",
@@ -17080,6 +17098,55 @@
       "from": "tmux-web/static/js/sessions/windows.js",
       "to": "tmux-web/static/js/sessions/windows.js",
       "type": "call",
+      "fromElement": "createWorktreeWindow",
+      "toElement": "apiFetch"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/windows.js",
+      "to": "tmux-web/static/js/sessions/windows.js",
+      "type": "call",
+      "fromElement": "createWorktreeWindow",
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/windows.js",
+      "to": "tmux-web/static/js/sessions/windows.js",
+      "type": "call",
+      "fromElement": "createWorktreeWindow",
+      "toElement": "resp.text"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/windows.js",
+      "to": "tmux-web/static/js/sessions/windows.js",
+      "type": "call",
+      "fromElement": "createWorktreeWindow",
+      "toElement": "window.alert"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/windows.js",
+      "to": "tmux-web/static/js/sessions/windows.js",
+      "type": "call",
+      "fromElement": "createWorktreeWindow",
+      "toElement": "fetchWindows"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/windows.js",
+      "to": "tmux-web/static/js/sessions/windows.js",
+      "type": "call",
+      "fromElement": "createWorktreeWindow",
+      "toElement": "window.alert"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/windows.js",
+      "to": "tmux-web/static/js/sessions/windows.js",
+      "type": "call",
+      "fromElement": "killWindow",
+      "toElement": "name.startsWith"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/windows.js",
+      "to": "tmux-web/static/js/sessions/windows.js",
+      "type": "call",
       "fromElement": "killWindow",
       "toElement": "window.confirm"
     },
@@ -17088,21 +17155,21 @@
       "to": "tmux-web/static/js/sessions/windows.js",
       "type": "call",
       "fromElement": "killWindow",
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/windows.js",
+      "to": "tmux-web/static/js/sessions/windows.js",
+      "type": "call",
+      "fromElement": "killWindow",
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/windows.js",
+      "to": "tmux-web/static/js/sessions/windows.js",
+      "type": "call",
+      "fromElement": "killWindow",
       "toElement": "apiFetch"
-    },
-    {
-      "from": "tmux-web/static/js/sessions/windows.js",
-      "to": "tmux-web/static/js/sessions/windows.js",
-      "type": "call",
-      "fromElement": "killWindow",
-      "toElement": "encodeURIComponent"
-    },
-    {
-      "from": "tmux-web/static/js/sessions/windows.js",
-      "to": "tmux-web/static/js/sessions/windows.js",
-      "type": "call",
-      "fromElement": "killWindow",
-      "toElement": "encodeURIComponent"
     },
     {
       "from": "tmux-web/static/js/sessions/windows.js",

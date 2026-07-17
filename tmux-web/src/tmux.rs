@@ -765,6 +765,156 @@ pub async fn select_window(session: &str, index: u32) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Создаёт новое окно в заданной рабочей директории
+/// (`tmux new-window -t <session>: -c <cwd>`).
+///
+/// Аналог [`new_window`], но вместо `-c "#{pane_current_path}"` (cwd активной
+/// панели) новое окно открывается в ЯВНО переданном `cwd`. Используется фичей
+/// «Новое окно в git worktree»: окно создаётся в каталоге свежесозданной
+/// рабочей копии (`<repo>/.forge-worktrees/<имя>/`), а не там, где находится
+/// текущая панель сессии.
+///
+/// Как и [`new_window`], таргет формируется как `<session>:` (с двоеточием в
+/// конце), чтобы tmux трактовал `-t` как session-target и назначил следующий
+/// свободный индекс окна, а не пытался пересоздать текущее.
+///
+/// # Параметры
+/// - `session` — имя сессии; валидируется [`is_valid_session_name`].
+/// - `name` — имя окна: при `Some(непустое)` добавляется `-n <name>`; при
+///   `None` или пустой строке имя не задаётся (tmux назовёт окно сам).
+/// - `cwd` — рабочая директория нового окна (передаётся в `-c <cwd>`).
+///
+/// # Возврат
+/// `Ok(())` при успехе; `Err` при невалидном имени сессии (без spawn) или при
+/// ненулевом exit `tmux` (с обрезанным stderr).
+pub async fn new_window_in(session: &str, name: Option<&str>, cwd: &str) -> anyhow::Result<()> {
+    if !is_valid_session_name(session) {
+        bail!(
+            "invalid session name `{}` (allowed: [A-Za-z0-9_-]+, non-empty)",
+            session
+        );
+    }
+
+    // Двоеточие в конце — session-target (см. пояснение в `new_window`),
+    // чтобы tmux назначил следующий свободный индекс, а не пересоздавал окно.
+    let target = format!("{session}:");
+    let mut args: Vec<&str> = vec!["new-window", "-t", &target, "-c", cwd];
+    if let Some(n) = name {
+        if !n.is_empty() {
+            args.push("-n");
+            args.push(n);
+        }
+    }
+
+    let output = Command::new("tmux")
+        .args(&args)
+        .output()
+        .await
+        .context("failed to spawn `tmux new-window` (explicit cwd)")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!(
+            "tmux new-window failed (exit {:?}): {}",
+            output.status.code(),
+            stderr.trim()
+        ));
+    }
+    Ok(())
+}
+
+/// Возвращает cwd текущей активной панели сессии
+/// (`tmux display-message -p -t "<session>:" -F "#{pane_current_path}"`).
+///
+/// Таргет формируется как `<session>:` (двоеточие в конце) — session-target,
+/// который tmux резолвит в активное окно/панель сессии. Двоеточие ОБЯЗАТЕЛЬНО:
+/// для сессий с числовыми именами (`0`, `1`, …) таргет без `:` tmux истолковал
+/// бы как индекс окна и захватил бы чужое окно (см. регресс с числовыми
+/// именами сессий).
+///
+/// # Параметры
+/// - `session` — имя сессии; валидируется [`is_valid_session_name`].
+///
+/// # Возврат
+/// `Ok(String)` — обрезанный (без `\n`) абсолютный путь. `Err` при невалидном
+/// имени сессии (без spawn), ненулевом exit `tmux`, или если путь пуст.
+pub async fn session_cwd(session: &str) -> anyhow::Result<String> {
+    if !is_valid_session_name(session) {
+        bail!(
+            "invalid session name `{}` (allowed: [A-Za-z0-9_-]+, non-empty)",
+            session
+        );
+    }
+    let target = format!("{session}:");
+    display_pane_current_path(&target).await
+}
+
+/// Возвращает cwd панели конкретного окна сессии
+/// (`tmux display-message -p -t "<session>:<index>" -F "#{pane_current_path}"`).
+///
+/// Аналог [`session_cwd`], но таргет указывает конкретное окно по индексу:
+/// `<session>:<index>`. Используется, чтобы узнать рабочую директорию окна
+/// (например, worktree-окна) — в частности, при удалении рабочей копии, чтобы
+/// понять, какой каталог `.forge-worktrees/<имя>` за окном закреплён.
+///
+/// # Параметры
+/// - `session` — имя сессии; валидируется [`is_valid_session_name`].
+/// - `index` — индекс окна в сессии.
+///
+/// # Возврат
+/// `Ok(String)` — обрезанный абсолютный путь. `Err` при невалидном имени
+/// сессии (без spawn), ненулевом exit `tmux`, или если путь пуст.
+pub async fn window_cwd(session: &str, index: u32) -> anyhow::Result<String> {
+    if !is_valid_session_name(session) {
+        bail!(
+            "invalid session name `{}` (allowed: [A-Za-z0-9_-]+, non-empty)",
+            session
+        );
+    }
+    let target = format!("{session}:{index}");
+    display_pane_current_path(&target).await
+}
+
+/// Общий хелпер: `tmux display-message -p -t <target> -F "#{pane_current_path}"`.
+///
+/// Спавнит tmux, проверяет `status.success()` и возвращает обрезанный stdout.
+/// Пустой результат (окно без панели / неожиданный вывод) трактуется как
+/// ошибка. Выделен из [`session_cwd`]/[`window_cwd`], чтобы не дублировать
+/// вызов и обработку ошибок — target формирует вызывающая функция.
+async fn display_pane_current_path(target: &str) -> anyhow::Result<String> {
+    let output = Command::new("tmux")
+        .args([
+            "display-message",
+            "-p",
+            "-t",
+            target,
+            "-F",
+            "#{pane_current_path}",
+        ])
+        .output()
+        .await
+        .context("failed to spawn `tmux display-message`")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!(
+            "tmux display-message failed (exit {:?}): {}",
+            output.status.code(),
+            stderr.trim()
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let path = stdout.trim().to_string();
+    if path.is_empty() {
+        return Err(anyhow!(
+            "tmux display-message returned empty pane_current_path for target `{}`",
+            target
+        ));
+    }
+    Ok(path)
+}
+
 /// Убивает указанное окно (`tmux kill-window -t <session>:<index>`).
 ///
 /// Если это было последнее окно сессии — tmux убьёт и саму сессию.

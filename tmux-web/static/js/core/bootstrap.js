@@ -6,7 +6,7 @@
 
 import { state } from './state.js';
 import {
-    $btnNew, $btnNewPath, $windowNewBtn,
+    $btnNew, $btnNewPath, $windowNewBtn, $windowNewWorktreeBtn,
     $tabTerminal, $tabTasks, $tabGit, $tabDocker, $tabTelescope, $tabEcho,
     $tasksReload, $tasksNew,
     $projectSettings, $screensaverToggle,
@@ -30,7 +30,7 @@ import { initTuiTabs, closeGitWs } from '../tabs/tui-tabs.js';
 import {
     fetchSessions, startPolling, stopPolling, createSessionPrompt, createSessionInPath,
 } from '../sessions/sessions.js';
-import { createWindow } from '../sessions/windows.js';
+import { createWindow, createWorktreeWindow } from '../sessions/windows.js';
 import { disconnectWs } from '../ws/attach.js';
 import {
     fetchTasks, connectTasksWs, disconnectTasksWs, stopTasksPolling,
@@ -128,6 +128,7 @@ export async function bootstrap() {
     $btnNew.addEventListener('click', createSessionPrompt);
     if ($btnNewPath) $btnNewPath.addEventListener('click', createSessionInPath);
     if ($windowNewBtn) $windowNewBtn.addEventListener('click', createWindow);
+    if ($windowNewWorktreeBtn) $windowNewWorktreeBtn.addEventListener('click', createWorktreeWindow);
 
     if ($tabTerminal) $tabTerminal.addEventListener('click', () => switchTab('terminal'));
     if ($tabTasks) $tabTasks.addEventListener('click', () => switchTab('tasks'));

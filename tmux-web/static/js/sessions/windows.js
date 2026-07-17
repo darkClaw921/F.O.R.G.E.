@@ -144,17 +144,41 @@ export async function createWindow() {
     }
 }
 
+export async function createWorktreeWindow() {
+    const session = state.currentSession;
+    if (!session) return;
+    try {
+        const resp = await apiFetch(
+            '/api/sessions/' + encodeURIComponent(session) + '/windows/worktree',
+            { method: 'POST' },
+            state.attachWsOrigin,
+        );
+        if (!resp.ok && resp.status !== 201) {
+            const text = await resp.text();
+            window.alert('Не удалось создать worktree-окно: ' + (text || resp.status));
+            return;
+        }
+        await fetchWindows();
+    } catch (e) {
+        window.alert('Ошибка запроса: ' + e.message);
+    }
+}
+
 export async function killWindow(index, name) {
     const session = state.currentSession;
     if (!session) return;
-    if (!window.confirm(`Убить окно ${index} "${name}"?`)) return;
+    const isWorktree = typeof name === 'string' && name.startsWith('wt:');
+    const msg = isWorktree
+        ? `Убить окно ${index} "${name}" и удалить его git worktree?\n`
+          + `Несохранённые изменения в worktree будут потеряны. `
+          + `Коммиты в ветке forge/... сохранятся.`
+        : `Убить окно ${index} "${name}"?`;
+    if (!window.confirm(msg)) return;
+    const url = '/api/sessions/' + encodeURIComponent(session)
+        + '/windows/' + encodeURIComponent(index)
+        + (isWorktree ? '/worktree' : '');
     try {
-        const resp = await apiFetch(
-            '/api/sessions/' + encodeURIComponent(session)
-                + '/windows/' + encodeURIComponent(index),
-            { method: 'DELETE' },
-            state.attachWsOrigin,
-        );
+        const resp = await apiFetch(url, { method: 'DELETE' }, state.attachWsOrigin);
         if (!resp.ok && resp.status !== 204) {
             const text = await resp.text();
             window.alert('Не удалось убить окно: ' + (text || resp.status));

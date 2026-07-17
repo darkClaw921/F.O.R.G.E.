@@ -39,6 +39,10 @@ mod qr_print;
 mod remote_proxy;
 mod remotes;
 mod git;
+// Мутирующие git-worktree операции для фичи «Новое окно в git worktree»
+// (git.rs остаётся read-only). Публичные функции используются эндпоинтами
+// create_worktree_window / delete_worktree_window.
+mod worktree;
 // PWA (opt-in, активируется флагом --pwa). Все четыре модуля гейтятся под
 // `pwa_enabled` — без флага ни роутов `/api/pwa/*`, ни файлов `~/.forge/`.
 //   - `vapid`      — генерация/загрузка VAPID P-256 пары (Фаза 1).
@@ -65,7 +69,7 @@ mod ws_todos;
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -712,9 +716,21 @@ async fn main() -> anyhow::Result<()> {
             "/api/sessions/:name/windows",
             get(list_windows).post(create_window),
         )
+        // Новое окно в изолированной git-worktree (радужная кнопка). Статический
+        // сегмент `worktree` соседствует с параметром `:index` ниже — matchit
+        // 0.7 отдаёт приоритет статике, так что коллизии с `:index`-роутами нет
+        // (тот же приём, что у `/api/sessions/history` рядом с `/:name`).
+        .route(
+            "/api/sessions/:name/windows/worktree",
+            post(create_worktree_window),
+        )
         .route(
             "/api/sessions/:name/windows/:index",
             delete(delete_window).patch(patch_window),
+        )
+        .route(
+            "/api/sessions/:name/windows/:index/worktree",
+            delete(delete_worktree_window),
         )
         .route(
             "/api/sessions/:name/windows/:index/select",
@@ -1714,6 +1730,110 @@ async fn create_window(
     }
 }
 
+/// Ответ `POST /api/sessions/:name/windows/worktree` — метаданные созданной
+/// рабочей копии и окна.
+///
+/// - `branch` — имя новой ветки (`forge/wt-<ts>`), на которую зачекаучена копия.
+/// - `path` — абсолютный путь рабочей копии (`.../.forge-worktrees/wt-<ts>`).
+/// - `window` — имя tmux-окна (`wt:<ts>`), в котором открыта копия.
+#[derive(Debug, Serialize)]
+struct CreateWorktreeResp {
+    branch: String,
+    path: String,
+    window: String,
+}
+
+/// `POST /api/sessions/:name/windows/worktree` — создаёт новое окно в
+/// изолированной git-worktree («радужная кнопка»).
+///
+/// Автоматический режим (тело запроса не требуется): cwd активной панели сессии
+/// → git-toplevel → новая рабочая копия на новой ветке `forge/wt-<ts>` внутри
+/// `<toplevel>/.forge-worktrees/wt-<ts>` → tmux-окно `wt:<ts>` с этим cwd.
+///
+/// Отказы отдают `400`: если сессия не в git-репозитории или git-операция не
+/// удалась. Если рабочая копия создана, но окно tmux открыть не удалось —
+/// выполняется откат (`git worktree remove --force`), ветка при откате также
+/// исчезает вместе с копией.
+async fn create_worktree_window(
+    State(state): State<AppState>,
+    AxumPath(name): AxumPath<String>,
+    Query(q): Query<HashMap<String, String>>,
+    body: Bytes,
+) -> Result<Response, (StatusCode, String)> {
+    let path = format!(
+        "/api/sessions/{}/windows/worktree",
+        urlencode_minimal(&name)
+    );
+    if let Some(result) = try_proxy_to_remote(
+        &state,
+        &q,
+        reqwest::Method::POST,
+        &path,
+        Some("application/json"),
+        Some(body.clone()),
+        false,
+    )
+    .await
+    {
+        return result;
+    }
+
+    // 1. cwd активной панели сессии.
+    let cwd = tmux::session_cwd(&name)
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("{e:#}")))?;
+
+    // 2. Настоящий корень git-репозитория (git rev-parse --show-toplevel).
+    let toplevel = match worktree::repo_toplevel(Path::new(&cwd)).await {
+        Ok(Some(top)) => top,
+        Ok(None) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "сессия не в git-репозитории".to_string(),
+            ))
+        }
+        Err(e) => return Err((StatusCode::BAD_REQUEST, format!("{e:#}"))),
+    };
+
+    // 3. Прячем контейнер рабочих копий от git (некритично — лишь warn при I/O-ошибке).
+    worktree::ensure_gitignore_entry(&toplevel);
+
+    // 4. Подбираем свободное имя/путь новой рабочей копии и имя ветки.
+    let (dir_name, wt_path) = worktree::alloc_worktree_name(&worktree::worktrees_base(&toplevel));
+    let branch = format!("forge/{dir_name}");
+
+    // 5. Создаём worktree на новой ветке.
+    if let Err(e) = worktree::worktree_add(&toplevel, &wt_path, &branch).await {
+        tracing::warn!(session = %name, error = ?e, "worktree_add failed");
+        return Err((StatusCode::BAD_REQUEST, format!("{e:#}")));
+    }
+
+    // 6. Открываем tmux-окно `wt:<ts>` в каталоге рабочей копии.
+    let win_name = dir_name.replacen("wt-", "wt:", 1);
+    if let Err(e) = tmux::new_window_in(&name, Some(&win_name), &wt_path.to_string_lossy()).await {
+        // Откат: рабочая копия создана, а окно — нет. Удаляем worktree (force),
+        // чтобы не оставить осиротевший каталог/регистрацию.
+        tracing::warn!(session = %name, error = ?e, "new_window_in failed — rolling back worktree");
+        let _ = worktree::worktree_remove(&toplevel, &wt_path, true).await;
+        return Err((StatusCode::BAD_REQUEST, format!("{e:#}")));
+    }
+
+    tracing::info!(
+        session = %name,
+        branch = %branch,
+        path = %wt_path.display(),
+        window = %win_name,
+        "worktree window created"
+    );
+
+    let resp = CreateWorktreeResp {
+        branch,
+        path: wt_path.to_string_lossy().into_owned(),
+        window: win_name,
+    };
+    Ok((StatusCode::CREATED, Json(resp)).into_response())
+}
+
 /// `POST /api/sessions/:name/windows/:index/select` — делает окно активным.
 async fn select_window(
     State(state): State<AppState>,
@@ -1786,6 +1906,99 @@ async fn delete_window(
             Err((StatusCode::BAD_REQUEST, format!("{e:#}")))
         }
     }
+}
+
+/// `DELETE /api/sessions/:name/windows/:index/worktree` — удаляет worktree-окно
+/// вместе с его рабочей копией.
+///
+/// Сценарий: cwd окна → git-toplevel → удаление рабочей копии
+/// (`git worktree remove --force`) → закрытие tmux-окна. Ветка `forge/…` при
+/// этом НЕ удаляется, поэтому коммиты рабочей копии сохраняются.
+///
+/// Критическая защита: перед удалением cwd окна канонизируется и проверяется,
+/// что он лежит ПОД `<toplevel>/.forge-worktrees/`. Иначе (обычное окно, не
+/// forge-worktree) возвращается `400` и ничего не удаляется — чтобы случайно не
+/// снести основную рабочую копию или произвольный каталог.
+///
+/// `--force` оправдан тем, что агент в worktree часто оставляет незакоммиченные
+/// изменения; фронтенд предупреждает пользователя об их потере перед вызовом.
+async fn delete_worktree_window(
+    State(state): State<AppState>,
+    AxumPath((name, index)): AxumPath<(String, u32)>,
+    Query(q): Query<HashMap<String, String>>,
+) -> Result<Response, (StatusCode, String)> {
+    let path = format!(
+        "/api/sessions/{}/windows/{}/worktree",
+        urlencode_minimal(&name),
+        index
+    );
+    if let Some(result) = try_proxy_to_remote(
+        &state,
+        &q,
+        reqwest::Method::DELETE,
+        &path,
+        None,
+        None,
+        false,
+    )
+    .await
+    {
+        return result;
+    }
+
+    // 1. cwd конкретного окна.
+    let cwd = tmux::window_cwd(&name, index)
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("{e:#}")))?;
+
+    // 2. Корень git-репозитория.
+    let toplevel = match worktree::repo_toplevel(Path::new(&cwd)).await {
+        Ok(Some(top)) => top,
+        Ok(None) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "окно не в git-репозитории".to_string(),
+            ))
+        }
+        Err(e) => return Err((StatusCode::BAD_REQUEST, format!("{e:#}"))),
+    };
+
+    // 3. Защита от удаления произвольного каталога: cwd обязан лежать ПОД
+    //    <toplevel>/.forge-worktrees/. Сравниваем канонизированные пути.
+    let base = worktree::worktrees_base(&toplevel);
+    let cwd_canon = std::fs::canonicalize(&cwd)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("не удалось канонизировать cwd окна: {e}")))?;
+    let base_canon = std::fs::canonicalize(&base)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("не удалось канонизировать .forge-worktrees: {e}")))?;
+    if !cwd_canon.starts_with(&base_canon) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "окно не является worktree-окном .forge-worktrees".to_string(),
+        ));
+    }
+
+    // 4. Удаляем рабочую копию (force=true). Ветку forge/… не трогаем.
+    if let Err(e) = worktree::worktree_remove(&toplevel, &cwd_canon, true).await {
+        tracing::warn!(session = %name, %index, error = ?e, "worktree_remove failed");
+        return Err((StatusCode::BAD_REQUEST, format!("{e:#}")));
+    }
+
+    // 5. Закрываем tmux-окно. Рабочая копия уже удалена — ошибку лишь логируем.
+    if let Err(e) = tmux::kill_window(&name, index).await {
+        tracing::warn!(session = %name, %index, error = ?e, "kill_window failed after worktree removed");
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("worktree удалён, но окно не закрыто: {e:#}"),
+        ));
+    }
+
+    tracing::info!(
+        session = %name,
+        %index,
+        path = %cwd_canon.display(),
+        "worktree window deleted"
+    );
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 /// Тело запроса `PATCH /api/sessions/:name/windows/:index` — переименование.

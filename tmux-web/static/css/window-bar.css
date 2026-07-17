@@ -93,6 +93,28 @@
     background: var(--bg-input-hover, rgba(122, 162, 247, 0.08));
 }
 
+.window-worktree-btn {
+    flex: 0 0 auto;
+    border: none;
+    border-radius: 3px;
+    padding: 0 10px;
+    font-size: 0.85rem;
+    font-family: inherit;
+    cursor: pointer;
+    color: #fff;
+    background: linear-gradient(90deg,#ff0080,#ff8c00,#ffed00,#00e676,#00b0ff,#7c4dff,#ff0080);
+    background-size: 300% 100%;
+    animation: wt-rainbow 4s linear infinite;
+}
+.window-worktree-btn:hover { filter: brightness(1.15); }
+@keyframes wt-rainbow {
+    0%   { background-position: 0% 50%; }
+    100% { background-position: 300% 50%; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .window-worktree-btn { animation: none; }
+}
+
 .placeholder.hidden {
     display: none;
 }
