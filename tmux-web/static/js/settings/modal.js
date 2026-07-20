@@ -1,7 +1,8 @@
 // tmux-web — Settings modal.
 //
 // Диспетчер табов: Notifications (global notifier-config), Themes,
-// TODO behavior, Echo, и опциональный Remote servers tab в remote-mode.
+// TODO behavior, Echo, Сводка дня, Интерфейс, и опциональный Remote servers
+// tab в remote-mode.
 
 import { state } from '../core/state.js';
 import { buildModalOverlay } from '../core/utils.js';
@@ -15,6 +16,7 @@ import { buildTodoBehaviorForm } from './todo-tab.js';
 import { fetchUserSettings } from './user-settings-api.js';
 import { renderEchoSettingsTab } from '../echo/settings.js';
 import { renderDailySummaryTab } from './daily-summary-tab.js';
+import { buildInterfaceForm } from './interface-tab.js';
 
 export function openSettingsModal(initialTab) {
     const overlay = buildModalOverlay();
@@ -65,6 +67,7 @@ export function openSettingsModal(initialTab) {
             <button type="button" class="modal-tab-btn" data-tab="todo" role="tab">TODO behavior</button>
             <button type="button" class="modal-tab-btn" data-tab="echo" role="tab">Echo</button>
             <button type="button" class="modal-tab-btn" data-tab="daily-summary" role="tab">Сводка дня</button>
+            <button type="button" class="modal-tab-btn" data-tab="interface" role="tab">Интерфейс</button>
             ${remoteTabBtn}
         </div>
         <div class="modal-tab-panel" id="ps-panel-notifications" data-panel="notifications">
@@ -91,6 +94,10 @@ export function openSettingsModal(initialTab) {
             <h2>Сводка дня</h2>
             <div class="daily-summary-settings-content" id="ps-daily-summary-content"></div>
         </div>
+        <div class="modal-tab-panel" id="ps-panel-interface" data-panel="interface" hidden>
+            <h2>Интерфейс</h2>
+            <div class="interface-settings-content" id="ps-interface-content"></div>
+        </div>
         ${remotePanel}
         <div class="modal-actions">
             <button type="button" id="ps-close" class="primary">Close</button>
@@ -113,6 +120,7 @@ export function openSettingsModal(initialTab) {
     const $todoContent = card.querySelector('#ps-todo-content');
     const $echoContent = card.querySelector('#ps-echo-content');
     const $dailySummaryContent = card.querySelector('#ps-daily-summary-content');
+    const $interfaceContent = card.querySelector('#ps-interface-content');
 
     // TODO behavior tab state: рендерим форму один раз при первом клике.
     // userSettings fetch выполняется лениво, если bootstrap-preload не успел
@@ -125,6 +133,9 @@ export function openSettingsModal(initialTab) {
         loaded: false,
     };
     const dailySummaryTabState = {
+        loaded: false,
+    };
+    const interfaceTabState = {
         loaded: false,
     };
 
@@ -175,6 +186,29 @@ export function openSettingsModal(initialTab) {
         renderEchoSettingsTab($echoContent, settingsArg, (updated) => {
             if (updated) state.userSettings = updated;
         });
+    };
+
+    // Интерфейс tab: тумблеры opt-in фич (Cmd-подсказки, «Следующий шаг»).
+    // Тот же ленивый паттерн, что у TODO/Echo — общий кеш state.userSettings.
+    // Отдельного «применения» настройки не требуется: консьюмеры (hotkeys.js
+    // через window.ForgeApp.state, sessions.js) читают флаги лениво в точке
+    // использования, а updateUserSettings уже обновил state.userSettings.
+    const renderInterfacePanel = async () => {
+        if (interfaceTabState.loaded) return;
+        interfaceTabState.loaded = true;
+        $interfaceContent.innerHTML = '<div class="themes-loading">Loading settings…</div>';
+        if (state.userSettings === null) {
+            try {
+                await fetchUserSettings();
+            } catch (_) { /* fetchUserSettings swallows errors itself */ }
+        }
+        $interfaceContent.innerHTML = '';
+        // Если state.userSettings всё ещё null (backend down) — пустой объект:
+        // buildInterfaceForm покажет обе фичи выключенными, как и дефолт.
+        const settingsArg = state.userSettings || {};
+        $interfaceContent.appendChild(buildInterfaceForm(settingsArg, (updated) => {
+            if (updated) state.userSettings = updated;
+        }));
     };
 
     const notifierState = {
@@ -244,6 +278,9 @@ export function openSettingsModal(initialTab) {
         }
         if (name === 'daily-summary') {
             renderDailySummaryPanel();
+        }
+        if (name === 'interface') {
+            renderInterfacePanel();
         }
     };
     $tabBtns.forEach((btn) => {
@@ -374,7 +411,7 @@ export function openSettingsModal(initialTab) {
         });
     }
 
-    if (initialTab && (initialTab === 'notifications' || initialTab === 'themes' || initialTab === 'todo' || initialTab === 'echo' || initialTab === 'daily-summary' || (initialTab === 'remotes' && isRemoteMode()))) {
+    if (initialTab && (initialTab === 'notifications' || initialTab === 'themes' || initialTab === 'todo' || initialTab === 'echo' || initialTab === 'daily-summary' || initialTab === 'interface' || (initialTab === 'remotes' && isRemoteMode()))) {
         showTab(initialTab);
     }
 

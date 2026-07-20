@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-16T13:44:30.177Z",
+  "generatedAt": "2026-07-17T14:14:09.248Z",
   "dependencies": [
     {
       "from": "tmux-web/static/command-dock.js",
@@ -1928,8 +1928,29 @@
       "from": "tmux-web/static/hotkeys.js",
       "to": "tmux-web/static/hotkeys.js",
       "type": "call",
+      "fromElement": "updateCmdHelpLine",
+      "toElement": "el.querySelector"
+    },
+    {
+      "from": "tmux-web/static/hotkeys.js",
+      "to": "tmux-web/static/hotkeys.js",
+      "type": "call",
+      "fromElement": "updateCmdHelpLine",
+      "toElement": "cmdHintsEnabled"
+    },
+    {
+      "from": "tmux-web/static/hotkeys.js",
+      "to": "tmux-web/static/hotkeys.js",
+      "type": "call",
       "fromElement": "toggleHelp",
       "toElement": "ensureHelp"
+    },
+    {
+      "from": "tmux-web/static/hotkeys.js",
+      "to": "tmux-web/static/hotkeys.js",
+      "type": "call",
+      "fromElement": "toggleHelp",
+      "toElement": "updateCmdHelpLine"
     },
     {
       "from": "tmux-web/static/hotkeys.js",
@@ -2070,6 +2091,13 @@
       "type": "call",
       "fromElement": "vimAction",
       "toElement": "el.click"
+    },
+    {
+      "from": "tmux-web/static/hotkeys.js",
+      "to": "tmux-web/static/hotkeys.js",
+      "type": "call",
+      "fromElement": "onKeyDown",
+      "toElement": "cmdHintsEnabled"
     },
     {
       "from": "tmux-web/static/hotkeys.js",
@@ -15941,6 +15969,13 @@
       "to": "tmux-web/static/js/sessions/sessions.js",
       "type": "call",
       "fromElement": "fetchNextSteps",
+      "toElement": "isNextStepEnabled"
+    },
+    {
+      "from": "tmux-web/static/js/sessions/sessions.js",
+      "to": "tmux-web/static/js/sessions/sessions.js",
+      "type": "call",
+      "fromElement": "fetchNextSteps",
       "toElement": "fetch"
     },
     {
@@ -17833,6 +17868,243 @@
       "toElement": "String"
     },
     {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/user-settings-api.js",
+      "type": "import",
+      "toElement": "updateUserSettings"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "cmdWrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "cmdWrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createTextNode"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "stepWrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "stepWrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createTextNode"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "saveBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "updateUserSettings"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "setTimeout"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "onSaved"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "actions.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "fs.appendChild"
+    },
+    {
       "from": "tmux-web/static/js/settings/modal.js",
       "to": "tmux-web/static/js/core/state.js",
       "type": "import",
@@ -17909,6 +18181,12 @@
       "to": "tmux-web/static/js/settings/daily-summary-tab.js",
       "type": "import",
       "toElement": "renderDailySummaryTab"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "import",
+      "toElement": "buildInterfaceForm"
     },
     {
       "from": "tmux-web/static/js/settings/modal.js",
@@ -18013,6 +18291,13 @@
       "to": "tmux-web/static/js/settings/modal.js",
       "type": "call",
       "fromElement": "openSettingsModal",
+      "toElement": "card.querySelector"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/settings/modal.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
       "toElement": "overlay.remove"
     },
     {
@@ -18049,6 +18334,20 @@
       "type": "call",
       "fromElement": "openSettingsModal",
       "toElement": "renderEchoSettingsTab"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/settings/modal.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "fetchUserSettings"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/settings/modal.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "buildInterfaceForm"
     },
     {
       "from": "tmux-web/static/js/settings/modal.js",
@@ -18175,6 +18474,13 @@
       "type": "call",
       "fromElement": "openSettingsModal",
       "toElement": "renderDailySummaryPanel"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/settings/modal.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "renderInterfacePanel"
     },
     {
       "from": "tmux-web/static/js/settings/modal.js",

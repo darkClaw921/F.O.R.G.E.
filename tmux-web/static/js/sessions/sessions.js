@@ -42,13 +42,34 @@ export async function fetchSessions() {
     }
 }
 
+// Включена ли фича «Следующий шаг» (настройка next_step_enabled, вкладка
+// Настройки → Интерфейс). Фича opt-in: по умолчанию ВЫКЛЮЧЕНА, поэтому пока
+// настройки не загружены (userSettings === null) считаем её выключенной —
+// это совпадает с backend-дефолтом.
+//
+// Предикат намеренно приватный, а не импорт из settings/interface-tab.js:
+// список сессий не должен зависеть от view-модуля вкладки настроек. Тот же
+// приём, что isEchoNotificationsEnabled() в echo/notifications.js.
+function isNextStepEnabled() {
+    const us = state.userSettings;
+    return !!(us && us.next_step_enabled === true);
+}
+
 // Догружает текущие эфемерные предложения «следующего шага» из плагина Echo и
 // складывает их в state.nextSteps (map session → { content }). Ошибка запроса
 // НЕ пробрасывается наружу (graceful): если эндпоинт недоступен — предыдущее
 // состояние остаётся, рендер сессий не ломается. Вызывается из fetchSessions()
 // (poll каждые 3с) и напрямую из echo/ws.js по событию NextStepEvent для
 // мгновенной реакции.
+//
+// Если фича выключена — чистим state.nextSteps и выходим, не делая запроса.
+// Это гасит и свечение, и hover-попап (оба читают только state.nextSteps)
+// сразу же, не дожидаясь, пока бэкенд дочистит предложения broadcast'ом.
 export async function fetchNextSteps() {
+    if (!isNextStepEnabled()) {
+        state.nextSteps = {};
+        return;
+    }
     try {
         const resp = await fetch('/api/echo/next-steps', { headers: { 'Accept': 'application/json' } });
         if (!resp.ok) {
@@ -121,6 +142,10 @@ export function buildSessionItem(s) {
     // эпизод завершён и есть готовое предложение что делать дальше. Класс
     // снимается автоматически при перерендере, когда предложение исчезает из
     // state.nextSteps (poll или WS NextStepEvent{has_suggestion:false}).
+    //
+    // Отдельная проверка настройки здесь не нужна: при выключенной фиче
+    // fetchNextSteps() держит state.nextSteps пустым (и бэкенд ничего не
+    // генерирует), так что условие ниже само по себе не срабатывает.
     if (state.nextSteps && state.nextSteps[s.name]) {
         li.classList.add('has-next-step');
     }

@@ -8,11 +8,21 @@
 //!
 //! ### Состав настроек
 //!
-//! Все поля помечены `#[serde(default)]`, чтобы:
-//!   1. Старый/пустой/неполный файл грузился без миграции.
-//!   2. При полном отсутствии файла поведение системы было побитово
-//!      идентично состоянию «до фичи user-settings» — критический
-//!      инвариант, см. описание epic'а tw-z6l.
+//! Все поля помечены `#[serde(default)]`, чтобы старый/пустой/неполный файл
+//! грузился без миграции.
+//!
+//! ### Инвариант «нулевая конфигурация» и его намеренное сужение
+//!
+//! Изначально (epic tw-z6l) действовал более сильный инвариант: при полном
+//! отсутствии файла поведение системы побитово идентично состоянию «до фичи
+//! user-settings». Для всех `todo_*` и `echo_*` полей он по-прежнему в силе.
+//!
+//! Поля `cmd_hints_enabled` и `next_step_enabled` его **намеренно нарушают**:
+//! обе фичи раньше были жёстко всегда включены, а теперь при нулевой
+//! конфигурации выключены. Это прямое требование пользователя — фичи заметные
+//! (перехват удержания ⌘) и дорогие (`next_step` дёргает Claude CLI), поэтому
+//! они opt-in. **Не «чините» эти дефолты обратно на `true`** — это не забытая
+//! default-функция, а осознанное решение.
 //!
 //! Поля:
 //!   - `todo_default_plan_mode` (bool, default false) — значение
@@ -34,6 +44,15 @@
 //!   - `echo_notifications_enabled` (bool, default true) — показывать ли
 //!     toast-нотификации от Echo (autonomous task events / action results).
 //!     Пользователь может отключить, если шум мешает.
+//!   - `cmd_hints_enabled` (bool, default **false**) — включены ли подсказки
+//!     хоткеев при удержании ⌘ (`static/hotkeys.js`: бейджи с буквенными
+//!     кодами на кликабельных элементах). Читается фронтендом лениво через
+//!     `window.ForgeApp.state.userSettings`; backend флаг только хранит.
+//!   - `next_step_enabled` (bool, default **false**) — включена ли фича
+//!     «Следующий шаг» целиком: голубое свечение сессий, hover-попап и
+//!     **генерация подсказок воркером Echo через Claude CLI**. Backend читает
+//!     флаг в `echo_host::EchoHostAdapter::next_step_enabled` (см. trait
+//!     `echo_host_api::HostApi`) — при `false` воркер не дёргает Claude CLI.
 //!
 //! ### Persistence
 //!
@@ -107,6 +126,15 @@ pub struct UserSettings {
     /// умолчанию включено. Пользователь может приглушить через UI.
     #[serde(default = "default_echo_notifications_enabled")]
     pub echo_notifications_enabled: bool,
+    /// Подсказки хоткеев при удержании ⌘ (`static/hotkeys.js`). Default
+    /// `false` — фича opt-in, см. раздел про инвариант в шапке модуля.
+    #[serde(default)]
+    pub cmd_hints_enabled: bool,
+    /// Фича «Следующий шаг» целиком (свечение + попап + генерация подсказок
+    /// воркером Echo). Default `false` — фича opt-in и дорогая (Claude CLI),
+    /// см. раздел про инвариант в шапке модуля.
+    #[serde(default)]
+    pub next_step_enabled: bool,
 }
 
 impl Default for UserSettings {
@@ -120,6 +148,8 @@ impl Default for UserSettings {
             todo_confirm_promote_on_drag: false,
             echo_default_model: None,
             echo_notifications_enabled: default_echo_notifications_enabled(),
+            cmd_hints_enabled: false,
+            next_step_enabled: false,
         }
     }
 }
@@ -149,6 +179,13 @@ pub struct PatchUserSettingsReq {
     /// Phase 6 (Echo) — включить/выключить toast-нотификации Echo.
     #[serde(default)]
     pub echo_notifications_enabled: Option<bool>,
+    /// Включить/выключить подсказки хоткеев при удержании ⌘.
+    #[serde(default)]
+    pub cmd_hints_enabled: Option<bool>,
+    /// Включить/выключить фичу «Следующий шаг» целиком (свечение + попап +
+    /// генерация подсказок воркером Echo).
+    #[serde(default)]
+    pub next_step_enabled: Option<bool>,
 }
 
 #[derive(Debug)]
@@ -260,6 +297,12 @@ impl UserSettingsStore {
         }
         if let Some(v) = payload.echo_notifications_enabled {
             inner.settings.echo_notifications_enabled = v;
+        }
+        if let Some(v) = payload.cmd_hints_enabled {
+            inner.settings.cmd_hints_enabled = v;
+        }
+        if let Some(v) = payload.next_step_enabled {
+            inner.settings.next_step_enabled = v;
         }
 
         save_locked(&inner)?;
@@ -444,6 +487,57 @@ mod tests {
         // Новые echo-поля — дефолтные.
         assert_eq!(s.echo_default_model, None);
         assert!(s.echo_notifications_enabled);
+        // Interface-флаги на legacy-файле — выключены (обе фичи opt-in).
+        assert!(!s.cmd_hints_enabled);
+        assert!(!s.next_step_enabled);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_interface_flags_default_off() {
+        // Обе фичи (Cmd-подсказки и «Следующий шаг») — opt-in: при нулевой
+        // конфигурации выключены. Это намеренное сужение инварианта tw-z6l,
+        // см. шапку модуля — тест фиксирует его, чтобы дефолты не «починили».
+        let path = tmp_path("interface_flags_default");
+        let store = UserSettingsStore::new(path.clone());
+        let s = store.get();
+        assert!(!s.cmd_hints_enabled);
+        assert!(!s.next_step_enabled);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_interface_flags_patch_and_persist() {
+        let path = tmp_path("interface_flags_patch");
+        let store = UserSettingsStore::new(path.clone());
+
+        let res = store
+            .patch(PatchUserSettingsReq {
+                cmd_hints_enabled: Some(true),
+                next_step_enabled: Some(true),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert!(res.cmd_hints_enabled);
+        assert!(res.next_step_enabled);
+
+        // Persistence: новый store на тот же путь видит включённые флаги.
+        let store2 = UserSettingsStore::new(path.clone());
+        let s2 = store2.get();
+        assert!(s2.cmd_hints_enabled);
+        assert!(s2.next_step_enabled);
+
+        // И обратно в выключенное состояние.
+        let res3 = store2
+            .patch(PatchUserSettingsReq {
+                next_step_enabled: Some(false),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert!(!res3.next_step_enabled);
+        // Соседний флаг не задет — patch применяет только Some(..).
+        assert!(res3.cmd_hints_enabled);
+
         let _ = std::fs::remove_file(&path);
     }
 

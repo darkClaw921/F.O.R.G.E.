@@ -161,7 +161,10 @@ pub async fn shutdown(state: &Arc<EchoState>) {
 ///
 /// Фича «Следующий шаг» добавляет воркер [`next_step::spawn`] — он каждые 2с
 /// опрашивает [`HostApi::idle_sessions`] и для затихших сессий генерирует
-/// предложение следующего шага.
+/// предложение следующего шага. Воркер спавнится безусловно, но сама фича
+/// opt-in: каждый тик он спрашивает [`HostApi::next_step_enabled`] и при
+/// `false` не опрашивает сессии и не дёргает Claude CLI (см. шапку
+/// [`next_step`]). Так тумблер в настройках работает без рестарта процесса.
 pub async fn spawn_workers(state: &Arc<EchoState>, host: Arc<dyn HostApi>) {
     let scheduler_handle = scheduler::spawn(state.clone(), host.clone());
     state.register_worker(scheduler_handle).await;

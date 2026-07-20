@@ -1,6 +1,6 @@
 {
   "root": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E.",
-  "generatedAt": "2026-07-16T13:44:26.740Z",
+  "generatedAt": "2026-07-17T14:14:05.869Z",
   "nodes": [
     {
       "id": "tmux-web/static/app.js",
@@ -5098,11 +5098,20 @@
           ]
         },
         {
+          "id": "tmux-web/static/js/sessions/sessions.js:isNextStepEnabled",
+          "name": "isNextStepEnabled",
+          "type": "function",
+          "path": "tmux-web/static/js/sessions/sessions.js",
+          "line": 53,
+          "signature": "isNextStepEnabled()",
+          "exports": []
+        },
+        {
           "id": "tmux-web/static/js/sessions/sessions.js:fetchNextSteps",
           "name": "fetchNextSteps",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 51,
+          "line": 68,
           "signature": "fetchNextSteps()",
           "exports": [
             "fetchNextSteps"
@@ -5113,7 +5122,7 @@
           "name": "syncHomeVisibility",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 74,
+          "line": 95,
           "signature": "syncHomeVisibility()",
           "exports": []
         },
@@ -5122,7 +5131,7 @@
           "name": "formatDuration",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 84,
+          "line": 105,
           "signature": "formatDuration(totalSecs)",
           "exports": []
         },
@@ -5131,7 +5140,7 @@
           "name": "generatingTooltip",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 101,
+          "line": 122,
           "signature": "generatingTooltip(s)",
           "exports": []
         },
@@ -5140,7 +5149,7 @@
           "name": "buildSessionItem",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 109,
+          "line": 130,
           "signature": "buildSessionItem(s)",
           "exports": [
             "buildSessionItem"
@@ -5151,7 +5160,7 @@
           "name": "groupSessionsByFolder",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 191,
+          "line": 216,
           "signature": "groupSessionsByFolder(sessions, orphanKey)",
           "exports": [
             "groupSessionsByFolder"
@@ -5162,7 +5171,7 @@
           "name": "startPolling",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 205,
+          "line": 230,
           "signature": "startPolling()",
           "exports": [
             "startPolling"
@@ -5173,7 +5182,7 @@
           "name": "stopPolling",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 210,
+          "line": 235,
           "signature": "stopPolling()",
           "exports": [
             "stopPolling"
@@ -5184,7 +5193,7 @@
           "name": "createSessionPrompt",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 217,
+          "line": 242,
           "signature": "createSessionPrompt()",
           "exports": [
             "createSessionPrompt"
@@ -5195,7 +5204,7 @@
           "name": "createSessionInPath",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 251,
+          "line": 276,
           "signature": "createSessionInPath()",
           "exports": [
             "createSessionInPath"
@@ -5206,7 +5215,7 @@
           "name": "renameSession",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 297,
+          "line": 322,
           "signature": "renameSession(oldName, origin)",
           "exports": [
             "renameSession"
@@ -5217,7 +5226,7 @@
           "name": "killSession",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 333,
+          "line": 358,
           "signature": "killSession(name, origin)",
           "exports": [
             "killSession"
@@ -5228,7 +5237,7 @@
           "name": "openSession",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 355,
+          "line": 380,
           "signature": "openSession(name, origin)",
           "exports": [
             "openSession"
@@ -5239,7 +5248,7 @@
           "name": "switchSession",
           "type": "function",
           "path": "tmux-web/static/js/sessions/sessions.js",
-          "line": 377,
+          "line": 402,
           "signature": "switchSession(name)",
           "exports": [
             "switchSession"
@@ -5423,6 +5432,28 @@
       ]
     },
     {
+      "id": "tmux-web/static/js/settings/interface-tab.js",
+      "name": "interface-tab.js",
+      "type": "file",
+      "path": "tmux-web/static/js/settings/interface-tab.js",
+      "exports": [
+        "buildInterfaceForm"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/settings/interface-tab.js:buildInterfaceForm",
+          "name": "buildInterfaceForm",
+          "type": "function",
+          "path": "tmux-web/static/js/settings/interface-tab.js",
+          "line": 25,
+          "signature": "buildInterfaceForm(settings, onSaved)",
+          "exports": [
+            "buildInterfaceForm"
+          ]
+        }
+      ]
+    },
+    {
       "id": "tmux-web/static/js/settings/modal.js",
       "name": "modal.js",
       "type": "file",
@@ -5436,7 +5467,7 @@
           "name": "openSettingsModal",
           "type": "function",
           "path": "tmux-web/static/js/settings/modal.js",
-          "line": 19,
+          "line": 21,
           "signature": "openSettingsModal(initialTab)",
           "exports": [
             "openSettingsModal"
@@ -7648,7 +7679,7 @@
           "name": "isDataAllowlisted",
           "type": "function",
           "path": "tmux-web/static/sw.js",
-          "line": 163,
+          "line": 166,
           "signature": "isDataAllowlisted(path)",
           "exports": []
         },
@@ -7657,7 +7688,7 @@
           "name": "isStaticAsset",
           "type": "function",
           "path": "tmux-web/static/sw.js",
-          "line": 169,
+          "line": 172,
           "signature": "isStaticAsset(path)",
           "exports": []
         },
@@ -7666,7 +7697,7 @@
           "name": "navigationStrategy",
           "type": "function",
           "path": "tmux-web/static/sw.js",
-          "line": 188,
+          "line": 191,
           "signature": "navigationStrategy(request)",
           "docComment": "Навигация: пытаемся сеть, при ошибке отдаём закэшированный '/'.\nСвежий ответ кладём в SHELL_CACHE под ключ '/' (app-shell обновляется).",
           "exports": []
@@ -7676,7 +7707,7 @@
           "name": "staleWhileRevalidate",
           "type": "function",
           "path": "tmux-web/static/sw.js",
-          "line": 208,
+          "line": 211,
           "signature": "staleWhileRevalidate(request)",
           "docComment": "Stale-while-revalidate: мгновенно отдаём из кэша (если есть) и параллельно\nобновляем кэш свежим ответом из сети. Если кэша нет — ждём сеть.",
           "exports": []
@@ -7686,7 +7717,7 @@
           "name": "networkFirstData",
           "type": "function",
           "path": "tmux-web/static/sw.js",
-          "line": 236,
+          "line": 239,
           "signature": "networkFirstData(request)",
           "docComment": "Network-first для read-only data: свежий ответ кэшируем и отдаём; при\nсетевой ошибке — отдаём последнюю закэшированную версию (офлайн-чтение).",
           "exports": []
@@ -7696,7 +7727,7 @@
           "name": "dataCacheName",
           "type": "function",
           "path": "tmux-web/static/sw.js",
-          "line": 258,
+          "line": 261,
           "signature": "dataCacheName()",
           "docComment": "Имя data-кэша. В remote-mode желательно партиционировать кэш по короткому\nхэшу Bearer-токена, чтобы данные одного сервера не утекали в другой.\nTODO(Фаза 5/remote): SW не имеет прямого доступа к токену (он в памяти\nклиента) — пробросить хэш через postMessage из bootstrap при регистрации\nи хранить в self. Пока используем единый DATA_CACHE (локальный режим).",
           "exports": []
@@ -7706,7 +7737,7 @@
           "name": "CACHE_VERSION",
           "type": "variable",
           "path": "tmux-web/static/sw.js",
-          "line": 29,
+          "line": 32,
           "exports": []
         },
         {
@@ -7714,7 +7745,7 @@
           "name": "SHELL_CACHE",
           "type": "variable",
           "path": "tmux-web/static/sw.js",
-          "line": 30,
+          "line": 33,
           "exports": []
         },
         {
@@ -7722,7 +7753,7 @@
           "name": "RUNTIME_CACHE",
           "type": "variable",
           "path": "tmux-web/static/sw.js",
-          "line": 31,
+          "line": 34,
           "exports": []
         },
         {
@@ -7730,7 +7761,7 @@
           "name": "DATA_CACHE",
           "type": "variable",
           "path": "tmux-web/static/sw.js",
-          "line": 32,
+          "line": 35,
           "exports": []
         },
         {
@@ -7738,7 +7769,7 @@
           "name": "CACHE_PREFIX",
           "type": "variable",
           "path": "tmux-web/static/sw.js",
-          "line": 36,
+          "line": 39,
           "exports": []
         },
         {
@@ -7746,7 +7777,7 @@
           "name": "SHELL_ASSETS",
           "type": "variable",
           "path": "tmux-web/static/sw.js",
-          "line": 44,
+          "line": 47,
           "exports": []
         },
         {
@@ -7754,7 +7785,7 @@
           "name": "DATA_ALLOWLIST",
           "type": "variable",
           "path": "tmux-web/static/sw.js",
-          "line": 65,
+          "line": 68,
           "exports": []
         },
         {
@@ -7762,7 +7793,7 @@
           "name": "CURRENT_CACHES",
           "type": "variable",
           "path": "tmux-web/static/sw.js",
-          "line": 92,
+          "line": 95,
           "exports": []
         }
       ]

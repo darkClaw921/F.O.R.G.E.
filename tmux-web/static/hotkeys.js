@@ -31,6 +31,26 @@
     let hintLayer = null;
     let helpEl = null;
 
+    // Включены ли Cmd-подсказки (настройка cmd_hints_enabled, вкладка
+    // Настройки → Интерфейс). Фича opt-in: по умолчанию ВЫКЛЮЧЕНА.
+    //
+    // Этот файл — классический скрипт, а не ES-модуль, поэтому импортировать
+    // state напрямую нельзя. Читаем через публичный контракт window.ForgeApp
+    // (js/public-api.js) — `ForgeApp.state` это та же живая ссылка, в которую
+    // settings/user-settings-api.js пишет userSettings, так что переключение
+    // тумблера подхватывается со следующего нажатия, без перезагрузки.
+    //
+    // Строгое `=== true` даёт нужную деградацию: пока модули не загрузились
+    // (этот скрипт выполняется раньше них) или если fetch настроек упал —
+    // фича выключена, что совпадает с дефолтом. Самостоятельный fetch тут не
+    // подошёл бы: /hotkeys.js раздаётся без токена, а /api/user-settings в
+    // remote-режиме требует авторизации.
+    function cmdHintsEnabled() {
+        const app = window.ForgeApp;
+        const us = app && app.state && app.state.userSettings;
+        return !!(us && us.cmd_hints_enabled === true);
+    }
+
     function isEditingTarget(t) {
         if (!t) return false;
         const tag = (t.tagName || '').toLowerCase();
@@ -236,7 +256,7 @@
             + '    <li><kbd>j</kbd> / <kbd>k</kbd> — сессия вниз / вверх</li>'
             + '    <li><kbd>h</kbd> / <kbd>l</kbd> — фокус: сайдбар / основная область</li>'
             + '    <li><kbd>Enter</kbd> — выбрать сфокусированную сессию</li>'
-            + '    <li>Зажать <kbd>⌘</kbd> — метки на всех элементах; введите буквы → клик</li>'
+            + '    <li id="hotkey-help-cmd"></li>'
             + '    <li><kbd>?</kbd> — открыть/закрыть эту справку</li>'
             + '    <li><kbd>Esc</kbd> — отмена</li>'
             + '  </ul>'
@@ -246,8 +266,19 @@
         helpEl.addEventListener('click', (e) => { if (e.target === helpEl) hideHelp(); });
         return helpEl;
     }
+    // Строка про ⌘-метки зависит от настройки, а карточка справки создаётся
+    // один раз и переиспользуется — поэтому текст обновляем при каждом показе,
+    // иначе он застынет в состоянии на момент первого открытия.
+    function updateCmdHelpLine(el) {
+        const li = el.querySelector('#hotkey-help-cmd');
+        if (!li) return;
+        li.innerHTML = cmdHintsEnabled()
+            ? 'Зажать <kbd>⌘</kbd> — метки на всех элементах; введите буквы → клик'
+            : 'Зажать <kbd>⌘</kbd> — метки на элементах: выключено, включить в Настройках → Интерфейс';
+    }
     function toggleHelp() {
         const el = ensureHelp();
+        updateCmdHelpLine(el);
         el.classList.toggle('show');
     }
     function hideHelp() {
@@ -311,6 +342,12 @@
     function onKeyDown(e) {
         // Cmd-hold → hint mode (только если зажат один Meta, без других модификаторов).
         if (e.key === 'Meta' || e.key === 'OS') {
+            // Гейт стоит внутри ветки Meta, а не в начале onKeyDown: vim-часть
+            // (1/2/3, gt, j/k/h/l, ?) настройкой не управляется и работает
+            // всегда. Выходя здесь, мы не ставим cmdHeld — значит ветка
+            // «Cmd+другая клавиша» ниже не сработает, и Cmd-шорткаты уйдут в
+            // vimAction, который сам отсеивает события с metaKey.
+            if (!cmdHintsEnabled()) return;
             state.cmdHeld = true;
             state.cmdSawOther = false;
             if (state.cmdTimer) clearTimeout(state.cmdTimer);

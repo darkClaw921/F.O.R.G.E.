@@ -23,6 +23,15 @@
 //!   сбрасывает свечение во фронте и позволяет сгенерировать новое
 //!   предложение в следующем эпизоде затихания.
 //!
+//! ## Пользовательский гейт
+//!
+//! Фича opt-in: [`HostApi::next_step_enabled`] спрашивается КАЖДЫЙ тик (флаг
+//! меняется в рантайме — пользователь переключает тумблер в Настройки →
+//! Интерфейс). При `false` [`tick_once`] гасит уже показанные предложения и
+//! уходит, не опрашивая idle-сессии и не дёргая Claude CLI. Воркер при этом
+//! продолжает тикать: сам тик стоит один sleep + чтение флага, зато включение
+//! подхватывается за ≤[`TICK_INTERVAL`] без рестарта процесса.
+//!
 //! ## Graceful shutdown
 //!
 //! [`spawn`] возвращает `JoinHandle<()>` — хост-процесс abort'ит его при
@@ -102,6 +111,7 @@ async fn run_loop(state: Arc<EchoState>, host: Arc<dyn HostApi>, processed: Proc
 }
 
 /// Одна итерация:
+/// 0. Если фича выключена пользователем — погасить активные предложения и выйти.
 /// 1. Получить idle-сессии.
 /// 2. Сбросить эпизоды для сессий, ПРОПАВШИХ из idle-списка (снова активны).
 /// 3. Для idle-сессий с `idle_secs >= IDLE_THRESHOLD_SECS`, ещё не обработанных
@@ -113,6 +123,21 @@ pub(crate) async fn tick_once(
     host: &Arc<dyn HostApi>,
     processed: &ProcessedSet,
 ) {
+    if !host.next_step_enabled() {
+        // Фича выключена. Пустой idle-список означает «ни одной живой сессии с
+        // эпизодом» → reset_stale_episodes снимает ВСЕ активные предложения и
+        // шлёт has_suggestion=false, гася свечение у тех, кто уже светился на
+        // момент выключения. Корректно благодаря инварианту
+        // `processed ⊇ keys(next_steps)`: generate_for_session кладёт в
+        // next_steps только после processed.insert, а routes/next_step.rs
+        // удаляет из next_steps, не трогая processed.
+        //
+        // В steady-state это бесплатно: со второго выключенного тика processed
+        // пуст, и reset_stale_episodes выходит на `stale.is_empty()`.
+        reset_stale_episodes(state, processed, &HashSet::new()).await;
+        return;
+    }
+
     let idle = match host.idle_sessions().await {
         Ok(v) => v,
         Err(e) => {
@@ -279,6 +304,24 @@ mod tests {
     /// Stub-host: отдаёт заданный список idle-сессий и фиксированный pane.
     struct StubHost {
         idle: Vec<IdleSession>,
+        /// Что вернуть из `next_step_enabled` — пользовательский гейт фичи.
+        enabled: bool,
+    }
+    impl StubHost {
+        /// Хост с включённой фичей — обычный случай для большинства тестов.
+        fn new(idle: Vec<IdleSession>) -> Self {
+            Self {
+                idle,
+                enabled: true,
+            }
+        }
+        /// Хост с выключенной пользователем фичей.
+        fn disabled(idle: Vec<IdleSession>) -> Self {
+            Self {
+                idle,
+                enabled: false,
+            }
+        }
     }
     #[async_trait]
     impl HostApi for StubHost {
@@ -293,6 +336,9 @@ mod tests {
         }
         async fn idle_sessions(&self) -> anyhow::Result<Vec<IdleSession>> {
             Ok(self.idle.clone())
+        }
+        fn next_step_enabled(&self) -> bool {
+            self.enabled
         }
     }
 
@@ -335,9 +381,7 @@ printf '%s\n' '{"type":"result","usage":{"input_tokens":5,"output_tokens":3}}'
         let dir = tempfile::tempdir().unwrap();
         let cli = write_mock_cli(&dir, mock_step_script());
         let state = make_state(cli).await;
-        let host: Arc<dyn HostApi> = Arc::new(StubHost {
-            idle: vec![idle("work", 12)],
-        });
+        let host: Arc<dyn HostApi> = Arc::new(StubHost::new(vec![idle("work", 12)]));
         let processed: ProcessedSet = Arc::new(Mutex::new(HashSet::new()));
 
         let mut rx = state.broadcast.subscribe();
@@ -370,13 +414,11 @@ printf '%s\n' '{"type":"result","usage":{"input_tokens":5,"output_tokens":3}}'
         let dir = tempfile::tempdir().unwrap();
         let cli = write_mock_cli(&dir, mock_step_script());
         let state = make_state(cli).await;
-        let host: Arc<dyn HostApi> = Arc::new(StubHost {
-            idle: vec![IdleSession {
-                name: "work".to_string(),
-                idle_secs: 12,
-                project_id: Some("/repo/a".to_string()),
-            }],
-        });
+        let host: Arc<dyn HostApi> = Arc::new(StubHost::new(vec![IdleSession {
+            name: "work".to_string(),
+            idle_secs: 12,
+            project_id: Some("/repo/a".to_string()),
+        }]));
         let processed: ProcessedSet = Arc::new(Mutex::new(HashSet::new()));
 
         tick_once(&state, &host, &processed).await;
@@ -396,9 +438,7 @@ printf '%s\n' '{"type":"result","usage":{"input_tokens":5,"output_tokens":3}}'
         let dir = tempfile::tempdir().unwrap();
         let cli = write_mock_cli(&dir, mock_step_script());
         let state = make_state(cli).await;
-        let host: Arc<dyn HostApi> = Arc::new(StubHost {
-            idle: vec![idle("work", 3)],
-        });
+        let host: Arc<dyn HostApi> = Arc::new(StubHost::new(vec![idle("work", 3)]));
         let processed: ProcessedSet = Arc::new(Mutex::new(HashSet::new()));
 
         tick_once(&state, &host, &processed).await;
@@ -412,9 +452,7 @@ printf '%s\n' '{"type":"result","usage":{"input_tokens":5,"output_tokens":3}}'
         let dir = tempfile::tempdir().unwrap();
         let cli = write_mock_cli(&dir, mock_step_script());
         let state = make_state(cli).await;
-        let host: Arc<dyn HostApi> = Arc::new(StubHost {
-            idle: vec![idle("work", 30)],
-        });
+        let host: Arc<dyn HostApi> = Arc::new(StubHost::new(vec![idle("work", 30)]));
         let processed: ProcessedSet = Arc::new(Mutex::new(HashSet::new()));
 
         tick_once(&state, &host, &processed).await;
@@ -441,16 +479,14 @@ printf '%s\n' '{"type":"result","usage":{"input_tokens":5,"output_tokens":3}}'
         let processed: ProcessedSet = Arc::new(Mutex::new(HashSet::new()));
 
         // Первый tick: сессия idle → предложение появляется.
-        let host_idle: Arc<dyn HostApi> = Arc::new(StubHost {
-            idle: vec![idle("work", 15)],
-        });
+        let host_idle: Arc<dyn HostApi> = Arc::new(StubHost::new(vec![idle("work", 15)]));
         tick_once(&state, &host_idle, &processed).await;
         assert!(state.next_steps.read().await.contains_key("work"));
         assert!(processed.lock().await.contains("work"));
 
         // Второй tick: сессия больше не idle → сброс.
         let mut rx = state.broadcast.subscribe();
-        let host_active: Arc<dyn HostApi> = Arc::new(StubHost { idle: vec![] });
+        let host_active: Arc<dyn HostApi> = Arc::new(StubHost::new(vec![]));
         tick_once(&state, &host_active, &processed).await;
 
         assert!(state.next_steps.read().await.is_empty(), "suggestion cleared");
@@ -476,14 +512,81 @@ printf '%s\n' '{"type":"result","usage":{"input_tokens":5,"output_tokens":3}}'
             "#!/bin/sh\nprintf '%s\\n' '{\"type\":\"result\",\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}'\n",
         );
         let state = make_state(cli).await;
-        let host: Arc<dyn HostApi> = Arc::new(StubHost {
-            idle: vec![idle("work", 20)],
-        });
+        let host: Arc<dyn HostApi> = Arc::new(StubHost::new(vec![idle("work", 20)]));
         let processed: ProcessedSet = Arc::new(Mutex::new(HashSet::new()));
 
         tick_once(&state, &host, &processed).await;
         assert!(state.next_steps.read().await.is_empty());
         // Эпизод помечен обработанным (не дёргаем модель повторно).
         assert!(processed.lock().await.contains("work"));
+    }
+
+    /// Фича выключена пользователем → затихшая сессия не порождает предложение
+    /// и Claude CLI НЕ запускается. Mock CLI здесь — заведомо несуществующий
+    /// путь: если гейт протечёт и генерация всё-таки стартует, тест этого не
+    /// пропустит (в next_steps окажется пусто по другой причине, поэтому ниже
+    /// дополнительно проверяем, что эпизод не помечен обработанным).
+    #[tokio::test]
+    async fn disabled_feature_does_not_generate() {
+        let state = make_state(PathBuf::from("/nonexistent/claude-must-not-run")).await;
+        let host: Arc<dyn HostApi> = Arc::new(StubHost::disabled(vec![idle("work", 30)]));
+        let processed: ProcessedSet = Arc::new(Mutex::new(HashSet::new()));
+
+        tick_once(&state, &host, &processed).await;
+
+        assert!(
+            state.next_steps.read().await.is_empty(),
+            "выключенная фича не должна порождать предложений"
+        );
+        assert!(
+            processed.lock().await.is_empty(),
+            "эпизод не должен помечаться обработанным: генерация не запускалась"
+        );
+    }
+
+    /// Выключение фичи при уже показанном предложении гасит его: next_steps и
+    /// processed чистятся, во фронт уходит has_suggestion=false (свечение
+    /// пропадает без рестарта процесса).
+    #[tokio::test]
+    async fn disabling_feature_clears_live_suggestion() {
+        let dir = tempfile::tempdir().unwrap();
+        let cli = write_mock_cli(&dir, mock_step_script());
+        let state = make_state(cli).await;
+        let processed: ProcessedSet = Arc::new(Mutex::new(HashSet::new()));
+
+        // Фича включена: предложение появляется и сессия светится.
+        let host_on: Arc<dyn HostApi> = Arc::new(StubHost::new(vec![idle("work", 15)]));
+        tick_once(&state, &host_on, &processed).await;
+        assert!(state.next_steps.read().await.contains_key("work"));
+
+        // Пользователь выключил тумблер — та же сессия всё ещё idle.
+        let mut rx = state.broadcast.subscribe();
+        let host_off: Arc<dyn HostApi> = Arc::new(StubHost::disabled(vec![idle("work", 15)]));
+        tick_once(&state, &host_off, &processed).await;
+
+        assert!(
+            state.next_steps.read().await.is_empty(),
+            "предложение должно погаснуть при выключении фичи"
+        );
+        assert!(processed.lock().await.is_empty(), "processed очищен");
+
+        let ev = rx.try_recv().expect("broadcast о погасшем предложении");
+        match ev.msg {
+            ServerMsg::NextStepEvent {
+                session,
+                has_suggestion,
+            } => {
+                assert_eq!(session, "work");
+                assert!(!has_suggestion);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+
+        // Следующий выключенный tick — no-op, без повторного broadcast'а.
+        tick_once(&state, &host_off, &processed).await;
+        assert!(
+            rx.try_recv().is_err(),
+            "повторный выключенный tick не должен слать событий"
+        );
     }
 }

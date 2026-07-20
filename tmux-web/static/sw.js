@@ -26,7 +26,10 @@
 
 // ──────────────────────────── версии кэшей ────────────────────────────
 
-const CACHE_VERSION = 'forge-pwa-v1';
+// v2: hotkeys.js получил гейт настройки cmd_hints_enabled. Он раздаётся через
+// stale-while-revalidate, поэтому без бампа версии первый reload после
+// обновления выполнил бы старую копию и тумблер молча не сработал бы.
+const CACHE_VERSION = 'forge-pwa-v2';
 const SHELL_CACHE = `forge-shell-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `forge-runtime-${CACHE_VERSION}`;
 const DATA_CACHE = `forge-data-${CACHE_VERSION}`;

@@ -369,10 +369,10 @@ function makeLifecycleEvent() {
     };
 }
 
-// Версии кэшей (должны совпадать с sw.js CACHE_VERSION='forge-pwa-v1').
-const SHELL_CACHE = 'forge-shell-forge-pwa-v1';
-const RUNTIME_CACHE = 'forge-runtime-forge-pwa-v1';
-const DATA_CACHE = 'forge-data-forge-pwa-v1';
+// Версии кэшей (должны совпадать с sw.js CACHE_VERSION='forge-pwa-v2').
+const SHELL_CACHE = 'forge-shell-forge-pwa-v2';
+const RUNTIME_CACHE = 'forge-runtime-forge-pwa-v2';
+const DATA_CACHE = 'forge-data-forge-pwa-v2';
 
 // helper: дождаться микротасков
 function flush() { return Promise.resolve().then(() => Promise.resolve()); }

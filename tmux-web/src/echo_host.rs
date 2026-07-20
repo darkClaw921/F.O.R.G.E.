@@ -216,6 +216,18 @@ impl HostApi for EchoHostAdapter {
     async fn send_keys(&self, session: &str, text: &str) -> anyhow::Result<()> {
         crate::tmux::send_keys(session, text).await
     }
+
+    /// Читает пользовательский флаг фичи «Следующий шаг» из
+    /// [`crate::user_settings::UserSettingsStore`].
+    ///
+    /// Дефолт — `false` (фича opt-in, см. шапку `user_settings.rs`), поэтому
+    /// на чистой машине воркер next_step не дёргает Claude CLI, пока
+    /// пользователь не включит фичу в Настройки → Интерфейс. Переключение
+    /// подхватывается на лету: `get()` — это read-lock по актуальному
+    /// состоянию, воркер зовёт метод каждый тик.
+    fn next_step_enabled(&self) -> bool {
+        self.state.user_settings.get().next_step_enabled
+    }
 }
 
 /// Вычисляет непрозрачный ярлык проекта для cwd сессии — scope правил фичи
