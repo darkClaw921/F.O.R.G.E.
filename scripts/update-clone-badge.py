@@ -13,14 +13,30 @@ GitHub Traffic API (`/repos/<repo>/traffic/clones`) отдаёт только с
 НОВЫХ дней, добавленных с момента первого запуска этого workflow.
 
 Запускается:
-  - по расписанию из .github/workflows/clone-stats.yml (GITHUB_TOKEN из
-    secrets, есть Traffic API доступ на репозиторий, где идёт Action);
+  - по расписанию из .github/workflows/clone-stats.yml;
   - вручную для сидирования/отладки — тогда токен берётся из `gh auth
     token` (GH CLI должен быть залогинен с push-доступом к репозиторию).
+
+## Права токена (важно)
+
+Traffic API (`/traffic/clones`) требует permission **Administration: read**
+(fine-grained PAT) или scope **repo** (classic PAT) — то есть push/admin-уровень
+на репозитории. Штатный `GITHUB_TOKEN` в GitHub Actions такой доступ получить
+НЕ может (scope `administration` ему недоступен, даже с `permissions:
+contents: write`), поэтому под ним Traffic API отвечает HTTP 403. Workflow
+передаёт токен из секрета `CLONE_STATS_TOKEN` (PAT), а на `GITHUB_TOKEN`
+падает лишь как fallback.
+
+Чтобы job не краснел, пока PAT-секрет не заведён, 403 обрабатывается gracefully:
+скрипт печатает предупреждение и выходит с кодом 0, не трогая бейдж (прежнее
+значение сохраняется). Любая ДРУГАЯ ошибка HTTP остаётся фатальной — чтобы не
+маскировать реальные проблемы.
 """
 import json
 import os
 import subprocess
+import sys
+import urllib.error
 import urllib.request
 
 REPO = os.environ.get("GITHUB_REPOSITORY", "darkClaw921/F.O.R.G.E.")
@@ -63,7 +79,21 @@ def write_json(path: str, data: dict) -> None:
 
 def main() -> None:
     token = resolve_token()
-    data = fetch_clones(token)
+    try:
+        data = fetch_clones(token)
+    except urllib.error.HTTPError as e:
+        if e.code == 403:
+            # Токен без прав на Traffic API (нужен PAT с Administration:read
+            # / scope repo; GITHUB_TOKEN такого доступа не имеет). Не роняем
+            # job — бейдж остаётся с прежним значением.
+            print(
+                "WARN: Traffic API вернул 403 Forbidden — у токена нет доступа "
+                "к traffic/clones. Заведите секрет CLONE_STATS_TOKEN (PAT с "
+                "Administration:read или scope repo). Бейдж не обновлён.",
+                file=sys.stderr,
+            )
+            return
+        raise
 
     history = load_history()
     for entry in data.get("clones", []):

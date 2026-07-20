@@ -21,7 +21,11 @@ jobs:
 
       - name: Update clone-stats badge
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Traffic API (/traffic/clones) требует Administration:read — штатный
+          # GITHUB_TOKEN такого доступа не имеет и получает 403. Используем PAT
+          # из секрета CLONE_STATS_TOKEN; на GITHUB_TOKEN падаем как fallback,
+          # чтобы workflow был валиден и без секрета (скрипт переживёт 403).
+          GITHUB_TOKEN: ${{ secrets.CLONE_STATS_TOKEN || secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: python3 scripts/update-clone-badge.py
 
