@@ -22,7 +22,7 @@
 // умножается на 1000.
 
 import { state } from '../core/state.js';
-import { $ganttCanvas, $ganttRange } from '../core/dom.js';
+import { $ganttCanvas, $ganttRange, $ganttToggle, $tasksGantt } from '../core/dom.js';
 import { sessionCwdOrNull } from '../ws/tasks-ws.js';
 
 const DAY_MS = 86400e3;
@@ -822,6 +822,27 @@ export async function fetchGitCommits() {
     renderGantt();
 }
 
+// Сворачивание/разворачивание блока Timeline (#tasks-gantt).
+// Состояние хранится классом .collapsed на контейнере; по умолчанию блок
+// свёрнут (класс проставлен в разметке) и НЕ запоминается между загрузками —
+// каждый вход во вкладку Tasks начинается со свёрнутого Timeline.
+// Идемпотентно: guard через dataset-флаг на кнопке.
+function initGanttToggle() {
+    const btn = $ganttToggle;
+    const box = $tasksGantt;
+    if (!btn || !box) return;
+    if (btn.dataset.ganttToggleBound === '1') return;
+    btn.dataset.ganttToggleBound = '1';
+
+    btn.addEventListener('click', () => {
+        const collapsed = box.classList.toggle('collapsed');
+        btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        // При разворачивании перерисовываем — данные могли обновиться,
+        // пока блок был скрыт.
+        if (!collapsed) renderGantt();
+    });
+}
+
 // Навешивает обработчики на кнопки переключения диапазона #gantt-range.
 // Идемпотентно: повторный вызов не вешает дублирующих листенеров (guard
 // через dataset-флаг на самом контейнере).
@@ -829,6 +850,8 @@ export async function fetchGitCommits() {
 // как есть, иначе Number(data-range) (число дней); переключение класса .active,
 // затем fetchGitCommits() (since/until изменились → перезагрузка + рендер).
 export function initGanttControls() {
+    initGanttToggle();
+
     const root = $ganttRange;
     if (!root) return;
     if (root.dataset.ganttBound === '1') return;

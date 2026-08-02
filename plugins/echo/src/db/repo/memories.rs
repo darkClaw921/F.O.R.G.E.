@@ -33,6 +33,12 @@ impl MemoryScope {
         }
     }
 
+    // Намеренно НЕ реализуем `std::str::FromStr`: тот трейт требует
+    // ассоциированный тип ошибки, а здесь неизвестный scope — не ошибка,
+    // а штатное «такого варианта нет» (значение приходит из БД и из query-строки,
+    // и вызывающий код везде матчит именно `Option`). Заводить фиктивный
+    // Err-тип ради трейта — лишний шум, поэтому глушим `should_implement_trait`.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "global_day" => Some(Self::GlobalDay),

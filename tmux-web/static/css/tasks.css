@@ -447,12 +447,47 @@
     flex: 0 0 auto;
 }
 
+/* Заголовок-переключатель: сворачивает/разворачивает #gantt-canvas.
+   Выглядит как обычный лейбл (без рамки/фона), но кликабелен. */
 .gantt-title {
     color: var(--fg);
     font-size: 0.78rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    padding: 0;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.gantt-title:hover {
+    color: var(--accent);
+}
+
+.gantt-toggle-caret {
+    display: inline-block;
+    font-size: 0.7rem;
+    transition: transform 120ms ease;
+}
+
+/* Развёрнутое состояние — стрелка вниз. */
+#tasks-gantt:not(.collapsed) .gantt-toggle-caret {
+    transform: rotate(90deg);
+}
+
+/* Свёрнутый Timeline: остаётся только тулбар (заголовок + диапазоны). */
+#tasks-gantt.collapsed {
+    height: auto;
+    flex: 0 0 auto;
+}
+
+#tasks-gantt.collapsed #gantt-canvas {
+    display: none;
 }
 
 .gantt-range {

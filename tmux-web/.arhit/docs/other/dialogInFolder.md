@@ -1,0 +1,3 @@
+# dialogInFolder
+
+Чистая функция принадлежности диалога пользовательской папке Telegram (static/js/telegram/format.js). Правила: (1) exclude_ids — абсолютное исключение, сильнее include; (2) pinned_ids ∪ include_ids входят всегда, минуя категории и exclude_*-флаги; (3) категории по kind: group→groups, channel→broadcasts, user→любой из contacts/non_contacts/bots (фронт не отличает контактов и ботов); (4) exclude_muted/exclude_read/exclude_archived убирают из категорийных совпадений. Chatlist-папка (все флаги false) работает чисто по include. id сравниваются строками. Покрыта tests/frontend/telegram_format.test.mjs.

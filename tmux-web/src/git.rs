@@ -404,7 +404,7 @@ fn parse_name_status(stdout: &str) -> Vec<FileChange> {
             continue;
         }
         // Последняя колонка — актуальный путь (новый для R/C).
-        let Some(path) = cols.last() else {
+        let Some(path) = cols.next_back() else {
             // Строка без таба (только статус) — нечего показать, пропускаем.
             continue;
         };

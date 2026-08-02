@@ -105,13 +105,15 @@ async fn start_harness(rate_limit: u32) -> Harness {
         .path()
         .join(format!("echo-smoke-{}.db", uuid::Uuid::new_v4()));
 
-    let mut cfg = EchoConfig::default();
-    cfg.cli_path = cli_path;
-    cfg.db_path = db_path.clone();
-    cfg.max_parallel_runs = 2;
-    cfg.user_message_rate_limit_per_min = rate_limit;
-    // Disable autonomous cap so chat-стримы свободно расходуют токены.
-    cfg.autonomous_max_tokens_per_day = 0;
+    let cfg = EchoConfig {
+        cli_path,
+        db_path: db_path.clone(),
+        max_parallel_runs: 2,
+        user_message_rate_limit_per_min: rate_limit,
+        // Disable autonomous cap so chat-стримы свободно расходуют токены.
+        autonomous_max_tokens_per_day: 0,
+        ..Default::default()
+    };
 
     let state = forge_echo::init_with_config(cfg).await.unwrap();
     let host: Arc<dyn HostApi> = Arc::new(FakeHost { project_id: None });

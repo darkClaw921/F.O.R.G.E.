@@ -58,6 +58,13 @@ pub struct RunOptions {
     /// `~/.forge/vapid.json`. Источник истины для гейтинга —
     /// [`crate::server_config::EffectiveConfig::pwa_enabled`].
     pub pwa: bool,
+    /// `--telegram` (bool flag). True ⇒ включает opt-in плагин Telegram
+    /// (вкладка мессенджера на личном аккаунте: роуты `/api/telegram/*`
+    /// и `/ws/telegram`). False (default) ⇒ поведение байт-в-байт как
+    /// раньше: роутов нет, кнопка ✈ во фронте остаётся скрытой. Источник
+    /// истины для гейтинга —
+    /// [`crate::server_config::EffectiveConfig::telegram_enabled`].
+    pub telegram: bool,
 }
 
 impl Default for RunOptions {
@@ -68,6 +75,7 @@ impl Default for RunOptions {
             bind: None,
             token: None,
             pwa: false,
+            telegram: false,
         }
     }
 }
@@ -154,6 +162,7 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
     let mut bind: Option<String> = None;
     let mut token: Option<String> = None;
     let mut pwa = false;
+    let mut telegram = false;
 
     while let Some(a) = iter.next() {
         match a.as_str() {
@@ -171,6 +180,9 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
             }
             "--pwa" => {
                 pwa = true;
+            }
+            "--telegram" => {
+                telegram = true;
             }
             "--bind" => {
                 let v = iter
@@ -216,13 +228,14 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
     }
 
     let port = port.unwrap_or(DEFAULT_PORT);
-    let has_run_only_flags = remote || bind.is_some() || token.is_some() || pwa;
+    let has_run_only_flags = remote || bind.is_some() || token.is_some() || pwa || telegram;
     let run_opts = RunOptions {
         port,
         remote,
         bind,
         token,
         pwa,
+        telegram,
     };
 
     let mode = match subcmd.as_deref() {
@@ -233,7 +246,7 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
                 bail!("`--port` is not valid for `stop` (PID is read from pid-file)");
             }
             if has_run_only_flags {
-                bail!("`--remote`/`--bind`/`--token`/`--pwa` are not valid for `stop`");
+                bail!("`--remote`/`--bind`/`--token`/`--pwa`/`--telegram` are not valid for `stop`");
             }
             Mode::Stop
         }
@@ -242,7 +255,7 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
                 bail!("`--port` is not valid for `status`");
             }
             if has_run_only_flags {
-                bail!("`--remote`/`--bind`/`--token`/`--pwa` are not valid for `status`");
+                bail!("`--remote`/`--bind`/`--token`/`--pwa`/`--telegram` are not valid for `status`");
             }
             Mode::Status
         }
@@ -574,6 +587,7 @@ pub fn help_text() -> String {
                  --bind <ADDR> Bind address. Default: {DEFAULT_BIND} (localhost), or 0.0.0.0 if --remote.\n    \
                  --token <HEX> Bearer token (64-hex). Env: ${ENV_AUTH_TOKEN}. Auto-generated if --remote without token.\n    \
                  --pwa         Enable PWA mode (installable web app + Web Push). Opt-in; off by default.\n    \
+                 --telegram    Enable Telegram plugin (personal account messenger tab). Opt-in; off by default.\n    \
              -h, --help        Show this help message\n\
          \n\
          EXAMPLES:\n    \
@@ -685,6 +699,48 @@ mod tests {
     #[test]
     fn help_text_mentions_pwa() {
         assert!(help_text().contains("--pwa"));
+    }
+
+    #[test]
+    fn parse_telegram_flag_default_false() {
+        // Без флага --telegram поле остаётся false (opt-in инвариант).
+        let m = parse_from(args(&[])).unwrap();
+        assert!(!expect_run(m).telegram);
+        let m = parse_from(args(&["run"])).unwrap();
+        assert!(!expect_run(m).telegram);
+    }
+
+    #[test]
+    fn parse_telegram_flag_sets_true() {
+        let m = parse_from(args(&["run", "--telegram"])).unwrap();
+        assert!(expect_run(m).telegram);
+        // Комбинируется с другими флагами run и не влияет на них.
+        let m = parse_from(args(&["run", "--remote", "--pwa", "--telegram"])).unwrap();
+        let o = expect_run(m);
+        assert!(o.telegram);
+        assert!(o.pwa);
+        assert!(o.remote);
+    }
+
+    #[test]
+    fn parse_telegram_carried_by_start() {
+        let m = parse_from(args(&["start", "--telegram"])).unwrap();
+        match m {
+            Mode::Start(o) => assert!(o.telegram),
+            _ => panic!("expected Start"),
+        }
+    }
+
+    #[test]
+    fn parse_telegram_rejected_for_stop_status() {
+        let err = parse_from(args(&["stop", "--telegram"])).unwrap_err().to_string();
+        assert!(err.contains("--telegram"), "ошибка обязана называть флаг: {err}");
+        assert!(parse_from(args(&["status", "--telegram"])).is_err());
+    }
+
+    #[test]
+    fn help_text_mentions_telegram() {
+        assert!(help_text().contains("--telegram"));
     }
 
     #[test]
@@ -1003,7 +1059,6 @@ mod tests {
         // auth_token при отсутствии в файле. Если токен уже есть — он
         // сохраняется (см. finalize_token_preserves_existing). Поведение
         // 'force-rotation' пока не реализовано — закрепляем preserve-policy.
-        use std::path::PathBuf;
         let mut dir = std::env::temp_dir();
         dir.push(format!(
             "forge-pair-rotate-{}-{}",
@@ -1014,7 +1069,7 @@ mod tests {
                 .as_nanos()
         ));
         std::fs::create_dir_all(&dir).unwrap();
-        let path = PathBuf::from(dir.join("server_config.json"));
+        let path = dir.join("server_config.json");
 
         // Pre-existing config с токеном.
         let existing_token = "existing-token-keep-me";
@@ -1033,6 +1088,7 @@ mod tests {
             auth_token: Some(existing_token.to_string()),
             remote_mode: true,
             pwa_enabled: false,
+            telegram_enabled: false,
         };
         let got = crate::server_config::finalize_token_at(&eff, &path).unwrap();
         assert_eq!(

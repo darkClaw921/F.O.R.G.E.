@@ -845,8 +845,10 @@ mod tests {
     #[test]
     fn save_then_load_roundtrip() {
         let dir = tempdir("rt");
-        let mut state = ThemesState::default();
-        state.active = "dracula".to_string();
+        let mut state = ThemesState {
+            active: "dracula".to_string(),
+            ..Default::default()
+        };
         let custom = Theme {
             id: "my-custom".to_string(),
             name: "My Custom".to_string(),

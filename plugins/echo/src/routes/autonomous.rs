@@ -7,17 +7,17 @@
 //!
 //! - `GET    /api/echo/autonomous-tasks`            — список всех задач.
 //! - `POST   /api/echo/autonomous-tasks`            — создать (+ установить
-//!                                                    `next_run_at = now + interval`).
+//!   `next_run_at = now + interval`).
 //! - `PATCH  /api/echo/autonomous-tasks/:id`        — частичный апдейт;
-//!                                                    при `enabled=true` и
-//!                                                    `next_run_at=NULL`
-//!                                                    ставит `next_run_at=now`.
+//!   при `enabled=true` и
+//!   `next_run_at=NULL`
+//!   ставит `next_run_at=now`.
 //! - `DELETE /api/echo/autonomous-tasks/:id`        — удалить (cascade
-//!                                                    сносит `task_runs`).
+//!   сносит `task_runs`).
 //! - `POST   /api/echo/autonomous-tasks/:id/run-now` — немедленный запуск
-//!                                                    через
-//!                                                    [`crate::scheduler::runner::run_task`]
-//!                                                    (без ожидания tick'а).
+//!   через
+//!   [`crate::scheduler::runner::run_task`]
+//!   (без ожидания tick'а).
 //! - `GET    /api/echo/autonomous-tasks/:id/runs?limit=` — история запусков.
 //!
 //! Response format везде JSON. Error → `{"error": "<msg>"}` + соответствующий

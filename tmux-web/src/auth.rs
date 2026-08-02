@@ -240,6 +240,11 @@ pub async fn bearer_auth(
 //      preflight): браузер обязан сделать CORS-preflight, который мы не
 //      разрешаем (нет CORS-заголовков в ответах), и реальный мутирующий
 //      запрос не уйдёт.
+//      ЕДИНСТВЕННОЕ исключение по Content-Type — `POST /api/telegram/upload`
+//      с `application/octet-stream` (raw-заливка файла): этот Content-Type
+//      тоже не входит в «простые», то есть preflight для него обязателен, а
+//      same-origin-проверка остаётся в силе. Подробности — в
+//      `is_allowed_raw_body`.
 
 /// Извлекает `host:port` (authority) из значения заголовка `Origin`.
 /// `Origin` имеет вид `scheme://host[:port]`. Возвращает `None` для `null`
@@ -297,6 +302,47 @@ fn is_json_content_type(req: &Request<Body>) -> bool {
         .map(|ct| {
             let main = ct.split(';').next().unwrap_or("").trim();
             main.eq_ignore_ascii_case("application/json")
+        })
+        .unwrap_or(false)
+}
+
+/// Точный путь загрузки файла в Telegram-плагине.
+///
+/// Сравнение по ПОЛНОМУ пути, а не по префиксу `/api/telegram/`: под
+/// префиксное исключение автоматически попадали бы все будущие роуты плагина,
+/// и однажды кто-то добавил бы мутирующий роут, который молча потерял бы
+/// защиту Content-Type.
+const RAW_UPLOAD_PATH: &str = "/api/telegram/upload";
+
+/// Content-Type, на котором работает raw-загрузка файла.
+const RAW_UPLOAD_CONTENT_TYPE: &str = "application/octet-stream";
+
+/// Разрешено ли этому запросу нести тело без `application/json`.
+///
+/// Единственное исключение — `POST /api/telegram/upload` с
+/// `Content-Type: application/octet-stream`: файл передаётся сырыми байтами
+/// (см. `plugins/telegram/src/routes/upload.rs`), и JSON здесь физически
+/// неприменим.
+///
+/// ПОЧЕМУ ЭТО НЕ ОСЛАБЛЯЕТ ЗАЩИТУ. `application/octet-stream` НЕ входит в
+/// список Content-Type «простых запросов» CORS (там только
+/// `application/x-www-form-urlencoded`, `multipart/form-data`, `text/plain`).
+/// Значит, кросс-доменный `fetch`/XHR с таким Content-Type браузер обязан
+/// предварить preflight-запросом `OPTIONS`, а мы не отдаём CORS-заголовков
+/// вообще — preflight не пройдёт, и реальный запрос не уйдёт. Через
+/// `<form>` такой Content-Type выставить нельзя в принципе. Проверка
+/// same-origin (`is_same_origin`) при этом остаётся ОБЯЗАТЕЛЬНОЙ и
+/// выполняется до вызова этой функции.
+fn is_allowed_raw_body(req: &Request<Body>) -> bool {
+    if req.uri().path() != RAW_UPLOAD_PATH {
+        return false;
+    }
+    req.headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|ct| {
+            let main = ct.split(';').next().unwrap_or("").trim();
+            main.eq_ignore_ascii_case(RAW_UPLOAD_CONTENT_TYPE)
         })
         .unwrap_or(false)
 }
@@ -369,7 +415,11 @@ pub async fn csrf_guard(req: Request<Body>, next: Next) -> Response {
         // «простого запроса» (text/plain, form-urlencoded, multipart): такой
         // cross-origin запрос с JSON-Content-Type браузер обязан предварить
         // CORS-preflight'ом, который мы не разрешаем.
-        if has_request_body(&req) && !is_json_content_type(&req) {
+        //
+        // Единственное исключение — raw-загрузка файла в Telegram-плагине
+        // (см. `is_allowed_raw_body`): её Content-Type тоже не «простой»,
+        // поэтому preflight обязателен и для неё.
+        if has_request_body(&req) && !is_json_content_type(&req) && !is_allowed_raw_body(&req) {
             tracing::warn!(
                 path,
                 %method,
@@ -727,6 +777,10 @@ mod tests {
             .route("/api/todos", post(ok_handler))
             .route("/api/todos/:id", delete(ok_handler))
             .route("/api/sessions", get(ok_handler))
+            // Роуты Telegram-плагина: их регистрирует сам плагин, но для
+            // проверки csrf_guard достаточно одноимённых заглушек.
+            .route("/api/telegram/upload", post(ok_handler))
+            .route("/api/telegram/dialogs/:id/messages", post(ok_handler))
             .layer(from_fn(csrf_guard))
     }
 
@@ -873,6 +927,104 @@ mod tests {
                 Some("127.0.0.1:7331"),
                 None,
                 "",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    // --- raw-загрузка файла в Telegram (forge-tg-phase5-lzhj.3) ---
+
+    /// Same-origin `POST /api/telegram/upload` с octet-stream проходит:
+    /// JSON для сырых байтов файла неприменим.
+    #[tokio::test]
+    async fn telegram_upload_octet_stream_same_origin_allowed() {
+        let app = csrf_app();
+        let resp = app
+            .oneshot(csrf_req(
+                Method::POST,
+                "/api/telegram/upload",
+                Some("http://127.0.0.1:7331"),
+                Some("127.0.0.1:7331"),
+                Some("application/octet-stream"),
+                "\x00\x01binary",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    /// Исключение НЕ отменяет same-origin: чужой Origin по-прежнему 403.
+    #[tokio::test]
+    async fn telegram_upload_cross_origin_still_rejected() {
+        let app = csrf_app();
+        let resp = app
+            .oneshot(csrf_req(
+                Method::POST,
+                "/api/telegram/upload",
+                Some("http://evil.example.com"),
+                Some("127.0.0.1:7331"),
+                Some("application/octet-stream"),
+                "\x00\x01binary",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    /// Исключение точечное по ПУТИ: соседний мутирующий роут плагина с
+    /// octet-stream по-прежнему отвергается.
+    #[tokio::test]
+    async fn other_telegram_routes_still_require_json() {
+        let app = csrf_app();
+        let resp = app
+            .oneshot(csrf_req(
+                Method::POST,
+                "/api/telegram/dialogs/1/messages",
+                Some("http://127.0.0.1:7331"),
+                Some("127.0.0.1:7331"),
+                Some("application/octet-stream"),
+                "{}",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+
+    /// Исключение точечное по CONTENT-TYPE: «простой» text/plain на том же
+    /// пути отвергается (иначе появился бы CSRF-вектор без preflight).
+    #[tokio::test]
+    async fn telegram_upload_with_simple_content_type_rejected() {
+        for ct in ["text/plain", "multipart/form-data", "application/x-www-form-urlencoded"] {
+            let app = csrf_app();
+            let resp = app
+                .oneshot(csrf_req(
+                    Method::POST,
+                    "/api/telegram/upload",
+                    Some("http://127.0.0.1:7331"),
+                    Some("127.0.0.1:7331"),
+                    Some(ct),
+                    "hello",
+                ))
+                .await
+                .unwrap();
+            assert_eq!(resp.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE, "{ct}");
+        }
+    }
+
+    /// Параметры Content-Type не мешают: `octet-stream; charset=binary`
+    /// разбирается по основному типу.
+    #[tokio::test]
+    async fn telegram_upload_content_type_parameters_are_ignored() {
+        let app = csrf_app();
+        let resp = app
+            .oneshot(csrf_req(
+                Method::POST,
+                "/api/telegram/upload",
+                Some("http://127.0.0.1:7331"),
+                Some("127.0.0.1:7331"),
+                Some("Application/Octet-Stream; charset=binary"),
+                "data",
             ))
             .await
             .unwrap();

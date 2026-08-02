@@ -334,8 +334,8 @@ printf '%s\n' '{"type":"result","usage":{"input_tokens":2,"output_tokens":2}}'
             .unwrap();
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["day"], "2026-05-16");
-        assert!(v["id"].as_str().unwrap().len() > 0);
-        assert!(v["content"].as_str().unwrap().len() > 0);
+        assert!(!v["id"].as_str().unwrap().is_empty());
+        assert!(!v["content"].as_str().unwrap().is_empty());
     }
 
     #[tokio::test]

@@ -79,11 +79,83 @@
     border-color: var(--accent-hover);
 }
 
+/* Контейнер секций-дней (ранее был гридом карточек; грид переехал в
+ * .home-day-cards). Секции идут колонкой сверху вниз. */
 .home-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    align-content: start;
+}
+
+/* ---- Группа-день (сворачиваемая секция) ---- */
+
+.home-day-group {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.home-day-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-row);
+    user-select: none;
+}
+
+.home-day-toggle {
+    font-size: 0.7rem;
+    color: var(--fg-mute);
+    width: 12px;
+    text-align: center;
+    flex: 0 0 auto;
+}
+
+.home-day-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--fg);
+}
+
+.home-day-count {
+    font-size: 0.8rem;
+    color: var(--fg-dim);
+    flex: 1 1 auto;
+}
+
+/* Кнопка «Открыть все за день» — стиль на базе .home-restore-selected. */
+.home-day-restore {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    padding: 4px 12px;
+    font-size: 0.8rem;
+    font-family: inherit;
+    cursor: pointer;
+    flex: 0 0 auto;
+    transition: background 100ms ease, color 100ms ease;
+}
+
+.home-day-restore:hover {
+    background: var(--accent);
+    color: #fff;
+}
+
+/* Грид карточек внутри одного дня — прежняя раскладка .home-cards. */
+.home-day-cards {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
     gap: 14px;
     align-content: start;
+}
+
+/* Свёрнутая группа прячет свои карточки, оставляя только заголовок. */
+.home-day-group.collapsed .home-day-cards {
+    display: none;
 }
 
 .home-card {

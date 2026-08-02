@@ -8,7 +8,7 @@
 //! ## ClientMsg → ServerMsg маршруты (определяются в `ws/mod.rs`)
 //!
 //! - `user_message`  → инсёрт user-msg в db → ClaudeRunner stream →
-//!                     `assistant_chunk` (много) → `assistant_done`.
+//!   `assistant_chunk` (много) → `assistant_done`.
 //! - `cancel`        → ClaudeRunner::cancel(run_id) → стрим обрывается.
 //! - `action_invoke` → actions::executor::invoke (Phase 5; в P3 — error/ignore).
 //! - `pong`          → reset heartbeat-deadline.

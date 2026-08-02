@@ -9,6 +9,7 @@ import {
     $gitEl, $dockerEl, $telescopeEl,
     $tabGit, $tabDocker, $tabTelescope,
     $tabEcho, $echoEl,
+    $telegramToggle, $telegram,
 } from '../core/dom.js';
 import { scheduleResizeFromTerm } from '../terminal/xterm.js';
 import { connectTasksWs, fetchTasks, stopTasksPolling } from '../ws/tasks-ws.js';
@@ -19,10 +20,13 @@ import {
     initEcho, connectEchoWs, disconnectEchoWs, _debugState as echoDebug,
 } from '../echo/main.js';
 import { hideScreensaver } from '../screensaver/screensaver.js';
+import { initTelegram } from '../telegram/main.js';
+import { applyTgTheme } from '../telegram/theme.js';
 
 export function switchTab(name) {
     if (name !== 'terminal' && name !== 'tasks' && name !== 'git'
-        && name !== 'docker' && name !== 'telescope' && name !== 'echo') return;
+        && name !== 'docker' && name !== 'telescope' && name !== 'echo'
+        && name !== 'telegram') return;
     if (state.activeTab === name) return;
     // Заставка лежит поверх области терминала — при переключении вкладок гасим её.
     hideScreensaver();
@@ -35,6 +39,7 @@ export function switchTab(name) {
     const onDocker = name === 'docker';
     const onTelescope = name === 'telescope';
     const onEcho = name === 'echo';
+    const onTelegram = name === 'telegram';
     $terminalEl.hidden = !onTerminal;
     if ($placeholder) $placeholder.hidden = !onTerminal;
     if ($windowBar) $windowBar.hidden = !onTerminal || !state.currentSession;
@@ -43,6 +48,7 @@ export function switchTab(name) {
     if ($dockerEl) $dockerEl.hidden = !onDocker;
     if ($telescopeEl) $telescopeEl.hidden = !onTelescope;
     if ($echoEl) $echoEl.hidden = !onEcho;
+    if ($telegram) $telegram.hidden = !onTelegram;
 
     $tabTerminal.classList.toggle('active', onTerminal);
     $tabTasks.classList.toggle('active', onTasks);
@@ -50,6 +56,9 @@ export function switchTab(name) {
     if ($tabDocker) $tabDocker.classList.toggle('active', onDocker);
     if ($tabTelescope) $tabTelescope.classList.toggle('active', onTelescope);
     if ($tabEcho) $tabEcho.classList.toggle('active', onEcho);
+    // Кнопка Telegram живёт в #settings-bar, а не в #tab-bar, но подсветку
+    // активной вкладки получает по тому же правилу.
+    if ($telegramToggle) $telegramToggle.classList.toggle('active', onTelegram);
 
     if (prev === 'git' && !onGit) {
         closeGitWs('tab switched away');
@@ -98,5 +107,12 @@ export function switchTab(name) {
         if (dbg && dbg.activeConversationId) {
             connectEchoWs(dbg.activeConversationId);
         }
+    } else if (onTelegram) {
+        // Тема пересчитывается на КАЖДОМ входе: в режиме auto пользователь мог
+        // сменить тему devforge, пока вкладка была закрыта.
+        applyTgTheme();
+        // Teardown при уходе с вкладки НЕ делаем: WS у Telegram постоянный —
+        // он нужен для unread-бейджа и тостов с любой вкладки.
+        initTelegram();
     }
 }

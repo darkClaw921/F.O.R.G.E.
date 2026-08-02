@@ -9,7 +9,7 @@ import {
     $btnNew, $btnNewPath, $windowNewBtn, $windowNewWorktreeBtn,
     $tabTerminal, $tabTasks, $tabGit, $tabDocker, $tabTelescope, $tabEcho,
     $tasksReload, $tasksNew,
-    $projectSettings, $screensaverToggle,
+    $projectSettings, $screensaverToggle, $telegramToggle,
     $btnSidebarToggle, $sidebarOverlay, $layout,
     $claudeMemoryBtn,
 } from './dom.js';
@@ -48,6 +48,10 @@ import { openClaudeMemoryModal } from '../sessions/claude-memory.js';
 import {
     initEcho, connectEchoWs, disconnectEchoWs, teardownEcho, _debugState as echoDebug,
 } from '../echo/main.js';
+import {
+    initTelegramGate, suspendTelegram, resumeTelegram, teardownTelegram,
+} from '../telegram/main.js';
+import { initTelegramTheme, teardownTelegramTheme } from '../telegram/theme.js';
 
 // ----- side-effect global listeners (app.js:745-851) -----
 // Sidebar overlay click / Esc / Cmd+B hotkey + mqlMobile change.
@@ -161,6 +165,28 @@ export async function bootstrap() {
         $screensaverToggle.addEventListener('click', showScreensaver);
     }
 
+    if ($telegramToggle) {
+        $telegramToggle.addEventListener('click', () => switchTab('telegram'));
+    }
+
+    // Тема панели Telegram: восстанавливается ДО гейта, чтобы вкладка, если
+    // её откроют сразу, не мигнула чужой палитрой. Работает и при выключенном
+    // плагине (разметка #telegram в index.html есть всегда) — накладных
+    // расходов это не создаёт: один MutationObserver на <html>.
+    try {
+        initTelegramTheme();
+    } catch (e) {
+        console.warn('[bootstrap] initTelegramTheme failed', e);
+    }
+
+    // Гейт кнопки ✈: спрашиваем GET /api/telegram/status. Плагин выключен
+    // (404) — кнопка просто остаётся скрытой, ошибок в консоли нет.
+    try {
+        initTelegramGate();
+    } catch (e) {
+        console.warn('[bootstrap] initTelegramGate failed', e);
+    }
+
     if (isRemoteMode()) {
         fetchRemoteServers().then(() => {
             loadActiveOriginFromStorage();
@@ -192,6 +218,8 @@ export async function bootstrap() {
         if (state.telescopeTerm) state.telescopeTerm.close('beforeunload');
         stopRemoteHealthPoll();
         teardownEcho();
+        teardownTelegram();
+        teardownTelegramTheme();
     });
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
@@ -201,6 +229,9 @@ export async function bootstrap() {
             if (state.activeTab === 'echo') {
                 disconnectEchoWs();
             }
+            // WS Telegram постоянный (бейдж с любой вкладки), поэтому его
+            // закрываем не по смене вкладки, а по уходу страницы в фон.
+            suspendTelegram();
         } else {
             fetchSessions();
             startPolling();
@@ -220,6 +251,7 @@ export async function bootstrap() {
                     connectEchoWs(dbg.activeConversationId);
                 }
             }
+            resumeTelegram();
         }
     });
 

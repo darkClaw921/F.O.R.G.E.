@@ -834,14 +834,14 @@ Do you want to make this edit?
         // даже false не должен попасть в карту generating.
         s.update_generation("forge", 42).await;
         assert!(
-            s.generating_snapshot().await.get("forge").is_none(),
+            !s.generating_snapshot().await.contains_key("forge"),
             "после первого update_generation в карте generating не должно быть ключа forge"
         );
 
         // Случай 2: повторный вызов с тем же хэшем → changed=false.
         s.update_generation("forge", 42).await;
         assert!(
-            s.generating_snapshot().await.get("forge").is_none(),
+            !s.generating_snapshot().await.contains_key("forge"),
             "после повторного update_generation с тем же хэшем карта generating должна оставаться пустой"
         );
 
@@ -850,7 +850,7 @@ Do you want to make this edit?
         let flag = s.update_generation("forge", 99).await;
         assert!(flag, "разные хэши → changed=true (sanity check)");
         assert!(
-            s.generating_snapshot().await.get("forge").is_none(),
+            !s.generating_snapshot().await.contains_key("forge"),
             "даже при changed=true update_generation не должен писать в generating"
         );
     }

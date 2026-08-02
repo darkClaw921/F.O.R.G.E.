@@ -562,7 +562,7 @@ mod tests {
         let mut ids = std::collections::HashSet::new();
         for i in 0..100 {
             let s = store
-                .add("Office", &format!("http://host-{i}:7331"), "tk")
+                .add("Office", format!("http://host-{i}:7331"), "tk")
                 .unwrap();
             ids.insert(s.id.clone());
         }
@@ -597,7 +597,7 @@ mod tests {
         let dir = tempdir("long");
         let file = dir.join("remote_servers.json");
         let mut store = RemoteServerStore::load(file).unwrap();
-        let long_label: String = std::iter::repeat('a').take(500).collect();
+        let long_label: String = "a".repeat(500);
         let s = store
             .add(&long_label, "http://x:7331", "tk")
             .expect("длинный label принимается");

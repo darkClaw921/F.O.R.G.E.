@@ -24,10 +24,44 @@ use crate::cli;
 /// процесс жив — отказ. Если pid-файл есть, но процесс мёртв — pid-файл
 /// удаляется и старт продолжается (нормальный recovery после краша).
 ///
-/// Все опции (`--port`, `--remote`, `--bind`, `--token`) прокидываются в
-/// child-процесс `devforge run …`, чтобы он точно унаследовал режим, выбранный
-/// пользователем. Без этого `devforge start --remote` молча превращался бы в
-/// localhost-режим, что нарушает single-source-of-truth для CLI.
+/// Все опции (`--port`, `--remote`, `--bind`, `--token`, `--pwa`,
+/// `--telegram`) прокидываются в child-процесс `devforge run …`, чтобы он
+/// точно унаследовал режим, выбранный пользователем (сборка аргументов —
+/// [`build_daemon_args`]). Без этого `devforge start --remote` молча
+/// превращался бы в localhost-режим, что нарушает single-source-of-truth
+/// для CLI.
+/// Собирает argv дочернего процесса daemon'а: `run --port N` плюс все
+/// опции, которые пользователь указал у `devforge start`.
+///
+/// Вынесено в отдельную чистую функцию, чтобы проброс флагов покрывался
+/// unit-тестом: раньше `--pwa` терялся молча, и `devforge start --pwa`
+/// поднимал daemon без PWA.
+pub fn build_daemon_args(port: u16, opts: &cli::RunOptions) -> Vec<String> {
+    // Базовая команда — всегда `run --port N`.
+    let mut args = vec!["run".to_string(), "--port".to_string(), port.to_string()];
+    // Опционально пробрасываем остальные флаги. Это критично: иначе daemon
+    // запускался бы в дефолтном режиме даже после `devforge start --remote`
+    // (и ровно так до этой правки терялся `--pwa`).
+    if opts.remote {
+        args.push("--remote".to_string());
+    }
+    if let Some(bind) = &opts.bind {
+        args.push("--bind".to_string());
+        args.push(bind.clone());
+    }
+    if let Some(token) = &opts.token {
+        args.push("--token".to_string());
+        args.push(token.clone());
+    }
+    if opts.pwa {
+        args.push("--pwa".to_string());
+    }
+    if opts.telegram {
+        args.push("--telegram".to_string());
+    }
+    args
+}
+
 pub fn start(opts: &cli::RunOptions) -> Result<()> {
     let port = opts.port;
     let pid_path = cli::pid_path()?;
@@ -76,19 +110,7 @@ pub fn start(opts: &cli::RunOptions) -> Result<()> {
 
     let exe = std::env::current_exe().context("failed to resolve current_exe")?;
     let mut cmd = Command::new(&exe);
-    // Базовая команда — всегда `run --port N`.
-    cmd.arg("run").arg("--port").arg(port.to_string());
-    // Опционально пробрасываем remote-флаги. Это критично: иначе daemon
-    // запустился бы в legacy-режиме даже после `devforge start --remote`.
-    if opts.remote {
-        cmd.arg("--remote");
-    }
-    if let Some(bind) = &opts.bind {
-        cmd.arg("--bind").arg(bind);
-    }
-    if let Some(token) = &opts.token {
-        cmd.arg("--token").arg(token);
-    }
+    cmd.args(build_daemon_args(port, opts));
     cmd.stdin(Stdio::null())
         .stdout(log)
         .stderr(log_err);
@@ -371,6 +393,73 @@ fn read_tail(path: &Path, lines: usize) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn run_opts() -> cli::RunOptions {
+        cli::RunOptions::default()
+    }
+
+    #[test]
+    fn daemon_args_without_flags_are_unchanged() {
+        // Инвариант обратной совместимости: без флагов командная строка
+        // daemon'а — ровно `run --port N`.
+        let args = build_daemon_args(7331, &run_opts());
+        assert_eq!(args, vec!["run", "--port", "7331"]);
+    }
+
+    #[test]
+    fn daemon_args_carry_remote_bind_token() {
+        let opts = cli::RunOptions {
+            remote: true,
+            bind: Some("0.0.0.0".into()),
+            token: Some("deadbeef".into()),
+            ..cli::RunOptions::default()
+        };
+        let args = build_daemon_args(8080, &opts);
+        assert_eq!(
+            args,
+            vec![
+                "run", "--port", "8080", "--remote", "--bind", "0.0.0.0", "--token", "deadbeef"
+            ]
+        );
+    }
+
+    #[test]
+    fn daemon_args_carry_pwa() {
+        // Регрессия: `devforge start --pwa` раньше поднимал daemon БЕЗ PWA.
+        let opts = cli::RunOptions {
+            pwa: true,
+            ..cli::RunOptions::default()
+        };
+        let args = build_daemon_args(7331, &opts);
+        assert!(args.iter().any(|a| a == "--pwa"), "{args:?}");
+    }
+
+    #[test]
+    fn daemon_args_carry_telegram() {
+        let opts = cli::RunOptions {
+            telegram: true,
+            ..cli::RunOptions::default()
+        };
+        let args = build_daemon_args(7331, &opts);
+        assert!(args.iter().any(|a| a == "--telegram"), "{args:?}");
+        assert!(!args.iter().any(|a| a == "--pwa"), "лишних флагов быть не должно: {args:?}");
+    }
+
+    #[test]
+    fn daemon_args_carry_all_flags_together() {
+        let opts = cli::RunOptions {
+            remote: true,
+            bind: Some("0.0.0.0".into()),
+            token: Some("t".into()),
+            pwa: true,
+            telegram: true,
+            port: 9000,
+        };
+        let args = build_daemon_args(opts.port, &opts);
+        for expected in ["--remote", "--bind", "--token", "--pwa", "--telegram"] {
+            assert!(args.iter().any(|a| a == expected), "{expected} потерян: {args:?}");
+        }
+    }
 
     #[test]
     fn read_pid_parses_old_format() {

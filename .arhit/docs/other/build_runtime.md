@@ -1,0 +1,13 @@
+# build_runtime
+
+plugins/telegram/src/runtime.rs — MTProto-рантайм плагина Telegram (Фаза 2).
+
+build_runtime(cfg) -> anyhow::Result<TgRuntime>: FileSession::open(session_path) -> Arc -> SenderPool::new(Arc<session>, api_id) -> деструктуризация {runner, handle, updates} -> Client::new(handle) -> tokio::spawn(runner.run()). Сеть здесь НЕ трогается: SenderPoolRunner подключается к DC лениво, на первом RPC, поэтому функция быстрая и её безопасно вызывать из хендлера логина. Возвращает Err (никогда не паникует) при отсутствии api_id/api_hash, занятом локе сессии и неоткрываемом файле сессии.
+
+TgRuntime{client: Client (дешёвый клон-фасад), session: Arc<FileSession>, runner_handle: JoinHandle (единственный сетевой цикл), updates_rx: Option<UnboundedReceiver<UpdatesLike>> (Option, потому что Client::stream_updates ПОГЛОЩАЕТ приёмник — Фаза 3 забирает его через take_updates ровно один раз), connected_at, lock: SessionLock}. close(): flush_now() сессии (дожать отложенное троттлингом) -> client.disconnect() (Quit раннеру) -> ожидание RUNNER_STOP_GRACE_SECS=2с -> abort. Drop: disconnect+abort синхронно, чтобы раннер не пережил рантайм и не держал сокеты.
+
+SessionLock (РИСК №5 плана: одна сессия — один процесс). Эксклюзивный неблокирующий лок через std::fs::File::try_lock (стабилизировано в Rust 1.89 — внешний крейт не нужен; std::fs::TryLockError::{WouldBlock,Error}). Берётся на файл-компаньон <session_path>.lock, а НЕ на саму сессию: FileSession перезаписывает файл через rename, то есть заменяет inode, и лок на прежнем дескрипторе перестал бы что-либо защищать. Ошибка при занятом локе — человекочитаемая, называет путь и говорит остановить второй экземпляр или сменить session_path. Проверено в рантайме: второй devforge с той же сессией стартует, показывает Disconnected{error: 'Telegram-сессия уже используется другим процессом devforge (файл …)'}, первый продолжает работать (HTTP 200).
+
+flood_wait_secs(&InvocationError) -> Option<u32>: RPC-код 420 (FLOOD_WAIT, FLOOD_PREMIUM_WAIT, SLOWMODE_WAIT, TAKEOUT_INIT_DELAY — все несут секунды в rpc.value) + подстраховка по имени. Только ИЗВЛЕКАЕТ секунды, никогда не ретраит: значение уходит в тело 429 {retry_after_secs}, а решение повторить принимает пользователь (риск №2 плана — FLOOD_WAIT на логине измеряется часами).
+
+is_authorized_with_timeout(client, dur): обёртка client.is_authorized() в tokio::time::timeout. Нужна потому, что сеть может висеть сколько угодно, а восстановление сессии при старте обязано укладываться в предсказуемое время (AUTH_CHECK_TIMEOUT_SECS=10). Текст ошибки пригоден для показа в Disconnected{error}.

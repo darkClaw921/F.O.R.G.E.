@@ -1,0 +1,13 @@
+# telegram-media-lifecycle
+
+Жизненный цикл медиа-кэша плагина forge-telegram (Фаза 4, задача Ф4.5) — три точки, которые нельзя рассматривать по отдельности.
+
+1) НАПОЛНЕНИЕ: routes/media.rs::download_media -> media_cache::commit. Отдача помечена Cache-Control: private, max-age=31536000, immutable — это законно ТОЛЬКО потому, что существуют пункты 2 и 3.
+
+2) ИНВАЛИДАЦИЯ (updates.rs): чистая функция invalidations(events: &[TgServerMsg]) -> Vec<(String dialog_id, i32 message_id)> считает по УЖЕ собранным WS-событиям, а не по сырому апдейту, чтобы dialog_id был ровно тем, что уходит во фронт. MessageEdited -> (dialog_id, id); MessageDeleted -> по одному на каждый message_id; NewMessage/typing/read/прогресс -> пусто (нового id в кэше быть не могло). handle_update вызывает media_cache::invalidate ДО broadcast: фронт, получив message_edited, сразу перезапрашивает медиа, и к этому моменту старого файла быть не должно. Удаление в ЛС приходит с ПУСТЫМ dialog_id (Telegram не сообщает диалог) — invalidate трактует это как обход всех каталогов кэша, а не как 'пропустить'.
+
+3) LRU-SWEEPER (media_cache::sweeper_loop, запуск из lib.rs::spawn_workers через spawn_sweeper): прогон на старте + раз в 10 минут; воркер запускается ВСЕГДА, даже без кредов и сессии, потому что кэш мог остаться с прошлого запуска и уже превышать лимит. sweep_once сортирует записи по mtime (старые первыми) и удаляет пары bin+meta, пока размер не опустится ниже 90% max_cache_bytes (гистерезис). mtime = приближение 'последнего использования': serve_cached на каждом попадании дёргает media_cache::touch фоновой задачей, поэтому горячие файлы всплывают. Активные загрузки защищены: protected_keys переводит ключи state.media_inflight ('<did>/<mid>/<kind>') в имена файлов ('<did>/<mid>.<kind>') — рассинхрон этих двух форматов означал бы удаление файла во время скачивания, поэтому у перевода отдельный тест. Заодно удаляются staging-файлы старше STAGING_TTL (1ч). Выход по shutdown-токену без ожидания abort (тест media_sweeper_stops_on_shutdown).
+
+ПОСЛЕДСТВИЯ ДЛЯ spawn_workers: воркеров теперь 3 (updates-supervisor, sweeper, восстановление сессии при наличии кредов+файла). Счётчик воркеров зашит в тестах lib.rs и tmux-web/tests/telegram_smoke.rs::test_workers_start_and_stop_cleanly — при добавлении нового воркера чинить оба.
+
+ТЕСТЫ: media_cache (LRU выше лимита -> ниже цели, свежие уцелели, protected не удаляется даже при лимите 1 байт, staging TTL), updates (матрица invalidations + полный цикл 'правка вытесняет и thumb, и full'), routes/media (invalidated_media_is_no_longer_served: те же байты после инвалидации НЕ отдаются, роут уходит на промах), lib (sweeper останавливается по токену).

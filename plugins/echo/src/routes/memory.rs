@@ -5,7 +5,7 @@
 //!
 //! - `scope=global_day` + `day=YYYY-MM-DD` → `memory::summarize_day(.., None)`
 //! - `scope=project_day` + `project_id=...` + `day=YYYY-MM-DD`
-//!     → `memory::summarize_day(.., Some(pid))`
+//!   → `memory::summarize_day(.., Some(pid))`
 //! - `scope=project` + `project_id=...` → `memory::summarize_project(.., pid)`
 //!
 //! Запуск синхронный с таймаутом 90 секунд (CLI обычно укладывается за
@@ -280,7 +280,7 @@ printf '%s\n' '{"type":"result","usage":{"input_tokens":2,"output_tokens":2}}'
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["scope"], "global_day");
         assert_eq!(v["day"], "2026-05-16");
-        assert!(v["memory_id"].as_str().unwrap().len() > 0);
+        assert!(!v["memory_id"].as_str().unwrap().is_empty());
     }
 
     #[tokio::test]

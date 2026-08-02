@@ -1,8 +1,8 @@
 // tmux-web — Settings modal.
 //
 // Диспетчер табов: Notifications (global notifier-config), Themes,
-// TODO behavior, Echo, Сводка дня, Интерфейс, и опциональный Remote servers
-// tab в remote-mode.
+// TODO behavior, Echo, Сводка дня, Интерфейс, Telegram (видимость чатов +
+// горячие клавиши) и опциональный Remote servers tab в remote-mode.
 
 import { state } from '../core/state.js';
 import { buildModalOverlay } from '../core/utils.js';
@@ -17,6 +17,8 @@ import { fetchUserSettings } from './user-settings-api.js';
 import { renderEchoSettingsTab } from '../echo/settings.js';
 import { renderDailySummaryTab } from './daily-summary-tab.js';
 import { buildInterfaceForm } from './interface-tab.js';
+import { buildHotkeysForm } from './hotkeys-tab.js';
+import { buildVisibilityForm } from './telegram-visibility-tab.js';
 
 export function openSettingsModal(initialTab) {
     const overlay = buildModalOverlay();
@@ -68,6 +70,7 @@ export function openSettingsModal(initialTab) {
             <button type="button" class="modal-tab-btn" data-tab="echo" role="tab">Echo</button>
             <button type="button" class="modal-tab-btn" data-tab="daily-summary" role="tab">Сводка дня</button>
             <button type="button" class="modal-tab-btn" data-tab="interface" role="tab">Интерфейс</button>
+            <button type="button" class="modal-tab-btn" data-tab="telegram" role="tab">Telegram</button>
             ${remoteTabBtn}
         </div>
         <div class="modal-tab-panel" id="ps-panel-notifications" data-panel="notifications">
@@ -98,6 +101,10 @@ export function openSettingsModal(initialTab) {
             <h2>Интерфейс</h2>
             <div class="interface-settings-content" id="ps-interface-content"></div>
         </div>
+        <div class="modal-tab-panel" id="ps-panel-telegram" data-panel="telegram" hidden>
+            <h2>Telegram</h2>
+            <div class="telegram-settings-content" id="ps-telegram-content"></div>
+        </div>
         ${remotePanel}
         <div class="modal-actions">
             <button type="button" id="ps-close" class="primary">Close</button>
@@ -121,6 +128,7 @@ export function openSettingsModal(initialTab) {
     const $echoContent = card.querySelector('#ps-echo-content');
     const $dailySummaryContent = card.querySelector('#ps-daily-summary-content');
     const $interfaceContent = card.querySelector('#ps-interface-content');
+    const $telegramContent = card.querySelector('#ps-telegram-content');
 
     // TODO behavior tab state: рендерим форму один раз при первом клике.
     // userSettings fetch выполняется лениво, если bootstrap-preload не успел
@@ -136,6 +144,9 @@ export function openSettingsModal(initialTab) {
         loaded: false,
     };
     const interfaceTabState = {
+        loaded: false,
+    };
+    const telegramTabState = {
         loaded: false,
     };
 
@@ -211,6 +222,34 @@ export function openSettingsModal(initialTab) {
         }));
     };
 
+    // Вкладка «Telegram»: два раздела — видимость чатов (белый список папок и
+    // чатов) и горячие клавиши панели. Тот же ленивый паттерн и тот же кеш
+    // state.userSettings, что у соседей. Применения после сохранения формы не
+    // требуют: и keynav.js, и state.js читают настройки лениво, а кэши разбора
+    // сбрасывают сами формы через window.ForgeApp.
+    //
+    // Видимость идёт первой сознательно: она меняет то, что видно на экране, а
+    // хоткеи — то, как этим управлять.
+    const renderTelegramPanel = async () => {
+        if (telegramTabState.loaded) return;
+        telegramTabState.loaded = true;
+        $telegramContent.innerHTML = '<div class="themes-loading">Loading settings…</div>';
+        if (state.userSettings === null) {
+            try {
+                await fetchUserSettings();
+            } catch (_) { /* fetchUserSettings swallows errors itself */ }
+        }
+        $telegramContent.innerHTML = '';
+        // Пустой объект при недоступном backend: формы покажут фильтр
+        // выключенным, а клавиши дефолтными — ровно то, что и работает сейчас.
+        const settingsArg = state.userSettings || {};
+        const onSaved = (updated) => {
+            if (updated) state.userSettings = updated;
+        };
+        $telegramContent.appendChild(buildVisibilityForm(settingsArg, onSaved));
+        $telegramContent.appendChild(buildHotkeysForm(settingsArg, onSaved));
+    };
+
     const notifierState = {
         loaded: false,
     };
@@ -281,6 +320,9 @@ export function openSettingsModal(initialTab) {
         }
         if (name === 'interface') {
             renderInterfacePanel();
+        }
+        if (name === 'telegram') {
+            renderTelegramPanel();
         }
     };
     $tabBtns.forEach((btn) => {
@@ -411,7 +453,7 @@ export function openSettingsModal(initialTab) {
         });
     }
 
-    if (initialTab && (initialTab === 'notifications' || initialTab === 'themes' || initialTab === 'todo' || initialTab === 'echo' || initialTab === 'daily-summary' || initialTab === 'interface' || (initialTab === 'remotes' && isRemoteMode()))) {
+    if (initialTab && (initialTab === 'notifications' || initialTab === 'themes' || initialTab === 'todo' || initialTab === 'echo' || initialTab === 'daily-summary' || initialTab === 'interface' || initialTab === 'telegram' || (initialTab === 'remotes' && isRemoteMode()))) {
         showTab(initialTab);
     }
 

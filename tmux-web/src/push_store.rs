@@ -259,6 +259,7 @@ pub fn default_subscriptions_path() -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     /// Уникальный путь во временной директории (UUID v4), как в
     /// `user_settings` тестах.
@@ -480,8 +481,8 @@ mod tests {
     }
 
     /// Ожидаемый tmp-путь рядом с основным файлом (`<name>.tmp`).
-    fn tmp_sibling(path: &PathBuf) -> PathBuf {
-        let mut tmp = path.clone();
+    fn tmp_sibling(path: &Path) -> PathBuf {
+        let mut tmp = path.to_path_buf();
         let mut name = tmp.file_name().map(|s| s.to_owned()).unwrap_or_default();
         name.push(".tmp");
         tmp.set_file_name(name);

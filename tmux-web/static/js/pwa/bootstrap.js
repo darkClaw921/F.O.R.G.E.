@@ -195,7 +195,7 @@ async function handleLaunchParams() {
 
 /** Переключает активную вкладку через существующий switchTab из tabs.js. */
 async function routeTab(name) {
-    const allowed = ['terminal', 'tasks', 'git', 'docker', 'telescope', 'echo'];
+    const allowed = ['terminal', 'tasks', 'git', 'docker', 'telescope', 'echo', 'telegram'];
     if (!allowed.includes(name)) return;
     const mod = await import('../tabs/tabs.js');
     if (mod && typeof mod.switchTab === 'function') mod.switchTab(name);

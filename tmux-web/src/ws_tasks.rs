@@ -160,11 +160,7 @@ fn rebuild_query_without_server(q: &HashMap<String, String>) -> String {
 fn urlencode_minimal(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
-        if (b'a'..=b'z').contains(&b)
-            || (b'A'..=b'Z').contains(&b)
-            || (b'0'..=b'9').contains(&b)
-            || matches!(b, b'-' | b'_' | b'.' | b'~')
-        {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
             out.push(b as char);
         } else {
             out.push_str(&format!("%{:02X}", b));
@@ -257,10 +253,7 @@ async fn handle_socket(socket: WebSocket, active_path: PathBuf) {
     }
 
     // 3) Берём baseline snapshot для последующих diff'ов.
-    let mut prev = match snapshot(&active_path).await {
-        Ok(s) => s,
-        Err(_) => std::collections::HashMap::new(),
-    };
+    let mut prev = snapshot(&active_path).await.unwrap_or_default();
 
     // 4) Heartbeat таймер.
     let mut heartbeat = tokio::time::interval(HEARTBEAT_INTERVAL);

@@ -1,0 +1,73 @@
+# tmux-web/static/js/telegram/chat.js
+
+Лента переписки #tg-log и отправка (Фаза 3) + весь DOM ответов на сообщения.
+
+ПРОСМОТР: openDialog(id) очищает лог, СОХРАНЯЯ .tg-log-spacer первым потомком (спейсер объявлен в index.html и прижимает короткую переписку к низу); после await сверяется tgState.activeDialogId — иначе история переключённого диалога рисуется поверх нового. renderHistory: '[HH:MM:SS] nick $ text' отдельными span'ами (свой ник you@local cyan), date-separators '── YYYY-MM-DD ──' на границе суток И перед первым сообщением, плейсхолдер '[photo]'/'[voice 7s]' для медиа (карточки — Фаза 4; без плейсхолдера сообщение выглядело бы пустым). loadOlder: ЗАПОМНИТЬ scrollHeight -> вставить -> scrollTop += прирост (якорь; без него лента прыгает). bindScroll: scrollTop<200 && has_more && !loading. Stick-to-bottom: доскроллка только если пользователь был в 40px от низа.
+
+ОТПРАВКА: bindPrompt слушает submit формы #tg-prompt (покрывает Enter и кнопку TRANSMIT). Optimistic-строка с .tg-msg-pending -> POST -> reconcile по MessageDto из ответа. Четыре краевых случая отдельными ветками: id<=0 (Telegram не подтвердил) — строку снять и ждать new_message; апдейт опередил ответ (insertMessage.inserted=false) — снять, дубля нет; диалог переключили за время запроса — сообщение в модель, DOM не трогать; ошибка сети — снять pending (висящая строка врала бы про отправку) + красная строка с рабочим [retry].
+
+REALTIME: onNewMessage (дедуп по id + вставка по месту для сообщений 'из середины' после catch_up), onEdited ('(edited)'), onDeleted ('<< message purged >>'; ПУСТОЙ dialog_id — в ЛС Telegram не сообщает диалог — обрабатывается чисткой по id во всех загруженных диалогах), onRead(out) -> системная строка. Всё через textContent.
+
+## ОТВЕТЫ НА СООБЩЕНИЯ (R1/R2)
+
+Вся логика без DOM вынесена в js/telegram/reply.js; здесь — только узлы и события.
+
+СТРОКА СООБЩЕНИЯ: цитата (buildQuoteRow) — ПЕРВЫМ потомком `.tg-line` (блок, а не span: строка
+рисуется `pre-wrap`); кнопка «↰» (buildReplyButton) — ПОСЛЕДНИМ и вне потока (CSS позиционирует её
+абсолютно; в потоке она разрывала бы перенос текста и налезала на маркер «⋯ в пути»). Кнопки нет у
+optimistic-строк без подтверждённого id.
+
+ВЫБОР ЦЕЛИ: кнопка «↰», двойной клик по строке (bindReplyUi → classifyRowClick), клавиатура (таб до
+кнопки). startReply → полоса `.tg-reply-bar` над #tg-prompt (ensureReplyBar/showReplyBar) + фокус в
+поле. Esc снимает (onReplyEscape, с гардом на лайтбокс). Placeholder поля НЕ трогается — им владеет
+botkb.js.
+
+ОТПРАВКА: `send(text, replyToId)` — `undefined` ⇒ цель берётся из полосы, `null` ⇒ без ответа. Цель
+фиксируется ОДИН раз в замыкание, поэтому [retry] уходит в то же сообщение; полоса снимается только
+после подтверждения POST и только если всё ещё указывает на ту же цель (cancelReplyTo).
+Оптимистичная строка получает `reply_to` сразу (reply.js::replyDtoFromTarget) — иначе подпись
+«отвечаю Васе» мигала бы в момент reconcile.
+
+ПЕРЕХОД К ОРИГИНАЛУ: клик/Enter/Space по цитате → jumpToMessage: строка в ленте — скролл
+(getBoundingClientRect, а не offsetTop) + подсветка `tg-msg-highlight` на REPLY_FLASH_MS=2000;
+иначе до REPLY_JUMP_PAGES=5 страниц истории вверх, затем api.getMessage; провал — внятная строка
+«сообщение недоступно (удалено)». Подсветка хранится ПО ID и переприменяется в конце renderHistory:
+подгрузка вверх перерисовывает ленту целиком.
+
+СБРОС ЦЕЛИ: смена диалога, удаление целевого сообщения (мёртвый reply_to_id), logout, успешная
+отправка. Экспортируются startReply / cancelReply (последнюю зовёт upload.js после приёма файлов) и
+константы REPLY_FLASH_MS / REPLY_JUMP_PAGES; _debugChatState дополнен replyToId, replyBarVisible,
+flashId.
+
+`import * as tgApi` (а не именованный импорт getMessage) — статика отдаётся без сборщика и без
+хеша, поэтому браузер может держать в кэше старый api.js; именованный импорт был бы SyntaxError,
+гасящим всю вкладку.
+
+## ПРОКРУТКА ЛЕНТЫ И «СЛЕДОВАНИЕ» ЗА ОТВЕТОМ БОТА
+
+Дефект: «нажал кнопку бота — бот отредактировал своё сообщение, оно стало больше и уехало под нижнюю кромку, приходится листать вручную». Корень: `onEdited` пересобирал строку, но — в отличие от `onNewMessage` — не делал НИ замера `isAtBottom`, НИ доскролла вообще.
+
+Чистая логика решения («скроллить ли и куда») вынесена в новый модуль **js/telegram/follow.js** (без DOM и сети, по образцу reply.js); здесь — только замеры, узлы и наблюдатели.
+
+ЧЕТЫРЕ ИСТОЧНИКА ПРОКРУТКИ, которые обязаны не мешать друг другу (полная картина — на странице `telegram-scroll-model`):
+1. ПРИЛИПАНИЕ К НИЗУ (было всегда) — `isAtBottom($tgLog)` замеряется ДО мутации DOM, затем `scrollToBottom()`;
+2. ЯКОРЬ ПОДГРУЗКИ ВВЕРХ — `loadOlder` запоминает `scrollHeight`, вставляет страницу и восстанавливает `scrollTop`; на время загрузки поднят `local.loading`, и `scrollBlockIntoView` при нём молчит;
+3. ПЕРЕХОД К ОРИГИНАЛУ ПО ЦИТАТЕ — `jumpToMessage` → `revealMessage` → `scrollRowIntoView` + `flashRow`. Уезжает ВВЕРХ, поэтому `jumpToMessage` первым делом зовёт `stopFollow()`;
+4. СЛЕДОВАНИЕ ЗА ОТВЕТОМ БОТА (новое) — нажатие inline- или reply-кнопки включает окно 12с на пару (диалог, message_id), внутри которого правки ЭТОГО сообщения и новые сообщения в ЭТОМ диалоге тянут ленту к концу блока.
+
+РЕГИСТРАЦИЯ: `initChat` передаёт в `initBotKeyboards` колбэк `onButtonPress` → `noteButtonPress(dialogId, messageId)` → `follow.js::noteFollow` + `armFollowTimer` + `observeFollowRow`. botkb.js зовёт его ДО запроса (правка приезжает отдельным WS-кадром и может опередить ответ на callback) и только для действий 'callback' / 'send-text'.
+
+ЗАМЕРЫ ДО МУТАЦИИ: и в `onEdited`, и в `onNewMessage` `stick`/`following` считаются ДО построения и вставки строки — после `replaceWith`/`appendChild` `isAtBottom` отвечает про ленту, которой пользователь ещё не видел. Решение принимает `follow.js::scrollDecision`, применяет `afterRowChanged` ('follow' ⇒ переставить наблюдение + `scrollBlockIntoView`; 'stick' ⇒ `scrollToBottom`; 'none' ⇒ ничего).
+
+АДРЕСНОСТЬ: `onEdited` дополнен явной сверкой `String(tgState.activeDialogId) !== id` — строка ищется по одному лишь message_id, а он в разных чатах повторяется свободно.
+
+ОТЛОЖЕННЫЙ РОСТ (медиа, шрифты, перерисовка клавиатуры): ОДИН `ResizeObserver` на всю вкладку (`ensureFollowObserver`, ленивое создание, `typeof` читается в момент вызова ⇒ корректная деградация без него), наблюдаемый узел переставляется через `observeFollowRow`/`unobserveFollowRow`. Наблюдение снимается или переставляется во ВСЕХ точках смерти узла: `clearLog` (единственная точка снесения ленты), `renderHistory` (перепривязка после полной перерисовки — по образцу восстановления `flashId`), `afterRowChanged` (переезд на `fresh` после `replaceWith`), `onDeleted` (строка стала заглушкой), `stopFollow` (истечение TTL, прокрутка вверх, смена диалога, jumpToMessage), `teardownChat` (`disconnect` при уходе страницы).
+
+ОТМЕНА ПРОКРУТКОЙ: `bindScroll` сравнивает `local.lastScrollTop` с текущим `scrollTop` через `follow.js::cancelledByScroll` (порог 24px ВВЕРХ). Решение по НАПРАВЛЕНИЮ, а не по флагу «это скроллил я»: присваивание scrollTop порождает событие асинхронно, флаг успел бы сброситься. Собственные доскроллы идут только вниз.
+
+PREFERS-REDUCED-MOTION: `prefersReducedMotion()` (двойной typeof-гард + try/catch, читается на каждом доскролле) → `follow.js::scrollBehavior` ⇒ 'auto' при reduce, иначе 'smooth'. `scrollTo` вызывается под `typeof === 'function'` с фолбэком на `scrollTop`.
+
+НОВЫЙ ЭКСПОРТ: `teardownChat()` — зовётся из `main.js::teardownTelegram` рядом с `teardownMedia()`; распускает ResizeObserver, гасит таймер следования и подсветку. `_debugChatState` дополнен полями `followDialogId`, `followMessageId`, `followActive`, `followObserving`.
+
+ТЕСТЫ: tests/frontend/telegram_follow.test.mjs (чистая логика), telegram_scroll_ui.test.mjs (UI-половина), telegram_scroll_edge.test.mjs (краевые случаи, 149 ассертов, все проверены мутациями).
+

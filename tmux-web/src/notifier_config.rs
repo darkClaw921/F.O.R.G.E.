@@ -50,7 +50,7 @@ use serde::{Deserialize, Serialize};
 /// Сериализуется в `~/.config/forge/notifier.json`. Все поля
 /// `#[serde(default)]` — частичный/пустой файл считается валидным
 /// состоянием (пропущенные поля берутся из [`Default`]).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NotifierConfig {
     /// Шаблон notify-сообщения. Поддерживаемые плейсхолдеры — см.
     /// `format_notify_template` в `main.rs`: `{id}`, `{title}`,
@@ -71,17 +71,6 @@ pub struct NotifierConfig {
     /// `body.session` задан — он имеет приоритет.
     #[serde(default)]
     pub session: Option<String>,
-}
-
-impl Default for NotifierConfig {
-    fn default() -> Self {
-        Self {
-            template: String::new(),
-            delay_minutes: 0,
-            wait_previous: false,
-            session: None,
-        }
-    }
 }
 
 /// DTO для `PATCH /api/notifier-config`. Все поля `Option<T>` — применяются

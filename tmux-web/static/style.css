@@ -56,6 +56,12 @@
 @import url('./css/echo-notifications.css');
 @import url('./css/echo-actions.css');
 
+/* === 8b. Telegram plugin: вкладка мессенджера (собственная палитра,
+ *        тёмная/светлая через #telegram[data-tg-theme]). Как и Echo —
+ *        после tasks.css и до mobile.css, чтобы мобильные media-queries
+ *        перекрывали desktop-правила. === */
+@import url('./css/telegram.css');
+
 /* === 9. Modals: generic overlay + task modal (964-1240) === */
 @import url('./css/modals.css');
 

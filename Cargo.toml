@@ -4,6 +4,7 @@ members = [
     "tmux-web",
     "plugins/echo",
     "plugins/echo-host-api",
+    "plugins/telegram",
 ]
 exclude = ["beads_rust"]
 

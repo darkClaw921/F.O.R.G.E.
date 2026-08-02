@@ -51,6 +51,28 @@
         return !!(us && us.cmd_hints_enabled === true);
     }
 
+    // Владеет ли клавиатурой вкладка Telegram (js/telegram/keynav.js).
+    //
+    // Vim-часть этого файла занимает j/k/h/l/g/1/2/3/? глобально, а панель
+    // Telegram использует те же клавиши для своих чатов и сообщений. Пока
+    // фокус внутри панели, vim обязан молчать — иначе одно нажатие 'j' и
+    // листало бы чаты, и уводило фокус на сессию в сайдбаре.
+    //
+    // Контракт `ForgeApp.telegramKeys.owns()` появляется только после загрузки
+    // ES-модулей (этот файл выполняется раньше) — до тех пор ответ «нет», что
+    // совпадает с поведением до фичи. `owns()` сам учитывает и настройку
+    // telegram_hotkeys_enabled, и положение фокуса.
+    function telegramOwnsKeys() {
+        const app = window.ForgeApp;
+        const api = app && app.telegramKeys;
+        if (!api || typeof api.owns !== 'function') return false;
+        try {
+            return api.owns() === true;
+        } catch (_) {
+            return false;
+        }
+    }
+
     function isEditingTarget(t) {
         if (!t) return false;
         const tag = (t.tagName || '').toLowerCase();
@@ -288,6 +310,9 @@
     function vimAction(e) {
         if (e.metaKey || e.ctrlKey || e.altKey) return false;
         if (isEditingTarget(e.target)) return false;
+        // Открытая панель Telegram забирает клавиши себе (кроме случая, когда
+        // пользователь ушёл фокусом в сайдбар — тогда owns() вернёт false).
+        if (telegramOwnsKeys()) return false;
 
         const key = e.key;
 

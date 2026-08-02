@@ -369,10 +369,21 @@ function makeLifecycleEvent() {
     };
 }
 
-// Версии кэшей (должны совпадать с sw.js CACHE_VERSION='forge-pwa-v2').
-const SHELL_CACHE = 'forge-shell-forge-pwa-v2';
-const RUNTIME_CACHE = 'forge-runtime-forge-pwa-v2';
-const DATA_CACHE = 'forge-data-forge-pwa-v2';
+// Версии кэшей вычитываются ИЗ sw.js, а не дублируются здесь.
+//
+// CACHE_VERSION обязан подниматься при каждом изменении app-shell (иначе
+// пользователь получит старую копию из кэша), и захардкоженная копия версии
+// превращала штатный бамп в поломку теста — то есть наказывала за правильное
+// действие. Само наличие константы при этом проверяется: если формат объявления
+// изменится, тест упадёт сразу и по делу.
+const CACHE_VERSION = (() => {
+    const m = SW_SRC.match(/const\s+CACHE_VERSION\s*=\s*'([^']+)'/);
+    if (!m) throw new Error('sw.js: не найдено объявление CACHE_VERSION');
+    return m[1];
+})();
+const SHELL_CACHE = `forge-shell-${CACHE_VERSION}`;
+const RUNTIME_CACHE = `forge-runtime-${CACHE_VERSION}`;
+const DATA_CACHE = `forge-data-${CACHE_VERSION}`;
 
 // helper: дождаться микротасков
 function flush() { return Promise.resolve().then(() => Promise.resolve()); }

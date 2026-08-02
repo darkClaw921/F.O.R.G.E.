@@ -117,18 +117,20 @@ pub async fn run_multi_watcher(
 
         // Спавним watcher'ы новых корней.
         for (beads_dir, snapshot_root) in desired {
-            if !active.contains_key(&beads_dir) {
+            // Entry вместо contains_key + insert: один поиск по карте вместо
+            // двух, и невозможно случайно затереть уже живущий watcher.
+            let std::collections::hash_map::Entry::Vacant(slot) = active.entry(beads_dir) else {
+                continue;
+            };
+            {
+                let beads_dir = slot.key().clone();
                 tracing::info!(
                     beads = %beads_dir.display(),
                     root = %snapshot_root.display(),
                     "tasks watcher: root added"
                 );
                 let tx = tasks_tx.clone();
-                let bd = beads_dir.clone();
-                active.insert(
-                    beads_dir,
-                    tokio::spawn(watch_root(snapshot_root, bd, tx)),
-                );
+                slot.insert(tokio::spawn(watch_root(snapshot_root, beads_dir, tx)));
             }
         }
 

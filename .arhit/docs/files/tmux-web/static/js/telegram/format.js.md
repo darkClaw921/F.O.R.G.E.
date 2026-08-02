@@ -1,0 +1,7 @@
+# tmux-web/static/js/telegram/format.js
+
+Чистая логика вкладки Telegram (Фаза 3): НЕ импортирует ни DOM, ни core/* — благодаря этому грузится в Node как есть и покрыт регресс-тестом tmux-web/tests/frontend/telegram_format.test.mjs (67 ассертов).
+
+Экспорты: slugName (терминальный слаг 'sofia@node': username||title -> [a-z0-9_.-], пустое -> anon, обрезка по SLUG_MAX=24), relativeAge (now/12m/3h/2d), dialogStatusLine ([ONLINE]/[IDLE] last 3h/[OFFLINE]; [GROUP] N msgs/[CHANNEL] N msgs — счётчик из last_message.id ТОЛЬКО у групп и каналов, в ЛС id глобальны для аккаунта и врали бы), splitDialogs (узлы/каналы, порядок сервера не меняется), nodesTitle, unreadTotal(dialogs,muted)/unreadBadgeText (пусто при 0, 99+), formatTime (HH:MM:SS), dayKey (YYYY-MM-DD в ЛОКАЛЬНОЙ зоне — иначе вечерние сообщения уезжают в 'завтра'), dateSepLabel/needsDateSep, keyHex (FNV-1a, декоративный отпечаток диалога), sessionHeadText, nickOf (своё -> you@local), truncate, insertMessage (вставка в отсортированный по возрастанию список + ДЕДУПЛИКАЦИЯ по message_id: своё отправленное приходит вторым разом через WS), prependMessages (склейка страницы истории без пересечений), oldestId (курсор before_id), isAtBottom (порог 40px), shouldLoadOlder (порог 200px + guard loading), toastAllowed (окно 5с на диалог), latencyFromPingDrift (оценка задержки по дрейфу серверных ping'ов относительно 15с; полноценный RTT недостижим — сервер не отвечает эхом на pong; дрейф >30с = спящая вкладка -> null).
+
+Потребители: dialogs.js, chat.js, main.js, ws.js.

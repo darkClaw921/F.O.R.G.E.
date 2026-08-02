@@ -58,6 +58,11 @@ pub struct ServerConfig {
     /// env > default). `None`/`Some(false)` ⇒ файл не настаивает на PWA.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pwa: Option<bool>,
+    /// Opt-in плагин Telegram из файла. `Some(true)` ⇒ включает плагин
+    /// даже без CLI-флага `--telegram` (file-источник в цепочке CLI >
+    /// file > env > default). `None`/`Some(false)` ⇒ файл не настаивает.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub telegram: Option<bool>,
 }
 
 
@@ -82,11 +87,21 @@ pub struct EffectiveConfig {
     /// `~/.forge/vapid.json`. Источник истины для гейтинга всех backend-фич
     /// PWA в `main.rs`.
     pub pwa_enabled: bool,
+    /// Opt-in плагин Telegram (см. [`resolve`]). True ⇒ активирован через
+    /// `--telegram` / `server_config.json` / env `DEVFORGE_TELEGRAM`.
+    /// False (default) ⇒ поведение байт-в-байт как раньше: роуты
+    /// `/api/telegram/*` и `/ws/telegram` не регистрируются, кнопка ✈ во
+    /// фронте остаётся скрытой (её гейт — 200 на `GET /api/telegram/status`).
+    pub telegram_enabled: bool,
 }
 
 /// Имя env-переменной, включающей PWA-режим (низший приоритет после CLI и
 /// файла). Принимает truthy-значения `1`/`true`/`yes`/`on` (case-insensitive).
 pub const ENV_PWA: &str = "DEVFORGE_PWA";
+
+/// Имя env-переменной, включающей плагин Telegram (низший приоритет после
+/// CLI и файла). Принимает те же truthy-значения, что и [`ENV_PWA`].
+pub const ENV_TELEGRAM: &str = "DEVFORGE_TELEGRAM";
 
 /// Парсинг truthy-значения env-флага: `1`/`true`/`yes`/`on` (любой регистр)
 /// ⇒ `true`; всё остальное ⇒ `false`.
@@ -235,12 +250,22 @@ pub fn resolve(cli_opts: &RunOptions, file_cfg: Option<&ServerConfig>) -> Effect
             .map(|v| env_flag_is_truthy(&v))
             .unwrap_or(false);
 
+    // Telegram opt-in: та же механика, что у PWA —
+    // CLI (--telegram) > file (telegram: true) > env (DEVFORGE_TELEGRAM) >
+    // default(false).
+    let telegram_enabled = cli_opts.telegram
+        || file_cfg.and_then(|f| f.telegram).unwrap_or(false)
+        || std::env::var(ENV_TELEGRAM)
+            .map(|v| env_flag_is_truthy(&v))
+            .unwrap_or(false);
+
     EffectiveConfig {
         bind,
         port,
         auth_token,
         remote_mode,
         pwa_enabled,
+        telegram_enabled,
     }
 }
 
@@ -526,6 +551,161 @@ mod tests {
         }
     }
 
+    // =========================================================================
+    // Telegram-резолюция — та же матрица приоритетов, что у PWA:
+    // CLI (--telegram) > file (telegram: true) > env (DEVFORGE_TELEGRAM) >
+    // default(false).
+    //
+    // ENV-предупреждение то же, что для PWA: DEVFORGE_TELEGRAM process-global,
+    // поэтому все env-мутации собраны в одном последовательном тесте
+    // `telegram_env_matrix`, а не-env тесты защищены guard'ом
+    // `if env::var(ENV_TELEGRAM).is_err()` — так они не флапают ни от чужого
+    // окружения, ни параллельно с PWA-тестами (переменные разные).
+    // =========================================================================
+
+    #[test]
+    fn resolve_telegram_default_false() {
+        let cli = RunOptions::default();
+        let eff = resolve(&cli, None);
+        if std::env::var(ENV_TELEGRAM).is_err() {
+            assert!(!eff.telegram_enabled, "default без источников → false");
+        }
+    }
+
+    #[test]
+    fn resolve_telegram_cli_flag_enables() {
+        let cli = RunOptions {
+            telegram: true,
+            ..Default::default()
+        };
+        let eff = resolve(&cli, None);
+        assert!(eff.telegram_enabled, "--telegram → telegram_enabled true");
+        assert!(!eff.pwa_enabled, "--telegram не включает PWA");
+    }
+
+    #[test]
+    fn resolve_telegram_file_enables_without_cli() {
+        let cli = RunOptions::default();
+        let file = ServerConfig {
+            telegram: Some(true),
+            ..Default::default()
+        };
+        let eff = resolve(&cli, Some(&file));
+        assert!(eff.telegram_enabled, "file telegram:true включает плагин");
+    }
+
+    #[test]
+    fn resolve_telegram_cli_true_overrides_file_false() {
+        let cli = RunOptions {
+            telegram: true,
+            ..Default::default()
+        };
+        let file = ServerConfig {
+            telegram: Some(false),
+            ..Default::default()
+        };
+        let eff = resolve(&cli, Some(&file));
+        assert!(eff.telegram_enabled, "CLI true перебивает file false");
+    }
+
+    #[test]
+    fn resolve_telegram_file_false_stays_off() {
+        let cli = RunOptions::default();
+        let file = ServerConfig {
+            telegram: Some(false),
+            ..Default::default()
+        };
+        let eff = resolve(&cli, Some(&file));
+        if std::env::var(ENV_TELEGRAM).is_err() {
+            assert!(!eff.telegram_enabled, "file telegram:false → off");
+        }
+    }
+
+    /// Флаги плагинов независимы: --pwa не включает Telegram и наоборот.
+    #[test]
+    fn resolve_pwa_and_telegram_are_independent() {
+        let only_pwa = resolve(
+            &RunOptions {
+                pwa: true,
+                ..Default::default()
+            },
+            None,
+        );
+        assert!(only_pwa.pwa_enabled);
+        if std::env::var(ENV_TELEGRAM).is_err() {
+            assert!(!only_pwa.telegram_enabled, "--pwa не включает Telegram");
+        }
+
+        let both = resolve(
+            &RunOptions {
+                pwa: true,
+                telegram: true,
+                ..Default::default()
+            },
+            None,
+        );
+        assert!(both.pwa_enabled && both.telegram_enabled);
+    }
+
+    /// Все env-зависимые проверки Telegram — в одном последовательном тесте
+    /// с восстановлением окружения (см. комментарий выше).
+    #[test]
+    fn telegram_env_matrix() {
+        let saved = std::env::var(ENV_TELEGRAM).ok();
+
+        // env=1 без CLI/file → включено.
+        std::env::set_var(ENV_TELEGRAM, "1");
+        assert!(
+            resolve(&RunOptions::default(), None).telegram_enabled,
+            "env=1 включает"
+        );
+
+        // Резолюция — ИЛИ: truthy env побеждает file:false.
+        std::env::set_var(ENV_TELEGRAM, "true");
+        let file_false = ServerConfig {
+            telegram: Some(false),
+            ..Default::default()
+        };
+        assert!(
+            resolve(&RunOptions::default(), Some(&file_false)).telegram_enabled,
+            "truthy env включает несмотря на file:false"
+        );
+
+        // Мусор в env не включает.
+        for junk in ["nope", "0", "false", "", "2"] {
+            std::env::set_var(ENV_TELEGRAM, junk);
+            assert!(
+                !resolve(&RunOptions::default(), None).telegram_enabled,
+                "мусорный env {junk:?} не включает плагин"
+            );
+        }
+
+        // CLI побеждает env=0 и file:false.
+        std::env::set_var(ENV_TELEGRAM, "0");
+        let cli_tg = RunOptions {
+            telegram: true,
+            ..Default::default()
+        };
+        assert!(
+            resolve(&cli_tg, Some(&file_false)).telegram_enabled,
+            "CLI true побеждает env=0 и file:false"
+        );
+
+        // env снят → default false; file:true достаточно.
+        std::env::remove_var(ENV_TELEGRAM);
+        assert!(!resolve(&RunOptions::default(), None).telegram_enabled);
+        let file_true = ServerConfig {
+            telegram: Some(true),
+            ..Default::default()
+        };
+        assert!(resolve(&RunOptions::default(), Some(&file_true)).telegram_enabled);
+
+        match saved {
+            Some(v) => std::env::set_var(ENV_TELEGRAM, v),
+            None => std::env::remove_var(ENV_TELEGRAM),
+        }
+    }
+
     #[test]
     fn env_flag_is_truthy_matrix() {
         assert!(env_flag_is_truthy("1"));
@@ -684,6 +864,7 @@ mod tests {
             auth_token: None,
             remote_mode: false,
             pwa_enabled: false,
+            telegram_enabled: false,
         };
         let got = finalize_token_at(&eff, &path);
         assert!(got.is_none(), "non-remote → no token");
@@ -700,6 +881,7 @@ mod tests {
             auth_token: Some("existing-token".into()),
             remote_mode: true,
             pwa_enabled: false,
+            telegram_enabled: false,
         };
         let got = finalize_token_at(&eff, &path).expect("token preserved");
         assert_eq!(got, "existing-token");
@@ -717,6 +899,7 @@ mod tests {
             auth_token: None,
             remote_mode: true,
             pwa_enabled: false,
+            telegram_enabled: false,
         };
         let token = finalize_token_at(&eff, &path).expect("token generated");
         assert_eq!(token.len(), 64);
@@ -748,6 +931,7 @@ mod tests {
             auth_token: None,
             remote_mode: true,
             pwa_enabled: false,
+            telegram_enabled: false,
         };
         let token = finalize_token_at(&eff, &path).expect("token generated");
 

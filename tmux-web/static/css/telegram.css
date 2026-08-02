@@ -1,0 +1,1832 @@
+/* tmux-web — Telegram-вкладка (плагин forge-telegram)
+ *
+ * Терминальная «hacker-green» стилистика по дизайну hablo-taste: панель
+ * живёт в собственной палитре и НЕ наследует токены приложения. Все цвета
+ * объявлены на #telegram, поэтому вкладка выглядит одинаково при любой
+ * теме devforge, а собственный тумблер ◐ переключает её светлую/тёмную
+ * версии через атрибут `data-tg-theme`.
+ *
+ * Разметка — index.html (#telegram), поведение — js/telegram/*.
+ *
+ * ВАЖНО про сайзинг: #main это flex-колонка. Панель обязана быть
+ * `flex: 1 1 auto; min-height: 0`, иначе лог с overflow растягивает
+ * контейнер и ломает layout соседних вкладок.
+ */
+
+/* ==== Шрифт ==============================================================
+   JetBrains Mono ЗАВЕНДОРЕН (static/vendor/fonts/jetbrains-mono/, лицензия
+   OFL 1.1 — файл OFL.txt лежит рядом с начертаниями и обязан оставаться там).
+
+   Почему вендоринг, а не системный fallback:
+   - терминальная сетка дизайна держится на метриках именно этого шрифта; на
+     машине без него всё разъезжается (Menlo уже другой ширины);
+   - CDN ЗАПРЕЩЁН: devforge обязан работать офлайн и не ходить в сеть за
+     ассетами, а вкладка ещё и показывает переписку — внешний запрос с
+     Referer'ом здесь неуместен вдвойне;
+   - цена мала: Regular 92 КБ + Bold 95 КБ, оба уходят в бинарь через
+     rust-embed (static/** подхватывается целиком, mime_guess отдаёт
+     font/woff2 по расширению).
+
+   `local(...)` стоит первым: у кого шрифт установлен в системе, тот не
+   скачивает ничего. `font-display: swap` — текст виден сразу системным
+   моноширинным, подмена происходит после загрузки. */
+@font-face {
+    font-family: "JetBrains Mono";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: local("JetBrains Mono"), local("JetBrainsMono-Regular"),
+         url("/vendor/fonts/jetbrains-mono/JetBrainsMono-Regular.woff2") format("woff2");
+}
+@font-face {
+    font-family: "JetBrains Mono";
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: local("JetBrains Mono Bold"), local("JetBrainsMono-Bold"),
+         url("/vendor/fonts/jetbrains-mono/JetBrainsMono-Bold.woff2") format("woff2");
+}
+
+/* ---- Кнопка ✈ в #settings-bar (копия правил #screensaver-toggle) ---- */
+#telegram-toggle {
+    position: relative; /* якорь для бейджа непрочитанного */
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--fg-mute);
+    font-size: 1rem;
+    line-height: 1;
+    padding: 2px 6px;
+    transition: background 0.15s ease, transform 0.15s ease;
+}
+#telegram-toggle:hover {
+    background: var(--bg-input-hover);
+    color: var(--fg);
+    transform: scale(1.08);
+}
+
+#tg-unread-badge {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+    border-radius: 7px;
+    background: #ffb020;
+    color: #1a1200;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 14px;
+    text-align: center;
+    pointer-events: none;
+}
+
+/* ==== Панель ============================================================ */
+
+#telegram {
+    /* Обязательный сайзинг: без него лог распирает #main. */
+    flex: 1 1 auto;
+    min-height: 0;
+
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.55;
+    background: var(--t-bg);
+    color: var(--t-grn-dim);
+
+    /* Тёмная палитра — дефолт (в т.ч. при data-tg-theme="dark"). */
+    --t-bg: #050805;
+    --t-panel: #070C08;
+    --t-bar: #0A100C;
+    --t-active: #0E241A;
+    --t-grn: #33FF88;
+    --t-grn-dim: #2C8F5A;
+    --t-grn-faint: #123A26;
+    /* Приглушённый ТЕКСТ (метки времени, разделители дат, приписки) — не то
+       же самое, что цвет рамок. В тёмной теме роли совпадают, в светлой нет:
+       рамке нужна еле заметная линия, а тексту — читаемость. Отдельный токен
+       не даёт «починить» одно, испортив другое. */
+    --t-faint-text: var(--t-grn-faint);
+    --t-grn-hi: #BFFFDA;
+    --t-amber: #FFB020;
+    --t-cyan: #3DE1FF;
+    --t-red: #FF3B57;
+}
+
+/* Светлая палитра панели. */
+#telegram[data-tg-theme="light"] {
+    --t-bg: #E7ECE6;
+    --t-panel: #FFFFFF;
+    --t-bar: #F0F4EE;
+    --t-active: #E4F3EA;
+    --t-grn: #0E9A4E;
+    --t-grn-dim: #4C7A61;
+    --t-grn-faint: #B4C7BB;
+    /* #B4C7BB на фоне #E7ECE6 даёт контраст 1.5:1 — для рамки это ровно то,
+       что нужно, а метки времени превращались в невидимку. #6F8C7C даёт 3:1:
+       текст остаётся подчёркнуто второстепенным, но читается. */
+    --t-faint-text: #6F8C7C;
+    --t-grn-hi: #0C3A22;
+    --t-amber: #B4740A;
+    --t-cyan: #0A7FB0;
+    --t-red: #D23A54;
+}
+
+/* Единственный !important в файле: панель обязана исчезать при
+   переключении вкладок, побеждая display:flex выше. */
+#telegram[hidden] {
+    display: none !important;
+}
+
+/* ---- Titlebar ----
+   z-index выше оверлея логина (5): пока пользователь не вошёл, панель
+   закрыта #tg-login, но тумблер темы ◐ и ☰ обязаны оставаться доступны —
+   иначе на светлой теме devforge неавторизованная вкладка залипает в чужой
+   палитре, и починить это нечем. Лайтбокс и dropzone лежат ВЫШЕ баров
+   (z-index 7), поэтому их собственные кнопки не перекрываются. */
+#tg-titlebar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    background: var(--t-bar);
+    border-bottom: 1px solid var(--t-grn-faint);
+    position: relative;
+    z-index: 6;
+}
+
+.tg-dots {
+    display: inline-flex;
+    gap: 5px;
+}
+.tg-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    display: inline-block;
+}
+.tg-dot-red { background: var(--t-red); }
+.tg-dot-amber { background: var(--t-amber); }
+.tg-dot-green { background: var(--t-grn); }
+
+.tg-title {
+    color: var(--t-grn);
+    letter-spacing: 0.06em;
+}
+
+.tg-enc {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    color: var(--t-grn-dim);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* Пульсирующая точка «связь жива». Цвет задаётся не здесь, а классом
+   состояния на #tg-titlebar (его ставит main.js::setMode вместе с
+   Mode-бейджем статусбара) — так две индикации не могут разъехаться.
+   Анимируются ТОЛЬКО opacity и transform: они не вызывают reflow, поэтому
+   вечно живущая на открытой вкладке анимация ничего не стоит. */
+.tg-pulse {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--t-grn);
+    flex: 0 0 auto;
+    animation: tg-pulse 2s ease-in-out infinite;
+}
+@keyframes tg-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.3; transform: scale(0.78); }
+}
+#tg-titlebar.tg-conn-connected .tg-pulse { background: var(--t-grn); }
+#tg-titlebar.tg-conn-reconnecting .tg-pulse { background: var(--t-amber); }
+#tg-titlebar.tg-conn-offline .tg-pulse { background: var(--t-red); }
+/* Оборвалась связь — точка перестаёт «дышать»: мигающий красный читался бы
+   как «идёт работа», а работы как раз нет. */
+#tg-titlebar.tg-conn-offline .tg-pulse { animation: none; }
+
+.tg-self-user {
+    color: var(--t-grn-hi);
+    white-space: nowrap;
+}
+
+.tg-icon-btn {
+    background: transparent;
+    border: 1px solid var(--t-grn-faint);
+    border-radius: 4px;
+    color: var(--t-grn-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1;
+    padding: 3px 7px;
+}
+.tg-icon-btn:hover {
+    color: var(--t-grn);
+    border-color: var(--t-grn-dim);
+    background: var(--t-active);
+}
+
+/* Тумблер ◐ (js/telegram/theme.js). Режим 'auto' — состояние по умолчанию и
+   выглядит как обычная кнопка; явно зафиксированная тема подсвечена, чтобы
+   пользователь видел, что панель больше не следует за темой devforge.
+   Полная подпись режима живёт в `title`. */
+#tg-theme-toggle[data-tg-theme-mode="dark"],
+#tg-theme-toggle[data-tg-theme-mode="light"] {
+    color: var(--t-grn);
+    border-color: var(--t-grn-dim);
+}
+
+/* ---- Тело: контакты + сессия ---- */
+#tg-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    /* Якорь для off-canvas-колонки контактов и её подложки на узких экранах
+       (см. блок @media в конце файла). На десктопе ни на что не влияет. */
+    position: relative;
+}
+
+/* Элементы, которые существуют только в мобильной раскладке: кнопка ☰ и
+   подложка. На десктопе их нет совсем — не «прозрачные», а display:none,
+   чтобы не ловили клики и не попадали в tab-order. */
+.tg-mobile-only {
+    display: none;
+}
+#tg-contacts-scrim {
+    display: none;
+}
+
+#tg-contacts {
+    flex: 0 0 322px;
+    width: 322px;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 8px 0;
+    background: var(--t-panel);
+    border-right: 1px solid var(--t-grn-faint);
+}
+/* Колонка получает фокус программно (открытие ☰ на мобильных) — рамка
+   фокуса здесь только мешала бы: видимый признак и так есть, панель выехала. */
+#tg-contacts:focus {
+    outline: none;
+}
+
+.tg-section-title {
+    padding: 8px 12px 4px;
+    color: var(--t-grn-dim);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.tg-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.tg-dir,
+.tg-dialog,
+.tg-channel {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 4px 12px;
+    cursor: pointer;
+    color: var(--t-grn-dim);
+}
+.tg-dir:hover,
+.tg-dialog:hover,
+.tg-channel:hover {
+    background: var(--t-active);
+    color: var(--t-grn);
+}
+.tg-dir.active,
+.tg-dialog.active,
+.tg-channel.active {
+    background: var(--t-active);
+    color: var(--t-grn-hi);
+    border-left: 2px solid var(--t-grn);
+    padding-left: 10px;
+}
+
+/* Двухстрочный элемент диалога: слаг-имя + строка статуса. */
+.tg-dialog {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1px;
+}
+.tg-dialog-name {
+    color: inherit;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.tg-dialog-status {
+    color: var(--t-grn-dim);
+    font-size: 10px;
+    opacity: 0.85;
+}
+.tg-dialog-status .tg-online { color: var(--t-grn); }
+.tg-dialog-unread {
+    color: var(--t-amber);
+}
+.tg-dir-count,
+.tg-channel-count {
+    margin-left: auto;
+    color: var(--t-grn-dim);
+    font-size: 10px;
+}
+
+/* Заглушённый (muted) диалог: строка приглушена целиком, рядом с именем —
+   терминальная метка [M] (цветные emoji в hacker-green дизайне не живут).
+   Непрочитанное таких диалогов не попадает ни в счётчики папок, ни в бейдж
+   на кнопке ✈ (см. format.js::mutedIds / dirUnread). */
+.tg-dialog.tg-muted,
+.tg-channel.tg-muted {
+    opacity: 0.55;
+}
+.tg-dialog.tg-muted .tg-dialog-unread,
+.tg-channel.tg-muted .tg-dialog-unread {
+    color: var(--t-grn-dim);
+}
+.tg-muted-mark {
+    margin-left: 6px;
+    color: var(--t-grn-dim);
+    font-size: 10px;
+}
+
+/* Маркер бота в строке диалога («[BOT]»).
+
+   Цвет отдельный (--t-cyan), а не приглушённый как у [M]: это не состояние
+   чата, а его ПРИРОДА — по ней пользователь глазами отделяет ботов от людей
+   в папке, где перемешаны и те и другие. Оттенок тот же, что у собственного
+   ника в ленте (.tg-line-nick-own) — «служебное, не человек».
+
+   Класс ставит dialogs.js::buildRow по DialogDto.bot; в обеих темах
+   --t-cyan определён (см. блок токенов). */
+.tg-dialog-bot {
+    margin-left: 6px;
+    color: var(--t-cyan);
+    font-size: 10px;
+}
+/* В заглушённой строке маркер не должен перетягивать взгляд: .tg-muted гасит
+   строку целиком через opacity, но насыщенный cyan переживает и это. */
+.tg-dialog.tg-muted .tg-dialog-bot,
+.tg-channel.tg-muted .tg-dialog-bot {
+    color: var(--t-grn-dim);
+}
+
+/* ---- Сессия ---- */
+#tg-session {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--t-bg);
+}
+
+#tg-session-head {
+    flex: 0 0 auto;
+    padding: 6px 12px;
+    color: var(--t-grn-dim);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    border-bottom: 1px solid var(--t-grn-faint);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#tg-log {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 8px 12px;
+    gap: 2px;
+}
+/* Прижимает содержимое лога к низу, пока строк мало. */
+.tg-log-spacer {
+    flex: 1 0 auto;
+}
+
+/* position: relative — ради кнопки «ответить», которая висит абсолютом у
+   правого края строки. В потоке она ломала бы перенос текста (pre-wrap ниже)
+   и вставала бы перед «⋯» у неподтверждённых сообщений. Единственные абсолюты
+   внутри строки — оверлей ▶ и длительность у медиа, но их держит
+   `.tg-media-body` (у неё свой position), так что новый контекст их не тронет. */
+.tg-line {
+    position: relative;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--t-grn-dim);
+}
+.tg-line-time { color: var(--t-faint-text); }
+.tg-line-nick { color: var(--t-grn); }
+.tg-line-nick-own { color: var(--t-cyan); }
+.tg-line-text { color: var(--t-grn-hi); }
+.tg-line-system { color: var(--t-grn-dim); opacity: 0.8; }
+.tg-line-error { color: var(--t-red); }
+/* «(edited)» и прочие приписки — тише основного текста. */
+.tg-line-suffix { color: var(--t-faint-text); }
+
+/* Отправлено, но ещё не подтверждено Telegram'ом: приглушено + «⋯».
+   Как только приходит реальный MessageDto, строка заменяется целиком. */
+.tg-msg-pending {
+    opacity: 0.55;
+}
+.tg-msg-pending::after {
+    content: " ⋯";
+    color: var(--t-amber);
+}
+
+/* Удалённое сообщение: строка остаётся на месте, чтобы лента не «съезжала». */
+.tg-line-deleted {
+    color: var(--t-faint-text);
+    font-style: italic;
+    opacity: 0.7;
+}
+
+/* ---- Ответ на сообщение: цитата, кнопка, подсветка оригинала ------------
+   (js/telegram/reply.js + chat.js). Обе темы получаются даром: ни одного
+   литерального цвета, только токены #telegram / #telegram[data-tg-theme]. */
+
+/* Цитата над текстом строки: «на что отвечали». Обязана быть блоком — строка
+   лога это инлайновый контекст, и цитата встроилась бы в ту же строку сразу
+   за временем. Стили написаны так, чтобы одинаково работать и на <div>, и на
+   <button> (UA-рамка/шрифт кнопки сбрасываются явно).
+
+   nowrap + ellipsis — не украшение: `.tg-line` отдаёт по наследству
+   `white-space: pre-wrap`, и цитата на пол-экрана раздула бы каждую строку
+   лога, ради которой её и показывают одной строчкой. */
+.tg-reply-quote {
+    display: block;
+    box-sizing: border-box;
+    max-width: 100%;
+    width: 100%;
+    margin: 0 0 2px;
+    padding: 0 0 0 7px;
+    border: 0;
+    border-left: 2px solid var(--t-grn-faint);
+    border-radius: 0;
+    background: transparent;
+    font: inherit;
+    font-size: 11px;
+    line-height: 1.4;
+    text-align: left;
+    color: var(--t-grn-dim);
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.tg-reply-quote:hover,
+.tg-reply-quote:focus-visible {
+    border-left-color: var(--t-grn-dim);
+    background: var(--t-active);
+    outline: none;
+}
+/* Автор оригинала ярче превью: при обрезке по ellipsis именно он остаётся
+   видимым до конца, и по нему цитату узнают, даже когда от текста уцелело
+   два слова. */
+.tg-reply-quote-name {
+    color: var(--t-grn-dim);
+    margin-right: 6px;
+}
+.tg-reply-quote-text {
+    color: var(--t-faint-text);
+}
+/* Цитата, переходить в которой некуда: chat.js ставит `data-reply-to`
+   (вместе с role/tabindex) только когда у оригинала есть id — у ответа на
+   сторис его не существует в природе. Курсор-палец на таком блоке обещал бы
+   действие, которого нет, поэтому и наведение молчит. */
+.tg-reply-quote:not([data-reply-to]) {
+    cursor: default;
+}
+.tg-reply-quote:not([data-reply-to]):hover {
+    background: transparent;
+    border-left-color: var(--t-grn-faint);
+}
+
+/* Кнопка «ответить» на строке.
+
+   Прячется через opacity, а не display/visibility: место под неё зарезервировано
+   абсолютом (вне потока), а `opacity: 0` оставляет её в порядке табуляции —
+   иначе действие было бы недоступно с клавиатуры вовсе. `pointer-events: none`
+   в скрытом состоянии обязателен: невидимая кнопка поверх текста перехватывала
+   бы клики и выделение. Фокус её проявляет (`:focus-visible`), поэтому
+   клавиатурный путь остаётся видимым.
+
+   Своя подложка `--t-bar` — кнопка висит ПОВЕРХ текста длинных сообщений, на
+   прозрачном фоне читались бы обе надписи сразу. */
+.tg-reply-btn {
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 1;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease-out;
+
+    background: var(--t-bar);
+    border: 1px solid var(--t-grn-faint);
+    border-radius: 3px;
+    color: var(--t-grn-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 10px;
+    line-height: 1.2;
+    letter-spacing: 0.06em;
+    padding: 1px 6px;
+}
+.tg-line:hover > .tg-reply-btn,
+.tg-line:focus-within > .tg-reply-btn,
+.tg-reply-btn:focus-visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+.tg-reply-btn:hover,
+.tg-reply-btn:focus-visible {
+    color: var(--t-grn);
+    border-color: var(--t-grn-dim);
+    background: var(--t-active);
+    outline: none;
+}
+/* Устройства без курсора: hover там не наступает никогда, и кнопка,
+   спрятанная до наведения, была бы просто недоступна. Ширина экрана тут ни
+   при чём — сигнал именно «нечем наводить». */
+@media (hover: none) {
+    .tg-reply-btn {
+        opacity: 0.6;
+        pointer-events: auto;
+    }
+}
+
+/* Кратковременная подсветка оригинала, к которому перешли по цитате
+   (chat.js::flashRow держит класс REPLY_FLASH_MS и снимает его сам).
+
+   Амбер — в этом файле цвет «внимание сюда» (`.tg-msg-pending`,
+   `.tg-upload-card`). Маркер — inset-тень, а не border/padding: рамка сдвинула
+   бы текст строки на свои 2px ровно в тот момент, когда пользователь на неё
+   смотрит. Тень нарисована токеном напрямую, без color-mix: там, где color-mix
+   не поддержан, заливки не будет, а полоса слева останется — на вопрос «куда
+   меня перенесло» она отвечает и в одиночку.
+
+   Плотность заливки вынесена в переменные, а не вписана в @keyframes, по двум
+   причинам: светлой теме нужна вдвое более плотная (иначе тон теряется на
+   светлом фоне), и анимация обязана ЗАКАНЧИВАТЬСЯ ровно тем цветом, который
+   держит статическое правило — иначе на исходе анимации строка заметно
+   дёргает цветом, хотя ничего не произошло. */
+.tg-msg-highlight {
+    --tg-flash: color-mix(in srgb, var(--t-amber) 20%, transparent);
+    --tg-flash-peak: color-mix(in srgb, var(--t-amber) 48%, transparent);
+    background-color: var(--tg-flash);
+    box-shadow: inset 2px 0 0 0 var(--t-amber);
+    border-radius: 2px;
+    /* Короче времени жизни класса: вспышка гаснет, а подсветка держится, пока
+       её не снимет таймер. */
+    animation: tg-msg-flash 0.9s ease-out 1;
+}
+#telegram[data-tg-theme="light"] .tg-msg-highlight {
+    --tg-flash: color-mix(in srgb, var(--t-amber) 30%, transparent);
+    --tg-flash-peak: color-mix(in srgb, var(--t-amber) 58%, transparent);
+}
+@keyframes tg-msg-flash {
+    from { background-color: var(--tg-flash-peak); }
+    to { background-color: var(--tg-flash); }
+}
+
+/* Кнопка повтора отправки внутри строки ошибки. */
+.tg-retry-btn {
+    background: transparent;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: var(--t-amber);
+    cursor: pointer;
+    text-decoration: underline;
+}
+.tg-retry-btn:hover { color: var(--t-grn-hi); }
+.tg-date-sep {
+    color: var(--t-faint-text);
+    text-align: center;
+    padding: 6px 0 2px;
+    letter-spacing: 0.1em;
+}
+
+#tg-typing {
+    flex: 0 0 auto;
+    min-height: 16px;
+    padding: 0 12px;
+    color: var(--t-grn-dim);
+    font-size: 10px;
+}
+
+#tg-prompt {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--t-bar);
+    border-top: 1px solid var(--t-grn-faint);
+}
+.tg-prompt-sign {
+    color: var(--t-grn);
+    white-space: nowrap;
+}
+.tg-input-wrap {
+    position: relative;
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+#tg-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--t-grn-hi);
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    caret-color: transparent; /* каретку рисуем сами (.tg-caret) */
+}
+/* Каретка терминала. Рисуем сами (у #tg-input caret-color: transparent),
+   потому что нативная каретка не мигает в такт остальной вкладке и исчезает
+   без фокуса.
+
+   Видна, только пока поле ПУСТОЕ: как только набран текст, за курсором следит
+   он сам, и вторая «каретка» в конце строки была бы враньём. Условие —
+   `:placeholder-shown` (в разметке placeholder=" "), а не JS-класс: состояние
+   меняется на каждое нажатие клавиши, и гонять за этим обработчик незачем.
+
+   `step-end` вместо плавного затухания: терминальная каретка не гаснет
+   плавно, она либо есть, либо нет. */
+.tg-caret {
+    width: 7px;
+    height: 14px;
+    background: var(--t-grn);
+    flex: 0 0 auto;
+    animation: tg-blink 1.05s step-end infinite;
+}
+@keyframes tg-blink {
+    0%, 50% { opacity: 1; }
+    50.01%, 100% { opacity: 0; }
+}
+#tg-input:not(:placeholder-shown) + .tg-caret {
+    opacity: 0;
+    animation: none;
+}
+.tg-send-btn {
+    background: var(--t-active);
+    border: 1px solid var(--t-grn-dim);
+    border-radius: 4px;
+    color: var(--t-grn);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    padding: 4px 10px;
+    white-space: nowrap;
+}
+.tg-send-btn:hover {
+    color: var(--t-grn-hi);
+    border-color: var(--t-grn);
+}
+
+/* ---- Статусбар ---- */
+#tg-statusbar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 10px;
+    background: var(--t-bar);
+    border-top: 1px solid var(--t-grn-faint);
+    color: var(--t-grn-dim);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    /* Как и titlebar — над оверлеем логина: состояние соединения видно и до
+       входа в аккаунт. */
+    position: relative;
+    z-index: 6;
+}
+.tg-mode {
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    padding: 1px 6px;
+}
+.tg-mode-connected { color: var(--t-grn); }
+.tg-mode-reconnecting { color: var(--t-amber); }
+.tg-mode-offline { color: var(--t-red); }
+.tg-status-center {
+    margin: 0 auto;
+    white-space: nowrap;
+}
+/* Счётчик контактов в сети: тем же зелёным, что и `[ONLINE]` в колонке —
+   пользователь связывает цифру со статусами, а не читает её как отдельную
+   метрику. */
+.tg-status-right {
+    white-space: nowrap;
+    color: var(--t-grn);
+}
+
+/* ---- Оверлеи ----
+   Три уровня. 5 — оверлей логина: он живёт долго и обязан пускать к барам
+   (тема, состояние связи). 7 — dropzone и лайтбокс: они кратковременные,
+   модальные и несут собственные кнопки, поэтому перекрывают всё. */
+#tg-login,
+#tg-dropzone,
+#tg-lightbox {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 5;
+}
+#tg-dropzone,
+#tg-lightbox {
+    z-index: 7;
+}
+#tg-login[hidden],
+#tg-dropzone[hidden],
+#tg-lightbox[hidden] {
+    display: none;
+}
+
+#tg-login {
+    background: var(--t-bg);
+}
+.tg-login-box {
+    width: min(420px, 90%);
+    padding: 18px 20px;
+    background: var(--t-panel);
+    border: 1px solid var(--t-grn-faint);
+    border-radius: 6px;
+}
+.tg-login-title {
+    color: var(--t-grn);
+    letter-spacing: 0.1em;
+    margin-bottom: 12px;
+}
+.tg-login-hint {
+    color: var(--t-grn-dim);
+    font-size: 11px;
+    margin: 0 0 12px;
+}
+.tg-field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-bottom: 10px;
+    color: var(--t-grn-dim);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.tg-field input {
+    background: var(--t-bg);
+    border: 1px solid var(--t-grn-faint);
+    border-radius: 4px;
+    color: var(--t-grn-hi);
+    font-family: inherit;
+    font-size: 12px;
+    padding: 6px 8px;
+    text-transform: none;
+    letter-spacing: normal;
+}
+.tg-field input:focus {
+    outline: none;
+    border-color: var(--t-grn);
+}
+.tg-login-btn {
+    width: 100%;
+    background: var(--t-active);
+    border: 1px solid var(--t-grn-dim);
+    border-radius: 4px;
+    color: var(--t-grn);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    padding: 7px 10px;
+}
+.tg-login-btn:hover {
+    color: var(--t-grn-hi);
+    border-color: var(--t-grn);
+}
+/* BACK — второстепенное действие: тот же размер, но без подсветки фона. */
+.tg-login-btn-ghost {
+    margin-top: 6px;
+    background: transparent;
+    border-color: var(--t-grn-faint);
+    color: var(--t-grn-dim);
+}
+.tg-login-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+.tg-login-hint a {
+    color: var(--t-cyan);
+}
+/* Строка «>> connecting…» на время запроса шага. */
+.tg-login-status {
+    margin-top: 10px;
+    color: var(--t-grn-dim);
+    font-size: 11px;
+}
+.tg-login-error {
+    margin-top: 10px;
+    color: var(--t-red);
+    font-size: 11px;
+}
+.tg-login-countdown {
+    margin-top: 6px;
+    color: var(--t-amber);
+    font-size: 11px;
+}
+
+#tg-dropzone {
+    background: var(--t-bg);
+}
+.tg-dropzone-box {
+    border: 1px dashed var(--t-grn);
+    border-radius: 8px;
+    color: var(--t-grn);
+    letter-spacing: 0.12em;
+    padding: 40px 60px;
+}
+
+#tg-lightbox {
+    background: var(--t-bg);
+    flex-direction: column;
+    gap: 10px;
+    padding: 24px;
+}
+#tg-lightbox-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+}
+#tg-lightbox-img {
+    max-width: 100%;
+    max-height: 80%;
+    object-fit: contain;
+}
+.tg-lightbox-caption {
+    color: var(--t-grn-dim);
+    font-size: 11px;
+    text-align: center;
+}
+
+/* ---- Медиа-карточка ----
+   Ширина 360px по дизайну; превью 184px. Радиус 3px (cornerRadius дизайна),
+   рамка --t-grn-faint, фон --t-bar: карточка читается как «врезка» в логе, но
+   не спорит с ним по яркости. Раскладка head/body/foot — три строки, каждая
+   со своим смыслом: что это → как выглядит → что с ним сделать. */
+.tg-media-card {
+    width: 360px;
+    max-width: 100%;
+    border: 1px solid var(--t-grn-faint);
+    border-radius: 3px;
+    margin: 4px 0 6px 0;
+    background: var(--t-bar);
+    overflow: hidden;
+}
+.tg-media-head,
+.tg-media-foot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    color: var(--t-grn-dim);
+    font-size: 10px;
+}
+/* ОБЯЗАТЕЛЬНОЕ правило: у `.tg-media-thumb` (display:block) и
+   `.tg-media-play` (display:flex) есть собственный `display`, а он перебивает
+   UA-правило `[hidden]{display:none}`. Без этой строки скрытые превью и
+   оверлей ▶ остаются на экране — например, ▶ появляется поверх фотографий. */
+.tg-media-card [hidden] {
+    display: none !important;
+}
+.tg-media-head {
+    border-bottom: 1px solid var(--t-grn-faint);
+}
+.tg-media-foot {
+    border-top: 1px solid var(--t-grn-faint);
+}
+.tg-media-glyph {
+    color: var(--t-grn);
+    flex: 0 0 auto;
+}
+/* Имя файла может быть любой длины — оно и сжимается. */
+.tg-media-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--t-grn-hi);
+}
+.tg-media-kind {
+    flex: 0 0 auto;
+    letter-spacing: 0.1em;
+    color: var(--t-grn-dim);
+}
+
+/* Область превью: фиксированная высота, чтобы лента не «прыгала», когда
+   картинка догрузилась (иначе scroll-якорь подгрузки истории врёт). */
+.tg-media-body {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 92px;
+    max-height: 184px;
+    background: var(--t-bg);
+    cursor: pointer;
+    overflow: hidden;
+}
+.tg-media-thumb {
+    display: block;
+    width: 100%;
+    max-height: 184px;
+    object-fit: cover;
+}
+.tg-media-icon {
+    font-size: 34px;
+    line-height: 1;
+    color: var(--t-grn-dim);
+    padding: 24px 0;
+}
+/* Псевдо-волна голосового: детерминированная по message_id (см. media.js). */
+.tg-media-wave {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 40px;
+    padding: 12px;
+}
+.tg-media-wave span {
+    display: block;
+    width: 3px;
+    background: var(--t-grn-dim);
+    border-radius: 1px;
+}
+/* Оверлей ▶ у видео и подпись длительности — поверх превью. */
+.tg-media-play {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--t-grn);
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--t-bg) 70%, transparent);
+    color: var(--t-grn);
+    font-size: 16px;
+    pointer-events: none;
+}
+.tg-media-duration {
+    position: absolute;
+    right: 6px;
+    bottom: 6px;
+    padding: 0 4px;
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--t-bg) 80%, transparent);
+    color: var(--t-grn-hi);
+    font-size: 10px;
+    pointer-events: none;
+}
+/* Слот плеера: подложка --t-bar с рамкой --t-grn-faint (как у карточки),
+   flex-строка «медиа + ✕». Внутри плеера клики — его собственные (пауза,
+   перемотка), поэтому курсор-«палец» тела карточки здесь неуместен. Обе темы
+   бесплатно: используются только палитровые переменные --t-*, которые
+   `#telegram[data-tg-theme="light"]` переопределяет целиком. */
+.tg-media-player {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px;
+    background: var(--t-bar);
+    border: 1px solid var(--t-grn-faint);
+    border-radius: 3px;
+    cursor: default;
+}
+/* Плеер стилизуется по ВЛОЖЕННОСТИ, а не по классу элемента: класс вида
+   `.tg-media-video` уже занят самой карточкой (`tg-media-${kind}`), и правило
+   `width:100%` для него растягивало карточку видео на всю ширину лога. */
+.tg-media-player > video,
+.tg-media-player > audio {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+}
+/* Кнопка ✕ остановки: наследует вид .tg-media-btn, стоит справа от медиа —
+   НЕ поверх него, чтобы не перекрывать нативные controls узкого аудио. */
+.tg-media-player-close {
+    flex: 0 0 auto;
+}
+/* Пока открыт плеер, телу карточки нельзя резать высоту: max-height:184px с
+   overflow:hidden отрезал бы нижнюю полосу controls у высокого видео —
+   перемотка была бы недоступна чисто визуально. */
+.tg-media-playing .tg-media-body {
+    max-height: none;
+}
+
+.tg-media-meta {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+.tg-media-progress {
+    flex: 1 1 auto;
+    height: 3px;
+    background: var(--t-grn-faint);
+    border-radius: 2px;
+    overflow: hidden;
+}
+.tg-media-progress-bar {
+    height: 100%;
+    width: 0;
+    background: var(--t-grn);
+    transition: width 0.12s linear;
+}
+/* Размер неизвестен (Telegram его не сообщил): полоса «дышит» вместо
+   вранья про проценты. */
+.tg-media-progress-indeterminate .tg-media-progress-bar {
+    animation: tg-media-pulse 1.1s ease-in-out infinite;
+}
+@keyframes tg-media-pulse {
+    0%, 100% { opacity: 0.25; }
+    50% { opacity: 1; }
+}
+.tg-media-status {
+    flex: 0 0 auto;
+    min-width: 46px;
+    text-align: right;
+    white-space: nowrap;
+}
+.tg-media-done {
+    color: var(--t-grn);
+}
+.tg-media-failed {
+    color: var(--t-red);
+}
+.tg-media-btn {
+    flex: 0 0 auto;
+    background: transparent;
+    border: 1px solid var(--t-grn-faint);
+    border-radius: 3px;
+    color: var(--t-grn-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    padding: 2px 6px;
+}
+.tg-media-btn:hover {
+    color: var(--t-grn);
+    border-color: var(--t-grn-dim);
+    background: var(--t-active);
+}
+.tg-media-retry {
+    color: var(--t-amber);
+    border-color: var(--t-amber);
+}
+/* Стикер — не файл: рамка и подложка только мешают. */
+.tg-media-sticker {
+    border-color: transparent;
+    background: transparent;
+}
+.tg-media-sticker .tg-media-body {
+    background: transparent;
+}
+.tg-media-sticker .tg-media-thumb {
+    object-fit: contain;
+}
+/* Индикатор загрузки полного файла в лайтбоксе. */
+#tg-lightbox-img:not([src]) {
+    min-height: 40px;
+}
+@media (prefers-reduced-motion: reduce) {
+    .tg-media-progress-bar {
+        transition: none;
+    }
+    .tg-media-progress-indeterminate .tg-media-progress-bar {
+        animation: none;
+        opacity: 0.6;
+    }
+}
+
+/* ---------------------------------------------------------------------------
+   Клавиатуры ботов (js/telegram/botkb.js)
+
+   Две разных сущности с ОДНОЙ кнопкой:
+
+     .tg-kb      — inline-клавиатура ПОД строкой сообщения (живёт вместе с ним);
+     .tg-kb-bar  — полоса reply-клавиатуры НАД #tg-prompt (состояние диалога).
+
+   Кнопка рисуется как терминальная команда — `[ Текст ]`. Скобки даёт CSS
+   (::before/::after), а НЕ JS: в текстовом узле обязана лежать ровно подпись
+   от бота и ничего больше (см. XSS-инвариант botkb.js). Поэтому же скобки
+   помечены aria-hidden не могут быть — вместо этого у кнопки есть title с
+   чистым текстом.
+
+   Цвета — только через токены (--t-grn*/--t-cyan/--t-amber/--t-red), значит
+   обе темы работают без отдельных правил: светлая палитра переопределяет те
+   же переменные на #telegram[data-tg-theme="light"].
+   --------------------------------------------------------------------------- */
+
+/* Инлайн-клавиатура: отдельный блок под текстом/медиа строки лога.
+   margin-left выравнивает её по началу ТЕКСТА сообщения, а не по метке
+   времени — иначе кнопки «уезжают» под столбец [12:03:41]. */
+.tg-kb {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 4px 0 2px 0;
+    padding-left: 2px;
+    max-width: 560px;
+}
+
+/* Ряд кнопок. wrap обязателен: ряд из пяти кнопок бота на 320px иначе даёт
+   горизонтальный скролл ВСЕЙ панели (та же болезнь, что была у
+   .tg-media-card с фиксированной шириной). */
+.tg-kb-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: stretch;
+}
+
+.tg-kb-btn {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    background: transparent;
+    border: 1px solid var(--t-grn-faint);
+    border-radius: 3px;
+    color: var(--t-grn-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 1.4;
+    letter-spacing: 0.04em;
+    padding: 3px 7px;
+    text-align: left;
+    /* Длинная подпись обязана обрезаться, а не растягивать ряд: у ботов
+       встречаются кнопки на всю ширину экрана телефона. */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.tg-kb-btn::before {
+    content: "[ ";
+    color: var(--t-grn-faint);
+}
+.tg-kb-btn::after {
+    content: " ]";
+    color: var(--t-grn-faint);
+}
+.tg-kb-btn:hover:not(:disabled) {
+    color: var(--t-grn);
+    border-color: var(--t-grn-dim);
+    background: var(--t-active);
+}
+.tg-kb-btn:hover:not(:disabled)::before,
+.tg-kb-btn:hover:not(:disabled)::after {
+    color: var(--t-grn-dim);
+}
+.tg-kb-btn:focus-visible {
+    outline: 1px solid var(--t-grn);
+    outline-offset: 1px;
+}
+.tg-kb-btn:disabled {
+    cursor: not-allowed;
+}
+
+/* Внешняя ссылка: цвет и стрелка «уходишь со страницы». Глиф — часть
+   оформления, а не подписи, поэтому он в ::after (у ::after кнопки-ссылки
+   скобка закрывается вместе со стрелкой). */
+.tg-kb-btn-url {
+    color: var(--t-cyan);
+    border-color: var(--t-cyan);
+    opacity: 0.85;
+}
+.tg-kb-btn-url::after {
+    content: " ↗ ]";
+}
+.tg-kb-btn-url:hover:not(:disabled) {
+    color: var(--t-cyan);
+    border-color: var(--t-cyan);
+    opacity: 1;
+}
+
+/* Неподдерживаемая в v1 кнопка: видна, но очевидно нерабочая. Прятать её
+   нельзя — тогда клавиатура бота выглядела бы неполной, и пользователь
+   решил бы, что кнопки «пропали». */
+.tg-kb-btn-unsupported {
+    color: var(--t-grn-dim);
+    border-style: dashed;
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+.tg-kb-btn-unsupported:hover {
+    background: transparent;
+    color: var(--t-grn-dim);
+    border-color: var(--t-grn-faint);
+}
+
+/* Ждём ответа бота: та же анимация «в пути», что у неподтверждённого
+   сообщения (.tg-msg-pending) — один язык на всю вкладку. */
+.tg-kb-btn-pending {
+    color: var(--t-amber);
+    border-color: var(--t-amber);
+    opacity: 0.7;
+}
+.tg-kb-btn-pending::after {
+    content: " ⋯ ]";
+}
+
+/* FLOOD_WAIT: кнопка гаснет с обратным отсчётом (текст ставит JS). Красный,
+   а не амберный: это отказ Telegram, а не «идёт работа». */
+.tg-kb-btn-wait {
+    color: var(--t-red);
+    border-color: var(--t-red);
+    opacity: 0.75;
+    cursor: not-allowed;
+}
+
+/* --- Полоса reply-клавиатуры над полем ввода ---------------------------- */
+
+/* Узел создаётся в JS (botkb.js::ensureBar) и вставляется между #tg-typing и
+   #tg-prompt. Фон — как у бара ввода: полоса читается как продолжение
+   prompt'а, а не как ещё одно сообщение в ленте. */
+.tg-kb-bar {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 12px;
+    background: var(--t-bar);
+    border-top: 1px solid var(--t-grn-faint);
+    /* Клавиатура бота бывает на 8 рядов — она не должна съедать ленту. */
+    max-height: 40vh;
+    overflow-y: auto;
+}
+.tg-kb-bar[hidden] {
+    display: none;
+}
+.tg-kb-bar-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--t-faint-text);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+}
+.tg-kb-bar-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* Кнопки-служебки полосы (свернуть / развернуть) — те же .tg-kb-btn, но без
+   скобок: они не команды бота, а управление панелью. */
+.tg-kb-bar-close::before,
+.tg-kb-bar-close::after,
+.tg-kb-bar-show::before,
+.tg-kb-bar-show::after {
+    content: "";
+}
+.tg-kb-bar-close {
+    flex: 0 0 auto;
+    padding: 0 5px;
+    border-color: transparent;
+}
+.tg-kb-bar-close:hover:not(:disabled) {
+    border-color: var(--t-grn-dim);
+}
+.tg-kb-bar-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+/* Кнопки reply-клавиатуры тянутся на всю ширину ряда: у неё, в отличие от
+   inline, обычно 2-3 широкие клавиши, и «прижатые влево» смотрятся сломанно. */
+.tg-kb-bar-rows .tg-kb-row .tg-kb-btn {
+    flex: 1 1 auto;
+    text-align: center;
+}
+.tg-kb-bar-hint {
+    color: var(--t-amber);
+    font-size: 11px;
+}
+/* Свёрнутая полоса (single_use сработал или пользователь нажал ✕): остаётся
+   один способ вернуть клавиатуру. */
+.tg-kb-bar-collapsed .tg-kb-bar-rows {
+    flex-direction: row;
+}
+.tg-kb-bar-show {
+    flex: 0 0 auto;
+    color: var(--t-grn-dim);
+}
+
+/* --- Полоса «отвечаю на …» над полем ввода ------------------------------ */
+
+/* Тот же фон и та же верхняя линия, что у `.tg-kb-bar`: полосы стоят
+   вплотную (обе — прямые дети #tg-session и вставляются перед #tg-prompt),
+   и разнобой читался бы как поломка вёрстки.
+
+   Ровно ОДНА строка по высоте (nowrap + ellipsis у обеих подписей): полоса
+   не имеет права расти вместе с длиной цитируемого сообщения — она отъедает
+   высоту у ленты, а не у себя. Отсюда же ответ на «съест ли она поле ввода на
+   телефоне»: её высота не зависит ни от текста, ни от ширины экрана.
+
+   `[hidden]` объявлен явно: у полосы собственный `display: flex`, а он
+   перебивает UA-правило `[hidden]{display:none}` — chat.js прячет её именно
+   через `hidden`. */
+.tg-reply-bar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 5px 12px;
+    background: var(--t-bar);
+    border-top: 1px solid var(--t-grn-faint);
+    color: var(--t-grn-dim);
+    font-size: 11px;
+}
+.tg-reply-bar[hidden] {
+    display: none;
+}
+/* Маркер «отвечаю на» рисует CSS, а не JS: в полосу приходят только имя и
+   превью из Telegram, и добавлять к пользовательским данным служебный символ
+   пришлось бы конкатенацией — а тогда он попал бы и в обрезку по ellipsis. */
+.tg-reply-bar::before {
+    content: "↳";
+    flex: 0 0 auto;
+    color: var(--t-cyan);
+}
+/* Автор не сжимается до нечитаемости, но и не съедает всю полосу: имя нужно
+   целиком, превью можно и обрезать. */
+.tg-reply-bar-name {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 40%;
+    color: var(--t-cyan);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.tg-reply-bar-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--t-faint-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* ✕ — отказ от действия, поэтому подсвечивается красным (в этом файле красный
+   значит «Telegram/пользователь отказал», см. .tg-kb-btn-wait, .tg-media-failed),
+   а не зелёным «сделать». Рамка появляется только под курсором: в покое
+   полоса не должна выглядеть панелью с кнопками. */
+.tg-reply-cancel {
+    flex: 0 0 auto;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: var(--t-grn-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 1;
+    padding: 2px 6px;
+}
+.tg-reply-cancel:hover,
+.tg-reply-cancel:focus-visible {
+    color: var(--t-red);
+    border-color: var(--t-red);
+    outline: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Отправка файлов (js/telegram/upload.js)
+   --------------------------------------------------------------------------- */
+
+/* Оверлей drag&drop.
+
+   Полупрозрачный, а не глухой: под ним обязана просвечивать лента — иначе
+   пользователь, тащущий файл, теряет из виду, в какой диалог он его несёт.
+   `background` без color-mix оставлен как fallback для старых браузеров. */
+#tg-dropzone {
+    background: var(--t-bg);
+    background: color-mix(in srgb, var(--t-bg) 82%, transparent);
+    pointer-events: none; /* оверлей не должен перехватывать сам drop */
+}
+.tg-dropzone-box {
+    background: var(--t-panel);
+    box-shadow: 0 0 0 1px var(--t-grn-faint), 0 0 24px rgba(0, 0, 0, 0.35);
+}
+
+/* Карточка отправляемого файла: та же геометрия, что у принятых медиа
+   (`.tg-media-card`), но акцент амберный — «ещё не доставлено». */
+.tg-upload-card {
+    border-color: var(--t-amber);
+}
+.tg-upload-card .tg-media-glyph,
+.tg-upload-card .tg-media-kind {
+    color: var(--t-amber);
+}
+.tg-upload-card .tg-media-progress-bar {
+    background: var(--t-amber);
+}
+/* Доставлено — карточка успевает мигнуть зелёным перед тем, как строку
+   заменит настоящее сообщение из ленты. */
+.tg-upload-card .tg-media-done {
+    color: var(--t-grn);
+}
+/* Провал: рамка красная, и строка перестаёт быть «в пути». */
+.tg-upload-failed .tg-upload-card {
+    border-color: var(--t-red);
+}
+.tg-upload-failed .tg-upload-card .tg-media-glyph,
+.tg-upload-failed .tg-upload-card .tg-media-kind {
+    color: var(--t-red);
+}
+.tg-upload-cancel {
+    color: var(--t-amber);
+    border-color: var(--t-grn-faint);
+}
+.tg-upload-cancel:hover {
+    border-color: var(--t-amber);
+}
+
+/* ---------------------------------------------------------------------------
+   «Уменьшить движение»
+
+   Один блок на ВСЕ анимации и переходы вкладки. Перечислены поимённо, а не
+   через `#telegram *`: подавлять чужие переходы !important-ом — способ
+   сломать то, чего не видел. Каретка при этом не исчезает, а становится
+   постоянной (она — указатель места ввода, а не украшение), пульс-точка
+   замирает в полном цвете (состояние связи по-прежнему видно).
+   --------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+    .tg-caret {
+        animation: none;
+        opacity: 1;
+    }
+    .tg-pulse {
+        animation: none;
+        opacity: 1;
+        transform: none;
+    }
+    #tg-contacts {
+        transition: none;
+    }
+    #telegram-toggle {
+        transition: none;
+    }
+    /* Подсветка оригинала НЕ гасится совсем — она отвечает на вопрос «куда
+       меня перенесло», и без неё переход по цитате теряет смысл. Убирается
+       только затухание: заливка держится ровно столько, сколько на строке
+       висит класс. */
+    .tg-msg-highlight {
+        animation: none;
+    }
+    /* Кнопка «ответить» появляется мгновенно вместо проявления. */
+    .tg-reply-btn {
+        transition: none;
+    }
+}
+
+/* ---------------------------------------------------------------------------
+   Узкие экраны (js/telegram/mobile.js)
+
+   Media-queries живут ЗДЕСЬ, а не в mobile.css: telegram.css остаётся
+   самодостаточным — вкладку можно выключить целиком, не разбирая чужой файл.
+   Порядок @import в style.css это позволяет (telegram.css идёт раньше
+   mobile.css, а пересекающихся селекторов у них нет).
+
+   Порог 768px продублирован в js/telegram/mobile.js::TG_MOBILE_MAX_WIDTH —
+   JS обязан знать, узкий ли экран, чтобы не закрывать несуществующую панель.
+   --------------------------------------------------------------------------- */
+@media (max-width: 768px) {
+    /* Клавиатура на телефоне съедает низ вьюпорта. `dvh` (динамическая
+       высота) обновляется при её появлении, `vh` — нет, и поле ввода
+       уезжало бы под клавиатуру. Первое правило — фолбэк для браузеров без
+       dvh. */
+    #telegram {
+        max-height: 100vh;
+        max-height: 100dvh;
+    }
+
+    .tg-mobile-only {
+        display: inline-flex;
+        align-items: center;
+    }
+
+    /* Колонка контактов выезжает поверх ленты. Ширина не 322px, а доля
+       экрана с потолком: на 320px фиксированная колонка не помещалась бы, а
+       кусочек ленты справа обязан оставаться видимым — он показывает, что
+       панель временная. */
+    #tg-contacts {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 4;
+        flex: 0 0 auto;
+        /* 80%, а не 100%: справа обязана оставаться видимой полоса ленты —
+           она и показывает, что панель временная, и служит зоной закрытия
+           (подложка). На 375px это ~75px, на 320px — ~64px. */
+        width: min(322px, 80%);
+        transform: translateX(-100%);
+        transition: transform 0.18s ease-out;
+        box-shadow: 0 0 24px rgba(0, 0, 0, 0.45);
+        /* Инерционный скролл списка на тач-устройствах. */
+        -webkit-overflow-scrolling: touch;
+    }
+    #telegram.tg-contacts-open #tg-contacts {
+        transform: translateX(0);
+    }
+
+    /* Подложка появляется вместе с колонкой: клик по ней закрывает панель
+       (js/telegram/mobile.js), а визуально она отделяет список от ленты. */
+    #tg-contacts-scrim {
+        display: block;
+        position: absolute;
+        inset: 0;
+        z-index: 3;
+        background: rgba(0, 0, 0, 0.45);
+    }
+    #tg-contacts-scrim[hidden] {
+        display: none;
+    }
+
+    /* Лента занимает всю ширину: колонка больше не отнимает место в потоке. */
+    #tg-session {
+        flex: 1 1 100%;
+        min-width: 0;
+    }
+
+    /* Компактные бары. Из titlebar уходит длинная строка «CONNECTION
+       ENCRYPTED — MTPROTO 2.0», но НЕ пульсирующая точка: состояние связи
+       остаётся видимым, а место освобождается под ☰ и имя аккаунта. */
+    .tg-enc-text {
+        display: none;
+    }
+    .tg-enc {
+        gap: 0;
+    }
+    #tg-titlebar {
+        gap: 8px;
+        padding: 6px 8px;
+    }
+    .tg-self-user {
+        max-width: 34vw;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    #tg-statusbar {
+        gap: 8px;
+        padding: 4px 8px;
+    }
+
+    /* Медиа-карточки перестают быть фиксированными 360px: на 320px они
+       вылезали бы за край и давали горизонтальный скролл всей страницы. */
+    .tg-media-card {
+        width: 100%;
+    }
+
+    /* Клавиатуры ботов на телефоне: ряд из 4-5 кнопок обязан переноситься и
+       делить ширину поровну, иначе горизонтальный скролл получает вся панель.
+       min-width:0 нужен именно здесь — без него flex-элемент не даёт себя
+       сжать ниже ширины содержимого, и text-overflow не срабатывает. */
+    .tg-kb {
+        max-width: 100%;
+    }
+    .tg-kb-row .tg-kb-btn {
+        flex: 1 1 40%;
+        min-width: 0;
+        text-align: center;
+    }
+    .tg-kb-bar {
+        padding: 6px 8px;
+        /* На телефоне ленту закрывает ещё и системная клавиатура — полосе
+           остаётся меньше места, чем на десктопе. */
+        max-height: 33vh;
+    }
+
+    /* Полоса ответа на телефоне: те же 8px по бокам, что у остальных баров.
+       Высота уже ограничена одной строкой (nowrap), поэтому поле ввода она
+       не съест — но имя автора ужимаем сильнее, иначе на 320px от превью
+       остаётся два символа и полоса перестаёт отвечать на вопрос «на что
+       именно я отвечаю». */
+    .tg-reply-bar {
+        padding: 5px 8px;
+        gap: 6px;
+    }
+    .tg-reply-bar-name {
+        max-width: 30%;
+    }
+
+    /* Кнопка «ответить» на узком экране: тач-устройства ловятся правилом
+       `@media (hover: none)` выше, здесь — только компактный размер, чтобы
+       она не накрывала текст сообщения. */
+    .tg-reply-btn {
+        font-size: 9px;
+        padding: 1px 5px;
+    }
+
+    /* Кнопка отправки на телефоне — глиф вместо слова: «TRANSMIT ⏎» съедало
+       больше половины строки ввода. */
+    #tg-log {
+        padding: 8px 8px;
+    }
+    #tg-prompt {
+        gap: 6px;
+        padding: 6px 8px;
+    }
+    .tg-send-btn {
+        padding: 4px 8px;
+    }
+}
+
+/* Совсем узкие экраны: из статусбара уходит и центральная секция
+   «UTF-8 · MTPROTO · LAT», оставляя Mode-бейдж и счётчик онлайна — то, что
+   меняется и потому имеет смысл. */
+@media (max-width: 480px) {
+    .tg-status-center {
+        display: none;
+    }
+    /* Центр пропал — правую ячейку прижимаем к краю сами (раньше её
+       отталкивал `margin: 0 auto` центральной секции). */
+    .tg-status-right {
+        margin-left: auto;
+    }
+    .tg-title {
+        display: none;
+    }
+}
+
+/* ───────────────────────── клавиатурная навигация ─────────────────────────
+
+   Курсор клавиатуры (js/telegram/keynav.js) и оверлей шпаргалки. Курсор —
+   отдельный класс, а не :focus: строки ленты фокусируются программно с
+   preventScroll, и полагаться на :focus нельзя — он слетает при любом клике
+   мимо, тогда как курсор обязан пережить его и остаться там, где был. */
+
+.tg-kb-cursor {
+    position: relative;
+    background: var(--t-active);
+    outline: none;
+}
+/* Полоска слева, а не рамка вокруг: рамка сдвигала бы текст строки на
+   пиксель и лента «дёргалась» бы при каждом шаге курсора. */
+.tg-kb-cursor::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--t-grn);
+}
+/* Строка сообщения — единственное место, где слева уже есть время: полоску
+   отодвигаем за границу padding'а, чтобы она не села поверх цифр. */
+#tg-log .tg-line.tg-kb-cursor::before {
+    left: -6px;
+}
+.tg-kb-cursor:focus-visible {
+    outline: none;
+}
+
+/* ── шпаргалка ── */
+
+.tg-keys-help {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: color-mix(in srgb, var(--t-bg) 82%, transparent);
+    backdrop-filter: blur(2px);
+}
+.tg-keys-help-card {
+    max-width: 640px;
+    width: 100%;
+    max-height: 100%;
+    overflow-y: auto;
+    background: var(--t-panel);
+    border: 1px solid var(--t-grn-dim);
+    border-radius: 4px;
+    padding: 14px 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+.tg-keys-help-title {
+    color: var(--t-grn);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    margin-bottom: 10px;
+}
+.tg-keys-help-group {
+    margin-bottom: 12px;
+}
+.tg-keys-help-group-title {
+    color: var(--t-amber);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+}
+.tg-keys-help-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 2px 0;
+    font-size: 12px;
+    line-height: 1.5;
+}
+.tg-keys-help-key {
+    flex: 0 0 auto;
+    min-width: 58px;
+    text-align: center;
+    border: 1px solid var(--t-grn-faint);
+    border-radius: 3px;
+    padding: 1px 6px;
+    color: var(--t-grn);
+    font-family: inherit;
+    font-size: 11px;
+}
+/* Действие, потерявшее клавишу из-за конфликта переназначений, обязано
+   выглядеть отключённым — иначе пользователь ждал бы от него реакции. */
+.tg-keys-help-key-none {
+    color: var(--t-grn-faint);
+    border-style: dashed;
+}
+.tg-keys-help-label {
+    color: var(--t-grn-dim);
+}
+.tg-keys-help-hint {
+    color: var(--t-faint-text);
+    font-size: 11px;
+}
+.tg-keys-help-foot {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--t-grn-faint);
+    color: var(--t-faint-text);
+    font-size: 11px;
+}
+
+@media (max-width: 480px) {
+    /* На телефоне подсказки к действиям съедают половину экрана, а сама
+       шпаргалка нужна и там: прячем пояснения, оставляя клавиши. */
+    .tg-keys-help-hint {
+        display: none;
+    }
+    .tg-keys-help-card {
+        padding: 10px 12px;
+    }
+}
+
+/* Папка, из которой при действующем белом списке не видно ни одного чата.
+   Пункт остаётся в навигации (структура аккаунта — не наше дело её прятать),
+   но приглушается: пустой список внутри иначе читался бы как сбой загрузки. */
+.tg-dir.tg-dir-filtered-out .tg-dir-name {
+    opacity: 0.45;
+}

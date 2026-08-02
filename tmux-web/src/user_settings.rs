@@ -53,6 +53,30 @@
 //!     **генерация подсказок воркером Echo через Claude CLI**. Backend читает
 //!     флаг в `echo_host::EchoHostAdapter::next_step_enabled` (см. trait
 //!     `echo_host_api::HostApi`) — при `false` воркер не дёргает Claude CLI.
+//!   - `telegram_hotkeys_enabled` (bool, default **true**) — включена ли
+//!     клавиатурная навигация во вкладке Telegram (модули
+//!     `static/js/telegram/keys.js` и `keynav.js`). Дефолт `true` — в отличие
+//!     от двух полей выше это НЕ
+//!     нарушение инварианта нулевой конфигурации: сама вкладка Telegram уже
+//!     opt-in (флаг `--telegram`), а хоткеи живут только внутри неё и молчат в
+//!     полях ввода. Пользователь просил именно «включить и отключить», то есть
+//!     тумблер для выключения работающей фичи.
+//!   - `telegram_filter_enabled` (bool, default **false**) — включён ли режим
+//!     «показывать только выбранное» во вкладке Telegram. Фича opt-in:
+//!     нулевая конфигурация обязана показывать все чаты, как и раньше.
+//!   - `telegram_visible_folders` (Vec<String>, default пустой) — ключи папок,
+//!     чьи чаты остаются видимыми: `inbox`, `archive`, `folder:<id>`.
+//!   - `telegram_visible_dialogs` (Vec<String>, default пустой) — id отдельных
+//!     чатов, видимых независимо от папок. Оба списка — БЕЛЫЙ список, и
+//!     фильтр считается действующим, только когда хотя бы один непуст:
+//!     включённый тумблер с пустым выбором показывал бы пустую панель, и
+//!     пользователь читал бы это как поломку, а не как свою настройку.
+//!   - `telegram_hotkeys` (map String→String, default пустая) —
+//!     переопределения комбинаций: `id действия` → `комбинация`. Пустая мапа
+//!     означает «все действия на дефолтных клавишах». Backend хранит и
+//!     валидирует только ФОРМУ (см. [`sanitize_hotkeys`]) — смысл id действий
+//!     и комбинаций знает исключительно фронтенд, иначе список действий
+//!     пришлось бы держать синхронным в двух местах.
 //!
 //! ### Persistence
 //!
@@ -68,6 +92,7 @@
 //! первом успешном [`UserSettingsStore::patch`]. Это сохраняет
 //! «нулевую конфигурацию» как состояние по умолчанию.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
@@ -95,8 +120,110 @@ fn default_echo_notifications_enabled() -> bool {
     true
 }
 
+/// Default-функция для `telegram_hotkeys_enabled` — true.
+///
+/// Осознанно отличается от `cmd_hints_enabled`/`next_step_enabled`: те две
+/// фичи глобальные и заметные, а эта живёт внутри уже opt-in вкладки Telegram.
+fn default_telegram_hotkeys_enabled() -> bool {
+    true
+}
+
 /// Максимально допустимое значение приоритета (4 = backlog).
 const MAX_PRIORITY: u8 = 4;
+
+/// Максимальное число записей в белом списке видимости Telegram.
+///
+/// Ограничение того же рода, что и у хоткеев: список приезжает из браузера и
+/// сохраняется в файл. Полтысячи чатов — заведомо больше, чем можно осмысленно
+/// отобрать руками, но достаточно, чтобы никого не обрезать.
+const MAX_TELEGRAM_VISIBLE: usize = 512;
+
+/// Максимальная длина одной записи белого списка (id чата / ключ папки).
+const MAX_VISIBLE_ENTRY_LEN: usize = 64;
+
+/// Приводит белый список видимости к безопасному виду.
+///
+/// Как и [`sanitize_hotkeys`], проверяет только ФОРМУ: смысл ключей (`inbox`,
+/// `archive`, `folder:<id>`, id чата) знает фронтенд. Неизвестная запись — не
+/// ошибка: она просто ни с чем не совпадёт, а сохранённой останется, что
+/// позволяет пережить откат версии клиента.
+///
+/// Отбрасываются пустые после trim записи, слишком длинные и содержащие
+/// что-либо кроме `[0-9a-zA-Z_:.-]` (id чатов бывают отрицательными, ключ
+/// папки содержит двоеточие). Дубликаты схлопываются с сохранением порядка —
+/// порядок виден пользователю в списке настроек.
+fn sanitize_visible_list(raw: Vec<String>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    raw.into_iter()
+        .filter_map(|item| {
+            let item = item.trim();
+            if item.is_empty() || item.len() > MAX_VISIBLE_ENTRY_LEN {
+                return None;
+            }
+            if !item
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | ':' | '.' | '-'))
+            {
+                return None;
+            }
+            if !seen.insert(item.to_string()) {
+                return None;
+            }
+            Some(item.to_string())
+        })
+        .take(MAX_TELEGRAM_VISIBLE)
+        .collect()
+}
+
+/// Максимальное число переопределений хоткеев Telegram.
+///
+/// Действий в реестре фронтенда меньше двадцати; запас взят на рост. Лимит
+/// нужен не «для красоты»: мапа приезжает из браузера и сохраняется в файл, а
+/// без потолка одна кривая (или враждебная) отправка раздула бы
+/// `user_settings.json` неограниченно.
+const MAX_TELEGRAM_HOTKEYS: usize = 64;
+
+/// Максимальная длина id действия и записи комбинации.
+const MAX_HOTKEY_LEN: usize = 64;
+
+/// Приводит карту переопределений хоткеев к безопасному виду.
+///
+/// Проверяется только ФОРМА, не смысл: backend намеренно не знает ни списка
+/// действий, ни синтаксиса комбинаций (это реестр `static/js/telegram/keys.js`).
+/// Неизвестный id действия — не ошибка: он просто останется лежать и будет
+/// проигнорирован фронтендом, что позволяет откатывать версии клиента без
+/// потери настроек.
+///
+/// Отбрасываются: пустые (после trim) ключи и значения, ключи с символами вне
+/// `[a-z0-9_.-]` (id действий генерирует наш же код — регистр и пробелы там
+/// невозможны), слишком длинные ключи/значения, управляющие символы в
+/// комбинации. Лишние записи сверх [`MAX_TELEGRAM_HOTKEYS`] отсекаются — так
+/// как `BTreeMap` упорядочен, отсечение детерминировано.
+fn sanitize_hotkeys(raw: BTreeMap<String, String>) -> BTreeMap<String, String> {
+    raw.into_iter()
+        .filter_map(|(action, combo)| {
+            let action = action.trim();
+            let combo = combo.trim();
+            if action.is_empty() || combo.is_empty() {
+                return None;
+            }
+            if action.len() > MAX_HOTKEY_LEN || combo.len() > MAX_HOTKEY_LEN {
+                return None;
+            }
+            if !action
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '_' | '.' | '-'))
+            {
+                return None;
+            }
+            if combo.chars().any(|c| c.is_control()) {
+                return None;
+            }
+            Some((action.to_string(), combo.to_string()))
+        })
+        .take(MAX_TELEGRAM_HOTKEYS)
+        .collect()
+}
 
 /// Настройки уровня пользователя.
 ///
@@ -135,6 +262,25 @@ pub struct UserSettings {
     /// см. раздел про инвариант в шапке модуля.
     #[serde(default)]
     pub next_step_enabled: bool,
+    /// Клавиатурная навигация во вкладке Telegram. Default `true` — см. шапку
+    /// модуля: фича живёт внутри уже opt-in вкладки, тумблер нужен для
+    /// выключения, а не для включения.
+    #[serde(default = "default_telegram_hotkeys_enabled")]
+    pub telegram_hotkeys_enabled: bool,
+    /// Переопределения комбинаций Telegram: `id действия` → `комбинация`.
+    /// Пустая мапа = дефолтные клавиши из реестра фронтенда.
+    #[serde(default)]
+    pub telegram_hotkeys: BTreeMap<String, String>,
+    /// Режим «показывать только выбранные чаты и папки». Default `false` —
+    /// фича opt-in, нулевая конфигурация показывает всё.
+    #[serde(default)]
+    pub telegram_filter_enabled: bool,
+    /// Белый список папок: `inbox`, `archive`, `folder:<id>`.
+    #[serde(default)]
+    pub telegram_visible_folders: Vec<String>,
+    /// Белый список отдельных чатов (id в формате `DialogDto.id`).
+    #[serde(default)]
+    pub telegram_visible_dialogs: Vec<String>,
 }
 
 impl Default for UserSettings {
@@ -150,6 +296,11 @@ impl Default for UserSettings {
             echo_notifications_enabled: default_echo_notifications_enabled(),
             cmd_hints_enabled: false,
             next_step_enabled: false,
+            telegram_hotkeys_enabled: default_telegram_hotkeys_enabled(),
+            telegram_hotkeys: BTreeMap::new(),
+            telegram_filter_enabled: false,
+            telegram_visible_folders: Vec::new(),
+            telegram_visible_dialogs: Vec::new(),
         }
     }
 }
@@ -186,6 +337,24 @@ pub struct PatchUserSettingsReq {
     /// генерация подсказок воркером Echo).
     #[serde(default)]
     pub next_step_enabled: Option<bool>,
+    /// Включить/выключить клавиатурную навигацию во вкладке Telegram.
+    #[serde(default)]
+    pub telegram_hotkeys_enabled: Option<bool>,
+    /// Переопределения комбинаций Telegram. Семантика — ПОЛНАЯ ЗАМЕНА карты,
+    /// а не слияние: только так UI может снять одно переопределение (прислать
+    /// карту без него). Пустая карта = сброс всех действий к дефолтам.
+    #[serde(default)]
+    pub telegram_hotkeys: Option<BTreeMap<String, String>>,
+    /// Включить/выключить режим «показывать только выбранное».
+    #[serde(default)]
+    pub telegram_filter_enabled: Option<bool>,
+    /// Белый список папок. Семантика — ПОЛНАЯ ЗАМЕНА списка (как у
+    /// `telegram_hotkeys`): снять галочку иначе нечем.
+    #[serde(default)]
+    pub telegram_visible_folders: Option<Vec<String>>,
+    /// Белый список чатов. Семантика — ПОЛНАЯ ЗАМЕНА списка.
+    #[serde(default)]
+    pub telegram_visible_dialogs: Option<Vec<String>>,
 }
 
 #[derive(Debug)]
@@ -303,6 +472,23 @@ impl UserSettingsStore {
         }
         if let Some(v) = payload.next_step_enabled {
             inner.settings.next_step_enabled = v;
+        }
+        if let Some(v) = payload.telegram_hotkeys_enabled {
+            inner.settings.telegram_hotkeys_enabled = v;
+        }
+        if let Some(v) = payload.telegram_hotkeys {
+            // Замена целиком, а не merge: см. комментарий у поля в
+            // PatchUserSettingsReq. Пустая карта — законный «сброс к дефолтам».
+            inner.settings.telegram_hotkeys = sanitize_hotkeys(v);
+        }
+        if let Some(v) = payload.telegram_filter_enabled {
+            inner.settings.telegram_filter_enabled = v;
+        }
+        if let Some(v) = payload.telegram_visible_folders {
+            inner.settings.telegram_visible_folders = sanitize_visible_list(v);
+        }
+        if let Some(v) = payload.telegram_visible_dialogs {
+            inner.settings.telegram_visible_dialogs = sanitize_visible_list(v);
         }
 
         save_locked(&inner)?;
@@ -490,6 +676,10 @@ mod tests {
         // Interface-флаги на legacy-файле — выключены (обе фичи opt-in).
         assert!(!s.cmd_hints_enabled);
         assert!(!s.next_step_enabled);
+        // А хоткеи Telegram — включены: старый файл не должен молча лишать
+        // пользователя клавиатурной навигации.
+        assert!(s.telegram_hotkeys_enabled);
+        assert!(s.telegram_hotkeys.is_empty());
         let _ = std::fs::remove_file(&path);
     }
 
@@ -539,6 +729,241 @@ mod tests {
         assert!(res3.cmd_hints_enabled);
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_telegram_hotkeys_default_enabled_with_empty_map() {
+        // Дефолт ОТЛИЧАЕТСЯ от cmd_hints/next_step — включено. Тест фиксирует
+        // это, чтобы правку «привести к общему виду» ловил CI, а не пользователь.
+        let path = tmp_path("tg_hotkeys_default");
+        let store = UserSettingsStore::new(path.clone());
+        let s = store.get();
+        assert!(s.telegram_hotkeys_enabled);
+        assert!(s.telegram_hotkeys.is_empty());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_telegram_hotkeys_patch_replaces_map_and_persists() {
+        let path = tmp_path("tg_hotkeys_patch");
+        let store = UserSettingsStore::new(path.clone());
+
+        let mut first = BTreeMap::new();
+        first.insert("msg.reply".to_string(), "r".to_string());
+        first.insert("focus.input".to_string(), "i".to_string());
+        let res = store
+            .patch(PatchUserSettingsReq {
+                telegram_hotkeys: Some(first),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert_eq!(res.telegram_hotkeys.len(), 2);
+        assert_eq!(res.telegram_hotkeys.get("msg.reply").unwrap(), "r");
+
+        // Persistence: новый store на тот же путь видит карту.
+        let store2 = UserSettingsStore::new(path.clone());
+        assert_eq!(store2.get().telegram_hotkeys.len(), 2);
+
+        // ЗАМЕНА, а не merge: прислали одну запись — прошлые исчезли. Это
+        // единственный способ для UI снять переопределение.
+        let mut second = BTreeMap::new();
+        second.insert("msg.reply".to_string(), "Shift+R".to_string());
+        let res2 = store2
+            .patch(PatchUserSettingsReq {
+                telegram_hotkeys: Some(second),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert_eq!(res2.telegram_hotkeys.len(), 1);
+        assert_eq!(res2.telegram_hotkeys.get("msg.reply").unwrap(), "Shift+R");
+        assert!(!res2.telegram_hotkeys.contains_key("focus.input"));
+
+        // Пустая карта — законный сброс к дефолтам.
+        let res3 = store2
+            .patch(PatchUserSettingsReq {
+                telegram_hotkeys: Some(BTreeMap::new()),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert!(res3.telegram_hotkeys.is_empty());
+        // Соседний флаг не задет.
+        assert!(res3.telegram_hotkeys_enabled);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_telegram_hotkeys_toggle_does_not_touch_map() {
+        let path = tmp_path("tg_hotkeys_toggle");
+        let store = UserSettingsStore::new(path.clone());
+        let mut map = BTreeMap::new();
+        map.insert("msg.reply".to_string(), "r".to_string());
+        store
+            .patch(PatchUserSettingsReq {
+                telegram_hotkeys: Some(map),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+
+        let res = store
+            .patch(PatchUserSettingsReq {
+                telegram_hotkeys_enabled: Some(false),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert!(!res.telegram_hotkeys_enabled);
+        // Выключение хоткеев НЕ стирает переназначения: включив обратно,
+        // пользователь должен получить свои клавиши, а не дефолтные.
+        assert_eq!(res.telegram_hotkeys.get("msg.reply").unwrap(), "r");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_sanitize_hotkeys_drops_malformed_entries() {
+        let mut raw = BTreeMap::new();
+        // Годные записи.
+        raw.insert("msg.reply".to_string(), "r".to_string());
+        raw.insert("dialog_next".to_string(), "Shift+J".to_string());
+        raw.insert("log-bottom".to_string(), "  G  ".to_string()); // trim
+        // Мусор.
+        raw.insert("".to_string(), "x".to_string()); // пустой ключ
+        raw.insert("msg.copy".to_string(), "   ".to_string()); // пустое значение
+        raw.insert("Msg.Upper".to_string(), "u".to_string()); // верхний регистр
+        raw.insert("msg reply".to_string(), "q".to_string()); // пробел в id
+        raw.insert("msg/slash".to_string(), "s".to_string()); // недопустимый символ
+        raw.insert("a".repeat(65), "z".to_string()); // длинный ключ
+        raw.insert("msg.long".to_string(), "b".repeat(65)); // длинное значение
+        raw.insert("msg.ctrl".to_string(), "a\nb".to_string()); // управляющий символ
+
+        let clean = sanitize_hotkeys(raw);
+        assert_eq!(clean.len(), 3, "остаться должны только три годные записи");
+        assert_eq!(clean.get("msg.reply").unwrap(), "r");
+        assert_eq!(clean.get("dialog_next").unwrap(), "Shift+J");
+        // Значение обрезано по краям, но не изменено внутри.
+        assert_eq!(clean.get("log-bottom").unwrap(), "G");
+    }
+
+    #[test]
+    fn test_sanitize_hotkeys_caps_map_size() {
+        let mut raw = BTreeMap::new();
+        for i in 0..(MAX_TELEGRAM_HOTKEYS + 20) {
+            raw.insert(format!("action.{i:03}"), "k".to_string());
+        }
+        let clean = sanitize_hotkeys(raw);
+        assert_eq!(clean.len(), MAX_TELEGRAM_HOTKEYS);
+        // BTreeMap упорядочен — отсечение детерминировано: остаются первые по
+        // алфавиту, а не случайные.
+        assert!(clean.contains_key("action.000"));
+        assert!(!clean.contains_key("action.083"));
+    }
+
+    #[test]
+    fn test_telegram_hotkeys_patch_sanitizes() {
+        let path = tmp_path("tg_hotkeys_sanitize");
+        let store = UserSettingsStore::new(path.clone());
+        let mut raw = BTreeMap::new();
+        raw.insert("msg.reply".to_string(), "r".to_string());
+        raw.insert("ПЛОХОЙ".to_string(), "x".to_string());
+        let res = store
+            .patch(PatchUserSettingsReq {
+                telegram_hotkeys: Some(raw),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert_eq!(res.telegram_hotkeys.len(), 1);
+        assert!(res.telegram_hotkeys.contains_key("msg.reply"));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_telegram_visibility_defaults_off_and_empty() {
+        // Нулевая конфигурация обязана показывать ВСЁ: фильтр — opt-in, иначе
+        // обновление devforge молча спрятало бы часть чатов.
+        let path = tmp_path("tg_visibility_default");
+        let store = UserSettingsStore::new(path.clone());
+        let s = store.get();
+        assert!(!s.telegram_filter_enabled);
+        assert!(s.telegram_visible_folders.is_empty());
+        assert!(s.telegram_visible_dialogs.is_empty());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_telegram_visibility_patch_replaces_lists() {
+        let path = tmp_path("tg_visibility_patch");
+        let store = UserSettingsStore::new(path.clone());
+
+        let res = store
+            .patch(PatchUserSettingsReq {
+                telegram_filter_enabled: Some(true),
+                telegram_visible_folders: Some(vec![
+                    "folder:12".to_string(),
+                    "archive".to_string(),
+                ]),
+                telegram_visible_dialogs: Some(vec!["-1001234".to_string(), "777".to_string()]),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert!(res.telegram_filter_enabled);
+        assert_eq!(res.telegram_visible_folders, vec!["folder:12", "archive"]);
+        assert_eq!(res.telegram_visible_dialogs, vec!["-1001234", "777"]);
+
+        // Persistence.
+        let store2 = UserSettingsStore::new(path.clone());
+        assert_eq!(store2.get().telegram_visible_dialogs.len(), 2);
+
+        // ЗАМЕНА, а не добавление: снять галочку иначе нечем.
+        let res2 = store2
+            .patch(PatchUserSettingsReq {
+                telegram_visible_dialogs: Some(vec!["777".to_string()]),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert_eq!(res2.telegram_visible_dialogs, vec!["777"]);
+        // Соседний список не задет — patch применяет только Some(..).
+        assert_eq!(res2.telegram_visible_folders.len(), 2);
+
+        // Выключение тумблера НЕ стирает выбор: включив обратно, пользователь
+        // должен получить свой список, а не пустой.
+        let res3 = store2
+            .patch(PatchUserSettingsReq {
+                telegram_filter_enabled: Some(false),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert!(!res3.telegram_filter_enabled);
+        assert_eq!(res3.telegram_visible_dialogs, vec!["777"]);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_sanitize_visible_list() {
+        let clean = sanitize_visible_list(vec![
+            "  folder:12  ".to_string(), // trim
+            "-1001234567890".to_string(),
+            "inbox".to_string(),
+            "inbox".to_string(),  // дубль
+            "".to_string(),       // пусто
+            "   ".to_string(),    // одни пробелы
+            "чат".to_string(),    // не ASCII
+            "a b".to_string(),    // пробел внутри
+            "id/slash".to_string(),
+            "x".repeat(65), // длинная
+        ]);
+        assert_eq!(clean, vec!["folder:12", "-1001234567890", "inbox"]);
+    }
+
+    #[test]
+    fn test_sanitize_visible_list_caps_size() {
+        let raw: Vec<String> = (0..(MAX_TELEGRAM_VISIBLE + 10))
+            .map(|i| format!("id{i}"))
+            .collect();
+        let clean = sanitize_visible_list(raw);
+        assert_eq!(clean.len(), MAX_TELEGRAM_VISIBLE);
+        // Порядок сохранён — он виден пользователю в списке настроек.
+        assert_eq!(clean[0], "id0");
     }
 
     #[test]

@@ -247,7 +247,7 @@ impl TodoStore {
             had_legacy || inner.by_path.keys().any(|k| !looks_like_abs_path(k));
         let path_map = projects_path
             .as_deref()
-            .and_then(|p| load_projects_path_map(p));
+            .and_then(load_projects_path_map);
         if needs_migration {
             migrate_project_ids(&mut inner, path_map.as_ref());
         }

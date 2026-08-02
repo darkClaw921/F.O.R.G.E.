@@ -494,3 +494,209 @@ textarea.ds-prompt-textarea {
     color: var(--fg);
 }
 
+
+/* ─────────────────── вкладка «Горячие клавиши» (Telegram) ───────────────────
+
+   Таблица действий с переназначением (js/settings/hotkeys-tab.js). Токены —
+   общие для модалки (var(--fg*), var(--border*)), а не палитра панели
+   Telegram: форма живёт в настройках devforge и обязана выглядеть как её
+   соседи, а не как вставка из другого приложения. */
+
+.tg-hotkeys-table {
+    margin: 8px 0 4px;
+}
+
+.tg-hotkeys-group {
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--fg-mute);
+    margin: 10px 0 3px;
+}
+.tg-hotkeys-group:first-child {
+    margin-top: 0;
+}
+
+.tg-hotkeys-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 0;
+    font-size: 0.75rem;
+    color: var(--fg);
+}
+
+.tg-hotkeys-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    /* Длинное название не должно выталкивать кнопку комбинации за край. */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tg-hotkeys-combo {
+    flex: 0 0 auto;
+    min-width: 104px;
+    text-align: center;
+    background: var(--bg-header-alt);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    color: var(--fg);
+    cursor: pointer;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.72rem;
+    padding: 3px 8px;
+}
+.tg-hotkeys-combo:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+/* Режим записи: кнопка ждёт нажатия. Пульсация намеренно не используется —
+   в модалке рядом нет других анимаций, и мигание читалось бы как ошибка. */
+.tg-hotkeys-combo.tg-hotkeys-recording {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-tint-strong);
+}
+.tg-hotkeys-combo.tg-hotkeys-fixed,
+.tg-hotkeys-combo:disabled {
+    cursor: default;
+    color: var(--fg-mute);
+    border-style: dashed;
+}
+
+.tg-hotkeys-reset {
+    flex: 0 0 auto;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--fg-mute);
+    cursor: pointer;
+    font-size: 0.8rem;
+    line-height: 1;
+    padding: 2px 6px;
+}
+.tg-hotkeys-reset:hover:not(:disabled) {
+    color: var(--accent);
+    border-color: var(--border-input);
+}
+.tg-hotkeys-reset:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.tg-hotkeys-hint {
+    flex: 0 1 auto;
+    min-width: 0;
+    font-size: 0.68rem;
+    color: var(--fg-mute);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tg-hotkeys-warn {
+    flex: 0 0 auto;
+    font-size: 0.68rem;
+    color: var(--warn, #d08b00);
+}
+.tg-hotkeys-row-conflict .tg-hotkeys-combo {
+    border-color: var(--warn, #d08b00);
+}
+
+.tg-hotkeys-save-ok {
+    color: var(--ok, #3fa34d);
+    margin-bottom: 6px;
+}
+
+@media (max-width: 560px) {
+    /* На узком экране подсказки и предупреждения уезжают на свою строку —
+       иначе кнопка комбинации сжимается до нечитаемой. */
+    .tg-hotkeys-row {
+        flex-wrap: wrap;
+    }
+    .tg-hotkeys-hint,
+    .tg-hotkeys-warn {
+        flex-basis: 100%;
+        white-space: normal;
+    }
+}
+
+/* ──────────────── вкладка Telegram: видимость чатов ────────────────
+
+   Белый список папок и чатов (js/settings/telegram-visibility-tab.js).
+   Списки прокручиваемые: у активного аккаунта чатов сотни, и без
+   ограничения высоты форма выталкивала бы кнопку Save за пределы модалки. */
+
+.tg-visibility-group {
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--fg-mute);
+    margin: 12px 0 4px;
+}
+
+.tg-visibility-list {
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 6px 8px;
+    background: var(--bg-header-alt);
+}
+
+.tg-visibility-item {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 2px 0;
+    font-size: 0.75rem;
+    color: var(--fg);
+}
+
+.tg-visibility-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Пометки чата (архив / без звука / бот) — подсказка, а не содержание:
+   приглушены и не участвуют в переносе. */
+.tg-visibility-badge {
+    flex: 0 0 auto;
+    font-size: 0.65rem;
+    color: var(--fg-mute);
+}
+
+.tg-visibility-search {
+    width: 100%;
+    box-sizing: border-box;
+    margin: 4px 0 6px;
+    padding: 4px 8px;
+    background: var(--bg-input, var(--bg-header-alt));
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    color: var(--fg);
+    font-size: 0.75rem;
+}
+.tg-visibility-search:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.tg-visibility-summary {
+    margin: 6px 0 2px;
+}
+/* Режим включён, но ничего не выбрано — предупреждение, а не ошибка:
+   поведение при этом безопасное (видно всё), но не то, чего ждут. */
+.tg-visibility-summary.tg-visibility-warn {
+    color: var(--warn, #d08b00);
+}
+
+.tg-visibility-save-ok {
+    color: var(--ok, #3fa34d);
+    margin-bottom: 6px;
+}

@@ -46,6 +46,7 @@ export const $tasksBoard = document.getElementById('tasks-board');
 export const $tasksGantt = document.getElementById('tasks-gantt');
 export const $ganttCanvas = document.getElementById('gantt-canvas');
 export const $ganttRange = document.getElementById('gantt-range');
+export const $ganttToggle = document.getElementById('gantt-toggle');
 
 // ---- Git tab (lazygit) ----
 export const $tabGit = document.getElementById('tab-git');
@@ -160,3 +161,69 @@ export const $echoInputWrap = document.getElementById('echo-input-wrap');
 export const $echoInput = document.getElementById('echo-input');
 export const $echoSend = document.getElementById('echo-send');
 export const $echoToasts = document.getElementById('echo-toasts');
+
+// ---- Telegram plugin ----
+//
+// Ref'ы вкладки мессенджера (плагин forge-telegram, opt-in `--telegram`).
+// Вычисляются один раз при импорте; когда плагин выключен, узлы всё равно
+// присутствуют в разметке (панель просто hidden), но код плагина обязан
+// проверять truthy — index.html может отдаваться старым шаблоном.
+export const $telegramToggle = document.getElementById('telegram-toggle');
+export const $tgUnreadBadge = document.getElementById('tg-unread-badge');
+export const $telegram = document.getElementById('telegram');
+export const $tgTitlebar = document.getElementById('tg-titlebar');
+export const $tgSelfUser = document.getElementById('tg-self-user');
+export const $tgThemeToggle = document.getElementById('tg-theme-toggle');
+export const $tgLogout = document.getElementById('tg-logout');
+export const $tgContacts = document.getElementById('tg-contacts');
+// ☰ и подложка off-canvas-колонки контактов (js/telegram/mobile.js): на
+// десктопе кнопка скрыта через CSS, подложка — через [hidden].
+export const $tgContactsToggle = document.getElementById('tg-contacts-toggle');
+export const $tgContactsScrim = document.getElementById('tg-contacts-scrim');
+export const $tgDirList = document.getElementById('tg-dir-list');
+// Счётчик непрочитанного у ~/inbox (amber). ~/archive в v1 — пункт-заглушка,
+// но ref заведён сразу: его заполняет та же renderDirs.
+export const $tgDirInboxCount = document.getElementById('tg-dir-inbox-count');
+export const $tgDirArchiveCount = document.getElementById('tg-dir-archive-count');
+export const $tgNodesTitle = document.getElementById('tg-nodes-title');
+export const $tgDialogList = document.getElementById('tg-dialog-list');
+export const $tgChannelList = document.getElementById('tg-channel-list');
+export const $tgSessionHead = document.getElementById('tg-session-head');
+export const $tgLog = document.getElementById('tg-log');
+export const $tgTyping = document.getElementById('tg-typing');
+export const $tgPrompt = document.getElementById('tg-prompt');
+export const $tgInput = document.getElementById('tg-input');
+export const $tgAttach = document.getElementById('tg-attach');
+// Скрытый input[type=file]: по нему кликает кнопка ⇪ (js/telegram/upload.js).
+export const $tgFileInput = document.getElementById('tg-file-input');
+export const $tgSend = document.getElementById('tg-send');
+export const $tgMode = document.getElementById('tg-mode');
+// Правая ячейка статусбара: счётчик контактов в сети (js/telegram/dialogs.js).
+export const $tgStatusRight = document.getElementById('tg-status-right');
+export const $tgLat = document.getElementById('tg-lat');
+export const $tgLogin = document.getElementById('tg-login');
+export const $tgLoginStepCreds = document.getElementById('tg-login-step-creds');
+export const $tgLoginStepCode = document.getElementById('tg-login-step-code');
+export const $tgLoginStepPassword = document.getElementById('tg-login-step-password');
+export const $tgLoginError = document.getElementById('tg-login-error');
+export const $tgLoginCountdown = document.getElementById('tg-login-countdown');
+// Поля и кнопки 3-этапного login-wizard'а (js/telegram/login.js).
+export const $tgLoginStatus = document.getElementById('tg-login-status');
+export const $tgApiId = document.getElementById('tg-api-id');
+export const $tgApiHash = document.getElementById('tg-api-hash');
+export const $tgPhone = document.getElementById('tg-phone');
+export const $tgLoginCredsSubmit = document.getElementById('tg-login-creds-submit');
+export const $tgCode = document.getElementById('tg-code');
+export const $tgLoginCodeSubmit = document.getElementById('tg-login-code-submit');
+export const $tgLoginCodeBack = document.getElementById('tg-login-code-back');
+export const $tgPassword = document.getElementById('tg-password');
+export const $tgLoginPasswordSubmit = document.getElementById('tg-login-password-submit');
+export const $tgLoginPasswordBack = document.getElementById('tg-login-password-back');
+export const $tgLoginPhone = document.getElementById('tg-login-phone');
+export const $tgLoginHintText = document.getElementById('tg-login-hint-text');
+export const $tgDropzone = document.getElementById('tg-dropzone');
+export const $tgLightbox = document.getElementById('tg-lightbox');
+export const $tgLightboxImg = document.getElementById('tg-lightbox-img');
+export const $tgLightboxClose = document.getElementById('tg-lightbox-close');
+// Подпись под полноразмерным медиа в лайтбоксе: `имя · 1280×720 · 1.2 MB`.
+export const $tgLightboxCaption = document.getElementById('tg-lightbox-caption');

@@ -4,7 +4,8 @@
     "tmux-web/src",
     "tmux-web/static",
     "plugins/echo/src",
-    "plugins/echo-host-api/src"
+    "plugins/echo-host-api/src",
+    "plugins/telegram/src"
   ],
   "ignore": [
     "node_modules",

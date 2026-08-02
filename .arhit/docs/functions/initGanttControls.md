@@ -1,3 +1,9 @@
 # initGanttControls
 
-Навешивает обработчики на кнопки переключателя диапазона #gantt-range (tmux-web/static/js/tasks/gantt.js, exported). Идемпотентно: guard через root.dataset.ganttBound. Кнопки button[data-range] (today|yesterday|7|30|all). По клику: state.ganttRange = (data-range==='all'||'today'||'yesterday') ? строка как есть : Number(data-range) (число дней); переключение класса .active на нажатой кнопке; затем fetchGitCommits() (since/until изменились → перезагрузка коммитов + рендер). Поддержка именованных диапазонов 'today'/'yesterday' добавлена в Phase B вместе с until-параметром.
+initGanttControls (tmux-web/static/js/tasks/gantt.js) — инициализация управления блоком Timeline на вкладке Tasks.
+
+Делает две вещи:
+1. initGanttToggle() — вешает клик на кнопку #gantt-toggle (заголовок 'Timeline'), которая переключает класс .collapsed на контейнере #tasks-gantt. В свёрнутом состоянии CSS скрывает #gantt-canvas (display:none) и убирает фиксированную высоту 34%, оставляя только тулбар. По умолчанию блок СВЁРНУТ — класс .collapsed проставлен прямо в static/index.html; состояние не персистится, каждая загрузка страницы начинается со свёрнутого Timeline. При разворачивании вызывается renderGantt(), т.к. данные могли обновиться пока блок был скрыт. Также обновляется aria-expanded, каретка ▸ поворачивается на 90° через CSS.
+2. Вешает клики на кнопки диапазона #gantt-range (today/yesterday/7/30/all) → state.ganttRange + fetchGitCommits().
+
+Обе части идемпотентны: guard через dataset-флаги (ganttToggleBound на кнопке, ganttBound на контейнере диапазонов).

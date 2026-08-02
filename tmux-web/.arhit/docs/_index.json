@@ -725,5 +725,41 @@
       "user settings",
       "user_settings"
     ]
+  },
+  {
+    "element": "dialogInFolder",
+    "path": "",
+    "type": "unknown",
+    "content": "Чистая функция принадлежности диалога пользовательской папке Telegram (static/js/telegram/format.js). Правила: (1) exclude_ids — абсолютное исключение, сильнее include; (2) pinned_ids ∪ include_ids входят всегда, минуя категории и exclude_*-флаги; (3) категории по kind: group→groups, channel→broadcasts, user→любой из contacts/non_contacts/bots (фронт не отличает контактов и ботов); (4) exclude_muted/exclude_read/exclude_archived убирают из категорийных совпадений. Chatlist-папка (все флаги false) работает чисто по include. id сравниваются строками. Покрыта tests/frontend/telegram_format.test.mjs.",
+    "createdAt": "2026-07-31T16:11:54.647Z",
+    "updatedAt": "2026-07-31T16:11:54.647Z"
+  },
+  {
+    "element": "renderDirs",
+    "path": "",
+    "type": "unknown",
+    "content": "Секция // DIRECTORIES вкладки Telegram (static/js/telegram/dialogs.js). Пересобирает ul#tg-dir-list целиком из dirEntries(tgState.folders): ~/inbox, реальные папки аккаунта (GET /api/telegram/folders, порядок Telegram, emoticon перед именем, слаг через folderSlug/folderSlugs с дедупом), ~/archive. Справа amber-счётчик dirUnread (непрочитанное папки без muted). Активная папка — tgState.activeDir ('inbox'|'archive'|'folder:<id>'), класс .active (фон --t-active + левый бордер 2px --t-grn). Клики — делегированием в initDialogs; selectDir('archive') дотягивает свежий срез GET /dialogs?folder=archive и вливает mergeArchive. XSS: только textContent.",
+    "createdAt": "2026-07-31T16:11:54.904Z",
+    "updatedAt": "2026-07-31T16:11:54.904Z"
+  },
+  {
+    "element": "onNotifySettings",
+    "path": "",
+    "type": "unknown",
+    "content": "Обработчик WS notify_settings (static/js/telegram/dialogs.js): точечно патчит DialogDto.muted, переключает класс .tg-muted и метку [M] (mutedMark) на строке списка без полной перерисовки, пересчитывает счётчики папок renderDirs(). Бейдж ✈ пересчитывает main.js: recomputeUnread() пересобирает local.muted из mutedIds(tgState.dialogs) — единый источник истины про mute это поле muted в DialogDto. folders_changed → dialogs.loadFolders() (перезапрос GET /folders + полная перерисовка).",
+    "createdAt": "2026-07-31T16:11:55.163Z",
+    "updatedAt": "2026-07-31T16:11:55.163Z"
+  },
+  {
+    "element": "telegram-follow-autoscroll",
+    "path": "",
+    "type": "page",
+    "content": "# Автопрокрутка ленты Telegram после нажатия кнопки бота\n\n## Проблема\nТиповой сценарий inline-кнопок: пользователь жмёт кнопку → бот РЕДАКТИРУЕТ своё же\nсообщение (текст длиннее, клавиатура больше) или присылает новое. Строка в ленте\nпересобиралась в chat.js::onEdited, но там не было ни замера isAtBottom, ни доскролла —\nвыросший блок уезжал под нижнюю кромку, и приходилось листать руками.\n\nОбычного stick-to-bottom не хватает: полоса клавиатуры бота над #tg-prompt сама\nсъедает clientHeight ленты, и isAtBottom перестаёт быть истинным ровно в момент\nпоявления кнопок.\n\n## Решение\nНажатие кнопки включает «следование» за парой (диалог, message_id) на 12 секунд\n(FOLLOW_TTL_MS). Пока следование живо, апдейты ЭТОГО сообщения и новые сообщения в\nЭТОМ диалоге тянут ленту к концу блока. Вне следования — прежнее правило isAtBottom.\n\n## Файлы\n- static/js/telegram/follow.js — НОВЫЙ модуль, чистая логика без DOM и сети\n  (по образцу reply.js): noteFollow / clearFollow / followTarget / isFollowing /\n  followsMessage / scrollDecision / scrollTargetForRow / cancelledByScroll /\n  scrollBehavior / _debugFollowState. Константы FOLLOW_TTL_MS=12000,\n  FOLLOW_SCROLL_PAD=8, FOLLOW_CANCEL_UP_PX=24.\n- static/js/telegram/botkb.js — новый колбэк initBotKeyboards({onButtonPress}),\n  вызывается в runAction для действий 'callback' и 'send-text' (open-url и\n  inline-query ленту не трогают). Регистрация идёт ДО запроса: правка приезжает\n  отдельным WS-кадром и может опередить .then.\n- static/js/telegram/chat.js — применение решения:\n  * замер isAtBottom и followsMessage СТРОГО до мутации DOM (в onEdited — сразу\n    после получения row, до replaceWith; в onNewMessage — до вставки строки);\n  * afterRowChanged(row, {atBottom, following}) → scrollDecision → follow/stick/none;\n  * scrollBlockIntoView(row) через scrollTargetForRow + scrollTo({top, behavior})\n    с фолбэком на scrollTop (scrollTo есть не везде);\n  * ResizeObserver — ОДИН на вкладку, observe/unobserve на строку; добирает\n    отложенный рост (медиа, шрифты, перерисовка клавиатуры);\n  * teardownChat() — новый экспорт, зовётся из main.js::teardownTelegram.\n- static/js/telegram/main.js — chat.teardownChat() рядом с teardownMedia().\n\n## Снятие наблюдения (утечки недопустимы)\n- clearLog() — единственная точка снесения ленты (renderHistory/openDialog/resetChat);\n- renderHistory() — ПЕРЕпривязка наблюдателя к пересозданной строке (по образцу\n  восстановления подсветки flashId);\n- onEdited() — после row.replaceWith(fresh) наблюдение переезжает на новый узел;\n- onDeleted() — строка становится заглушкой, следование за ней снимается;\n- openDialog() при СМЕНЕ диалога — stopFollow();\n- resetChat() — stopFollow() (в т.ч. таймер: живой таймер подвесил бы node-тест);\n- teardownChat() — плюс disconnect() самого наблюдателя.\n\n## Что не сломано (и почему)\n- Якорь подгрузки истории вверх (loadOlder): scrollBlockIntoView молчит при\n  local.loading === true — иначе асинхронный доскролл приземлился бы между замером\n  prevHeight/prevTop и восстановлением scrollTop.\n- Переход по цитате (jumpToMessage): stopFollow() на входе; плюс scrollTargetForRow\n  НИКОГДА не тянет ленту вверх (want <= scrollTop ⇒ null).\n- Прилипание к низу и безусловные scrollToBottom в send()/errorLine() не тронуты.\n- Отмена ручной прокруткой: bindScroll сравнивает scrollTop с прошлым значением\n  (cancelledByScroll), а не выставляет флаг «это я» — присваивание scrollTop\n  порождает событие scroll асинхронно. Свои доскроллы идут ВНИЗ и порог не задевают.\n- prefers-reduced-motion: window.matchMedia под двойным typeof-гардом\n  (globalThis.matchMedia в node-стендах не определён), reduce ⇒ behavior 'auto'.\n- Деградация без ResizeObserver: typeof читается В МОМЕНТ ВЫЗОВА; доскролл в момент\n  правки работает, теряется только добор отложенного роста.\n\n## Тесты\n- tests/frontend/telegram_follow.test.mjs — 58 ассертов, чистая логика без DOM.\n- tests/frontend/telegram_scroll_ui.test.mjs — 65 ассертов, реальный chat.js поверх\n  фейкового DOM со шпионом ResizeObserver, журналом scrollTo и переключаемым\n  prefers-reduced-motion.",
+    "createdAt": "2026-08-02T14:56:20.872Z",
+    "updatedAt": "2026-08-02T14:56:28.146Z",
+    "aliases": [
+      "автопрокрутка кнопки бота",
+      "сообщение уходит за экран вниз"
+    ]
   }
 ]

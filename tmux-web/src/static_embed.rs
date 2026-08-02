@@ -15,9 +15,9 @@
 //! Поведение [`serve_static`]:
 //! - `GET /`              → отдаёт `index.html` (Content-Type: text/html)
 //! - `GET /<path>`        → ищет `<path>` в embedded, отдаёт с mime-типом по
-//!                           расширению (через `mime_guess`)
+//!   расширению (через `mime_guess`)
 //! - `GET /<path>/` (slash на конце) → ищет `<path>/index.html`, что повторяет
-//!                                       поведение `ServeDir::append_index_html_on_directories`
+//!   поведение `ServeDir::append_index_html_on_directories`
 //! - Файл не найден       → HTTP 404 с пустым телом-сообщением
 
 use axum::{
@@ -220,6 +220,38 @@ mod tests {
         assert_eq!(ct.as_deref(), Some("image/png"));
         assert!(cc.is_none(), "обычный бинарник без Cache-Control");
         assert!(!body.is_empty());
+    }
+
+    /// Завендоренный шрифт вкладки Telegram: 200, `font/woff2`, сигнатура
+    /// `wOF2` в начале тела.
+    ///
+    /// Тест сторожит ДВА инварианта разом: (1) файл действительно попал в
+    /// бинарь — `rust-embed` подхватывает `static/**`, но добавление НОВОГО
+    /// файла требует пересборки крейта, и без этой проверки пропажа шрифта
+    /// заметна только глазами; (2) `mime_guess` отдаёт корректный
+    /// `Content-Type` — с `application/octet-stream` браузер шрифт не
+    /// применит.
+    #[tokio::test]
+    async fn vendored_woff2_font_is_served_with_font_mime() {
+        let (status, ct, cc, body) =
+            call("/vendor/fonts/jetbrains-mono/JetBrainsMono-Regular.woff2").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(ct.as_deref(), Some("font/woff2"), "got: {ct:?}");
+        assert!(cc.is_none(), "шрифт — обычная статика, без Cache-Control");
+        assert!(body.starts_with(b"wOF2"), "тело должно быть woff2");
+    }
+
+    /// Текст лицензии OFL обязан ехать вместе со шрифтом: вендоринг OFL 1.1
+    /// разрешён только при сохранении лицензии.
+    #[tokio::test]
+    async fn vendored_font_license_is_present() {
+        let (status, _ct, _cc, body) = call("/vendor/fonts/jetbrains-mono/OFL.txt").await;
+        assert_eq!(status, StatusCode::OK);
+        let text = String::from_utf8_lossy(&body);
+        assert!(
+            text.contains("SIL OPEN FONT LICENSE"),
+            "OFL.txt должен содержать текст лицензии"
+        );
     }
 
     /// Идемпотентность: два вызова /sw.js дают идентичный результат

@@ -1,0 +1,15 @@
+# loadMedia
+
+tmux-web/static/js/telegram/media.js::loadMedia(dialogId, messageId, kind, onNetProgress) -> Promise<string objectURL> — единственный путь получения байтов медиа во фронте Telegram (Фаза 4).
+
+ПОЧЕМУ НЕ <img src>: в remote-mode запросы к /api/* требуют Authorization: Bearer, а атрибут src у <img>/<video> заголовки НЕ несёт. Прямой src='/api/telegram/media/...' работал бы локально и молча ломался у пользователя с токеном. Поэтому: fetchMedia (apiFetch -> подменённый window.fetch из core/auth.js добавляет Bearer) -> чтение body -> Blob -> URL.createObjectURL -> подстановка в src.
+
+ДЕДУПЛИКАЦИЯ ДВУХУРОВНЕВАЯ: готовый URL из tgState.mediaCache (ключ mediaKey = '<did>/<mid>/<kind>', тот же формат, что у серверного CacheKey::id) + НЕЗАВЕРШЁННАЯ загрузка из local.loads. Второй уровень не менее важен: без него два клика по OPEN дали бы две параллельные загрузки (сервер их схлопнет, но браузер честно скачает дважды). Если во время загрузки диалог переключили, URL не кладётся в кэш, а сразу revoke'ается — иначе он утёк бы (revoke'ать его было бы некому).
+
+ПРОГРЕСС ДВУХНОГИЙ: (1) TG — WS download_progress через onDownloadProgress(evt): карточка ищется в local.cards по '<dialog_id>/<message_id>', события про thumb игнорируются (превью мгновенные, мигать прогрессбаром не должны), total: null -> класс .tg-media-progress-indeterminate; (2) NET — чтение response.body.getReader() с Content-Length. Обе ноги пишут в один прогрессбар, но с РАЗНОЙ подписью ('TG 49%' / 'NET 80%'), иначе индикатор дважды бежал бы от 0 до 100 без объяснений. Нет streaming (старый браузер/прокси) -> честный res.blob() без прогресса.
+
+ОШИБКИ ПО КОДУ КОНТРАКТА, не по тексту: no_media -> '>> NO MEDIA' без ретрая (медиа нет — повторять нечего); flood_wait -> '>> WAIT 42s' + кнопка RETRY; прочее -> '>> ERR' + RETRY. Превью-ошибки не пугают пользователя красной строкой (только console.debug и переход на глиф) — полный файл по-прежнему открывается.
+
+ПАМЯТЬ: revokeDialogMedia() освобождает ВСЕ objectURL'ы и чистит кэш — вызывается из chat.openDialog при смене диалога и из resetChat/teardownMedia; dropMessageMedia(dialogId, messageId) сбрасывает оба kind одного сообщения при message_edited/message_deleted (сервер в этот момент инвалидирует свой файловый кэш, держать старую картинку — показывать то, чего в Telegram больше нет; при пустом dialog_id в удалении ЛС чистятся все загруженные диалоги). Без revoke двадцать переходов между диалогами с фото оставались бы в памяти вкладки до перезагрузки: браузер не собирает objectURL сам.
+
+СВЯЗИ: api.js::fetchMedia/mediaUrl (сырой Response + разбор контракта ошибок), format.js (mediaKey/progressPercent/progressLabel), state.js::tgState.mediaCache, main.js::buildHandlers.download_progress -> onDownloadProgress, chat.js (openDialog/onEdited/onDeleted/resetChat). Рантайм-проверка в браузере: 8 fetch-запросов на 7 карточек (2 thumb + 6 full, 404/429 отдельно), thumb и full приходят blob:, повторное открытие не перезапрашивает, revoke освободил ровно 6 URL и кэш опустел.

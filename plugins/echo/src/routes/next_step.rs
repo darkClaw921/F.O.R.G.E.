@@ -323,9 +323,14 @@ mod tests {
         assert_eq!(v["ok"], true);
         assert_eq!(v["sent"], "сделай X");
         // send_keys вызван с content предложения.
-        let sent = stub.sent.lock().unwrap();
-        assert_eq!(sent.len(), 1);
-        assert_eq!(sent[0], ("work".to_string(), "сделай X".to_string()));
+        // Guard держим в отдельном блоке: ниже идёт `.await`, а std-мьютекс,
+        // не отпущенный через await-точку, — это заявка на дедлок, если тест
+        // когда-нибудь поедет на многопоточный рантайм.
+        {
+            let sent = stub.sent.lock().unwrap();
+            assert_eq!(sent.len(), 1);
+            assert_eq!(sent[0], ("work".to_string(), "сделай X".to_string()));
+        }
         // Предложение снято.
         assert!(state.next_steps.read().await.is_empty());
     }
@@ -389,7 +394,7 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(v["ok"], true);
-        assert!(v["rule_id"].as_str().unwrap().len() > 0);
+        assert!(!v["rule_id"].as_str().unwrap().is_empty());
         // Предложение снято.
         assert!(state.next_steps.read().await.is_empty());
         // Правило записано.

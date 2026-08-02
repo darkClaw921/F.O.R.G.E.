@@ -18,10 +18,10 @@
  */
 import { test, expect } from '@playwright/test';
 
-const ALL_TAB_PANE_IDS = ['terminal', 'tasks', 'echo', 'git', 'docker', 'telescope'];
+const ALL_TAB_PANE_IDS = ['terminal', 'tasks', 'echo', 'git', 'docker', 'telescope', 'telegram'];
 // Which panes use the `hidden` attribute (all except terminal which is always
 // in the DOM but we verify via our tab-switching logic)
-const HIDDEN_PANE_IDS = ['tasks', 'echo', 'git', 'docker', 'telescope'];
+const HIDDEN_PANE_IDS = ['tasks', 'echo', 'git', 'docker', 'telescope', 'telegram'];
 
 test.describe('Echo tab UI', () => {
   test.describe.configure({ mode: 'serial' });

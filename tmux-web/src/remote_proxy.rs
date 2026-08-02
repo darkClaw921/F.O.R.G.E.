@@ -414,12 +414,12 @@ fn tungstenite_to_axum(msg: TungsteniteMessage) -> AxumWsMessage {
 /// - `store`        — реестр remote-серверов (для получения url+token).
 /// - `server_id`    — id записи в реестре.
 /// - `upstream_path`— путь на remote (`/ws/attach`, `/ws/lazygit`,
-///                    `/ws/lazydocker`, `/ws/telescope`, `/ws/tasks`,
-///                    `/ws/todos`). Должен начинаться со `/`.
-///                    Никакого allowlist'а нет — helper generic по path; caller
-///                    отвечает за корректность строки.
+///   `/ws/lazydocker`, `/ws/telescope`, `/ws/tasks`,
+///   `/ws/todos`). Должен начинаться со `/`.
+///   Никакого allowlist'а нет — helper generic по path; caller
+///   отвечает за корректность строки.
 /// - `query`        — query-строка без ведущего `?` и БЕЗ параметра `server`
-///                    (caller обязан отфильтровать). Может быть пустой.
+///   (caller обязан отфильтровать). Может быть пустой.
 /// - `downstream`   — уже-апгрейженный `WebSocket` от axum (со стороны браузера).
 ///
 /// Поведение:
@@ -433,6 +433,7 @@ fn tungstenite_to_axum(msg: TungsteniteMessage) -> AxumWsMessage {
 /// 4. `tokio::select!` две задачи:
 ///    - read downstream → send upstream;
 ///    - read upstream   → send downstream;
+///
 ///    Любая завершившаяся таска (Close, error, end-of-stream) кладёт сигнал
 ///    выхода и select! завершается; вторая сторона аккуратно закрывается.
 /// 5. Все ошибки прокси логируются через `tracing::trace!` — caller обычно
@@ -754,7 +755,7 @@ mod tests {
         assert!(tokens.contains("x-foo"));
         assert!(tokens.contains("keep-alive"));
         // x-foo, перечисленный в Connection, должен попасть под фильтр.
-        assert!(tokens.contains(&"x-foo".to_string()));
+        assert!(tokens.contains("x-foo"));
         // content-type не указан → не в наборе.
         assert!(!tokens.contains("content-type"));
     }
@@ -1000,7 +1001,7 @@ mod tests {
         let header = FrameHeader::default();
         let mut header = header;
         header.opcode = OpCode::Data(Data::Binary);
-        let frame = Frame::from_payload(header, payload.clone().into());
+        let frame = Frame::from_payload(header, payload.clone());
         let m = tungstenite_to_axum(TungsteniteMessage::Frame(frame));
         match m {
             AxumWsMessage::Binary(b) => assert_eq!(b, payload),
@@ -1596,7 +1597,9 @@ mod tests {
         use wiremock::matchers::method;
         use wiremock::{Mock, MockServer, Request as WmRequest, Respond, ResponseTemplate};
 
-        struct Capture(std::sync::Arc<std::sync::Mutex<Vec<(String, Vec<u8>)>>>);
+        /// Заголовки, перехваченные mock-сервером: имя + сырые байты значения.
+        type CapturedHeaders = std::sync::Arc<std::sync::Mutex<Vec<(String, Vec<u8>)>>>;
+        struct Capture(CapturedHeaders);
         impl Respond for Capture {
             fn respond(&self, req: &WmRequest) -> ResponseTemplate {
                 let mut g = self.0.lock().unwrap();

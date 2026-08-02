@@ -18,6 +18,10 @@
             <div id="settings-bar">
                 <button id="project-settings" type="button" title="Settings">⚙</button>
                 <button id="screensaver-toggle" type="button" title="Заставка — таверна дворфов" aria-label="Заставка">🍺</button>
+                <!-- Telegram-вкладка (плагин forge-telegram, opt-in `--telegram`).
+                     hidden снимается из JS, когда GET /api/telegram/status
+                     ответил {enabled:true}; бейдж — счётчик непрочитанного. -->
+                <button id="telegram-toggle" type="button" title="Telegram" aria-label="Telegram" hidden>✈<span id="tg-unread-badge" hidden></span></button>
             </div>
             <header class="sidebar-header">
                 <h1>tmux-web</h1>
@@ -135,9 +139,12 @@
                     <span id="tasks-meta"></span>
                 </div>
                 <div id="tasks-board"></div>
-                <div id="tasks-gantt">
+                <div id="tasks-gantt" class="collapsed">
                     <div id="gantt-toolbar">
-                        <span class="gantt-title">Timeline</span>
+                        <button id="gantt-toggle" class="gantt-title" type="button" aria-expanded="false" aria-controls="gantt-canvas" title="Свернуть/развернуть Timeline">
+                            <span class="gantt-toggle-caret" aria-hidden="true">▸</span>
+                            <span>Timeline</span>
+                        </button>
                         <div id="gantt-range" class="gantt-range">
                             <button type="button" data-range="today">Сегодня</button>
                             <button type="button" data-range="yesterday">Вчера</button>
@@ -250,6 +257,127 @@
                 </div>
                 <div id="telescope-term" class="tui-term"></div>
                 <div id="telescope-quick-bar" class="tui-quick-bar" data-target="telescope" hidden></div>
+            </div>
+            <!-- Telegram-вкладка (плагин forge-telegram). Терминальная
+                 стилистика: titlebar → contacts + session → statusbar, плюс
+                 оверлеи логина, drag&drop и лайтбокса. Весь контент
+                 наполняется из js/telegram/* ЧЕРЕЗ textContent — никакого
+                 innerHTML с данными от собеседника (XSS). -->
+            <div id="telegram" class="tab-pane" hidden data-tg-theme="dark">
+                <div id="tg-titlebar">
+                    <!-- ☰ виден только на узких экранах (CSS .tg-mobile-only):
+                         там колонка контактов уезжает за левый край и
+                         открывается поверх ленты (js/telegram/mobile.js). -->
+                    <button id="tg-contacts-toggle" class="tg-icon-btn tg-mobile-only" type="button" title="Список контактов" aria-label="Список контактов" aria-expanded="false" aria-controls="tg-contacts">☰</button>
+                    <span class="tg-dots" aria-hidden="true">
+                        <span class="tg-dot tg-dot-red"></span>
+                        <span class="tg-dot tg-dot-amber"></span>
+                        <span class="tg-dot tg-dot-green"></span>
+                    </span>
+                    <span class="tg-title">FORGE://telegram</span>
+                    <span class="tg-enc">
+                        <span class="tg-pulse" aria-hidden="true"></span>
+                        <span class="tg-enc-text">CONNECTION ENCRYPTED — MTPROTO 2.0</span>
+                    </span>
+                    <span id="tg-self-user" class="tg-self-user"></span>
+                    <button id="tg-theme-toggle" class="tg-icon-btn" type="button" title="Тема панели: авто / тёмная / светлая" aria-label="Переключить тему панели">◐</button>
+                    <button id="tg-logout" class="tg-icon-btn" type="button" title="Выйти из аккаунта Telegram" aria-label="Выйти из аккаунта Telegram" hidden>⏻</button>
+                </div>
+                <div id="tg-body">
+                    <!-- tabindex=-1: на мобильных фокус переносится сюда при
+                         открытии панели по ☰ (js/telegram/mobile.js). -->
+                    <aside id="tg-contacts" tabindex="-1">
+                        <div class="tg-section-title">// DIRECTORIES</div>
+                        <!-- Заглушка до загрузки данных: renderDirs
+                             (js/telegram/dialogs.js) пересобирает список
+                             целиком — ~/inbox, реальные папки аккаунта
+                             (GET /api/telegram/folders), ~/archive. -->
+                        <ul id="tg-dir-list" class="tg-list">
+                            <li class="tg-dir active" data-dir="inbox"><span class="tg-dir-name">~/inbox</span><span class="tg-dir-count" id="tg-dir-inbox-count"></span></li>
+                            <li class="tg-dir" data-dir="archive"><span class="tg-dir-name">~/archive</span><span class="tg-dir-count" id="tg-dir-archive-count"></span></li>
+                        </ul>
+                        <div class="tg-section-title" id="tg-nodes-title">// ~/inbox — 0 NODES</div>
+                        <ul id="tg-dialog-list" class="tg-list"></ul>
+                        <div class="tg-section-title">// CHANNELS</div>
+                        <ul id="tg-channel-list" class="tg-list"></ul>
+                    </aside>
+                    <!-- Подложка под выехавшей колонкой контактов: существует
+                         только на мобильных, клик по ней закрывает панель. -->
+                    <div id="tg-contacts-scrim" hidden></div>
+                    <section id="tg-session">
+                        <div id="tg-session-head">SESSION ▸ —</div>
+                        <div id="tg-log">
+                            <!-- Спейсер прижимает первые строки лога к низу
+                                 (flex:1), как в терминале. -->
+                            <div class="tg-log-spacer"></div>
+                        </div>
+                        <div id="tg-typing"></div>
+                        <form id="tg-prompt" autocomplete="off">
+                            <span class="tg-prompt-sign">tg:~$</span>
+                            <span class="tg-input-wrap">
+                                <!-- placeholder=" " (пробел, не пустая строка)
+                                     нужен CSS: по `:placeholder-shown` мигающая
+                                     каретка .tg-caret гаснет, как только в поле
+                                     что-то набрали. Пустой placeholder этот
+                                     селектор в части браузеров не включает. -->
+                                <input id="tg-input" type="text" autocomplete="off" spellcheck="false" placeholder=" " aria-label="Сообщение">
+                                <span class="tg-caret" aria-hidden="true"></span>
+                            </span>
+                            <button id="tg-attach" class="tg-icon-btn" type="button" title="Прикрепить файл" aria-label="Прикрепить файл">⇪</button>
+                            <!-- Скрытый picker: кнопка ⇪ кликает по нему.
+                                 hidden (а не display:none в CSS) — поле не
+                                 участвует в layout и не ловится Tab'ом. -->
+                            <input id="tg-file-input" type="file" multiple hidden aria-hidden="true" tabindex="-1">
+                            <button id="tg-send" class="tg-send-btn" type="submit">TRANSMIT ⏎</button>
+                        </form>
+                    </section>
+                </div>
+                <div id="tg-statusbar">
+                    <span id="tg-mode" class="tg-mode tg-mode-offline">OFFLINE</span>
+                    <span class="tg-status-center">UTF-8 · MTPROTO · LAT <span id="tg-lat">—</span></span>
+                    <span class="tg-status-right" id="tg-status-right"></span>
+                </div>
+
+                <!-- Оверлей логина: 3 шага терминального wizard'а. -->
+                <div id="tg-login" hidden>
+                    <div class="tg-login-box">
+                        <div class="tg-login-title">// TELEGRAM AUTH</div>
+                        <div id="tg-login-step-creds" class="tg-login-step">
+                            <p class="tg-login-hint">Получите api_id и api_hash на <a href="https://my.telegram.org/apps" target="_blank" rel="noopener noreferrer">my.telegram.org</a> → API development tools. Это НЕ бот-токен: подключается ваш личный аккаунт. Креды хранятся локально в ~/.config/forge/telegram.toml (права 0600).</p>
+                            <label class="tg-field"><span>api_id</span><input id="tg-api-id" type="text" inputmode="numeric" autocomplete="off" spellcheck="false"></label>
+                            <label class="tg-field"><span>api_hash</span><input id="tg-api-hash" type="password" autocomplete="off" spellcheck="false"></label>
+                            <label class="tg-field"><span>phone</span><input id="tg-phone" type="tel" autocomplete="off" spellcheck="false" placeholder="+70000000000"></label>
+                            <button id="tg-login-creds-submit" class="tg-login-btn" type="button">CONNECT ⏎</button>
+                        </div>
+                        <div id="tg-login-step-code" class="tg-login-step" hidden>
+                            <p class="tg-login-hint">Код отправлен в Telegram <span id="tg-login-phone"></span>.</p>
+                            <label class="tg-field"><span>code</span><input id="tg-code" type="text" inputmode="numeric" autocomplete="one-time-code" spellcheck="false"></label>
+                            <button id="tg-login-code-submit" class="tg-login-btn" type="button">SIGN IN ⏎</button>
+                            <button id="tg-login-code-back" class="tg-login-btn tg-login-btn-ghost" type="button">BACK</button>
+                        </div>
+                        <div id="tg-login-step-password" class="tg-login-step" hidden>
+                            <p class="tg-login-hint">Включена двухфакторная защита. <span id="tg-login-hint-text"></span></p>
+                            <label class="tg-field"><span>password</span><input id="tg-password" type="password" autocomplete="current-password"></label>
+                            <button id="tg-login-password-submit" class="tg-login-btn" type="button">UNLOCK ⏎</button>
+                            <button id="tg-login-password-back" class="tg-login-btn tg-login-btn-ghost" type="button">BACK</button>
+                        </div>
+                        <div id="tg-login-status" class="tg-login-status" hidden></div>
+                        <div id="tg-login-error" class="tg-login-error" hidden></div>
+                        <div id="tg-login-countdown" class="tg-login-countdown" hidden></div>
+                    </div>
+                </div>
+
+                <!-- Оверлей drag&drop файлов. -->
+                <div id="tg-dropzone" hidden>
+                    <div class="tg-dropzone-box">DROP FILE TO TRANSMIT</div>
+                </div>
+
+                <!-- Лайтбокс просмотра медиа. -->
+                <div id="tg-lightbox" hidden>
+                    <button id="tg-lightbox-close" class="tg-icon-btn" type="button" title="Закрыть" aria-label="Закрыть">×</button>
+                    <img id="tg-lightbox-img" alt="">
+                    <div id="tg-lightbox-caption" class="tg-lightbox-caption"></div>
+                </div>
             </div>
         </main>
     </div>

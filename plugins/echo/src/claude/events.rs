@@ -7,28 +7,28 @@
 //!
 //! - `system`               — стартовое инфо (init), игнорируем.
 //! - `message_start`        — начало message; обычно содержит `message.usage`
-//!                            с input_tokens и cache_*. Из него выдаём
-//!                            `ClaudeEvent::Result` ещё **нет** — usage здесь
-//!                            частичный (только input + cache); финальный
-//!                            usage приходит в типе `result` или `message_delta`.
+//!   с input_tokens и cache_*. Из него выдаём
+//!   `ClaudeEvent::Result` ещё **нет** — usage здесь
+//!   частичный (только input + cache); финальный
+//!   usage приходит в типе `result` или `message_delta`.
 //! - `content_block_start`  — старт блока (text/thinking/tool_use). Для
-//!                            tool_use фиксируем имя в side-state нашего парсера
-//!                            (см. `StatefulParser`), но в `parse_line` без
-//!                            состояния просто игнорим — клиент получит
-//!                            tool input в content_block_stop / message_delta.
+//!   tool_use фиксируем имя в side-state нашего парсера
+//!   (см. `StatefulParser`), но в `parse_line` без
+//!   состояния просто игнорим — клиент получит
+//!   tool input в content_block_stop / message_delta.
 //! - `content_block_delta`  — приращение блока:
 //!     - `delta.type == "text_delta"`     → [`ClaudeEvent::TextDelta`]
 //!     - `delta.type == "thinking_delta"` → [`ClaudeEvent::Thinking`]
 //!     - `delta.type == "input_json_delta"` → пока пропускаем (Phase 3 не
 //!       рендерит partial tool input).
 //! - `content_block_stop`   — конец блока; для `tool_use` блока финальное
-//!                            `input` обычно доступно отдельным сообщением.
+//!   `input` обычно доступно отдельным сообщением.
 //! - `message_delta`        — может содержать обновлённый `usage`. Не считаем
-//!                            это `Result`-event'ом — финал придёт в `result`.
+//!   это `Result`-event'ом — финал придёт в `result`.
 //! - `message_stop`         — конец одного assistant-сообщения, игнорируем
-//!                            (Result-aggregator смотрит `result`).
+//!   (Result-aggregator смотрит `result`).
 //! - `result`               — финал всего run'а: `usage`, `total_cost_usd`,
-//!                            `duration_ms` и т.п. → [`ClaudeEvent::Result`].
+//!   `duration_ms` и т.п. → [`ClaudeEvent::Result`].
 //! - `error`                → [`ClaudeEvent::Error`].
 //!
 //! Любой незнакомый `type` → `None` (skip, не падать).

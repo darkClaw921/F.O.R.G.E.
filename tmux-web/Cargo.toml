@@ -1,6 +1,6 @@
 [package]
 name = "devforge"
-version = "0.1.52"
+version = "0.1.53"
 edition = "2021"
 description = "Web-viewer для tmux сессий через WebSocket + xterm.js"
 license = "MIT"
@@ -75,6 +75,12 @@ local-ip-address = "0.6"
 # echo-host-api нужен для импорта trait HostApi в `echo_host::EchoHostAdapter`.
 forge-echo = { path = "../plugins/echo" }
 echo-host-api = { path = "../plugins/echo-host-api" }
+# Telegram плагин (opt-in, флаг `--telegram`) — вкладка мессенджера на личном
+# аккаунте пользователя. Подключается как path-dep в Cargo workspace
+# (member: plugins/telegram). Отдельного `telegram-host-api` НЕТ: плагину от
+# хоста ничего не нужно (нет tmux, auth покрыт регистрацией роутов до слоёв),
+# поэтому `register_routes(app, state)` идёт без host-адаптера.
+forge-telegram = { path = "../plugins/telegram" }
 # async-trait нужен в tmux-web потому что EchoHostAdapter имплементит
 # echo_host_api::HostApi (trait объявлен через #[async_trait]).
 async-trait = "0.1"

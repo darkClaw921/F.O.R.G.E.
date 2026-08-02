@@ -1,0 +1,77 @@
+[package]
+name = "forge-telegram"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Telegram plugin для F.O.R.G.E. — вкладка мессенджера на личном аккаунте (MTProto)"
+
+[dependencies]
+# Axum 0.7 совпадает с tmux-web и forge-echo, чтобы Router/State были одного
+# типа и `app.merge(plugin_router)` компилировался без адаптеров.
+axum = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+futures-util = { workspace = true }
+# `#[async_trait]` для объектно-безопасного трейта `login::LoginBackend`:
+# он разделяет чистый конечный автомат логина и сетевую часть grammers,
+# благодаря чему матрица переходов тестируется без сети.
+async-trait = { workspace = true }
+
+# CancellationToken (graceful shutdown, как в forge-echo) + feature `io`,
+# который понадобится в Фазе 4/5 для ReaderStream/StreamReader при стриминге
+# медиа (upload/download) без буферизации всего файла в памяти.
+tokio-util = { version = "0.7", features = ["io"] }
+
+# Конфиг плагина `~/.config/forge/telegram.toml`. 0.8.x — та же линия, что у
+# forge-echo, поэтому новый крейт в дерево не добавляется.
+toml = "0.8"
+
+# UUID v4 — идентификаторы upload-сессий (`upload_id`), Фаза 5.
+uuid = { version = "1", features = ["v4"] }
+
+# Определение MIME по имени файла при отдаче кэшированных медиа (Фаза 4).
+mime_guess = "2"
+
+# --- MTProto (grammers 0.10) -------------------------------------------------
+#
+# Все четыре крейта релизятся одной линией версий (0.10.0), поэтому пины
+# совпадают с тем, что тянет сам grammers-client — дублей grammers-* разных
+# версий в дереве нет (проверяется `cargo tree -d`).
+#
+# Gate-чек на каждой фазе: `cargo tree -i openssl-sys` ОБЯЗАН быть пуст.
+# MTProto у grammers — чистое Rust-крипто (grammers-crypto: aes/sha2/hmac)
+# поверх raw TCP, TLS и openssl в этом пути не участвуют.
+#
+# РИСК №1 плана СРАБОТАЛ, поэтому включён ПЛАН Б (полный разбор и вывод
+# паники — в шапке `src/session.rs`):
+#
+# feature `sqlite-storage` тянет libsql, который статически линкует свой
+# SQLite. В бинаре уже есть SQLite от rusqlite (`features = ["bundled"]`,
+# плагин Echo); символы `sqlite3_*` совпадают, линковщик оставляет одну
+# реализацию, и libsql падает по `assert_eq!` на
+# `sqlite3_config(SQLITE_CONFIG_SERIALIZED) == SQLITE_MISUSE(21)`, потому
+# что Echo уже вызвал `sqlite3_initialize()` на старте. Воспроизводится в
+# реальном `devforge start --telegram` на первом же POST /login/start.
+#
+# Решение (`Session` — это trait): собственное хранилище
+# `crate::session::FileSession` — атомарный JSON-файл с правами 0600.
+# libsql из дерева убран целиком, двойного SQLite больше нет.
+grammers-client = "0.10"
+# `default-features = false` ОБЯЗАТЕЛЕН: default = ["sqlite-storage"].
+# Фича `serde` даёт (де)сериализацию типов сессии (DcOption с auth_key,
+# PeerInfo, UpdatesState) — на ней держится FileSession.
+grammers-session = { version = "0.10", default-features = false, features = ["serde"] }
+# Сырые TL-типы: `tl::enums::Update::*` для Raw-апдейтов (typing/online/read,
+# Фаза 3) и разбор `RpcError` по коду в `runtime::flood_wait_secs`.
+grammers-tl-types = "0.10"
+# `SenderPool` — транспорт MTProto (соединения к DC, реконнект). Отсюда же
+# берётся `InvocationError`, по которому классифицируются ошибки RPC.
+grammers-mtsender = "0.10"
+
+[dev-dependencies]
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }

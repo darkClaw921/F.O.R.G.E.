@@ -1,0 +1,3 @@
+# renderDirs
+
+Секция // DIRECTORIES вкладки Telegram (static/js/telegram/dialogs.js). Пересобирает ul#tg-dir-list целиком из dirEntries(tgState.folders): ~/inbox, реальные папки аккаунта (GET /api/telegram/folders, порядок Telegram, emoticon перед именем, слаг через folderSlug/folderSlugs с дедупом), ~/archive. Справа amber-счётчик dirUnread (непрочитанное папки без muted). Активная папка — tgState.activeDir ('inbox'|'archive'|'folder:<id>'), класс .active (фон --t-active + левый бордер 2px --t-grn). Клики — делегированием в initDialogs; selectDir('archive') дотягивает свежий срез GET /dialogs?folder=archive и вливает mergeArchive. XSS: только textContent.

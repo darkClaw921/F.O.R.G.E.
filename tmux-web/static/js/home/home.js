@@ -6,6 +6,11 @@
 // first_seen, last_seen }. Карточки позволяют восстановить (запустить) сессию
 // в tmux либо удалить запись из истории.
 //
+// Карточки сгруппированы по ДНЮ СОЗДАНИЯ сессии (first_seen): каждая группа —
+// сворачиваемая секция с заголовком «Сегодня»/«Вчера»/дата и кнопкой «Открыть
+// все за день». По умолчанию раскрыт только сегодняшний день; ручное
+// сворачивание/разворачивание переживает периодический poll renderHome.
+//
 // Endpoint'ы (Phase 2 backend):
 //   GET    /api/sessions/history             — список HistorySession
 //   POST   /api/sessions/history/restore     — body {name, path}
@@ -39,9 +44,84 @@ let headerBound = false;
 // значение — {name, path}. Сбрасывается при каждом renderHome().
 const selected = new Map();
 
+// Состояние сворачивания групп-дней. Ключ — dayKey (YYYY-MM-DD), значение —
+// true (свёрнут). Переживает периодические перерендеры renderHome (poll ~3с),
+// поэтому ручные переключения пользователя не сбрасываются. Дни, которых больше
+// нет в актуальной истории, вычищаются в renderHome (как и selected).
+const dayCollapsed = new Map();
+
 /** Стабильный ключ записи истории для Map выбранных. */
 function selKey(name, path) {
     return `${name}\n${path || ''}`;
+}
+
+/**
+ * Ключ дня (YYYY-MM-DD, локальная зона) из Unix-времени в СЕКУНДАХ.
+ * first_seen/last_seen в истории хранятся в секундах, поэтому домножаем на 1000.
+ */
+function dayKeyFromUnix(sec) {
+    const d = new Date((Number(sec) || 0) * 1000);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+/** Сегодняшний dayKey (локальная зона). */
+function todayKey() {
+    return dayKeyFromUnix(Date.now() / 1000);
+}
+
+/** dayKey «вчера» относительно сегодняшнего дня (локальная зона). */
+function yesterdayKey() {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return dayKeyFromUnix(d.getTime() / 1000);
+}
+
+/**
+ * Человекочитаемый заголовок дня: «Сегодня» / «Вчера» / иначе
+ * «21 июля 2026, суббота» (локаль ru-RU, день недели переставлен в конец —
+ * тот же приём, что в daily-summary.js::humanDate).
+ */
+function humanDayLabel(dayKey) {
+    if (dayKey === todayKey()) return 'Сегодня';
+    if (dayKey === yesterdayKey()) return 'Вчера';
+    const [y, m, d] = dayKey.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    try {
+        const s = dt.toLocaleDateString('ru-RU', {
+            day: 'numeric', month: 'long', year: 'numeric', weekday: 'long',
+        });
+        const m2 = s.match(/^([^,]+),\s*(.+)$/);
+        return m2 ? `${m2[2]}, ${m2[1]}` : s;
+    } catch {
+        return dayKey;
+    }
+}
+
+/**
+ * Группирует записи истории по дню СОЗДАНИЯ (first_seen). Возвращает массив
+ * `{ dayKey, recs }`, отсортированный по dayKey убыв. (свежие дни — сверху);
+ * внутри группы записи отсортированы по first_seen убыв.
+ */
+function groupByDay(records) {
+    const byDay = new Map();
+    for (const rec of records) {
+        const key = dayKeyFromUnix(rec.first_seen);
+        let bucket = byDay.get(key);
+        if (!bucket) {
+            bucket = [];
+            byDay.set(key, bucket);
+        }
+        bucket.push(rec);
+    }
+    const groups = Array.from(byDay.entries()).map(([dayKey, recs]) => {
+        recs.sort((a, b) => (Number(b.first_seen) || 0) - (Number(a.first_seen) || 0));
+        return { dayKey, recs };
+    });
+    groups.sort((a, b) => (a.dayKey < b.dayKey ? 1 : a.dayKey > b.dayKey ? -1 : 0));
+    return groups;
 }
 
 /**
@@ -153,7 +233,74 @@ function buildHomeCard(rec) {
 }
 
 /**
- * Загружает историю и отрисовывает карточки в $homeCards. Пустую историю
+ * Сворачивает/разворачивает группу-день по клику на заголовок. Обновляет
+ * dayCollapsed и DOM напрямую (класс + стрелка), БЕЗ вызова renderHome —
+ * чтобы не дёргать fetch истории и не мигать списком.
+ */
+function toggleDay(dayKey, sectionEl, toggleEl) {
+    const nowCollapsed = !dayCollapsed.get(dayKey);
+    dayCollapsed.set(dayKey, nowCollapsed);
+    sectionEl.classList.toggle('collapsed', nowCollapsed);
+    if (toggleEl) toggleEl.textContent = nowCollapsed ? '▸' : '▾';
+}
+
+/**
+ * Строит секцию одного дня: заголовок (стрелка сворачивания, дата, счётчик,
+ * кнопка «Открыть все за день») + грид карточек. Состояние сворачивания берётся
+ * из dayCollapsed (инициализируется вызывающим renderHome).
+ */
+function buildDayGroup(dayKey, recs) {
+    const section = document.createElement('section');
+    section.className = 'home-day-group';
+    const collapsed = dayCollapsed.get(dayKey) === true;
+    if (collapsed) section.classList.add('collapsed');
+
+    const header = document.createElement('div');
+    header.className = 'home-day-header';
+
+    const toggle = document.createElement('span');
+    toggle.className = 'home-day-toggle';
+    toggle.setAttribute('aria-hidden', 'true');
+    toggle.textContent = collapsed ? '▸' : '▾';
+    header.appendChild(toggle);
+
+    const title = document.createElement('span');
+    title.className = 'home-day-title';
+    title.textContent = humanDayLabel(dayKey);
+    header.appendChild(title);
+
+    const count = document.createElement('span');
+    count.className = 'home-day-count';
+    count.textContent = `· ${recs.length}`;
+    header.appendChild(count);
+
+    const btnRestore = document.createElement('button');
+    btnRestore.type = 'button';
+    btnRestore.className = 'home-day-restore';
+    btnRestore.textContent = `Открыть все (${recs.length})`;
+    btnRestore.title = `Восстановить все сессии за ${humanDayLabel(dayKey)}`;
+    btnRestore.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        restoreDay(recs);
+    });
+    header.appendChild(btnRestore);
+
+    header.addEventListener('click', () => toggleDay(dayKey, section, toggle));
+    section.appendChild(header);
+
+    const cards = document.createElement('div');
+    cards.className = 'home-day-cards';
+    for (const rec of recs) {
+        cards.appendChild(buildHomeCard(rec));
+    }
+    section.appendChild(cards);
+
+    return section;
+}
+
+/**
+ * Загружает историю и отрисовывает карточки в $homeCards, сгруппированные по
+ * дню создания сессии (first_seen). Пустую историю
  * показывает через #home-empty и скрывает кнопку «Открыть все».
  */
 export async function renderHome() {
@@ -195,12 +342,30 @@ export async function renderHome() {
     if ($homeRestoreAll) $homeRestoreAll.hidden = isEmpty;
 
     if (isEmpty) {
+        dayCollapsed.clear();
         updateSelectionUI();
         return;
     }
 
-    for (const rec of records) {
-        $homeCards.appendChild(buildHomeCard(rec));
+    const groups = groupByDay(records);
+    const today = todayKey();
+
+    // Инициализируем состояние сворачивания для новых дней: по умолчанию раскрыт
+    // только сегодняшний день, остальные свёрнуты. Дни, уже присутствующие в
+    // dayCollapsed, сохраняют ручной выбор пользователя (переживают poll).
+    const validDays = new Set(groups.map((g) => g.dayKey));
+    for (const { dayKey } of groups) {
+        if (!dayCollapsed.has(dayKey)) {
+            dayCollapsed.set(dayKey, dayKey !== today);
+        }
+    }
+    // Чистим состояние дней, которых больше нет в истории.
+    for (const dayKey of dayCollapsed.keys()) {
+        if (!validDays.has(dayKey)) dayCollapsed.delete(dayKey);
+    }
+
+    for (const { dayKey, recs } of groups) {
+        $homeCards.appendChild(buildDayGroup(dayKey, recs));
     }
     updateSelectionUI();
 }
@@ -255,15 +420,14 @@ export async function restoreAll() {
 }
 
 /**
- * Восстанавливает только выбранные кликом сессии. Для каждой записи делает
+ * Восстанавливает набор записей истории пачкой. Для каждой делает
  * POST /api/sessions/history/restore {name, path}; 409 (имя занято) считается
- * мягкой ошибкой и не прерывает цикл. После — обновляет список активных
- * сессий и открывает первую успешно восстановленную.
+ * мягкой ошибкой и не прерывает цикл. Возвращает `{ firstOk, failed }`:
+ * `firstOk` — имя первой успешно восстановленной сессии (или null),
+ * `failed` — имена сессий, восстановить которые не удалось (не считая 409).
+ * НЕ трогает UI (fetchSessions/openSession/alert) — это делает вызывающий.
  */
-export async function restoreSelected() {
-    if (selected.size === 0) return;
-
-    const recs = Array.from(selected.values());
+async function restoreRecords(recs) {
     let firstOk = null;
     const failed = [];
 
@@ -284,8 +448,38 @@ export async function restoreSelected() {
         }
     }
 
+    return { firstOk, failed };
+}
+
+/**
+ * Восстанавливает только выбранные кликом сессии. 409 (имя занято) — мягкая
+ * ошибка, не прерывает цикл. После — обновляет список активных сессий и
+ * открывает первую успешно восстановленную.
+ */
+export async function restoreSelected() {
+    if (selected.size === 0) return;
+
+    const { firstOk, failed } = await restoreRecords(Array.from(selected.values()));
+
     selected.clear();
     updateSelectionUI();
+    await fetchSessions();
+    if (firstOk) openSession(firstOk);
+    if (failed.length) {
+        window.alert('Не удалось восстановить: ' + failed.join(', '));
+    }
+}
+
+/**
+ * Восстанавливает все сессии одного дня (группы). Принимает записи группы
+ * напрямую (см. buildDayGroup). 409 (имя занято) — мягкая ошибка. После —
+ * обновляет список активных сессий и открывает первую успешно восстановленную.
+ */
+export async function restoreDay(recs) {
+    if (!Array.isArray(recs) || recs.length === 0) return;
+
+    const { firstOk, failed } = await restoreRecords(recs);
+
     await fetchSessions();
     if (firstOk) openSession(firstOk);
     if (failed.length) {

@@ -295,6 +295,9 @@ async fn main() -> anyhow::Result<()> {
     let bind_host = effective.bind.clone();
     let remote_mode = effective.remote_mode;
     let pwa_enabled = effective.pwa_enabled;
+    // Opt-in плагин Telegram: без флага роуты не регистрируются вовсе
+    // (`GET /api/telegram/status` → 404), поведение бинаря прежнее.
+    let telegram_enabled = effective.telegram_enabled;
 
     // Инициализация логирования. По умолчанию: info для всего + debug для tmux_web.
     // Переопределяется переменной окружения RUST_LOG.
@@ -868,6 +871,35 @@ async fn main() -> anyhow::Result<()> {
     forge_echo::spawn_workers(&echo_state, echo_host.clone()).await;
     let _ = (&echo_state, &echo_host); // удерживаем для будущих фаз (см. план)
 
+    // Плагин forge-telegram — opt-in, флаг `--telegram` / `DEVFORGE_TELEGRAM`
+    // / `server_config.json`.
+    //
+    // Как и у Echo, register_routes вызывается ДО `.fallback(...)` и
+    // `.layer(...)` ниже: тогда bearer_auth и csrf_guard автоматически
+    // покрывают `/api/telegram/*` и `/ws/telegram` в remote-mode.
+    //
+    // ОТЛИЧИЕ ОТ ECHO: ошибка init НЕ роняет сервер. Telegram — побочная
+    // вкладка, и сломанный `telegram.toml` не должен мешать пользователю
+    // работать с терминалом; логируем warn и стартуем без плагина.
+    let mut telegram_state: Option<std::sync::Arc<forge_telegram::TelegramState>> = None;
+    let app = if telegram_enabled {
+        match forge_telegram::init(forge_telegram::TelegramConfig::load()) {
+            Ok(tg_state) => {
+                let app = forge_telegram::register_routes(app, tg_state.clone());
+                forge_telegram::spawn_workers(&tg_state).await;
+                tracing::info!("forge-telegram: plugin registered");
+                telegram_state = Some(tg_state);
+                app
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "forge-telegram: init failed, starting without plugin");
+                app
+            }
+        }
+    } else {
+        app
+    };
+
     let mut app = app
         // Embedded static fallback: serve_static резолвит "/" → index.html и
         // отдаёт остальные ассеты с правильным Content-Type из bytes-секции
@@ -943,11 +975,16 @@ async fn main() -> anyhow::Result<()> {
     // worker'ов + закрытие соединений). После возврата future axum закрывает
     // listener и грейсфулли разлогинивает все активные соединения.
     let echo_for_shutdown = echo_state.clone();
+    let telegram_for_shutdown = telegram_state.clone();
     let history_for_shutdown = app_state.history.clone();
     let shutdown_signal = async move {
         wait_for_shutdown_signal().await;
         tracing::info!("shutdown signal received; running Echo graceful shutdown");
         forge_echo::shutdown(&echo_for_shutdown).await;
+        // Telegram-плагин мог не запускаться (нет флага или init упал).
+        if let Some(tg) = telegram_for_shutdown {
+            forge_telegram::shutdown(&tg).await;
+        }
         // Финальный снимок истории сессий перед выходом — чтобы последнее
         // состояние активных сессий/окон попало в журнал, даже если до
         // следующего часового тика воркера дело не дошло.
@@ -1519,10 +1556,10 @@ async fn pick_folder() -> Result<Response, (StatusCode, String)> {
         if stderr.contains("-128") || stderr.contains("User canceled") {
             return Ok(StatusCode::NO_CONTENT.into_response());
         }
-        return Err((
+        Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("ошибка диалога: {}", stderr.trim()),
-        ));
+        ))
     }
 
     #[cfg(target_os = "linux")]
