@@ -36,9 +36,9 @@ import {
 
 import { getDialogs, listFolders } from './api.js';
 import {
-    botMark, dialogStatusLine, dialogsForDir, dirEntries, dirUnread, FOLDER_LIST_LIMIT,
-    mergeArchive, mergeDialogs, mutedIds, mutedMark, nodesTitle, onlineCounterText,
-    slugName, splitDialogs, unreadBadgeText,
+    botMark, dialogStatusLine, dialogsForDir, dirEntries, dirUnread, displayName, displayNick,
+    FOLDER_LIST_LIMIT, mergeArchive, mergeDialogs, mutedIds, mutedMark, nodesTitle,
+    onlineCounterText, splitDialogs, unreadBadgeText,
 } from './format.js';
 import { currentVisibilityFilter, tgState } from './state.js';
 import { emptyDirKeys, visibleDialogs } from './visibility.js';
@@ -302,11 +302,30 @@ function renderList(root, dialogs, cls) {
 }
 
 /**
+ * Подсказка строки: `Иван Петров (@sofia)`, без ника — только имя.
+ *
+ * Смысл подсказки после того, как имя стало видно всегда: показать то, что
+ * СТРОКА могла потерять. Имя обрезается ellipsis'ом в узкой колонке, ник при
+ * нехватке места ужимается первым — подсказка возвращает оба целиком. Пустая
+ * или дублирующая подсказка была бы хуже отсутствующей: пользователь наводит
+ * мышь и получает то же, что уже прочитал.
+ *
+ * @param {object} d — DialogDto
+ * @returns {string}
+ */
+function tooltipText(d) {
+    const name = displayName(d);
+    const nick = displayNick(d);
+    return nick ? `${name} (${nick})` : name;
+}
+
+/**
  * Двухстрочный элемент списка.
  *
- * Строка 1 — слаг имени, строка 2 — статус + amber-счётчик непрочитанного.
- * Ссылки на подэлементы кладутся в `_tg` на самом узле: точечные апдейтеры
- * находят их без повторных querySelector'ов по всей колонке.
+ * Строка 1 — имя + приглушённый @ник + метки, строка 2 — статус +
+ * amber-счётчик непрочитанного. Ссылки на подэлементы кладутся в `_tg` на
+ * самом узле: точечные апдейтеры находят их без повторных querySelector'ов по
+ * всей колонке.
  */
 function buildRow(d, cls) {
     const li = document.createElement('li');
@@ -315,14 +334,30 @@ function buildRow(d, cls) {
     li.className = cls + (d.muted ? ' tg-muted' : '');
     li.dataset.dialogId = String(d.id);
     li.tabIndex = 0;
-    // title — тоже textContent-путь (атрибут не парсится как HTML), даёт
-    // полное имя при обрезке слага.
-    li.title = String(d.title || d.id);
+    // title — тоже textContent-путь (атрибут не парсится как HTML).
+    //
+    // Раньше подсказка несла ЕДИНСТВЕННОЕ место, где имя было видно целиком:
+    // в строке стоял слаг. Теперь имя в строке, и подсказка, повторяющая его
+    // слово в слово, была бы шумом — она несёт «Имя (@ник)», то есть ровно то,
+    // чего в строке может не хватить: полное имя при обрезке ellipsis'ом плюс
+    // ник, который при нехватке места ужимается первым.
+    li.title = tooltipText(d);
 
     const name = document.createElement('span');
     name.className = 'tg-dialog-name';
     const nameText = document.createElement('span');
-    nameText.textContent = slugName(d);
+    nameText.className = 'tg-dialog-title';
+    nameText.textContent = displayName(d);
+    // @ник — второстепенная деталь: серым и следом за именем. Узла нет вовсе,
+    // когда ника нет (у большинства контактов Telegram его и не бывает):
+    // пустой span получил бы от CSS отступ и оставил бы в строке дыру.
+    const nickText = displayNick(d);
+    let nick = null;
+    if (nickText) {
+        nick = document.createElement('span');
+        nick.className = 'tg-dialog-nick';
+        nick.textContent = nickText;
+    }
     // Бот и человек — оба kind === 'user' и выглядят в колонке одинаково.
     // Метка [BOT] показывает ту же классификацию, по которой папка «Боты»
     // отбирает диалоги (format.js::dialogCategory), — иначе содержимое папки
@@ -336,6 +371,7 @@ function buildRow(d, cls) {
     mark.className = 'tg-muted-mark';
     mark.textContent = mutedMark(!!d.muted);
     name.appendChild(nameText);
+    if (nick) name.appendChild(nick);
     if (d.bot) name.appendChild(document.createTextNode(' '));
     name.appendChild(bot);
     name.appendChild(mark);

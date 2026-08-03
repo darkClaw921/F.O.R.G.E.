@@ -37,8 +37,14 @@ STAGED_RUST=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null \
     | grep -E '(\.rs$|/Cargo\.(toml|lock)$)' || true)
 
 if [ -n "$STAGED_RUST" ]; then
-    echo "[pre-commit] running 'cargo test' (staged Rust changes)..." >&2
-    if ! ( cd "$REPO_ROOT/tmux-web" && cargo test --quiet --color=always ) >&2; then
+    # --workspace, а НЕ `cd tmux-web && cargo test`: внутри workspace вторая
+    # команда тестирует ТОЛЬКО пакет devforge. Юнит-тесты плагинов
+    # (forge-echo, forge-telegram, forge-vk) этим гейтом не запускались вовсе
+    # — их прикрывали лишь tmux-web/tests/*_smoke.rs, то есть основная масса
+    # тестов плагина писалась «в стол». У forge-vk таких тестов больше, чем
+    # smoke, поэтому правка сделана до начала его разработки.
+    echo "[pre-commit] running 'cargo test --workspace' (staged Rust changes)..." >&2
+    if ! ( cd "$REPO_ROOT" && cargo test --quiet --workspace --color=always ) >&2; then
         echo "" >&2
         echo "[pre-commit] ❌  cargo test FAILED — commit aborted." >&2
         echo "[pre-commit] Fix the failing tests and try again." >&2

@@ -8,34 +8,83 @@
 // Инвариант id: dialog_id — СТРОКА (64-битные значения Telegram не влезают в
 // Number), message_id — число. Сравнивать dialog_id можно только строками.
 
-/** Сколько символов слага влезает в колонку контактов. */
+/**
+ * Сколько символов слага папки влезает в секцию `// DIRECTORIES`.
+ *
+ * Константа обслуживала ДВА слага: имя диалога (`sofia@node`) и имя папки.
+ * Первого больше нет — в колонке стоит человеческое имя, и обрезает его CSS
+ * (ellipsis по месту, а не по числу символов: 24 моноширинных знака в узкой
+ * мобильной колонке уже не помещаются, а в широкой обрезают зря). Осталась
+ * одна роль — [`folderSlug`], поэтому и имя роли в комментарии одно.
+ */
 export const SLUG_MAX = 24;
 
-/** Суффикс слага по типу диалога: sofia@node, devs@group, news@chan. */
-const KIND_SUFFIX = { user: 'node', group: 'group', channel: 'chan' };
-
 /**
- * Терминальный слаг имени: `sofia@node`.
+ * Человеческое имя диалога для колонки и шапки: `Иван Петров`.
  *
- * Берётся @username (он уже в нужном алфавите), иначе title. Всё, что не
- * [a-z0-9_.-], сжимается в `_`; пустой результат заменяется на `anon`, чтобы
- * в списке не появлялись безымянные строки (у удалённых аккаунтов имени нет).
+ * ЧТО БЫЛО ДО. Здесь жил терминальный слаг `slugName` (`ivan_petrov@node`):
+ * имя приводилось к нижнему регистру, а всё, что не `[a-z0-9_.-]`, сжималось
+ * в `_`. Для кириллицы это означало строку из одних подчёркиваний, которую
+ * функция затем заменяла на `anon`: «Иван Петров» в колонке выглядел как
+ * `anon@node`, и узнать собеседника было нельзя. Полное имя при этом
+ * существовало — но только в `title` элемента, то есть при наведении мышью.
  *
- * @param {{username?: string, title?: string, kind?: string, id?: string}} d
+ * ТЕПЕРЬ имя показывается КАК ЕСТЬ: кириллица, emoji и составные графемы
+ * (флаги, семьи, модификаторы тона) не трогаются вовсе — ни транслитерации,
+ * ни нормализации, ни обрезки по кодовым точкам (обрезка по символам рвёт
+ * суррогатные пары и ZWJ-последовательности, превращая флаг в два квадрата).
+ *
+ * Единственная правка текста — схлопывание пробельных символов: перевод
+ * строки в названии группы иначе разорвал бы однострочную шапку сессии
+ * (`SESSION ▸ …`), где весь текст живёт одной строкой.
+ *
+ * Порядок запасных вариантов: title → @username → id. Он же объясняет
+ * молчание [`displayNick`] при пустом title: ник уже показан КАК имя, и
+ * повторять его вторым, серым, — дубль, а не иерархия.
+ *
+ * @param {{username?: string, title?: string, id?: string}} d
  * @returns {string}
  */
-export function slugName(d) {
-    const raw = (d && (d.username || d.title)) || '';
-    let slug = String(raw)
-        .toLowerCase()
-        .replace(/\s+/g, '_')
-        .replace(/[^a-z0-9_.-]+/g, '_')
-        .replace(/_{2,}/g, '_')
-        .replace(/^[_.-]+|[_.-]+$/g, '');
-    if (!slug) slug = 'anon';
-    if (slug.length > SLUG_MAX) slug = slug.slice(0, SLUG_MAX);
-    const suffix = KIND_SUFFIX[(d && d.kind) || 'user'] || 'node';
-    return `${slug}@${suffix}`;
+export function displayName(d) {
+    const title = cleanName(d && d.title);
+    if (title) return title;
+    const user = cleanNick(d && d.username);
+    if (user) return `@${user}`;
+    const id = d && d.id != null ? String(d.id) : '';
+    return id || 'anon';
+}
+
+/**
+ * Приписка ником: `@ivan_petrov`, либо ПУСТАЯ строка.
+ *
+ * Пустая строка — значимый результат, а не «не смогли»: у большей части
+ * контактов Telegram username'а нет вовсе. Старый слаг в этом случае лепил
+ * ник из заголовка (`sofia_petrova@node` при имени «Sofia Petrova»), и рядом
+ * с именем оказывалось то же самое имя, только испорченное. Показывать
+ * нечего — не показываем ничего.
+ *
+ * @param {{username?: string, title?: string}} d
+ * @returns {string} `@ник` либо ''
+ */
+export function displayNick(d) {
+    // Пустой title ⇒ ник уже занял место имени (см. displayName).
+    if (!cleanName(d && d.title)) return '';
+    const user = cleanNick(d && d.username);
+    return user ? `@${user}` : '';
+}
+
+/** Схлопывает пробелы (в т.ч. перевод строки и NBSP) и обрезает края. */
+function cleanName(v) {
+    return v == null ? '' : String(v).replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Ник без ведущих «@»: бэкенд отдаёт username голым, но чужой источник
+ * (ручной ввод в белом списке, старый кеш) вполне может принести «@sofia», и
+ * тогда в строке оказалось бы «@@sofia».
+ */
+function cleanNick(v) {
+    return cleanName(v).replace(/^@+/, '');
 }
 
 /**
@@ -207,10 +256,15 @@ export function mutedIds(dialogs) {
 /**
  * Слаг имени папки для секции // DIRECTORIES: `работа`, `dev_chats`.
  *
- * Расширение slugName: юникод-буквы и цифры СОХРАНЯЮТСЯ (`\p{L}\p{N}`) —
- * папки у пользователей называются по-русски, и «работа» → `folder_2` было бы
- * потерей смысла. Emoji и прочие символы сжимаются в `_`. Пустой результат
- * (имя из одних emoji) заменяется на `folder_<id>`, чтобы папка не пропала.
+ * Юникод-буквы и цифры СОХРАНЯЮТСЯ (`\p{L}\p{N}`) — папки у пользователей
+ * называются по-русски, и «работа» → `folder_2` было бы потерей смысла. Emoji
+ * и прочие символы сжимаются в `_`. Пустой результат (имя из одних emoji)
+ * заменяется на `folder_<id>`, чтобы папка не пропала.
+ *
+ * ЭТО ВСЁ ЕЩЁ СЛАГ, и намеренно: пункт секции `// DIRECTORIES` — не имя
+ * человека, а «путь» в терминальной метафоре колонки (`~/inbox`, `~/работа`),
+ * и пробелы с эмодзи в нём читались бы как сбой. Имена диалогов ушли из
+ * слагов в человеческий вид (см. [`displayName`]) — папки остались.
  *
  * @param {{id?: number, title?: string}} folder
  * @returns {string}
@@ -536,7 +590,42 @@ export function keyHex(dialogId) {
 }
 
 /**
- * Текст шапки сессии: `SESSION ▸ sofia@node · [ONLINE] · ⌁ 42 PACKETS · ◇ KEY 0xdeadbeef`.
+ * Шапка сессии, РАЗОБРАННАЯ на части: `{ name, nick, tail }`.
+ *
+ * Разделение существует ради одного: @ник в шапке красится приглушённым, а
+ * покрасить кусок строки можно только отдельным узлом. Склейка живёт в
+ * [`sessionHeadText`] — он остаётся единственным описанием того, как шапка
+ * выглядит целиком, и им же пользуются тесты.
+ *
+ * `tail` начинается с разделителя ` · `, чтобы склейка не решала, ставить его
+ * или нет: при пустом `nick` части просто складываются встык.
+ *
+ * @param {?object} dialog — DialogDto (null ⇒ ничего не открыто)
+ * @param {number} count — сколько сообщений загружено
+ * @param {{online?: boolean, wasOnline?: ?number}} [presence]
+ * @param {number} [nowSecs] — для детерминизма в тестах
+ * @returns {{name: string, nick: string, tail: string}}
+ */
+export function sessionHeadParts(dialog, count, presence, nowSecs) {
+    if (!dialog) return { name: 'SESSION ▸ —', nick: '', tail: '' };
+    const n = Math.max(0, Number(count) || 0);
+    const rest = [];
+    const kind = dialog.kind || 'user';
+    if (presence && kind !== 'group' && kind !== 'channel') {
+        rest.push(dialogStatusLine(dialog, presence, nowSecs));
+    }
+    rest.push(`⌁ ${n} PACKETS`);
+    rest.push(`◇ KEY 0x${keyHex(dialog.id)}`);
+    return {
+        name: `SESSION ▸ ${displayName(dialog)}`,
+        nick: displayNick(dialog),
+        tail: ` · ${rest.join(' · ')}`,
+    };
+}
+
+/**
+ * Текст шапки сессии одной строкой:
+ * `SESSION ▸ Иван Петров @sofia · [ONLINE] · ⌁ 42 PACKETS · ◇ KEY 0xdeadbeef`.
  *
  * Присутствие показывается ТОЛЬКО для личных чатов и только когда оно
  * известно: у групп и каналов его не бывает, а «[OFFLINE]» на диалоге, по
@@ -550,16 +639,8 @@ export function keyHex(dialogId) {
  * @returns {string}
  */
 export function sessionHeadText(dialog, count, presence, nowSecs) {
-    if (!dialog) return 'SESSION ▸ —';
-    const n = Math.max(0, Number(count) || 0);
-    const parts = [`SESSION ▸ ${slugName(dialog)}`];
-    const kind = dialog.kind || 'user';
-    if (presence && kind !== 'group' && kind !== 'channel') {
-        parts.push(dialogStatusLine(dialog, presence, nowSecs));
-    }
-    parts.push(`⌁ ${n} PACKETS`);
-    parts.push(`◇ KEY 0x${keyHex(dialog.id)}`);
-    return parts.join(' · ');
+    const p = sessionHeadParts(dialog, count, presence, nowSecs);
+    return p.nick ? `${p.name} ${p.nick}${p.tail}` : `${p.name}${p.tail}`;
 }
 
 /**

@@ -1,6 +1,6 @@
 [package]
 name = "devforge"
-version = "0.1.53"
+version = "0.1.54"
 edition = "2021"
 description = "Web-viewer для tmux сессий через WebSocket + xterm.js"
 license = "MIT"
@@ -39,13 +39,13 @@ mime_guess = "2"
 
 # Phase 3 — HTTP-клиент для proxy на удалённые devforge-инстансы.
 # Используется в `remote_proxy::proxy_request` (Bearer-token, json/stream
-# body). `default-features = false` отключает default-tls (openssl) — берём
-# rustls для предсказуемой сборки на разных платформах (включая Homebrew
-# bottle на macOS без OpenSSL). Features:
-#   - json   — `RequestBuilder::json` / `Response::json` (serde-сериализация);
-#   - stream — поддержка стримящегося body, нужна для WS-прокси в Phase 4;
-#   - rustls-tls — TLS без OpenSSL-зависимости.
-reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"], default-features = false }
+# body). Версия и features (json + stream + rustls-tls, `default-features =
+# false` ради отсутствия openssl) объявлены в `[workspace.dependencies]`
+# корневого Cargo.toml — там же лежит подробное обоснование подъёма. Здесь
+# намеренно НЕ повторяется `default-features = false`: член workspace не может
+# его переопределить, поэтому вернуть `default-tls` (= openssl) отсюда
+# невозможно даже по ошибке.
+reqwest = { workspace = true }
 
 # Phase 4 — WebSocket-клиент для upstream-прокси на удалённые devforge-инстансы.
 # Используется в `remote_proxy::proxy_websocket` для проксирования /ws/attach,
@@ -81,6 +81,13 @@ echo-host-api = { path = "../plugins/echo-host-api" }
 # хоста ничего не нужно (нет tmux, auth покрыт регистрацией роутов до слоёв),
 # поэтому `register_routes(app, state)` идёт без host-адаптера.
 forge-telegram = { path = "../plugins/telegram" }
+# VK плагин (opt-in, флаг `--vk`) — вкладка мессенджера на личном аккаунте
+# ВКонтакте (пользовательский access-токен + REST api.vk.com + LongPoll).
+# Подключается как path-dep в Cargo workspace (member: plugins/vk).
+# Отдельного `vk-host-api` НЕТ — по той же причине, что и у Telegram: плагину
+# от хоста нужен только `Router`, а auth покрывается порядком регистрации
+# роутов (до `.layer(auth_middleware)`).
+forge-vk = { path = "../plugins/vk" }
 # async-trait нужен в tmux-web потому что EchoHostAdapter имплементит
 # echo_host_api::HostApi (trait объявлен через #[async_trait]).
 async-trait = "0.1"

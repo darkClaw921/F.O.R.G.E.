@@ -10,6 +10,7 @@ import {
     $tabGit, $tabDocker, $tabTelescope,
     $tabEcho, $echoEl,
     $telegramToggle, $telegram,
+    $vkToggle, $vk,
 } from '../core/dom.js';
 import { scheduleResizeFromTerm } from '../terminal/xterm.js';
 import { connectTasksWs, fetchTasks, stopTasksPolling } from '../ws/tasks-ws.js';
@@ -22,11 +23,13 @@ import {
 import { hideScreensaver } from '../screensaver/screensaver.js';
 import { initTelegram } from '../telegram/main.js';
 import { applyTgTheme } from '../telegram/theme.js';
+import { initVk } from '../vk/main.js';
+import { applyVkTheme } from '../vk/theme.js';
 
 export function switchTab(name) {
     if (name !== 'terminal' && name !== 'tasks' && name !== 'git'
         && name !== 'docker' && name !== 'telescope' && name !== 'echo'
-        && name !== 'telegram') return;
+        && name !== 'telegram' && name !== 'vk') return;
     if (state.activeTab === name) return;
     // Заставка лежит поверх области терминала — при переключении вкладок гасим её.
     hideScreensaver();
@@ -40,6 +43,7 @@ export function switchTab(name) {
     const onTelescope = name === 'telescope';
     const onEcho = name === 'echo';
     const onTelegram = name === 'telegram';
+    const onVk = name === 'vk';
     $terminalEl.hidden = !onTerminal;
     if ($placeholder) $placeholder.hidden = !onTerminal;
     if ($windowBar) $windowBar.hidden = !onTerminal || !state.currentSession;
@@ -49,6 +53,7 @@ export function switchTab(name) {
     if ($telescopeEl) $telescopeEl.hidden = !onTelescope;
     if ($echoEl) $echoEl.hidden = !onEcho;
     if ($telegram) $telegram.hidden = !onTelegram;
+    if ($vk) $vk.hidden = !onVk;
 
     $tabTerminal.classList.toggle('active', onTerminal);
     $tabTasks.classList.toggle('active', onTasks);
@@ -59,6 +64,7 @@ export function switchTab(name) {
     // Кнопка Telegram живёт в #settings-bar, а не в #tab-bar, но подсветку
     // активной вкладки получает по тому же правилу.
     if ($telegramToggle) $telegramToggle.classList.toggle('active', onTelegram);
+    if ($vkToggle) $vkToggle.classList.toggle('active', onVk);
 
     if (prev === 'git' && !onGit) {
         closeGitWs('tab switched away');
@@ -114,5 +120,13 @@ export function switchTab(name) {
         // Teardown при уходе с вкладки НЕ делаем: WS у Telegram постоянный —
         // он нужен для unread-бейджа и тостов с любой вкладки.
         initTelegram();
+    } else if (onVk) {
+        // Ровно те же два правила, что у телеграмной ветки: тема
+        // пересчитывается на КАЖДОМ входе (в режиме auto пользователь мог
+        // сменить тему devforge, пока вкладка была закрыта), а teardown при
+        // уходе НЕ делается — WS постоянный, иначе бейдж и тосты появлялись бы
+        // только после первого захода на вкладку.
+        applyVkTheme();
+        initVk();
     }
 }

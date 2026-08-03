@@ -1,0 +1,45 @@
+{
+  "response": {
+    "history": [
+      [4, 7010, 17, 1234, 1700000400, "новое сообщение"],
+      [7, 7001, 1234]
+    ],
+    "messages": {
+      "count": 1,
+      "items": [
+        {
+          "date": 1700000400,
+          "from_id": 1234,
+          "id": 7010,
+          "out": 0,
+          "peer_id": 1234,
+          "text": "новое сообщение",
+          "conversation_message_id": 520,
+          "attachments": []
+        }
+      ]
+    },
+    "conversations": [
+      {
+        "peer": { "id": 1234, "type": "user", "local_id": 1234 },
+        "last_message_id": 7010,
+        "in_read": 7009,
+        "out_read": 7010,
+        "unread_count": 1,
+        "can_write": { "allowed": true }
+      }
+    ],
+    "profiles": [
+      {
+        "id": 1234,
+        "first_name": "Павел",
+        "last_name": "Дуров",
+        "screen_name": "durov",
+        "online": 1
+      }
+    ],
+    "groups": [],
+    "new_pts": 2049,
+    "more": 0
+  }
+}

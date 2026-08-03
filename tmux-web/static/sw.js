@@ -32,7 +32,13 @@
 // v3: там же появился гейт telegram (vim уступает клавиши открытой панели).
 // Причина бампа та же: старая копия hotkeys.js из кэша перехватывала бы j/k
 // поверх навигации по чатам.
-const CACHE_VERSION = 'forge-pwa-v3';
+// v4: гейт vk — вторая панель-владелец клавиатуры в hotkeys.js. Бамп обязателен
+// по ДВУМ независимым причинам: (1) правится сам hotkeys.js, он раздаётся
+// stale-while-revalidate, и без бампа первый reload выполнил бы старую копию,
+// молча воруя j/k у панели VK; (2) index.html приезжает через
+// navigationStrategy из SHELL_CACHE под ключом '/', то есть разметка #vk тоже
+// пришла бы старая.
+const CACHE_VERSION = 'forge-pwa-v4';
 const SHELL_CACHE = `forge-shell-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `forge-runtime-${CACHE_VERSION}`;
 const DATA_CACHE = `forge-data-${CACHE_VERSION}`;
@@ -68,6 +74,11 @@ const SHELL_ASSETS = [
 // Только идемпотентные read-only GET-эндпоинты — их ответы кэшируем
 // network-first, чтобы установленное приложение показывало последние данные
 // офлайн. Префиксное совпадение (startsWith) покрывает под-пути с query.
+//
+// `/api/telegram/*` и `/api/vk/*` здесь ОТСУТСТВУЮТ НАМЕРЕННО: переписка не
+// кэшируется на диск браузера ни в каком виде — ни списки бесед, ни история,
+// ни медиа. Офлайн-режим для мессенджера всё равно бесполезен (сообщение не
+// отправить), а цена — копия чужой переписки в Cache Storage.
 const DATA_ALLOWLIST = [
     '/api/sessions',
     '/api/tasks',

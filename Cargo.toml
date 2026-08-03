@@ -5,6 +5,7 @@ members = [
     "plugins/echo",
     "plugins/echo-host-api",
     "plugins/telegram",
+    "plugins/vk",
 ]
 exclude = ["beads_rust"]
 
@@ -30,3 +31,22 @@ axum = { version = "0.7", features = ["ws", "macros"] }
 chrono = { version = "0.4", features = ["serde"] }
 futures-util = "0.3"
 async-trait = "0.1"
+# HTTP-клиент двух членов workspace: `tmux-web` (remote-proxy) и `forge-vk`
+# (весь транспорт к api.vk.com). Объявление поднято сюда НАМЕРЕННО, а не
+# продублировано в двух манифестах:
+#
+#   1. `default-features = false` задаётся ТОЛЬКО в workspace-определении —
+#      член крейта его переопределить не может, он может лишь ДОБАВИТЬ
+#      features. После подъёма ни один будущий манифест не сможет случайно
+#      вернуть `default-tls` (= openssl), то есть инвариант «openssl в дереве
+#      нет» (`cargo tree -i openssl-sys` пуст) стал структурным, а не
+#      дисциплинарным.
+#   2. Features членов складываются в ОДНУ сборку reqwest
+#      (json+stream+rustls-tls ∪ multipart). При двух независимых объявлениях
+#      расхождение версий дало бы два reqwest в дереве — `cargo tree -d`
+#      покажет это лишь постфактум.
+#
+# Features: json — сериализация тел; stream — `Body::wrap_stream` (стриминг
+# upload/download без буферизации файла в памяти); rustls-tls — TLS без
+# OpenSSL, консистентно с tokio-tungstenite.
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }

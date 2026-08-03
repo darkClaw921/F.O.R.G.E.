@@ -1,0 +1,143 @@
+{
+  "response": {
+    "count": 3,
+    "unread_count": 2,
+    "items": [
+      {
+        "conversation": {
+          "peer": { "id": 1234, "type": "user", "local_id": 1234 },
+          "last_message_id": 7001,
+          "in_read": 6999,
+          "out_read": 7001,
+          "sort_id": { "major_id": 0, "minor_id": 7001 },
+          "unread_count": 2,
+          "is_marked_unread": false,
+          "important": true,
+          "can_write": { "allowed": true }
+        },
+        "last_message": {
+          "date": 1700000100,
+          "from_id": 1234,
+          "id": 7001,
+          "out": 0,
+          "peer_id": 1234,
+          "text": "привет",
+          "conversation_message_id": 512,
+          "fwd_messages": [],
+          "important": false,
+          "random_id": 0,
+          "attachments": [],
+          "is_hidden": false
+        }
+      },
+      {
+        "conversation": {
+          "peer": { "id": 2000000007, "type": "chat", "local_id": 7 },
+          "last_message_id": 7002,
+          "in_read": 7002,
+          "out_read": 7002,
+          "sort_id": { "major_id": 0, "minor_id": 7002 },
+          "unread_count": 0,
+          "push_settings": { "disabled_forever": true, "no_sound": false },
+          "can_write": { "allowed": true },
+          "chat_settings": {
+            "members_count": 4,
+            "title": "Проектная",
+            "pinned_message": {
+              "date": 1699999000,
+              "from_id": 1234,
+              "text": "закреплённое",
+              "conversation_message_id": 4,
+              "attachments": []
+            },
+            "state": "in",
+            "photo": {
+              "photo_50": "https://sun.example/c50.jpg",
+              "photo_100": "https://sun.example/c100.jpg",
+              "photo_200": "https://sun.example/c200.jpg"
+            },
+            "active_ids": [1234, 4321],
+            "is_group_channel": false,
+            "owner_id": 1234
+          }
+        },
+        "last_message": {
+          "date": 1700000200,
+          "from_id": 4321,
+          "id": 7002,
+          "out": 0,
+          "peer_id": 2000000007,
+          "text": "в чате",
+          "conversation_message_id": 5,
+          "attachments": [],
+          "action": { "type": "chat_invite_user", "member_id": 4321 }
+        }
+      },
+      {
+        "conversation": {
+          "peer": { "id": -55, "type": "group", "local_id": 55 },
+          "last_message_id": 7003,
+          "in_read": 7003,
+          "out_read": 7003,
+          "sort_id": { "major_id": 0, "minor_id": 7003 },
+          "unread_count": 0,
+          "can_write": { "allowed": false, "reason": 18 }
+        },
+        "last_message": {
+          "date": 1700000300,
+          "from_id": -55,
+          "id": 7003,
+          "out": 0,
+          "peer_id": -55,
+          "text": "сообщение сообщества",
+          "conversation_message_id": 1,
+          "attachments": [],
+          "keyboard": {
+            "one_time": false,
+            "inline": true,
+            "author_id": -55,
+            "buttons": [
+              [
+                {
+                  "color": "primary",
+                  "action": { "type": "text", "label": "Да", "payload": "{\"cmd\":\"yes\"}" }
+                }
+              ]
+            ]
+          }
+        }
+      }
+    ],
+    "profiles": [
+      {
+        "id": 1234,
+        "first_name": "Павел",
+        "last_name": "Дуров",
+        "screen_name": "durov",
+        "photo_50": "https://sun.example/50.jpg",
+        "photo_100": "https://sun.example/100.jpg",
+        "online": 1,
+        "is_friend": 1,
+        "last_seen": { "platform": 7, "time": 1700000000 }
+      },
+      {
+        "id": 4321,
+        "first_name": "Иван",
+        "last_name": "Петров",
+        "screen_name": "ivan",
+        "online": 0,
+        "deactivated": ""
+      }
+    ],
+    "groups": [
+      {
+        "id": 55,
+        "name": "Тестовое сообщество",
+        "screen_name": "test_group",
+        "photo_50": "https://sun.example/g50.jpg",
+        "type": "group",
+        "is_closed": 0
+      }
+    ]
+  }
+}

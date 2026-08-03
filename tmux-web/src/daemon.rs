@@ -25,7 +25,7 @@ use crate::cli;
 /// удаляется и старт продолжается (нормальный recovery после краша).
 ///
 /// Все опции (`--port`, `--remote`, `--bind`, `--token`, `--pwa`,
-/// `--telegram`) прокидываются в child-процесс `devforge run …`, чтобы он
+/// `--telegram`, `--vk`) прокидываются в child-процесс `devforge run …`, чтобы он
 /// точно унаследовал режим, выбранный пользователем (сборка аргументов —
 /// [`build_daemon_args`]). Без этого `devforge start --remote` молча
 /// превращался бы в localhost-режим, что нарушает single-source-of-truth
@@ -58,6 +58,9 @@ pub fn build_daemon_args(port: u16, opts: &cli::RunOptions) -> Vec<String> {
     }
     if opts.telegram {
         args.push("--telegram".to_string());
+    }
+    if opts.vk {
+        args.push("--vk".to_string());
     }
     args
 }
@@ -445,6 +448,25 @@ mod tests {
         assert!(!args.iter().any(|a| a == "--pwa"), "лишних флагов быть не должно: {args:?}");
     }
 
+    /// Регресс-тест на исторический баг-класс проекта: `--pwa` когда-то
+    /// терялся молча, и `devforge start --pwa` поднимал daemon без PWA.
+    /// Здесь то же самое для `--vk`: без проброса `devforge start --vk`
+    /// молча запустил бы сервер БЕЗ плагина, а пользователь увидел бы
+    /// отсутствие кнопки Ⓥ и решил, что фича не работает вовсе.
+    #[test]
+    fn daemon_args_carry_vk() {
+        let opts = cli::RunOptions {
+            vk: true,
+            ..cli::RunOptions::default()
+        };
+        let args = build_daemon_args(7331, &opts);
+        assert!(args.iter().any(|a| a == "--vk"), "{args:?}");
+        assert!(
+            !args.iter().any(|a| a == "--telegram" || a == "--pwa"),
+            "лишних флагов быть не должно: {args:?}"
+        );
+    }
+
     #[test]
     fn daemon_args_carry_all_flags_together() {
         let opts = cli::RunOptions {
@@ -453,10 +475,11 @@ mod tests {
             token: Some("t".into()),
             pwa: true,
             telegram: true,
+            vk: true,
             port: 9000,
         };
         let args = build_daemon_args(opts.port, &opts);
-        for expected in ["--remote", "--bind", "--token", "--pwa", "--telegram"] {
+        for expected in ["--remote", "--bind", "--token", "--pwa", "--telegram", "--vk"] {
             assert!(args.iter().any(|a| a == expected), "{expected} потерян: {args:?}");
         }
     }

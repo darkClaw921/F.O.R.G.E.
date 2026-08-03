@@ -1,0 +1,63 @@
+[package]
+name = "forge-vk"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "VK plugin для F.O.R.G.E. — вкладка мессенджера на личном аккаунте (user access token)"
+
+[dependencies]
+# Axum 0.7 совпадает с tmux-web, forge-echo и forge-telegram, чтобы
+# Router/State были одного типа и `app.merge(plugin_router)` компилировался
+# без адаптеров.
+axum = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+futures-util = { workspace = true }
+# `#[async_trait]` для объектно-безопасного трейта `login::LoginBackend`
+# (Ф3): он разделяет чистый автомат логина и сетевую часть, благодаря чему
+# матрица переходов тестируется без сети и без токена.
+async-trait = { workspace = true }
+
+# ЕДИНСТВЕННЫЙ транспорт плагина: REST api.vk.com, LongPoll-сервер, upload-
+# сервер и скачивание вложений с CDN. Версия и базовые features объявлены в
+# `[workspace.dependencies]` корневого Cargo.toml (`default-features = false`
+# + json/stream/rustls-tls) — здесь только ДОБАВЛЯЕТСЯ `multipart` для
+# 3-шаговой загрузки файлов VK (Ф8). `multipart` тянет mime_guess (уже в
+# дереве) и внутренний генератор границ, TLS-бэкенд не трогает: гейт
+# `cargo tree -i openssl-sys` обязан остаться пустым.
+reqwest = { workspace = true, features = ["multipart"] }
+
+# Тип тела потоковой загрузки (`reqwest::Body::wrap_stream` требует
+# `bytes::Bytes: From<S::Ok>`). Новых узлов в дерево не добавляет: `bytes` уже
+# тянут и reqwest, и tmux-web — версия одна и та же, `cargo tree -d` не растёт.
+bytes = "1"
+
+# CancellationToken (graceful shutdown, как в forge-echo/forge-telegram) +
+# feature `io` для ReaderStream/StreamReader: стриминг медиа и загрузок без
+# буферизации всего файла в памяти (Ф7/Ф8).
+tokio-util = { version = "0.7", features = ["io"] }
+
+# Конфиг плагина `~/.config/forge/vk.toml`. 0.8.x — та же линия, что у
+# forge-echo и forge-telegram, поэтому новый крейт в дерево не добавляется.
+toml = "0.8"
+
+# UUID v4 — идентификаторы upload-сессий (`upload_id`, Ф8) и источник
+# `random_id` для `messages.send` (младшие биты, положительный i32).
+# Отдельный крейт `rand` ради этого не заводится.
+uuid = { version = "1", features = ["v4"] }
+
+# Определение MIME по имени файла: и при приёме загрузки, и при отдаче
+# кэшированных медиа (Ф7/Ф8).
+mime_guess = "2"
+
+[dev-dependencies]
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
+# НОВЫХ dev-зависимостей (wiremock/httpmock) здесь НЕ ЗАВОДИТСЯ намеренно:
+# стенд `tests/vk_stub.rs` (Ф2) — фейковый api.vk.com, LongPoll и upload-
+# сервер — пишется на уже имеющихся axum + tokio::net::TcpListener.
+# Ровно ради него `VkConfig::base_url` обязателен.

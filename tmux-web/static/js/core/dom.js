@@ -227,3 +227,75 @@ export const $tgLightboxImg = document.getElementById('tg-lightbox-img');
 export const $tgLightboxClose = document.getElementById('tg-lightbox-close');
 // Подпись под полноразмерным медиа в лайтбоксе: `имя · 1280×720 · 1.2 MB`.
 export const $tgLightboxCaption = document.getElementById('tg-lightbox-caption');
+
+// ---- VK plugin ----
+//
+// Ref'ы вкладки мессенджера ВКонтакте (плагин forge-vk, opt-in `--vk`).
+// Устройство ровно то же, что у телеграмной секции выше: значения
+// вычисляются ОДИН РАЗ при импорте модуля, поэтому узлы обязаны быть в
+// разметке к этому моменту (панель #vk присутствует в index.html всегда,
+// даже при выключенном плагине — скрыт только `hidden`).
+//
+// СЛЕДСТВИЕ ДЛЯ ТЕСТОВ: стаб `document` обязан стоять ДО первого импорта
+// любого модуля js/vk/*, иначе все ref'ы окажутся null и тест будет
+// проверять пустоту. Код панели всё равно проверяет truthy у каждого узла:
+// index.html может приехать из старого кэша PWA, где секции #vk ещё нет.
+export const $vkToggle = document.getElementById('vk-toggle');
+export const $vkUnreadBadge = document.getElementById('vk-unread-badge');
+export const $vk = document.getElementById('vk');
+export const $vkTitlebar = document.getElementById('vk-titlebar');
+export const $vkSelfUser = document.getElementById('vk-self-user');
+export const $vkThemeToggle = document.getElementById('vk-theme-toggle');
+export const $vkLogout = document.getElementById('vk-logout');
+// Колонка бесед: сама колонка, кнопка ☰ и подложка (js/vk/mobile.js).
+export const $vkContacts = document.getElementById('vk-contacts');
+export const $vkContactsToggle = document.getElementById('vk-contacts-toggle');
+export const $vkContactsScrim = document.getElementById('vk-contacts-scrim');
+// Четыре СЕРВЕРНЫХ фильтра (аналог папок Telegram, но переключение = запрос).
+export const $vkDirList = document.getElementById('vk-dir-list');
+export const $vkDirAllCount = document.getElementById('vk-dir-all-count');
+export const $vkDirUnreadCount = document.getElementById('vk-dir-unread-count');
+export const $vkNodesTitle = document.getElementById('vk-nodes-title');
+export const $vkDialogList = document.getElementById('vk-dialog-list');
+// Сообщества (peer_id < 0) — аналог секции CHANNELS у Telegram.
+export const $vkCommunityList = document.getElementById('vk-community-list');
+export const $vkSessionHead = document.getElementById('vk-session-head');
+export const $vkLog = document.getElementById('vk-log');
+export const $vkTyping = document.getElementById('vk-typing');
+export const $vkPrompt = document.getElementById('vk-prompt');
+export const $vkInput = document.getElementById('vk-input');
+export const $vkAttach = document.getElementById('vk-attach');
+export const $vkFileInput = document.getElementById('vk-file-input');
+export const $vkSend = document.getElementById('vk-send');
+export const $vkMode = document.getElementById('vk-mode');
+// Правая ячейка статусбара: счётчик собеседников в сети (js/vk/dialogs.js).
+export const $vkStatusRight = document.getElementById('vk-status-right');
+export const $vkLat = document.getElementById('vk-lat');
+// Оверлей логина: один шаг (вставка токена), без wizard'а.
+export const $vkLogin = document.getElementById('vk-login');
+export const $vkLoginStepToken = document.getElementById('vk-login-step-token');
+// Текст подсказки приходит с бэкенда: правила выдачи scope `messages` у VK
+// меняются, и хардкод в разметке устарел бы между релизами.
+export const $vkLoginHint = document.getElementById('vk-login-hint');
+export const $vkToken = document.getElementById('vk-token');
+export const $vkLoginTokenSubmit = document.getElementById('vk-login-token-submit');
+export const $vkLoginStatus = document.getElementById('vk-login-status');
+export const $vkLoginError = document.getElementById('vk-login-error');
+export const $vkLoginCountdown = document.getElementById('vk-login-countdown');
+// CAPTCHA (VK код 14) — ОТДЕЛЬНЫЙ оверлей, а не шаг логина: код прилетает на
+// любой метод, в том числе посреди уже идущей переписки.
+export const $vkCaptcha = document.getElementById('vk-captcha');
+export const $vkCaptchaImg = document.getElementById('vk-captcha-img');
+export const $vkCaptchaKey = document.getElementById('vk-captcha-key');
+export const $vkCaptchaSubmit = document.getElementById('vk-captcha-submit');
+export const $vkCaptchaCancel = document.getElementById('vk-captcha-cancel');
+export const $vkCaptchaError = document.getElementById('vk-captcha-error');
+export const $vkDropzone = document.getElementById('vk-dropzone');
+export const $vkLightbox = document.getElementById('vk-lightbox');
+export const $vkLightboxImg = document.getElementById('vk-lightbox-img');
+// Стрелки галереи — новые против Telegram: у сообщения VK до 10 вложений.
+export const $vkLightboxPrev = document.getElementById('vk-lightbox-prev');
+export const $vkLightboxNext = document.getElementById('vk-lightbox-next');
+export const $vkLightboxClose = document.getElementById('vk-lightbox-close');
+// Подпись под полноразмерным вложением: `имя · 1280×720 · 1.2 MB`.
+export const $vkLightboxCaption = document.getElementById('vk-lightbox-caption');

@@ -39,3 +39,13 @@ renderInterfacePanel → buildInterfaceForm из ./interface-tab.js. Тумбл�
 ## Стили
 
 css/settings-modal.css (.modal-card.settings-modal, .modal-tabs, .modal-tab-btn, .modal-tab-panel) + modals.css + notifications.css (фактический дизайн-язык форм: .notify-fieldset / .notify-field / .notify-hint / .notify-error / .notify-actions). Новые вкладки переиспользуют эти классы и правок CSS не требуют.
+
+## Вкладка «VK» (Ф10 плагина VK)
+
+renderVkPanel → buildVkVisibilityForm из ./vk-visibility-tab.js. Ленивый рендер тем же паттерном, что у соседей: при state.userSettings === null сначала fetchUserSettings(), при недоступном бэкенде форма строится с дефолтами (пустой объект). Вкладка ОТДЕЛЬНАЯ, а не общая «Мессенджеры»: объединение потребовало бы переписать работающую панель Telegram — ровно то, чего мы избегаем; слияние станет отдельной задачей на момент появления третьего мессенджера.
+
+Реестра табов в файле нет — каждая вкладка захардкожена в ШЕСТИ местах: кнопка (data-tab), панель (#ps-panel-<name>), селектор контента, объект состояния {loaded}, ветка в showTab, whitelist initialTab. Это норма файла: копия шести строк дешевле абстракции ради восьми вкладок.
+
+Строка табов стала из семи кнопок восьмью (девятью в remote-mode), поэтому .modal-tabs получил flex-wrap: wrap — дешёвое лечение переполнения вместо реструктуризации. Классы vk-visibility-* объявлены в css/settings-modal.css общим правилом с телеграмными tg-visibility-*.
+
+В Ф11 в эту же панель добавится форма хоткеев VK (порядок тот же: сначала видимость, потом клавиши).

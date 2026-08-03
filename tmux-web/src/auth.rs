@@ -240,9 +240,10 @@ pub async fn bearer_auth(
 //      preflight): браузер обязан сделать CORS-preflight, который мы не
 //      разрешаем (нет CORS-заголовков в ответах), и реальный мутирующий
 //      запрос не уйдёт.
-//      ЕДИНСТВЕННОЕ исключение по Content-Type — `POST /api/telegram/upload`
-//      с `application/octet-stream` (raw-заливка файла): этот Content-Type
-//      тоже не входит в «простые», то есть preflight для него обязателен, а
+//      ЕДИНСТВЕННОЕ исключение по Content-Type — raw-заливка файла
+//      (`POST /api/telegram/upload` и `POST /api/vk/upload`) с
+//      `application/octet-stream`: этот Content-Type тоже не входит в
+//      «простые», то есть preflight для него обязателен, а
 //      same-origin-проверка остаётся в силе. Подробности — в
 //      `is_allowed_raw_body`.
 
@@ -306,23 +307,26 @@ fn is_json_content_type(req: &Request<Body>) -> bool {
         .unwrap_or(false)
 }
 
-/// Точный путь загрузки файла в Telegram-плагине.
+/// Точные пути raw-заливки файла в плагинах.
 ///
-/// Сравнение по ПОЛНОМУ пути, а не по префиксу `/api/telegram/`: под
-/// префиксное исключение автоматически попадали бы все будущие роуты плагина,
-/// и однажды кто-то добавил бы мутирующий роут, который молча потерял бы
-/// защиту Content-Type.
-const RAW_UPLOAD_PATH: &str = "/api/telegram/upload";
+/// Сравнение по ПОЛНОМУ пути, а не по префиксу `/api/telegram/` или
+/// `/api/vk/`: под префиксное исключение автоматически попадали бы все будущие
+/// роуты плагина, и однажды кто-то добавил бы мутирующий роут, который молча
+/// потерял бы защиту Content-Type.
+///
+/// Поэтому список растёт ЯВНО, по одной строке на роут: добавление второго
+/// плагина не имеет права ослабить правило, ради которого оно написано.
+const RAW_UPLOAD_PATHS: [&str; 2] = ["/api/telegram/upload", "/api/vk/upload"];
 
 /// Content-Type, на котором работает raw-загрузка файла.
 const RAW_UPLOAD_CONTENT_TYPE: &str = "application/octet-stream";
 
 /// Разрешено ли этому запросу нести тело без `application/json`.
 ///
-/// Единственное исключение — `POST /api/telegram/upload` с
-/// `Content-Type: application/octet-stream`: файл передаётся сырыми байтами
-/// (см. `plugins/telegram/src/routes/upload.rs`), и JSON здесь физически
-/// неприменим.
+/// Единственное исключение — raw-заливка файла (`POST /api/telegram/upload`,
+/// `POST /api/vk/upload`) с `Content-Type: application/octet-stream`: файл
+/// передаётся сырыми байтами (см. `plugins/telegram/src/routes/upload.rs` и
+/// `plugins/vk/src/routes/upload.rs`), и JSON здесь физически неприменим.
 ///
 /// ПОЧЕМУ ЭТО НЕ ОСЛАБЛЯЕТ ЗАЩИТУ. `application/octet-stream` НЕ входит в
 /// список Content-Type «простых запросов» CORS (там только
@@ -334,7 +338,7 @@ const RAW_UPLOAD_CONTENT_TYPE: &str = "application/octet-stream";
 /// same-origin (`is_same_origin`) при этом остаётся ОБЯЗАТЕЛЬНОЙ и
 /// выполняется до вызова этой функции.
 fn is_allowed_raw_body(req: &Request<Body>) -> bool {
-    if req.uri().path() != RAW_UPLOAD_PATH {
+    if !RAW_UPLOAD_PATHS.contains(&req.uri().path()) {
         return false;
     }
     req.headers()
@@ -777,10 +781,12 @@ mod tests {
             .route("/api/todos", post(ok_handler))
             .route("/api/todos/:id", delete(ok_handler))
             .route("/api/sessions", get(ok_handler))
-            // Роуты Telegram-плагина: их регистрирует сам плагин, но для
-            // проверки csrf_guard достаточно одноимённых заглушек.
+            // Роуты плагинов: их регистрируют сами плагины, но для проверки
+            // csrf_guard достаточно одноимённых заглушек.
             .route("/api/telegram/upload", post(ok_handler))
             .route("/api/telegram/dialogs/:id/messages", post(ok_handler))
+            .route("/api/vk/upload", post(ok_handler))
+            .route("/api/vk/dialogs/:id/messages", post(ok_handler))
             .layer(from_fn(csrf_guard))
     }
 
@@ -1029,6 +1035,131 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    // --- raw-загрузка файла в VK (forge-vk-f8-2pox.4) ---
+    //
+    // Плагинов с raw-телом стало два, и это ровно тот момент, когда «сделаем
+    // префиксное исключение по /api/vk/» выглядит соблазнительно. Тесты ниже
+    // фиксируют, почему нельзя: список путей растёт явно, по одной строке на
+    // роут, и соседний мутирующий роут ТОГО ЖЕ плагина защиту не теряет.
+
+    /// Same-origin `POST /api/vk/upload` с octet-stream проходит.
+    #[tokio::test]
+    async fn vk_upload_octet_stream_same_origin_allowed() {
+        let app = csrf_app();
+        let resp = app
+            .oneshot(csrf_req(
+                Method::POST,
+                "/api/vk/upload",
+                Some("http://127.0.0.1:7331"),
+                Some("127.0.0.1:7331"),
+                Some("application/octet-stream"),
+                "\x00\x01binary",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    /// Исключение НЕ отменяет same-origin и для VK.
+    #[tokio::test]
+    async fn vk_upload_cross_origin_still_rejected() {
+        let app = csrf_app();
+        let resp = app
+            .oneshot(csrf_req(
+                Method::POST,
+                "/api/vk/upload",
+                Some("http://evil.example.com"),
+                Some("127.0.0.1:7331"),
+                Some("application/octet-stream"),
+                "\x00\x01binary",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    /// ГЛАВНЫЙ тест правки: сравнение осталось ТОЧНЫМ по полному пути.
+    ///
+    /// Мутация «сравнивать по префиксу `/api/vk/`» краснеет здесь: отправка
+    /// сообщения — мутирующий роут того же плагина, и защиту по Content-Type
+    /// она терять не имеет права.
+    #[tokio::test]
+    async fn other_vk_routes_still_require_json() {
+        let app = csrf_app();
+        let resp = app
+            .oneshot(csrf_req(
+                Method::POST,
+                "/api/vk/dialogs/1234/messages",
+                Some("http://127.0.0.1:7331"),
+                Some("127.0.0.1:7331"),
+                Some("application/octet-stream"),
+                "{}",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+
+    /// И по CONTENT-TYPE исключение тоже точечное: «простые» типы отвергаются,
+    /// иначе появился бы CSRF-вектор без preflight.
+    #[tokio::test]
+    async fn vk_upload_with_simple_content_type_rejected() {
+        for ct in [
+            "text/plain",
+            "multipart/form-data",
+            "application/x-www-form-urlencoded",
+        ] {
+            let app = csrf_app();
+            let resp = app
+                .oneshot(csrf_req(
+                    Method::POST,
+                    "/api/vk/upload",
+                    Some("http://127.0.0.1:7331"),
+                    Some("127.0.0.1:7331"),
+                    Some(ct),
+                    "hello",
+                ))
+                .await
+                .unwrap();
+            assert_eq!(resp.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE, "{ct}");
+        }
+    }
+
+    /// Пути, ПОХОЖИЕ на разрешённый, исключением не являются: ни хвост, ни
+    /// префикс, ни соседний сегмент.
+    #[tokio::test]
+    async fn lookalike_upload_paths_are_not_exempt() {
+        for uri in [
+            "/api/vk/uploads",
+            "/api/vk/upload/extra",
+            "/api/vk/upload2",
+            "/api/telegram/upload/x",
+        ] {
+            let app = Router::new()
+                .route("/api/vk/uploads", axum::routing::post(ok_handler))
+                .route("/api/vk/upload/extra", axum::routing::post(ok_handler))
+                .route("/api/vk/upload2", axum::routing::post(ok_handler))
+                .route("/api/telegram/upload/x", axum::routing::post(ok_handler))
+                .layer(from_fn(csrf_guard));
+            let resp = app
+                .oneshot(csrf_req(
+                    Method::POST,
+                    uri,
+                    Some("http://127.0.0.1:7331"),
+                    Some("127.0.0.1:7331"),
+                    Some("application/octet-stream"),
+                    "data",
+                ))
+                .await
+                .unwrap();
+            assert_eq!(
+                resp.status(),
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                "{uri}: сравнение обязано быть точным по полному пути"
+            );
+        }
     }
 
     #[tokio::test]

@@ -51,26 +51,48 @@
         return !!(us && us.cmd_hints_enabled === true);
     }
 
-    // Владеет ли клавиатурой вкладка Telegram (js/telegram/keynav.js).
+    // Панели-мессенджеры, которые умеют забирать клавиатуру себе.
     //
-    // Vim-часть этого файла занимает j/k/h/l/g/1/2/3/? глобально, а панель
-    // Telegram использует те же клавиши для своих чатов и сообщений. Пока
-    // фокус внутри панели, vim обязан молчать — иначе одно нажатие 'j' и
-    // листало бы чаты, и уводило фокус на сессию в сайдбаре.
+    // Имена контрактов в window.ForgeApp — по одному на панель:
+    //   telegramKeys — js/telegram/keynav.js
+    //   vkKeys       — js/vk/keynav.js
     //
-    // Контракт `ForgeApp.telegramKeys.owns()` появляется только после загрузки
-    // ES-модулей (этот файл выполняется раньше) — до тех пор ответ «нет», что
-    // совпадает с поведением до фичи. `owns()` сам учитывает и настройку
-    // telegram_hotkeys_enabled, и положение фокуса.
-    function telegramOwnsKeys() {
+    // Почему СПИСОК ИМЁН, а не общий реестр `app.keyboardOwners`, в который
+    // панели регистрируются сами: реестр потребовал бы правки работающего
+    // js/telegram/keynav.js — единственной причины трогать её ради нуля
+    // пользовательской выгоды. Независимого деплоя нет (hotkeys.js и обе
+    // панели собираются в один бинарь через rust-embed), а одно имя тут было
+    // захардкожено и до появления второй панели. Реестр вводить, когда
+    // появится третья.
+    const PANEL_KEY_CONTRACTS = ['telegramKeys', 'vkKeys'];
+
+    // Владеет ли клавиатурой какая-нибудь панель-мессенджер.
+    //
+    // Vim-часть этого файла занимает j/k/h/l/g/1/2/3/? глобально, а панели
+    // используют те же клавиши для своих чатов и сообщений. Пока фокус внутри
+    // панели, vim обязан молчать — иначе одно нажатие 'j' и листало бы чаты, и
+    // уводило фокус на сессию в сайдбаре.
+    //
+    // Контракты появляются только после загрузки ES-модулей (этот файл
+    // выполняется раньше) — до тех пор ответ «нет», что совпадает с поведением
+    // до фичи. `owns()` каждой панели сам учитывает и свою настройку
+    // (*_hotkeys_enabled), и видимость своего пейна, и положение фокуса,
+    // поэтому одновременно ответить `true` они не могут: switchTab держит
+    // непогашенным ровно один пейн.
+    function panelOwnsKeys() {
         const app = window.ForgeApp;
-        const api = app && app.telegramKeys;
-        if (!api || typeof api.owns !== 'function') return false;
-        try {
-            return api.owns() === true;
-        } catch (_) {
-            return false;
+        if (!app) return false;
+        for (const name of PANEL_KEY_CONTRACTS) {
+            const api = app[name];
+            if (!api || typeof api.owns !== 'function') continue;
+            try {
+                if (api.owns() === true) return true;
+            } catch (_) {
+                // Панель сломана — vim не отдаём: молчащая навигация хуже,
+                // чем навигация поверх неработающей панели.
+            }
         }
+        return false;
     }
 
     function isEditingTarget(t) {
@@ -310,9 +332,10 @@
     function vimAction(e) {
         if (e.metaKey || e.ctrlKey || e.altKey) return false;
         if (isEditingTarget(e.target)) return false;
-        // Открытая панель Telegram забирает клавиши себе (кроме случая, когда
-        // пользователь ушёл фокусом в сайдбар — тогда owns() вернёт false).
-        if (telegramOwnsKeys()) return false;
+        // Открытая панель-мессенджер (Telegram, VK) забирает клавиши себе —
+        // кроме случая, когда пользователь ушёл фокусом в сайдбар: тогда
+        // owns() вернёт false и vim снова наш.
+        if (panelOwnsKeys()) return false;
 
         const key = e.key;
 

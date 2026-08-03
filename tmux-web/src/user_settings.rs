@@ -77,6 +77,41 @@
 //!     валидирует только ФОРМУ (см. [`sanitize_hotkeys`]) — смысл id действий
 //!     и комбинаций знает исключительно фронтенд, иначе список действий
 //!     пришлось бы держать синхронным в двух местах.
+//!   - `vk_filter_enabled` (bool, default **false**) — включён ли режим
+//!     «показывать только выбранные беседы» во вкладке VK. Дефолт `false` по
+//!     той же причине, что и у `telegram_filter_enabled`: нулевая конфигурация
+//!     обязана показывать все беседы. Фронтенд читает флаг строго как
+//!     `=== true` (`static/js/vk/visibility.js`), а не `!== false`.
+//!   - `vk_visible_kinds` (Vec<String>, default пустой) — белый список ТИПОВ
+//!     бесед: `user` | `chat` | `community`. Словарь намеренно расходится с
+//!     телеграмным (там ключи папок): папок у VK нет, а четыре серверных
+//!     фильтра `all/unread/important/unanswered` — это параметр запроса, и
+//!     «показывать только непрочитанные» как ПОСТОЯННАЯ настройка бессмысленно.
+//!     Тип беседы при этом выводится из самого `peer_id`, поэтому предикат
+//!     видимости точен даже для беседы вне загруженной страницы списка.
+//!   - `vk_hotkeys_enabled` (bool, default **true**) — включена ли
+//!     клавиатурная навигация во вкладке VK (модули `static/js/vk/keys.js` и
+//!     `keynav.js`). Дефолт `true` по той же причине, что и у
+//!     `telegram_hotkeys_enabled`: вкладка VK уже opt-in (флаг `--vk`), хоткеи
+//!     живут только внутри неё и молчат в полях ввода, поэтому тумблер нужен
+//!     для ВЫКЛЮЧЕНИЯ работающей фичи. Фронтенд читает его строго как
+//!     `!== false` (`static/js/vk/keynav.js::hotkeysEnabled`) — путать с
+//!     `vk_filter_enabled`, который читается `=== true`, нельзя: ошибка в эту
+//!     сторону молча выключает фичу у всех, кто ни разу не открывал настройки.
+//!   - `vk_hotkeys` (map String→String, default пустая) — переопределения
+//!     комбинаций VK: `id действия` → `комбинация`. Как и у Telegram, backend
+//!     хранит и валидирует только ФОРМУ (см. [`sanitize_hotkeys`]): реестр
+//!     действий живёт исключительно во фронтенде (`static/js/vk/keys.js`), и
+//!     дублировать его здесь значило бы завести вторую точку правды.
+//!   - `vk_visible_peers` (Vec<String>, default пустой) — `peer_id` отдельных
+//!     бесед, видимых независимо от типа. Как и у Telegram, оба списка —
+//!     БЕЛЫЙ список, и фильтр считается ДЕЙСТВУЮЩИМ, только когда хотя бы один
+//!     из них непуст: включённый тумблер с пустым выбором показал бы пустую
+//!     панель, и пользователь прочитал бы это как поломку, а не как настройку.
+//!
+//! Токена VK в этом файле нет и быть не должно: он живёт в конфиге плагина
+//! (`~/.config/forge/vk.toml`, права 0600), а `user_settings.json` читается
+//! фронтендом целиком через `GET /api/user-settings` и секретов не хранит.
 //!
 //! ### Persistence
 //!
@@ -128,6 +163,16 @@ fn default_telegram_hotkeys_enabled() -> bool {
     true
 }
 
+/// Default-функция для `vk_hotkeys_enabled` — true.
+///
+/// Отдельная функция, а не переиспользование телеграмной: одинаковое значение
+/// сегодня не означает связанности завтра, и `#[serde(default = "...")]` — то
+/// место, где общая функция сделала бы изменение одного дефолта незаметной
+/// сменой второго.
+fn default_vk_hotkeys_enabled() -> bool {
+    true
+}
+
 /// Максимально допустимое значение приоритета (4 = backlog).
 const MAX_PRIORITY: u8 = 4;
 
@@ -136,12 +181,27 @@ const MAX_PRIORITY: u8 = 4;
 /// Ограничение того же рода, что и у хоткеев: список приезжает из браузера и
 /// сохраняется в файл. Полтысячи чатов — заведомо больше, чем можно осмысленно
 /// отобрать руками, но достаточно, чтобы никого не обрезать.
+///
+/// Константа ОБЩАЯ для обеих панелей — её же использует белый список VK
+/// (`vk_visible_kinds` / `vk_visible_peers`). Имя оставлено историческим
+/// намеренно: переименование в нейтральное `MAX_VISIBLE_ENTRIES` тронуло бы
+/// работающий код Telegram, а правило «не трогать чужое» здесь строже
+/// косметики. Потолок один на список, а не на пользователя: списков четыре
+/// (две панели × два списка), и раздуть файл ни один из них в одиночку не может.
 const MAX_TELEGRAM_VISIBLE: usize = 512;
 
-/// Максимальная длина одной записи белого списка (id чата / ключ папки).
+/// Максимальная длина одной записи белого списка (id чата / ключ папки /
+/// `peer_id` беседы VK / имя типа `user`|`chat`|`community`).
+///
+/// Тоже общая для обеих панелей: форма записей у них совпадает — короткая
+/// ASCII-строка без пробелов.
 const MAX_VISIBLE_ENTRY_LEN: usize = 64;
 
 /// Приводит белый список видимости к безопасному виду.
+///
+/// Используется ОБЕИМИ панелями: `telegram_visible_folders`/
+/// `telegram_visible_dialogs` и `vk_visible_kinds`/`vk_visible_peers`. Смысл
+/// записей у них разный, форма — одинаковая, поэтому санитайзер один.
 ///
 /// Как и [`sanitize_hotkeys`], проверяет только ФОРМУ: смысл ключей (`inbox`,
 /// `archive`, `folder:<id>`, id чата) знает фронтенд. Неизвестная запись — не
@@ -281,6 +341,31 @@ pub struct UserSettings {
     /// Белый список отдельных чатов (id в формате `DialogDto.id`).
     #[serde(default)]
     pub telegram_visible_dialogs: Vec<String>,
+    /// Клавиатурная навигация во вкладке VK. Default `true` — см. шапку
+    /// модуля: фича живёт внутри уже opt-in вкладки, тумблер нужен для
+    /// выключения, а не для включения.
+    #[serde(default = "default_vk_hotkeys_enabled")]
+    pub vk_hotkeys_enabled: bool,
+    /// Переопределения комбинаций VK: `id действия` → `комбинация`.
+    /// Пустая мапа = дефолтные клавиши из реестра фронтенда.
+    #[serde(default)]
+    pub vk_hotkeys: BTreeMap<String, String>,
+    /// Режим «показывать только выбранные беседы» во вкладке VK. Default
+    /// `false` — фича opt-in, нулевая конфигурация показывает все беседы.
+    #[serde(default)]
+    pub vk_filter_enabled: bool,
+    /// Белый список ТИПОВ бесед: `user` | `chat` | `community`.
+    ///
+    /// Не ключи серверных фильтров VK (`all`/`unread`/`important`/
+    /// `unanswered`): те — параметр запроса, а не свойство беседы, и
+    /// «показывать только непрочитанные» как постоянная настройка означало бы
+    /// исчезновение беседы из панели в момент её прочтения.
+    #[serde(default)]
+    pub vk_visible_kinds: Vec<String>,
+    /// Белый список отдельных бесед: `peer_id` строками (в формате
+    /// `DialogDto.id` плагина VK).
+    #[serde(default)]
+    pub vk_visible_peers: Vec<String>,
 }
 
 impl Default for UserSettings {
@@ -301,6 +386,11 @@ impl Default for UserSettings {
             telegram_filter_enabled: false,
             telegram_visible_folders: Vec::new(),
             telegram_visible_dialogs: Vec::new(),
+            vk_hotkeys_enabled: default_vk_hotkeys_enabled(),
+            vk_hotkeys: BTreeMap::new(),
+            vk_filter_enabled: false,
+            vk_visible_kinds: Vec::new(),
+            vk_visible_peers: Vec::new(),
         }
     }
 }
@@ -355,6 +445,27 @@ pub struct PatchUserSettingsReq {
     /// Белый список чатов. Семантика — ПОЛНАЯ ЗАМЕНА списка.
     #[serde(default)]
     pub telegram_visible_dialogs: Option<Vec<String>>,
+    /// Включить/выключить клавиатурную навигацию во вкладке VK.
+    #[serde(default)]
+    pub vk_hotkeys_enabled: Option<bool>,
+    /// Переопределения комбинаций VK. Семантика — ПОЛНАЯ ЗАМЕНА карты, а не
+    /// слияние: только так UI может снять одно переопределение (прислать карту
+    /// без него). Пустая карта = сброс всех действий к дефолтам.
+    #[serde(default)]
+    pub vk_hotkeys: Option<BTreeMap<String, String>>,
+    /// Включить/выключить режим «показывать только выбранные беседы» во
+    /// вкладке VK.
+    #[serde(default)]
+    pub vk_filter_enabled: Option<bool>,
+    /// Белый список типов бесед VK. Семантика — ПОЛНАЯ ЗАМЕНА списка, как и у
+    /// телеграмных: слияние сделало бы снятие галочки невозможным — прислать
+    /// «минус одну запись» в merge-семантике нечем. Пустой список = «ничего не
+    /// выбрано», и тогда включённый тумблер показывает ВСЁ (см. шапку модуля).
+    #[serde(default)]
+    pub vk_visible_kinds: Option<Vec<String>>,
+    /// Белый список отдельных бесед VK. Семантика — ПОЛНАЯ ЗАМЕНА списка.
+    #[serde(default)]
+    pub vk_visible_peers: Option<Vec<String>>,
 }
 
 #[derive(Debug)]
@@ -489,6 +600,28 @@ impl UserSettingsStore {
         }
         if let Some(v) = payload.telegram_visible_dialogs {
             inner.settings.telegram_visible_dialogs = sanitize_visible_list(v);
+        }
+        if let Some(v) = payload.vk_hotkeys_enabled {
+            inner.settings.vk_hotkeys_enabled = v;
+        }
+        if let Some(v) = payload.vk_hotkeys {
+            // Тот же санитайзер, что у Telegram: он проверяет только форму
+            // (id из [a-z0-9_.-], непустые значения, потолок записей), а смысл
+            // id знает исключительно фронтенд. Замена целиком, а не merge —
+            // см. комментарий у поля в PatchUserSettingsReq.
+            inner.settings.vk_hotkeys = sanitize_hotkeys(v);
+        }
+        if let Some(v) = payload.vk_filter_enabled {
+            inner.settings.vk_filter_enabled = v;
+        }
+        if let Some(v) = payload.vk_visible_kinds {
+            // Замена целиком, а не merge — см. комментарий у поля в
+            // PatchUserSettingsReq. Пустой список законен: это «ничего не
+            // выбрано», при котором включённый фильтр показывает всё.
+            inner.settings.vk_visible_kinds = sanitize_visible_list(v);
+        }
+        if let Some(v) = payload.vk_visible_peers {
+            inner.settings.vk_visible_peers = sanitize_visible_list(v);
         }
 
         save_locked(&inner)?;
@@ -964,6 +1097,299 @@ mod tests {
         assert_eq!(clean.len(), MAX_TELEGRAM_VISIBLE);
         // Порядок сохранён — он виден пользователю в списке настроек.
         assert_eq!(clean[0], "id0");
+    }
+
+    #[test]
+    fn test_vk_visibility_defaults_off_and_empty() {
+        // Нулевая конфигурация обязана показывать ВСЕ беседы: фильтр — opt-in,
+        // иначе обновление devforge молча спрятало бы часть переписки.
+        let path = tmp_path("vk_visibility_default");
+        let store = UserSettingsStore::new(path.clone());
+        let s = store.get();
+        assert!(!s.vk_filter_enabled);
+        assert!(s.vk_visible_kinds.is_empty());
+        assert!(s.vk_visible_peers.is_empty());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_vk_visibility_patch_replaces_lists() {
+        let path = tmp_path("vk_visibility_patch");
+        let store = UserSettingsStore::new(path.clone());
+
+        let res = store
+            .patch(PatchUserSettingsReq {
+                vk_filter_enabled: Some(true),
+                vk_visible_kinds: Some(vec!["chat".to_string(), "community".to_string()]),
+                vk_visible_peers: Some(vec![
+                    "2000000042".to_string(),
+                    "-70".to_string(),
+                    "777".to_string(),
+                ]),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert!(res.vk_filter_enabled);
+        assert_eq!(res.vk_visible_kinds, vec!["chat", "community"]);
+        assert_eq!(res.vk_visible_peers, vec!["2000000042", "-70", "777"]);
+
+        // Persistence.
+        let store2 = UserSettingsStore::new(path.clone());
+        assert_eq!(store2.get().vk_visible_peers.len(), 3);
+
+        // ЗАМЕНА, а не слияние: снять галочку иначе нечем.
+        let res2 = store2
+            .patch(PatchUserSettingsReq {
+                vk_visible_peers: Some(vec!["777".to_string()]),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert_eq!(res2.vk_visible_peers, vec!["777"]);
+        // Соседний список не задет — patch применяет только Some(..).
+        assert_eq!(res2.vk_visible_kinds, vec!["chat", "community"]);
+
+        // Пустой список — законное «ничего не выбрано», а не игнорируемый
+        // patch: фронт снимает последнюю галочку именно так.
+        let res3 = store2
+            .patch(PatchUserSettingsReq {
+                vk_visible_peers: Some(Vec::new()),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert!(res3.vk_visible_peers.is_empty());
+
+        // Выключение тумблера НЕ стирает выбор: включив обратно, пользователь
+        // должен получить свой список типов, а не пустой.
+        let res4 = store2
+            .patch(PatchUserSettingsReq {
+                vk_filter_enabled: Some(false),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert!(!res4.vk_filter_enabled);
+        assert_eq!(res4.vk_visible_kinds, vec!["chat", "community"]);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_vk_visibility_patch_sanitizes_and_keeps_telegram_intact() {
+        let path = tmp_path("vk_visibility_sanitize");
+        let store = UserSettingsStore::new(path.clone());
+
+        // Сначала кладём телеграмный белый список: соседняя панель не должна
+        // пострадать от сохранения формы VK.
+        store
+            .patch(PatchUserSettingsReq {
+                telegram_filter_enabled: Some(true),
+                telegram_visible_dialogs: Some(vec!["13".to_string()]),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+
+        let res = store
+            .patch(PatchUserSettingsReq {
+                vk_visible_kinds: Some(vec![
+                    "  chat  ".to_string(),   // trim
+                    "user".to_string(),
+                    "user".to_string(),       // дубль
+                    "".to_string(),           // пусто
+                    "беседа".to_string(),     // не ASCII
+                    "open app".to_string(),   // пробел внутри
+                    "x".repeat(65),           // длинная
+                ]),
+                vk_visible_peers: Some(vec!["2000000001".to_string(), "-1/2".to_string()]),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert_eq!(res.vk_visible_kinds, vec!["chat", "user"]);
+        assert_eq!(res.vk_visible_peers, vec!["2000000001"]);
+        // Телеграмные поля на месте — панели делят файл, но не настройки.
+        assert!(res.telegram_filter_enabled);
+        assert_eq!(res.telegram_visible_dialogs, vec!["13"]);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_vk_visible_peers_capped() {
+        let path = tmp_path("vk_visibility_cap");
+        let store = UserSettingsStore::new(path.clone());
+        let raw: Vec<String> = (0..(MAX_TELEGRAM_VISIBLE + 10))
+            .map(|i| format!("200000{i:04}"))
+            .collect();
+        let res = store
+            .patch(PatchUserSettingsReq {
+                vk_visible_peers: Some(raw),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        // Потолок применяется и на пути VK: список приезжает из браузера и
+        // ложится в файл ровно так же, как телеграмный.
+        assert_eq!(res.vk_visible_peers.len(), MAX_TELEGRAM_VISIBLE);
+        assert_eq!(res.vk_visible_peers[0], "2000000000");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_vk_hotkeys_default_enabled_with_empty_map() {
+        // Дефолт ВКЛЮЧЁН — как у telegram_hotkeys_enabled и в отличие от
+        // vk_filter_enabled рядом. Фронт читает его `!== false`, и правка
+        // «привести к общему виду с фильтром» молча выключила бы фичу всем, у
+        // кого настройка ещё ни разу не сохранялась. Ловит это CI, не пользователь.
+        let path = tmp_path("vk_hotkeys_default");
+        let store = UserSettingsStore::new(path.clone());
+        let s = store.get();
+        assert!(s.vk_hotkeys_enabled);
+        assert!(s.vk_hotkeys.is_empty());
+        // Соседний тумблер VK дефолтится НАОБОРОТ — эти два поля путают чаще
+        // всего, поэтому разница закреплена одним ассертом.
+        assert!(!s.vk_filter_enabled);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_vk_hotkeys_default_survives_partial_file() {
+        // Файл, записанный СТАРОЙ версией devforge (до появления поля), обязан
+        // читаться как «хоткеи включены». Без `#[serde(default = ...)]` тут
+        // приехал бы false, и фича исчезла бы у всех, кто обновился.
+        let path = tmp_path("vk_hotkeys_partial");
+        std::fs::write(&path, r#"{"cmd_hints_enabled":true}"#).expect("write");
+        let store = UserSettingsStore::new(path.clone());
+        let s = store.get();
+        assert!(s.vk_hotkeys_enabled);
+        assert!(s.vk_hotkeys.is_empty());
+        assert!(s.telegram_hotkeys_enabled);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_vk_hotkeys_patch_replaces_map_and_persists() {
+        let path = tmp_path("vk_hotkeys_patch");
+        let store = UserSettingsStore::new(path.clone());
+
+        let mut first = BTreeMap::new();
+        first.insert("msg.reply".to_string(), "r".to_string());
+        first.insert("msg.attachments".to_string(), "v".to_string());
+        let res = store
+            .patch(PatchUserSettingsReq {
+                vk_hotkeys: Some(first),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert_eq!(res.vk_hotkeys.len(), 2);
+        assert_eq!(res.vk_hotkeys.get("msg.attachments").unwrap(), "v");
+
+        // Persistence: новый store на тот же путь видит карту.
+        let store2 = UserSettingsStore::new(path.clone());
+        assert_eq!(store2.get().vk_hotkeys.len(), 2);
+
+        // ЗАМЕНА, а не merge: прислали одну запись — прошлые исчезли. Это
+        // единственный способ для UI снять переопределение.
+        let mut second = BTreeMap::new();
+        second.insert("msg.reply".to_string(), "Shift+R".to_string());
+        let res2 = store2
+            .patch(PatchUserSettingsReq {
+                vk_hotkeys: Some(second),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert_eq!(res2.vk_hotkeys.len(), 1);
+        assert_eq!(res2.vk_hotkeys.get("msg.reply").unwrap(), "Shift+R");
+        assert!(!res2.vk_hotkeys.contains_key("msg.attachments"));
+
+        // Пустая карта — законный сброс к дефолтам.
+        let res3 = store2
+            .patch(PatchUserSettingsReq {
+                vk_hotkeys: Some(BTreeMap::new()),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert!(res3.vk_hotkeys.is_empty());
+        assert!(res3.vk_hotkeys_enabled);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_vk_hotkeys_toggle_does_not_touch_map_or_telegram() {
+        let path = tmp_path("vk_hotkeys_toggle");
+        let store = UserSettingsStore::new(path.clone());
+
+        // Кладём переназначения ОБЕИХ панелей: они делят один файл, и сохранение
+        // формы VK не смеет трогать телеграмные клавиши.
+        let mut vk = BTreeMap::new();
+        vk.insert("msg.copy".to_string(), "Ctrl+c".to_string());
+        let mut tg = BTreeMap::new();
+        tg.insert("msg.reply".to_string(), "Shift+R".to_string());
+        store
+            .patch(PatchUserSettingsReq {
+                vk_hotkeys: Some(vk),
+                telegram_hotkeys: Some(tg),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+
+        let res = store
+            .patch(PatchUserSettingsReq {
+                vk_hotkeys_enabled: Some(false),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert!(!res.vk_hotkeys_enabled);
+        // Выключение хоткеев НЕ стирает переназначения: включив обратно,
+        // пользователь должен получить свои клавиши, а не дефолтные.
+        assert_eq!(res.vk_hotkeys.get("msg.copy").unwrap(), "Ctrl+c");
+        // Соседняя панель не задета ни тумблером, ни картой.
+        assert!(res.telegram_hotkeys_enabled);
+        assert_eq!(res.telegram_hotkeys.get("msg.reply").unwrap(), "Shift+R");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_vk_hotkeys_patch_sanitizes() {
+        let path = tmp_path("vk_hotkeys_sanitize");
+        let store = UserSettingsStore::new(path.clone());
+        let mut raw = BTreeMap::new();
+        raw.insert("msg.reply".to_string(), "Shift+R".to_string());
+        raw.insert("Msg.Reply".to_string(), "r".to_string()); // регистр в id
+        raw.insert("msg copy".to_string(), "y".to_string()); // пробел в id
+        raw.insert("msg.quote".to_string(), "  ".to_string()); // пустое значение
+        raw.insert("x".repeat(65), "q".to_string()); // длинный id
+        let res = store
+            .patch(PatchUserSettingsReq {
+                vk_hotkeys: Some(raw),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        // Тот же санитайзер, что у Telegram: проверяется только ФОРМА.
+        assert_eq!(res.vk_hotkeys.len(), 1);
+        assert!(res.vk_hotkeys.contains_key("msg.reply"));
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_vk_hotkeys_capped() {
+        let path = tmp_path("vk_hotkeys_cap");
+        let store = UserSettingsStore::new(path.clone());
+        let mut raw = BTreeMap::new();
+        for i in 0..(MAX_TELEGRAM_HOTKEYS + 20) {
+            raw.insert(format!("act.{i:03}"), "j".to_string());
+        }
+        let res = store
+            .patch(PatchUserSettingsReq {
+                vk_hotkeys: Some(raw),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        // Потолок общий на обе панели: карта приезжает из браузера и ложится в
+        // файл ровно так же, как телеграмная.
+        assert_eq!(res.vk_hotkeys.len(), MAX_TELEGRAM_HOTKEYS);
+
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]

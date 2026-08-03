@@ -129,3 +129,18 @@
 `chat.js`: `noteButtonPress`, `armFollowTimer`, `stopFollow`, `ensureFollowObserver`, `observeFollowRow`, `unobserveFollowRow`, `onFollowResize`, `prefersReducedMotion`, `rowOffset`, `scrollBlockIntoView`, `afterRowChanged`, `teardownChat`, поля `local.followRow` / `local.followObserver` / `local.followTimer` / `local.lastScrollTop`.
 
 `botkb.js`: колбэк `onButtonPress` в `initBotKeyboards`, вызов в `runAction`.
+
+## ПЯТЫЙ ИСТОЧНИК: ОТЛОЖЕННЫЙ РОСТ СОДЕРЖИМОГО (br forge-ujck)
+
+Лента дорастает уже ПОСЛЕ прокрутки: ленивые превью вложений (js/telegram/media.js) растят карточку с 92px до 184px через сотни миллисекунд после `scrollToBottom()`. Один синхронный доскролл этого не переживает — низ уезжает под кромку ровно на сумму догруженного (замер: 276px = 3 x 92), и дальше дефект самоусиливается: `isAtBottom` ложно, ветка `stick` не срабатывает больше никогда.
+
+Поэтому прижатие к низу — ЗАЩЁЛКА `local.stickBottom`, а не разовое присваивание. `media.js::setMediaGrowthHandler` сообщает о каждом приросте (из события `load` на `<img>`, когда раскладка уже новая), `chat.js::onMediaGrew` возвращает ленту вниз.
+
+ПРИОРИТЕТЫ ОТНОСИТЕЛЬНО ЧЕТЫРЁХ ОСТАЛЬНЫХ. Пятый источник — самый младший, у него три гарда:
+- нет защёлки (пользователь читает историю) — не двигаем ничего;
+- `local.loading` — якорь подгрузки вверх (источник 2) важнее: посторонний доскролл между замером `scrollHeight` и восстановлением `scrollTop` необратимо теряет позицию чтения;
+- `followTarget(Date.now())` — следование (источник 4) важнее: у него своя цель (конец блока строки), прирост до неё доедет через `onFollowResize`.
+
+Переход по цитате (источник 3) снимает следование и уезжает вверх, что через обработчик прокрутки снимает и защёлку — отдельного гарда ему не нужно.
+
+Подробности — на странице `telegram-stickBottom`. Регресс: tests/frontend/telegram_scroll_stick.test.mjs.

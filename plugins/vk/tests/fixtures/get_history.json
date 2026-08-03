@@ -1,0 +1,126 @@
+{
+  "response": {
+    "count": 5,
+    "items": [
+      {
+        "date": 1700000100,
+        "from_id": 1234,
+        "id": 7001,
+        "out": 0,
+        "peer_id": 1234,
+        "text": "простое входящее",
+        "conversation_message_id": 512,
+        "attachments": [],
+        "important": false,
+        "random_id": 0,
+        "is_hidden": false
+      },
+      {
+        "date": 1700000110,
+        "from_id": 999,
+        "id": 7002,
+        "out": 1,
+        "peer_id": 1234,
+        "text": "смотри что переслали",
+        "conversation_message_id": 513,
+        "attachments": [],
+        "random_id": 1834567890,
+        "fwd_messages": [
+          {
+            "date": 1699990000,
+            "from_id": 4321,
+            "text": "пересланное раз",
+            "conversation_message_id": 11,
+            "attachments": []
+          },
+          {
+            "date": 1699990010,
+            "from_id": 4321,
+            "text": "пересланное два",
+            "conversation_message_id": 12,
+            "attachments": [],
+            "fwd_messages": [
+              {
+                "date": 1699980000,
+                "from_id": 1234,
+                "text": "вложенная пересылка",
+                "attachments": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "date": 1700000120,
+        "from_id": 1234,
+        "id": 7003,
+        "out": 0,
+        "peer_id": 1234,
+        "text": "это ответ",
+        "conversation_message_id": 514,
+        "attachments": [],
+        "reply_message": {
+          "date": 1700000115,
+          "from_id": 999,
+          "text": "оригинал",
+          "conversation_message_id": 513,
+          "peer_id": 1234,
+          "attachments": []
+        }
+      },
+      {
+        "date": 1700000130,
+        "from_id": 1234,
+        "id": 7004,
+        "out": 0,
+        "peer_id": 1234,
+        "text": "",
+        "conversation_message_id": 515,
+        "update_time": 1700000140,
+        "attachments": [
+          {
+            "type": "photo",
+            "photo": {
+              "album_id": -3,
+              "date": 1700000129,
+              "id": 457239018,
+              "owner_id": 1234,
+              "access_key": "abcdef0123456789",
+              "sizes": [
+                { "height": 75, "url": "https://sun.example/s.jpg", "type": "s", "width": 75 },
+                { "height": 130, "url": "https://sun.example/m.jpg", "type": "m", "width": 130 },
+                { "height": 1080, "url": "https://sun.example/y.jpg", "type": "y", "width": 1080 }
+              ],
+              "text": ""
+            }
+          },
+          {
+            "type": "audio_message",
+            "audio_message": {
+              "duration": 7,
+              "id": 456239019,
+              "link_mp3": "https://psv4.example/voice.mp3",
+              "link_ogg": "https://psv4.example/voice.ogg",
+              "owner_id": 1234,
+              "access_key": "0011223344556677",
+              "waveform": [3, 9, 21, 14, 5],
+              "transcript_state": "done",
+              "transcript": "привет как дела"
+            }
+          }
+        ]
+      },
+      {
+        "date": 1700000140,
+        "from_id": 4321,
+        "id": 7005,
+        "out": 0,
+        "peer_id": 2000000007,
+        "text": "",
+        "conversation_message_id": 6,
+        "attachments": [],
+        "action": { "type": "chat_invite_user", "member_id": 4321 }
+      }
+    ]
+  }
+}
