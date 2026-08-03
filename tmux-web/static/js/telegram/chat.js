@@ -18,6 +18,17 @@
 //   иначе лента прыгает под курсором на каждой странице истории.
 // * Stick-to-bottom: новые сообщения доскроллкивают ленту только если
 //   пользователь и так был у нижней границы. Читающего историю не дёргаем.
+// * Прижатие к низу — ЗАЩЁЛКА, а не разовый `scrollTop = scrollHeight`.
+//   Содержимое ленты дорастает уже ПОСЛЕ прокрутки: превью вложений грузятся
+//   лениво (js/telegram/media.js), и каждое показанное растит карточку с 92px
+//   до 184px. Один синхронный доскролл этого не переживает — низ уезжает под
+//   кромку ровно на сумму догруженного, а дальше дефект самоусиливается:
+//   `isAtBottom` уже ложно, и ветка `stick` не срабатывает больше НИКОГДА.
+//   Поэтому `scrollToBottom` запоминает НАМЕРЕНИЕ (`local.stickBottom`), а
+//   `onMediaGrew` возвращает ленту вниз на каждом приросте, пока пользователь
+//   сам не уйдёт читать историю. Со «следованием» (follow.js) защёлка не
+//   спорит: у того своя цель — конец строки бота, а не низ ленты, и пока оно
+//   живо, прирост медиа отдаётся ему (см. [`onMediaGrew`]).
 // * Optimistic send: строка появляется мгновенно, реальный `MessageDto` из
 //   ответа POST её заменяет (reconcile). Тот же message_id может ПРИЙТИ ЕЩЁ
 //   РАЗ через WS `new_message` — дедупликация по id в insertMessage.
@@ -40,7 +51,7 @@ import {
 } from './botkb.js';
 import {
     dayKey, dateSepLabel, formatTime, insertMessage, isAtBottom, needsDateSep, nickOf,
-    oldestId, prependMessages, sessionHeadText, shouldLoadOlder, typingAllowed,
+    oldestId, prependMessages, sessionHeadParts, shouldLoadOlder, typingAllowed,
 } from './format.js';
 import {
     FOLLOW_SCROLL_PAD, FOLLOW_TTL_MS, cancelledByScroll, clearFollow, followTarget,
@@ -49,6 +60,7 @@ import {
 } from './follow.js';
 import {
     buildMediaCard, dropMessageMedia, initMedia, resetMediaCards, revokeDialogMedia,
+    setMediaGrowthHandler,
 } from './media.js';
 import {
     buildReplyTarget, classifyRowClick, clearReplyTarget, mergeReplyFromMessage,
@@ -140,6 +152,16 @@ const local = {
     followTimer: null,
     /** Прошлый scrollTop ленты — по нему ловится прокрутка ВВЕРХ. */
     lastScrollTop: 0,
+    /**
+     * Лента прижата к низу: отложенный рост обязан утянуть её обратно.
+     *
+     * Отдельный флаг, а не повторный `isAtBottom` в момент роста: в момент
+     * роста лента УЖЕ не внизу (её оторвало от кромки именно это событие), и
+     * ответ был бы «пользователь читает историю» — то есть ровно неверный.
+     * Значение ставит [`scrollToBottom`] (намерение «хотим вниз») и снимает
+     * обработчик прокрутки, когда пользователь ушёл выше кромки.
+     */
+    stickBottom: true,
 };
 
 /**
@@ -155,6 +177,12 @@ const local = {
 export function initChat(opts) {
     if (opts && typeof opts.onRead === 'function') local.onRead = opts.onRead;
     if (opts && typeof opts.presenceOf === 'function') local.presenceOf = opts.presenceOf;
+    // Ленивое превью вложения дорастает уже ПОСЛЕ прокрутки вниз и уводит
+    // последнее сообщение под кромку — подписка возвращает ленту на место.
+    // Ставится ДО bindScroll: подписчик ничего не делает без защёлки, но
+    // порядок «сначала объявили намерение слушать, потом слушаем» дешевле
+    // держать в голове, чем обратный.
+    setMediaGrowthHandler(onMediaGrew);
     bindScroll();
     bindPrompt();
     // Строго ПОСЛЕ bindPrompt: у полосы ответа свой флаг `replyBound`, а
@@ -207,9 +235,45 @@ function clearLog() {
     }
 }
 
-/** Прокрутка в самый низ. */
+/**
+ * Прокрутка в самый низ — и запоминание НАМЕРЕНИЯ там остаться.
+ *
+ * Защёлка обязательна, потому что высота ленты в этот момент ещё не
+ * окончательная: ленивые превью вложений догрузятся через сотни миллисекунд и
+ * вырастут (см. шапку модуля). Снимает защёлку только сам пользователь —
+ * прокруткой выше нижней кромки (см. [`bindScroll`]).
+ */
 function scrollToBottom() {
+    local.stickBottom = true;
     if ($tgLog) $tgLog.scrollTop = $tgLog.scrollHeight;
+}
+
+/**
+ * Содержимое ленты доросло уже после прокрутки — вернуть её к низу.
+ *
+ * Зовётся из js/telegram/media.js, когда декодировалось превью вложения
+ * (подписка ставится в [`initChat`]). Экспортируется ради тестов и e2e: сама
+ * подписка односторонняя, media.js о chat.js по-прежнему ничего не знает.
+ *
+ * Три случая, когда прирост игнорируется:
+ *
+ * * лента не прижата к низу — пользователь читает историю, и утаскивать его
+ *   вниз из-за догрузившейся картинки было бы самоуправством;
+ * * идёт подгрузка страницы вверх — `loadOlder` держит СВОЙ якорь между
+ *   замером `scrollHeight` и восстановлением `scrollTop`, и посторонняя
+ *   прокрутка внутри этого окна необратимо теряет позицию чтения;
+ * * живо «следование» за строкой бота — у него своя цель (конец блока, а не
+ *   низ ленты) и свой ResizeObserver, и два доскролла спорили бы друг с
+ *   другом. Прирост тем же превью до `следуемой` строки всё равно доедет:
+ *   его поймает `onFollowResize`.
+ *
+ * @returns {boolean} двигали ли ленту
+ */
+export function onMediaGrew() {
+    if (!$tgLog || !local.stickBottom || local.loading) return false;
+    if (followTarget(Date.now())) return false;
+    $tgLog.scrollTop = $tgLog.scrollHeight;
+    return true;
 }
 
 // ---------------- следование за сообщением бота ----------------
@@ -712,13 +776,27 @@ export async function openDialog(dialogId, dialog) {
  * Присутствие собеседника берётся у dialogs.js через колбэк: в шапке
  * открытого диалога статус нужен чаще всего, а дублировать карту присутствия
  * во втором модуле — верный способ получить два расходящихся состояния.
+ *
+ * Шапка собирается ИЗ УЗЛОВ, а не одной строкой: @ник обязан быть
+ * приглушённым, а покрасить кусок текста можно только отдельным элементом.
+ * Итоговый `textContent` при этом совпадает с `sessionHeadText` символ в
+ * символ — форма шапки описана в format.js ровно один раз.
  */
 export function updateHead(dialog, count) {
     if (!$tgSessionHead) return;
     const presence = (dialog && typeof local.presenceOf === 'function')
         ? local.presenceOf(String(dialog.id))
         : null;
-    $tgSessionHead.textContent = sessionHeadText(dialog, count, presence);
+    const parts = sessionHeadParts(dialog, count, presence);
+    $tgSessionHead.textContent = parts.name;
+    if (parts.nick) {
+        const nick = document.createElement('span');
+        nick.className = 'tg-session-nick';
+        nick.textContent = parts.nick;
+        $tgSessionHead.appendChild(document.createTextNode(' '));
+        $tgSessionHead.appendChild(nick);
+    }
+    if (parts.tail) $tgSessionHead.appendChild(document.createTextNode(parts.tail));
 }
 
 /**
@@ -784,8 +862,24 @@ export function bindScroll() {
         // (см. follow.js::cancelledByScroll), собственные доскроллы идут вниз
         // и под порог не попадают.
         if (cancelledByScroll(local.lastScrollTop, top)) stopFollow();
+        const atBottom = isAtBottom($tgLog);
+        // Прижатие снимается только УХОДОМ ВВЕРХ и только от кромки. Обе
+        // оговорки обязательны:
+        //
+        // * «от кромки» — иначе дребезг инерционной прокрутки в пару пикселей
+        //   отменял бы прижатие, стоя при этом внизу;
+        // * «уходом вверх» — иначе прижатие снимал бы НАШ СОБСТВЕННЫЙ доскролл.
+        //   Событие прокрутки приходит асинхронно, к этому моменту успевает
+        //   догрузиться ещё одно превью, и `isAtBottom` уже ложно — хотя рука
+        //   пользователя ленты не касалась. Ровно на этом дефект и держался.
+        //
+        // Любой шаг вверх, а не порог в 24px, как у отмены следования:
+        // медленная прокрутка идёт шагами по 5–10px и порога не набирает ни
+        // разу, а собственные доскроллы идут ВНИЗ и под правило не попадают.
+        if (atBottom) local.stickBottom = true;
+        else if (top < local.lastScrollTop) local.stickBottom = false;
         local.lastScrollTop = top;
-        if (isAtBottom($tgLog)) noteReachedBottom();
+        if (atBottom) noteReachedBottom();
         if (!shouldLoadOlder($tgLog, { hasMore: local.hasMore, loading: local.loading })) return;
         const dialog = currentDialog();
         loadOlder(dialog);
@@ -1476,6 +1570,9 @@ export function resetChat() {
     local.loading = false;
     local.jumping = false;
     local.lastScrollTop = 0;
+    // Пустая лента — это лента у низа: следующий открытый диалог обязан
+    // приехать вниз, а не унаследовать «пользователь читал историю».
+    local.stickBottom = true;
     updateHead(null, 0);
 }
 
@@ -1516,5 +1613,8 @@ export function _debugChatState() {
         followMessageId: follow.messageId,
         followActive: !!followTarget(Date.now()),
         followObserving: !!local.followRow,
+        // Защёлка «лента прижата к низу»: по ней видно, догонит ли лента
+        // отложенный рост превью (см. [`onMediaGrew`]).
+        stickBottom: local.stickBottom,
     };
 }

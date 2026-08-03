@@ -1,0 +1,3 @@
+# classify_upload
+
+ЧИСТАЯ функция выбора ветки трёхшагового конвейера VK по MIME и имени файла (plugins/vk/src/routes/upload.rs). Возвращает UploadKind::{Photo, Doc, AudioMessage}. Правила: audio/ogg + расширение .ogg -> AudioMessage (голосовое; двух условий требует то, что audio/ogg бывает и у обычной музыки); image/gif и image/svg+xml -> Doc (сохранённая фотографией гифка теряет анимацию, а svg VK не принимает изображением; это же правило действует во фронте — js/vk/format.js::uploadKind, и разойтись они не имеют права, иначе лимит выбирается по одной ветке, а отправка идёт по другой); прочие image/* -> Photo; всё остальное -> Doc. Покрыта табличным тестом classify_upload_table (16 строк).

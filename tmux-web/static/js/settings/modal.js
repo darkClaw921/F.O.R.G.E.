@@ -2,7 +2,17 @@
 //
 // Диспетчер табов: Notifications (global notifier-config), Themes,
 // TODO behavior, Echo, Сводка дня, Интерфейс, Telegram (видимость чатов +
-// горячие клавиши) и опциональный Remote servers tab в remote-mode.
+// горячие клавиши), VK (видимость бесед + горячие клавиши) и опциональный
+// Remote servers tab в remote-mode.
+//
+// Форма горячих клавиш ОДНА на обе панели и параметризуется конфигом
+// (см. hotkeys-tab.js): вторая копия дала бы третью точку правки при каждом
+// изменении UX записи комбинаций.
+//
+// Реестра табов здесь нет — каждый захардкожен в шести местах (кнопка, панель,
+// селектор контента, объект состояния, ветка в showTab, whitelist initialTab).
+// Это норма файла: добавление таба — механическая копия шести строк, а реестр
+// ради восьми вкладок был бы абстракцией дороже задачи.
 
 import { state } from '../core/state.js';
 import { buildModalOverlay } from '../core/utils.js';
@@ -17,8 +27,9 @@ import { fetchUserSettings } from './user-settings-api.js';
 import { renderEchoSettingsTab } from '../echo/settings.js';
 import { renderDailySummaryTab } from './daily-summary-tab.js';
 import { buildInterfaceForm } from './interface-tab.js';
-import { buildHotkeysForm } from './hotkeys-tab.js';
+import { buildHotkeysForm, TELEGRAM_HOTKEYS_CONFIG, VK_HOTKEYS_CONFIG } from './hotkeys-tab.js';
 import { buildVisibilityForm } from './telegram-visibility-tab.js';
+import { buildVkVisibilityForm } from './vk-visibility-tab.js';
 
 export function openSettingsModal(initialTab) {
     const overlay = buildModalOverlay();
@@ -71,6 +82,7 @@ export function openSettingsModal(initialTab) {
             <button type="button" class="modal-tab-btn" data-tab="daily-summary" role="tab">Сводка дня</button>
             <button type="button" class="modal-tab-btn" data-tab="interface" role="tab">Интерфейс</button>
             <button type="button" class="modal-tab-btn" data-tab="telegram" role="tab">Telegram</button>
+            <button type="button" class="modal-tab-btn" data-tab="vk" role="tab">VK</button>
             ${remoteTabBtn}
         </div>
         <div class="modal-tab-panel" id="ps-panel-notifications" data-panel="notifications">
@@ -105,6 +117,10 @@ export function openSettingsModal(initialTab) {
             <h2>Telegram</h2>
             <div class="telegram-settings-content" id="ps-telegram-content"></div>
         </div>
+        <div class="modal-tab-panel" id="ps-panel-vk" data-panel="vk" hidden>
+            <h2>VK</h2>
+            <div class="vk-settings-content" id="ps-vk-content"></div>
+        </div>
         ${remotePanel}
         <div class="modal-actions">
             <button type="button" id="ps-close" class="primary">Close</button>
@@ -129,6 +145,7 @@ export function openSettingsModal(initialTab) {
     const $dailySummaryContent = card.querySelector('#ps-daily-summary-content');
     const $interfaceContent = card.querySelector('#ps-interface-content');
     const $telegramContent = card.querySelector('#ps-telegram-content');
+    const $vkContent = card.querySelector('#ps-vk-content');
 
     // TODO behavior tab state: рендерим форму один раз при первом клике.
     // userSettings fetch выполняется лениво, если bootstrap-preload не успел
@@ -147,6 +164,9 @@ export function openSettingsModal(initialTab) {
         loaded: false,
     };
     const telegramTabState = {
+        loaded: false,
+    };
+    const vkTabState = {
         loaded: false,
     };
 
@@ -247,7 +267,38 @@ export function openSettingsModal(initialTab) {
             if (updated) state.userSettings = updated;
         };
         $telegramContent.appendChild(buildVisibilityForm(settingsArg, onSaved));
-        $telegramContent.appendChild(buildHotkeysForm(settingsArg, onSaved));
+        $telegramContent.appendChild(buildHotkeysForm(settingsArg, onSaved, TELEGRAM_HOTKEYS_CONFIG));
+    };
+
+    // Вкладка «VK»: два раздела — видимость бесед (белый список типов и
+    // отдельных бесед) и горячие клавиши панели. Тот же ленивый паттерн и тот
+    // же кеш state.userSettings, что у соседей: формы строятся один раз, при
+    // первом показе.
+    //
+    // Порядок тот же, что у Telegram, и по той же причине: видимость меняет
+    // ТО, ЧТО видно на экране, а хоткеи — то, КАК этим управлять.
+    //
+    // Отдельная вкладка, а не общая «Мессенджеры»: объединение потребовало бы
+    // переписать работающую панель Telegram. Слияние — отдельная задача на
+    // момент появления третьего мессенджера.
+    const renderVkPanel = async () => {
+        if (vkTabState.loaded) return;
+        vkTabState.loaded = true;
+        $vkContent.innerHTML = '<div class="themes-loading">Loading settings…</div>';
+        if (state.userSettings === null) {
+            try {
+                await fetchUserSettings();
+            } catch (_) { /* fetchUserSettings swallows errors itself */ }
+        }
+        $vkContent.innerHTML = '';
+        // Пустой объект при недоступном backend: форма покажет фильтр
+        // выключенным — ровно то, что и работает сейчас.
+        const settingsArg = state.userSettings || {};
+        const onSaved = (updated) => {
+            if (updated) state.userSettings = updated;
+        };
+        $vkContent.appendChild(buildVkVisibilityForm(settingsArg, onSaved));
+        $vkContent.appendChild(buildHotkeysForm(settingsArg, onSaved, VK_HOTKEYS_CONFIG));
     };
 
     const notifierState = {
@@ -323,6 +374,9 @@ export function openSettingsModal(initialTab) {
         }
         if (name === 'telegram') {
             renderTelegramPanel();
+        }
+        if (name === 'vk') {
+            renderVkPanel();
         }
     };
     $tabBtns.forEach((btn) => {
@@ -453,7 +507,7 @@ export function openSettingsModal(initialTab) {
         });
     }
 
-    if (initialTab && (initialTab === 'notifications' || initialTab === 'themes' || initialTab === 'todo' || initialTab === 'echo' || initialTab === 'daily-summary' || initialTab === 'interface' || initialTab === 'telegram' || (initialTab === 'remotes' && isRemoteMode()))) {
+    if (initialTab && (initialTab === 'notifications' || initialTab === 'themes' || initialTab === 'todo' || initialTab === 'echo' || initialTab === 'daily-summary' || initialTab === 'interface' || initialTab === 'telegram' || initialTab === 'vk' || (initialTab === 'remotes' && isRemoteMode()))) {
         showTab(initialTab);
     }
 

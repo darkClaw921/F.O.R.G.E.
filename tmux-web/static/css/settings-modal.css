@@ -18,9 +18,13 @@
     width: 60vw;
 }
 
+/* Вкладок стало восемь (девять в remote-mode), и на узком окне строка перестаёт
+   помещаться. Перенос — самое дешёвое лечение: реструктуризация ради этого
+   стоила бы переписывания работающих панелей. */
 .modal-tabs {
     display: flex;
     flex-direction: row;
+    flex-wrap: wrap;
     gap: 2px;
     margin: -4px -4px 12px;
     padding: 4px;
@@ -495,12 +499,17 @@ textarea.ds-prompt-textarea {
 }
 
 
-/* ─────────────────── вкладка «Горячие клавиши» (Telegram) ───────────────────
+/* ──────────── «Горячие клавиши»: ОБЩИЙ блок вкладок Telegram и VK ────────────
 
-   Таблица действий с переназначением (js/settings/hotkeys-tab.js). Токены —
-   общие для модалки (var(--fg*), var(--border*)), а не палитра панели
-   Telegram: форма живёт в настройках devforge и обязана выглядеть как её
-   соседи, а не как вставка из другого приложения. */
+   Таблица действий с переназначением (js/settings/hotkeys-tab.js). Форма одна
+   на обе панели и параметризуется конфигом, поэтому и правила здесь одни; имена
+   классов остались историческими (`tg-hotkeys-*`) — переименование тронуло бы
+   работающую разметку ради косметики. Меняя их, править надо ДВА места: этот
+   блок и js/settings/hotkeys-tab.js.
+
+   Токены — общие для модалки (var(--fg*), var(--border*)), а не палитра панели:
+   форма живёт в настройках devforge и обязана выглядеть как её соседи, а не как
+   вставка из другого приложения. */
 
 .tg-hotkeys-table {
     margin: 8px 0 4px;
@@ -623,13 +632,19 @@ textarea.ds-prompt-textarea {
     }
 }
 
-/* ──────────────── вкладка Telegram: видимость чатов ────────────────
+/* ──────────── вкладки Telegram и VK: видимость чатов и бесед ────────────
 
-   Белый список папок и чатов (js/settings/telegram-visibility-tab.js).
+   Белый список папок и чатов (js/settings/telegram-visibility-tab.js) и белый
+   список типов и бесед VK (js/settings/vk-visibility-tab.js). Правила общие:
+   формы отличаются СОДЕРЖИМЫМ списков, но не их устройством, а два набора
+   одинаковых правил разошлись бы при первой же правке. Классы при этом свои у
+   каждой панели (`tg-` / `vk-`) — чтобы поиск по коду вёл в нужную форму.
+
    Списки прокручиваемые: у активного аккаунта чатов сотни, и без
    ограничения высоты форма выталкивала бы кнопку Save за пределы модалки. */
 
-.tg-visibility-group {
+.tg-visibility-group,
+.vk-visibility-group {
     font-size: 0.68rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -637,7 +652,8 @@ textarea.ds-prompt-textarea {
     margin: 12px 0 4px;
 }
 
-.tg-visibility-list {
+.tg-visibility-list,
+.vk-visibility-list {
     max-height: 220px;
     overflow-y: auto;
     border: 1px solid var(--border-input);
@@ -646,7 +662,8 @@ textarea.ds-prompt-textarea {
     background: var(--bg-header-alt);
 }
 
-.tg-visibility-item {
+.tg-visibility-item,
+.vk-visibility-item {
     display: flex;
     align-items: baseline;
     gap: 6px;
@@ -655,7 +672,8 @@ textarea.ds-prompt-textarea {
     color: var(--fg);
 }
 
-.tg-visibility-label {
+.tg-visibility-label,
+.vk-visibility-label {
     flex: 1 1 auto;
     min-width: 0;
     overflow: hidden;
@@ -665,13 +683,15 @@ textarea.ds-prompt-textarea {
 
 /* Пометки чата (архив / без звука / бот) — подсказка, а не содержание:
    приглушены и не участвуют в переносе. */
-.tg-visibility-badge {
+.tg-visibility-badge,
+.vk-visibility-badge {
     flex: 0 0 auto;
     font-size: 0.65rem;
     color: var(--fg-mute);
 }
 
-.tg-visibility-search {
+.tg-visibility-search,
+.vk-visibility-search {
     width: 100%;
     box-sizing: border-box;
     margin: 4px 0 6px;
@@ -682,21 +702,25 @@ textarea.ds-prompt-textarea {
     color: var(--fg);
     font-size: 0.75rem;
 }
-.tg-visibility-search:focus {
+.tg-visibility-search:focus,
+.vk-visibility-search:focus {
     outline: none;
     border-color: var(--accent);
 }
 
-.tg-visibility-summary {
+.tg-visibility-summary,
+.vk-visibility-summary {
     margin: 6px 0 2px;
 }
 /* Режим включён, но ничего не выбрано — предупреждение, а не ошибка:
    поведение при этом безопасное (видно всё), но не то, чего ждут. */
-.tg-visibility-summary.tg-visibility-warn {
+.tg-visibility-summary.tg-visibility-warn,
+.vk-visibility-summary.vk-visibility-warn {
     color: var(--warn, #d08b00);
 }
 
-.tg-visibility-save-ok {
+.tg-visibility-save-ok,
+.vk-visibility-save-ok {
     color: var(--ok, #3fa34d);
     margin-bottom: 6px;
 }

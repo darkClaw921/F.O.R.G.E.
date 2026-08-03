@@ -63,6 +63,11 @@ pub struct ServerConfig {
     /// file > env > default). `None`/`Some(false)` ⇒ файл не настаивает.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub telegram: Option<bool>,
+    /// Opt-in плагин VK из файла. `Some(true)` ⇒ включает плагин даже без
+    /// CLI-флага `--vk` (file-источник в цепочке CLI > file > env >
+    /// default). `None`/`Some(false)` ⇒ файл не настаивает.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vk: Option<bool>,
 }
 
 
@@ -93,6 +98,12 @@ pub struct EffectiveConfig {
     /// `/api/telegram/*` и `/ws/telegram` не регистрируются, кнопка ✈ во
     /// фронте остаётся скрытой (её гейт — 200 на `GET /api/telegram/status`).
     pub telegram_enabled: bool,
+    /// Opt-in плагин VK (см. [`resolve`]). True ⇒ активирован через `--vk` /
+    /// `server_config.json` / env `DEVFORGE_VK`. False (default) ⇒ поведение
+    /// байт-в-байт как раньше: роуты `/api/vk/*` и `/ws/vk` не
+    /// регистрируются, кнопка Ⓥ во фронте остаётся скрытой (её гейт — 200 на
+    /// `GET /api/vk/status`).
+    pub vk_enabled: bool,
 }
 
 /// Имя env-переменной, включающей PWA-режим (низший приоритет после CLI и
@@ -102,6 +113,10 @@ pub const ENV_PWA: &str = "DEVFORGE_PWA";
 /// Имя env-переменной, включающей плагин Telegram (низший приоритет после
 /// CLI и файла). Принимает те же truthy-значения, что и [`ENV_PWA`].
 pub const ENV_TELEGRAM: &str = "DEVFORGE_TELEGRAM";
+
+/// Имя env-переменной, включающей плагин VK (низший приоритет после CLI и
+/// файла). Принимает те же truthy-значения, что и [`ENV_PWA`].
+pub const ENV_VK: &str = "DEVFORGE_VK";
 
 /// Парсинг truthy-значения env-флага: `1`/`true`/`yes`/`on` (любой регистр)
 /// ⇒ `true`; всё остальное ⇒ `false`.
@@ -259,6 +274,14 @@ pub fn resolve(cli_opts: &RunOptions, file_cfg: Option<&ServerConfig>) -> Effect
             .map(|v| env_flag_is_truthy(&v))
             .unwrap_or(false);
 
+    // VK opt-in: та же механика —
+    // CLI (--vk) > file (vk: true) > env (DEVFORGE_VK) > default(false).
+    let vk_enabled = cli_opts.vk
+        || file_cfg.and_then(|f| f.vk).unwrap_or(false)
+        || std::env::var(ENV_VK)
+            .map(|v| env_flag_is_truthy(&v))
+            .unwrap_or(false);
+
     EffectiveConfig {
         bind,
         port,
@@ -266,6 +289,7 @@ pub fn resolve(cli_opts: &RunOptions, file_cfg: Option<&ServerConfig>) -> Effect
         remote_mode,
         pwa_enabled,
         telegram_enabled,
+        vk_enabled,
     }
 }
 
@@ -706,6 +730,172 @@ mod tests {
         }
     }
 
+    // =========================================================================
+    // VK-резолюция — та же матрица приоритетов, что у PWA и Telegram:
+    // CLI (--vk) > file (vk: true) > env (DEVFORGE_VK) > default(false).
+    // Env-зависимые проверки собраны в один последовательный тест
+    // `vk_env_matrix` (std::env — process-global), а не-env тесты защищены
+    // проверкой отсутствия переменной.
+    // =========================================================================
+
+    #[test]
+    fn resolve_vk_default_false() {
+        if std::env::var(ENV_VK).is_err() {
+            let eff = resolve(&RunOptions::default(), None);
+            assert!(!eff.vk_enabled, "default без источников → false");
+        }
+    }
+
+    #[test]
+    fn resolve_vk_cli_flag_enables() {
+        let cli = RunOptions {
+            vk: true,
+            ..Default::default()
+        };
+        let eff = resolve(&cli, None);
+        assert!(eff.vk_enabled, "--vk → vk_enabled true");
+        assert!(!eff.pwa_enabled, "--vk не включает PWA");
+    }
+
+    #[test]
+    fn resolve_vk_file_enables_without_cli() {
+        let file = ServerConfig {
+            vk: Some(true),
+            ..Default::default()
+        };
+        let eff = resolve(&RunOptions::default(), Some(&file));
+        assert!(eff.vk_enabled, "file vk:true включает плагин");
+    }
+
+    #[test]
+    fn resolve_vk_cli_true_overrides_file_false() {
+        let cli = RunOptions {
+            vk: true,
+            ..Default::default()
+        };
+        let file = ServerConfig {
+            vk: Some(false),
+            ..Default::default()
+        };
+        assert!(
+            resolve(&cli, Some(&file)).vk_enabled,
+            "CLI true перебивает file false"
+        );
+    }
+
+    #[test]
+    fn resolve_vk_file_false_stays_off() {
+        let file = ServerConfig {
+            vk: Some(false),
+            ..Default::default()
+        };
+        if std::env::var(ENV_VK).is_err() {
+            assert!(
+                !resolve(&RunOptions::default(), Some(&file)).vk_enabled,
+                "file vk:false → off"
+            );
+        }
+    }
+
+    /// Три opt-in фичи независимы: включение одной не должно включать
+    /// остальные. Ловит копипасту вида `vk_enabled = cli_opts.telegram`.
+    #[test]
+    fn resolve_pwa_telegram_and_vk_are_independent() {
+        if std::env::var(ENV_VK).is_ok() || std::env::var(ENV_TELEGRAM).is_ok() {
+            return;
+        }
+        let only_vk = resolve(
+            &RunOptions {
+                vk: true,
+                ..Default::default()
+            },
+            None,
+        );
+        assert!(only_vk.vk_enabled);
+        assert!(!only_vk.telegram_enabled, "--vk не включает Telegram");
+        assert!(!only_vk.pwa_enabled, "--vk не включает PWA");
+
+        let only_tg = resolve(
+            &RunOptions {
+                telegram: true,
+                ..Default::default()
+            },
+            None,
+        );
+        assert!(only_tg.telegram_enabled);
+        assert!(!only_tg.vk_enabled, "--telegram не включает VK");
+
+        let all = resolve(
+            &RunOptions {
+                pwa: true,
+                telegram: true,
+                vk: true,
+                ..Default::default()
+            },
+            None,
+        );
+        assert!(all.pwa_enabled && all.telegram_enabled && all.vk_enabled);
+    }
+
+    /// Все env-зависимые проверки VK — в одном последовательном тесте с
+    /// восстановлением окружения.
+    #[test]
+    fn vk_env_matrix() {
+        let saved = std::env::var(ENV_VK).ok();
+
+        // env=1 без CLI/file → включено.
+        std::env::set_var(ENV_VK, "1");
+        assert!(
+            resolve(&RunOptions::default(), None).vk_enabled,
+            "env=1 включает"
+        );
+
+        // Резолюция — ИЛИ: truthy env побеждает file:false.
+        std::env::set_var(ENV_VK, "true");
+        let file_false = ServerConfig {
+            vk: Some(false),
+            ..Default::default()
+        };
+        assert!(
+            resolve(&RunOptions::default(), Some(&file_false)).vk_enabled,
+            "truthy env включает несмотря на file:false"
+        );
+
+        // Мусор в env не включает.
+        for junk in ["nope", "0", "false", "", "2"] {
+            std::env::set_var(ENV_VK, junk);
+            assert!(
+                !resolve(&RunOptions::default(), None).vk_enabled,
+                "мусорный env {junk:?} не включает плагин"
+            );
+        }
+
+        // CLI побеждает env=0 и file:false.
+        std::env::set_var(ENV_VK, "0");
+        let cli_vk = RunOptions {
+            vk: true,
+            ..Default::default()
+        };
+        assert!(
+            resolve(&cli_vk, Some(&file_false)).vk_enabled,
+            "CLI true побеждает env=0 и file:false"
+        );
+
+        // env снят → default false; file:true достаточно.
+        std::env::remove_var(ENV_VK);
+        assert!(!resolve(&RunOptions::default(), None).vk_enabled);
+        let file_true = ServerConfig {
+            vk: Some(true),
+            ..Default::default()
+        };
+        assert!(resolve(&RunOptions::default(), Some(&file_true)).vk_enabled);
+
+        match saved {
+            Some(v) => std::env::set_var(ENV_VK, v),
+            None => std::env::remove_var(ENV_VK),
+        }
+    }
+
     #[test]
     fn env_flag_is_truthy_matrix() {
         assert!(env_flag_is_truthy("1"));
@@ -865,6 +1055,7 @@ mod tests {
             remote_mode: false,
             pwa_enabled: false,
             telegram_enabled: false,
+            vk_enabled: false,
         };
         let got = finalize_token_at(&eff, &path);
         assert!(got.is_none(), "non-remote → no token");
@@ -882,6 +1073,7 @@ mod tests {
             remote_mode: true,
             pwa_enabled: false,
             telegram_enabled: false,
+            vk_enabled: false,
         };
         let got = finalize_token_at(&eff, &path).expect("token preserved");
         assert_eq!(got, "existing-token");
@@ -900,6 +1092,7 @@ mod tests {
             remote_mode: true,
             pwa_enabled: false,
             telegram_enabled: false,
+            vk_enabled: false,
         };
         let token = finalize_token_at(&eff, &path).expect("token generated");
         assert_eq!(token.len(), 64);
@@ -932,6 +1125,7 @@ mod tests {
             remote_mode: true,
             pwa_enabled: false,
             telegram_enabled: false,
+            vk_enabled: false,
         };
         let token = finalize_token_at(&eff, &path).expect("token generated");
 

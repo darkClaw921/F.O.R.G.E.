@@ -1,0 +1,12 @@
+{
+  "error": {
+    "error_code": 5,
+    "error_msg": "User authorization failed: invalid access_token (4).",
+    "request_params": [
+      { "key": "oauth", "value": "1" },
+      { "key": "method", "value": "messages.getConversations" },
+      { "key": "access_token", "value": "vk1.a.FIXTURE_SECRET_TOKEN_VALUE" },
+      { "key": "v", "value": "5.199" }
+    ]
+  }
+}

@@ -612,7 +612,7 @@ dependencies = [
 
 [[package]]
 name = "devforge"
-version = "0.1.52"
+version = "0.1.53"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -624,6 +624,7 @@ dependencies = [
  "echo-host-api",
  "forge-echo",
  "forge-telegram",
+ "forge-vk",
  "futures-util",
  "hkdf",
  "libc",
@@ -905,6 +906,29 @@ dependencies = [
  "grammers-session",
  "grammers-tl-types",
  "mime_guess",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "toml",
+ "tower",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "forge-vk"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "bytes",
+ "chrono",
+ "futures-util",
+ "mime_guess",
+ "reqwest",
  "serde",
  "serde_json",
  "tempfile",
@@ -2595,6 +2619,7 @@ dependencies = [
  "hyper-util",
  "js-sys",
  "log",
+ "mime_guess",
  "percent-encoding",
  "pin-project-lite",
  "quinn",

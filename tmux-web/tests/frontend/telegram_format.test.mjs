@@ -36,17 +36,40 @@ function ok(cond, label) {
     }
 }
 
-// ---------- slugName ----------
-eq(F.slugName({ username: 'sofia', kind: 'user' }), 'sofia@node', 'slug: username пользователя');
-eq(F.slugName({ title: 'Sofia Petrova', kind: 'user' }), 'sofia_petrova@node', 'slug: пробелы → _');
-eq(F.slugName({ title: 'Дев Чат', kind: 'group' }), 'anon@group', 'slug: кириллица не в алфавите слага → anon');
-eq(F.slugName({ title: 'News!!! Feed', kind: 'channel' }), 'news_feed@chan', 'slug: спецсимволы сжимаются');
-eq(F.slugName({ title: '   ', kind: 'user' }), 'anon@node', 'slug: пустое имя → anon');
-ok(F.slugName({ title: 'x'.repeat(80), kind: 'user' }).length <= F.SLUG_MAX + 6,
-    'slug: длина обрезается по SLUG_MAX');
-// XSS-вектор в имени не должен пережить нормализацию.
-ok(!F.slugName({ title: '<img onerror=alert(1)>' }).includes('<'),
-    'slug: разметка вычищается');
+// ---------- displayName / displayNick ----------
+//
+// ЗДЕСЬ БЫЛ slugName. Строка списка показывала терминальный слаг
+// (`sofia@node`), и кириллическое имя в нём гибло целиком: «Дев Чат» →
+// `anon@group`. Пользователь попросил обратное — имя основным цветом, ник
+// приписью, — поэтому функции две и обе ничего не «нормализуют».
+eq(F.displayName({ title: 'Sofia Petrova', username: 'sofia' }), 'Sofia Petrova',
+    'имя: показывается как есть');
+eq(F.displayNick({ title: 'Sofia Petrova', username: 'sofia' }), '@sofia', 'ник: с ведущим @');
+eq(F.displayName({ title: 'Дев Чат', kind: 'group' }), 'Дев Чат',
+    'имя: кириллица НЕ транслитерируется (прежний слаг давал anon@group)');
+eq(F.displayNick({ title: 'Дев Чат', kind: 'group' }), '',
+    'ник: username нет — приписки нет, слаг из имени не выдумывается');
+eq(F.displayName({ title: 'News!!! Feed', kind: 'channel' }), 'News!!! Feed',
+    'имя: пунктуация сохраняется');
+eq(F.displayName({ title: '  Много   пробелов \n тут ' }), 'Много пробелов тут',
+    'имя: пробелы схлопываются — шапка сессии однострочная');
+eq(F.displayName({ username: 'sofia', id: '777' }), '@sofia',
+    'имя: без title его место занимает ник');
+eq(F.displayNick({ username: 'sofia', id: '777' }), '',
+    'ник: не дублируется, когда он уже стал именем');
+eq(F.displayName({ title: '   ', username: 'sofia' }), '@sofia',
+    'имя: title из одних пробелов считается пустым');
+eq(F.displayName({ id: '777000' }), '777000', 'имя: ни title, ни ника — остаётся id');
+eq(F.displayName({}), 'anon', 'имя: пустой DTO не роняет рендер списка');
+eq(F.displayNick({ title: 'X', username: '@sofia' }), '@sofia',
+    'ник: ведущий @ из чужого источника не удваивается');
+eq(F.displayName({ title: 'x'.repeat(80) }).length, 80,
+    'имя: длину режет CSS (ellipsis), а не формат — обрезка рвала бы графемы');
+// Разметку функция НЕ вычищает, и это осознанно: в DOM данные попадают только
+// через textContent (см. telegram_dialog_name.test.mjs), а «санация» показала
+// бы пользователю имя, отличное от настоящего.
+eq(F.displayName({ title: '<img onerror=alert(1)>' }), '<img onerror=alert(1)>',
+    'имя: строка не «санируется» — за безопасность отвечает textContent');
 
 // ---------- relativeAge / dialogStatusLine ----------
 eq(F.relativeAge(5), 'now', 'age: секунды → now');
@@ -100,11 +123,30 @@ eq(F.keyHex('-1001234567890').length, 8, 'keyHex: 8 hex-символов');
 eq(F.keyHex('-1001234567890'), F.keyHex('-1001234567890'), 'keyHex: детерминирован');
 ok(F.keyHex('1') !== F.keyHex('2'), 'keyHex: разные id — разные ключи');
 eq(F.sessionHeadText(null, 0), 'SESSION ▸ —', 'шапка без диалога');
+const headed = { id: '777000', title: 'Sofia Petrova', username: 'sofia', kind: 'user' };
 eq(
-    F.sessionHeadText({ id: '777000', username: 'sofia', kind: 'user' }, 42),
-    `SESSION ▸ sofia@node · ⌁ 42 PACKETS · ◇ KEY 0x${F.keyHex('777000')}`,
-    'шапка сессии'
+    F.sessionHeadText(headed, 42),
+    `SESSION ▸ Sofia Petrova @sofia · ⌁ 42 PACKETS · ◇ KEY 0x${F.keyHex('777000')}`,
+    'шапка сессии: имя, ник, хвост'
 );
+eq(
+    F.sessionHeadText({ id: '777000', title: 'Дев Чат', kind: 'group' }, 42),
+    `SESSION ▸ Дев Чат · ⌁ 42 PACKETS · ◇ KEY 0x${F.keyHex('777000')}`,
+    'шапка сессии: без ника — и без лишнего пробела перед разделителем'
+);
+
+// Части и склейка обязаны совпадать символ в символ: chat.js рисует шапку
+// узлами (ник красится серым), а описание формы шапки остаётся одно.
+const hp = F.sessionHeadParts(headed, 42);
+eq(hp.name, 'SESSION ▸ Sofia Petrova', 'части шапки: имя');
+eq(hp.nick, '@sofia', 'части шапки: ник отдельным куском — его и красят');
+ok(hp.tail.startsWith(' · '), 'части шапки: хвост несёт свой разделитель');
+eq(`${hp.name} ${hp.nick}${hp.tail}`, F.sessionHeadText(headed, 42),
+    'части шапки: склейка равна sessionHeadText');
+eq(F.sessionHeadParts({ id: '777000', title: 'Дев Чат', kind: 'group' }, 42).nick, '',
+    'части шапки: без username ник пуст');
+eq(F.sessionHeadParts(null, 0), { name: 'SESSION ▸ —', nick: '', tail: '' },
+    'части шапки: диалог не открыт');
 
 // ---------- nickOf / truncate ----------
 eq(F.nickOf({ out: true, sender: { username: 'me' } }), 'you@local', 'ник: своё сообщение');
@@ -258,13 +300,18 @@ ok(F.tgThemeToggleTitle('dark', 'dark').includes('тёмная'), 'title: dark �
 ok(F.tgThemeToggleTitle('light', 'light').includes('светлая'), 'title: light подписан');
 
 // ---------- краевые случаи: имена из реального Telegram ----------
-eq(F.slugName(null), 'anon@node', 'slug: null-диалог не роняет рендер списка');
-eq(F.slugName({ title: 'مرحبا', kind: 'user' }), 'anon@node', 'slug: RTL-имя вне алфавита → anon');
-eq(F.slugName({ title: '\u{1F525}\u{1F525}' }), 'anon@node', 'slug: имя из одних emoji → anon');
-eq(F.slugName({ title: 'Café Ménu' }), 'caf_m_nu@node', 'slug: диакритика сжимается в _');
-eq(F.slugName({ username: 'SOFIA' }), 'sofia@node', 'slug: регистр username приводится к нижнему');
-eq(F.slugName({ username: '..name..' }), 'name@node', 'slug: ведущие/хвостовые точки срезаются (скрытый файл)');
-eq(F.slugName({ username: 'x', kind: 'bot' }), 'x@node', 'slug: неизвестный kind получает суффикс node');
+eq(F.displayName(null), 'anon', 'имя: null-диалог не роняет рендер списка');
+eq(F.displayNick(null), '', 'ник: null-диалог не роняет рендер списка');
+eq(F.displayName({ title: 'مرحبا', kind: 'user' }), 'مرحبا', 'имя: RTL показывается как есть');
+eq(F.displayName({ title: '\u{1F525}\u{1F525}' }), '\u{1F525}\u{1F525}',
+    'имя: из одних emoji — тоже имя (прежний слаг давал anon)');
+eq(F.displayName({ title: 'Café Ménu' }), 'Café Ménu', 'имя: диакритика сохраняется');
+eq(F.displayName({ title: '\u{1F1F7}\u{1F1FA} Соня' }), '\u{1F1F7}\u{1F1FA} Соня',
+    'имя: составная графема (флаг из двух кодовых точек) не рвётся');
+eq(F.displayName({ title: '\u{1F469}\u200D\u{1F4BB}' }), '\u{1F469}\u200D\u{1F4BB}',
+    'имя: ZWJ-последовательность остаётся одной графемой');
+eq(F.displayNick({ title: 'X', username: 'SOFIA' }), '@SOFIA',
+    'ник: регистр username сохраняется — это его настоящее написание');
 
 // ---------- краевые случаи: границы relativeAge ----------
 eq(F.relativeAge(59), 'now', 'age: 59с ещё now');
@@ -384,7 +431,7 @@ eq(F.formatBytes(999950000000), '1.0 TB', 'bytes: перекат работае�
 
 // ---------- папки: folderSlug ----------
 eq(F.folderSlug({ id: 2, title: 'Work Chats' }), 'work_chats', 'fslug: латиница, пробелы → _');
-eq(F.folderSlug({ id: 2, title: 'Работа' }), 'работа', 'fslug: юникод-буквы сохраняются (в отличие от slugName)');
+eq(F.folderSlug({ id: 2, title: 'Работа' }), 'работа', 'fslug: юникод-буквы сохраняются — папка это «путь», а не имя человека');
 eq(F.folderSlug({ id: 3, title: '💼 Работа' }), 'работа', 'fslug: emoji сжимается и срезается с края');
 eq(F.folderSlug({ id: 4, title: '🔥🔥' }), 'folder_4', 'fslug: имя из одних emoji → folder_<id>');
 eq(F.folderSlug({ id: 5, title: '' }), 'folder_5', 'fslug: пустое имя → folder_<id>');

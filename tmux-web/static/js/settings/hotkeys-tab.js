@@ -1,50 +1,144 @@
-// tmux-web — Settings modal: вкладка «Горячие клавиши» (Telegram).
+// tmux-web — Settings modal: форма «Горячие клавиши».
 //
-// Экспортирует buildHotkeysForm(settings, onSaved) — фабрика DOM-узла с:
-//   • тумблером telegram_hotkeys_enabled (bool, default **true**);
-//   • таблицей действий с текущими комбинациями и их переназначением;
-//   • сбросом одного действия и всех сразу.
+// Форма ОБЩАЯ для панелей-мессенджеров и параметризуется конфигом:
+//
+//   buildHotkeysForm(settings, onSaved, config)
+//   config = { legend, hint, actions, groups, bindingRows, overridesFromBindings,
+//              comboFromEvent, normalizeCombo, enabledKey, mapKey, invalidate }
+//
+// Готовые конфиги: [`TELEGRAM_HOTKEYS_CONFIG`] и [`VK_HOTKEYS_CONFIG`].
+//
+// ── Почему параметризация, а не вторая копия формы
+//
+// Для VK эта форма отличается ровно тремя вещами: источник реестра действий,
+// имена двух полей настроек и текст легенды. Копия дала бы ТРЕТЬЮ точку правки
+// при каждом изменении UX записи комбинаций (а он уже переживал два подхода:
+// отмену по Escape и «дефолт хранится как отсутствие записи»). Это
+// единственное место общего существующего кода, которое проект VK трогает
+// намеренно; изменение мгновенно проверяется глазами в модалке и не касается
+// ни одного модуля панели.
+//
+// ── Что делает форма
+//
+//   • тумблер `<enabledKey>` (bool, default **true**);
+//   • таблица действий с текущими комбинациями и их переназначением;
+//   • сброс одного действия и всех сразу.
 //
 // Поля настроек (мэппинг 1:1 на backend struct в src/user_settings.rs):
-//   telegram_hotkeys_enabled — bool, default true
-//   telegram_hotkeys         — map «id действия» → «комбинация», default пустая
+//   telegram_hotkeys_enabled / vk_hotkeys_enabled — bool, default true
+//   telegram_hotkeys         / vk_hotkeys         — map «id действия» → «комбинация»
 //
 // ВАЖНО про дефолт тумблера: инициализация строго `!== false`, а НЕ `=== true`
-// (как у соседей в interface-tab.js). У тех фич дефолт выключенный, у этой —
+// (как у соседей в interface-tab.js). У тех фич дефолт выключенный, у этих —
 // включённый: копирование их идиомы показывало бы фичу выключенной всем, у
 // кого настройка ещё ни разу не сохранялась.
 //
 // Save шлёт только свои два поля: PATCH применяет лишь Some(..)-варианты.
 // Карта хоткеев заменяется ЦЕЛИКОМ (см. PatchUserSettingsReq) — иначе снять
 // переопределение было бы нечем.
+//
+// ── Про CSS-классы `tg-hotkeys-*`
+//
+// Они остались историческими намеренно. С параметризацией форма стала общей, и
+// её оформление (`css/settings-modal.css`) — тоже одно на обе панели.
+// Переименование в нейтральное потребовало бы синхронной правки блока правил
+// ради косметики; если оно всё же понадобится, менять надо ДВА места: этот
+// файл и один блок в settings-modal.css.
 
 import {
-    TG_ACTIONS, bindingRows, comboFromEvent, formatCombo, normalizeCombo,
-    overridesFromBindings,
+    TG_ACTIONS, TG_ACTION_GROUPS, bindingRows as tgBindingRows,
+    comboFromEvent as tgComboFromEvent, normalizeCombo as tgNormalizeCombo,
+    overridesFromBindings as tgOverridesFromBindings,
 } from '../telegram/keys.js';
+import {
+    VK_ACTIONS, VK_ACTION_GROUPS, bindingRows as vkBindingRows,
+    comboFromEvent as vkComboFromEvent, normalizeCombo as vkNormalizeCombo,
+    overridesFromBindings as vkOverridesFromBindings,
+} from '../vk/keys.js';
 import { updateUserSettings } from './user-settings-api.js';
 
 /** Текст на кнопке в режиме записи. */
 const RECORDING_LABEL = 'жмите клавишу…';
 
 /**
+ * Сбрасывает кэш разобранных привязок в панели.
+ *
+ * Через `window.ForgeApp.<contract>`, а не прямым импортом keynav.js:
+ * настройки открываются и без включённого плагина, и статический импорт тянул
+ * бы всю панель в граф модалки. Отсутствие контракта — норма (модули панели
+ * могли ещё не загрузиться).
+ *
+ * @param {string} contract — имя контракта в window.ForgeApp
+ */
+function invalidatePanelBindings(contract) {
+    const app = (typeof window !== 'undefined') ? window.ForgeApp : null;
+    const api = app && app[contract];
+    if (api && typeof api.invalidate === 'function') {
+        try { api.invalidate(); } catch (_) { /* кэш не критичен */ }
+    }
+}
+
+/** Конфиг формы для панели Telegram. */
+export const TELEGRAM_HOTKEYS_CONFIG = {
+    legend: 'Горячие клавиши Telegram',
+    hint: 'Клавиатурная навигация по панели Telegram: выбор чата, чтение, ответ, '
+        + 'кнопки ботов — без мыши. Работает только когда вкладка Telegram '
+        + 'открыта и фокус внутри неё; в поле ввода одиночные клавиши не '
+        + 'перехватываются. Внутри панели шпаргалку открывает «?».',
+    toggleLabel: ' Клавиатурная навигация в Telegram',
+    actions: TG_ACTIONS,
+    groups: TG_ACTION_GROUPS,
+    bindingRows: tgBindingRows,
+    overridesFromBindings: tgOverridesFromBindings,
+    comboFromEvent: tgComboFromEvent,
+    normalizeCombo: tgNormalizeCombo,
+    enabledKey: 'telegram_hotkeys_enabled',
+    mapKey: 'telegram_hotkeys',
+    invalidate: () => invalidatePanelBindings('telegramKeys'),
+};
+
+/** Конфиг формы для панели VK. */
+export const VK_HOTKEYS_CONFIG = {
+    legend: 'Горячие клавиши VK',
+    hint: 'Клавиатурная навигация по панели VK: выбор беседы, чтение, ответ, '
+        + 'вложения, кнопки сообществ — без мыши. Работает только когда вкладка '
+        + 'VK открыта и фокус внутри неё; в поле ввода одиночные клавиши не '
+        + 'перехватываются. Внутри панели шпаргалку открывает «?».',
+    toggleLabel: ' Клавиатурная навигация в VK',
+    actions: VK_ACTIONS,
+    groups: VK_ACTION_GROUPS,
+    bindingRows: vkBindingRows,
+    overridesFromBindings: vkOverridesFromBindings,
+    comboFromEvent: vkComboFromEvent,
+    normalizeCombo: vkNormalizeCombo,
+    enabledKey: 'vk_hotkeys_enabled',
+    mapKey: 'vk_hotkeys',
+    invalidate: () => invalidatePanelBindings('vkKeys'),
+};
+
+/**
  * Строит форму.
  *
  * @param {?object} settings — user settings (может быть null/{})
  * @param {?function(object): void} onSaved — вызывается с обновлёнными настройками
+ * @param {?object} config — один из [`TELEGRAM_HOTKEYS_CONFIG`] / [`VK_HOTKEYS_CONFIG`]
  * @returns {HTMLElement}
  */
-export function buildHotkeysForm(settings, onSaved) {
+export function buildHotkeysForm(settings, onSaved, config) {
+    // Конфиг по умолчанию — телеграмный: единственный вызов формы до
+    // параметризации был именно телеграмным, и промолчавший про конфиг
+    // вызывающий обязан получить прежнее поведение, а не пустую таблицу.
+    const cfg = config || TELEGRAM_HOTKEYS_CONFIG;
     const s = settings || {};
 
     // Рабочая копия переопределений: правки живут здесь до нажатия Save, чтобы
     // закрытая без сохранения модалка ничего не меняла.
     const draft = new Map();
-    const initial = (s.telegram_hotkeys && typeof s.telegram_hotkeys === 'object')
-        ? s.telegram_hotkeys
+    const initial = (s[cfg.mapKey] && typeof s[cfg.mapKey] === 'object')
+        ? s[cfg.mapKey]
         : {};
     for (const [id, combo] of Object.entries(initial)) {
-        const canon = normalizeCombo(combo);
+        const canon = cfg.normalizeCombo(combo);
         if (canon) draft.set(id, canon);
     }
 
@@ -52,16 +146,12 @@ export function buildHotkeysForm(settings, onSaved) {
     fs.className = 'notify-fieldset';
 
     const legend = document.createElement('legend');
-    legend.textContent = 'Горячие клавиши Telegram';
+    legend.textContent = cfg.legend;
     fs.appendChild(legend);
 
     const hint = document.createElement('div');
     hint.className = 'notify-hint';
-    hint.textContent =
-        'Клавиатурная навигация по панели Telegram: выбор чата, чтение, ответ, '
-        + 'кнопки ботов — без мыши. Работает только когда вкладка Telegram '
-        + 'открыта и фокус внутри неё; в поле ввода одиночные клавиши не '
-        + 'перехватываются. Внутри панели шпаргалку открывает «?».';
+    hint.textContent = cfg.hint;
     fs.appendChild(hint);
 
     // ── тумблер ──
@@ -70,11 +160,12 @@ export function buildHotkeysForm(settings, onSaved) {
     const onBox = document.createElement('input');
     onBox.type = 'checkbox';
     onBox.className = 'tg-hotkeys-enabled';
-    onBox.checked = s.telegram_hotkeys_enabled !== false;
+    // Строго `!== false`: дефолт этой настройки — ВКЛЮЧЕНО (см. шапку файла).
+    onBox.checked = s[cfg.enabledKey] !== false;
     onBox.title = 'Выключение возвращает клавиши глобальной vim-навигации '
         + '(j/k по сессиям), переназначения при этом сохраняются.';
     onWrap.appendChild(onBox);
-    onWrap.appendChild(document.createTextNode(' Клавиатурная навигация в Telegram'));
+    onWrap.appendChild(document.createTextNode(cfg.toggleLabel || ' Клавиатурная навигация'));
     fs.appendChild(onWrap);
 
     // ── таблица действий ──
@@ -96,9 +187,27 @@ export function buildHotkeysForm(settings, onSaved) {
         recording.stop = null;
     };
 
+    /**
+     * Строки в порядке объявленных групп.
+     *
+     * Порядок берётся из `config.groups`, а не из порядка реестра: реестр может
+     * перечислить действия иначе, и заголовок группы тогда появился бы дважды.
+     * Действие с неизвестной группой не выбрасывается — уезжает в «Прочее».
+     */
+    const orderedRows = () => {
+        const rows = cfg.bindingRows(mapToObject(draft));
+        const known = new Set(cfg.groups || []);
+        const out = [];
+        for (const name of (cfg.groups || [])) {
+            for (const row of rows) if (row.group === name) out.push(row);
+        }
+        for (const row of rows) if (!known.has(row.group)) out.push(row);
+        return out;
+    };
+
     const render = () => {
         table.innerHTML = '';
-        const rows = bindingRows(mapToObject(draft));
+        const rows = orderedRows();
         let lastGroup = null;
         let conflicts = 0;
 
@@ -153,7 +262,7 @@ export function buildHotkeysForm(settings, onSaved) {
                 line.classList.add('tg-hotkeys-row-conflict');
                 const warn = document.createElement('span');
                 warn.className = 'tg-hotkeys-warn';
-                const other = TG_ACTIONS.find((a) => a.id === row.conflictWith);
+                const other = cfg.actions.find((a) => a.id === row.conflictWith);
                 warn.textContent = `занято: ${other ? other.title : row.conflictWith}`;
                 line.appendChild(warn);
             } else if (row.hint) {
@@ -199,14 +308,14 @@ export function buildHotkeysForm(settings, onSaved) {
                 render();
                 return;
             }
-            const combo = comboFromEvent(e);
+            const combo = cfg.comboFromEvent(e);
             // Нажат один модификатор — ждём дальше, это ещё не комбинация.
             if (!combo) return;
             e.preventDefault();
             e.stopPropagation();
-            const action = TG_ACTIONS.find((a) => a.id === actionId);
+            const action = cfg.actions.find((a) => a.id === actionId);
             stopRecording();
-            if (action && normalizeCombo(action.combo) === combo) {
+            if (action && cfg.normalizeCombo(action.combo) === combo) {
                 // Назначили ровно дефолт — храним как «без переопределения»,
                 // чтобы смена дефолта в будущей версии доехала до пользователя.
                 draft.delete(actionId);
@@ -262,19 +371,19 @@ export function buildHotkeysForm(settings, onSaved) {
         saveBtn.disabled = true;
 
         const payload = {
-            telegram_hotkeys_enabled: !!onBox.checked,
-            // Только отличия от дефолтов: см. keys.js::overridesFromBindings.
-            telegram_hotkeys: overridesFromBindings(draft),
+            [cfg.enabledKey]: !!onBox.checked,
+            // Только отличия от дефолтов: см. hotkeys-core::overridesFromBindings.
+            [cfg.mapKey]: cfg.overridesFromBindings(draft),
         };
 
         try {
             const updated = await updateUserSettings(payload);
             ok.style.display = '';
             setTimeout(() => { ok.style.display = 'none'; }, 2000);
-            // Панель Telegram кэширует разобранные привязки. Кэш и сам
-            // заметит новую карту (ключ считается по содержимому), но явный
-            // сброс делает контракт видимым и не зависит от его внутренностей.
-            invalidateTelegramBindings();
+            // Панель кэширует разобранные привязки. Кэш и сам заметит новую
+            // карту (ключ считается по содержимому), но явный сброс делает
+            // контракт видимым и не зависит от его внутренностей.
+            if (typeof cfg.invalidate === 'function') cfg.invalidate();
             if (typeof onSaved === 'function') onSaved(updated);
         } catch (e) {
             err.style.display = '';
@@ -294,19 +403,4 @@ function mapToObject(map) {
     const out = {};
     for (const [k, v] of map.entries()) out[k] = v;
     return out;
-}
-
-/**
- * Сбрасывает кэш привязок в панели Telegram.
- *
- * Через `window.ForgeApp.telegramKeys`, а не прямым импортом keynav.js:
- * настройки открываются и без включённого плагина Telegram, и статический
- * импорт тянул бы всю панель в граф модалки. Отсутствие контракта — норма.
- */
-function invalidateTelegramBindings() {
-    const app = (typeof window !== 'undefined') ? window.ForgeApp : null;
-    const api = app && app.telegramKeys;
-    if (api && typeof api.invalidate === 'function') {
-        try { api.invalidate(); } catch (_) { /* кэш не критичен */ }
-    }
 }

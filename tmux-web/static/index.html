@@ -22,6 +22,13 @@
                      hidden снимается из JS, когда GET /api/telegram/status
                      ответил {enabled:true}; бейдж — счётчик непрочитанного. -->
                 <button id="telegram-toggle" type="button" title="Telegram" aria-label="Telegram" hidden>✈<span id="tg-unread-badge" hidden></span></button>
+                <!-- VK-вкладка (плагин forge-vk, opt-in `--vk`). hidden
+                     снимается из JS, когда GET /api/vk/status ответил
+                     {enabled:true}; 404 = плагин выключен, и тогда кнопка
+                     остаётся скрытой, а в консоль ничего не пишется.
+                     Глиф Ⓥ (U+24CB) — один кодпоинт, монохромный во всех
+                     системных шрифтах и не путается с ✈. -->
+                <button id="vk-toggle" type="button" title="VK" aria-label="VK" hidden>Ⓥ<span id="vk-unread-badge" hidden></span></button>
             </div>
             <header class="sidebar-header">
                 <h1>tmux-web</h1>
@@ -377,6 +384,141 @@
                     <button id="tg-lightbox-close" class="tg-icon-btn" type="button" title="Закрыть" aria-label="Закрыть">×</button>
                     <img id="tg-lightbox-img" alt="">
                     <div id="tg-lightbox-caption" class="tg-lightbox-caption"></div>
+                </div>
+            </div>
+            <!-- VK-вкладка (плагин forge-vk). Структурный близнец панели
+                 Telegram — ради того, чтобы `diff js/telegram/chat.js
+                 js/vk/chat.js` оставался осмысленным, — но в собственной
+                 (синей) палитре: две одинаково-зелёные панели опасны
+                 функционально, пользователь отправил бы сообщение не в тот
+                 чат. Присутствует в DOM ВСЕГДА, даже при выключенном
+                 плагине. Весь контент наполняется из js/vk/* ЧЕРЕЗ
+                 textContent — никакого innerHTML с данными собеседника. -->
+            <div id="vk" class="tab-pane" hidden data-vk-theme="dark">
+                <div id="vk-titlebar">
+                    <!-- ☰ виден только на узких экранах (CSS .vk-mobile-only):
+                         там колонка бесед уезжает за левый край и открывается
+                         поверх ленты (js/vk/mobile.js). -->
+                    <button id="vk-contacts-toggle" class="vk-icon-btn vk-mobile-only" type="button" title="Список бесед" aria-label="Список бесед" aria-expanded="false" aria-controls="vk-contacts">☰</button>
+                    <span class="vk-dots" aria-hidden="true">
+                        <span class="vk-dot vk-dot-red"></span>
+                        <span class="vk-dot vk-dot-amber"></span>
+                        <span class="vk-dot vk-dot-green"></span>
+                    </span>
+                    <span class="vk-title">FORGE://vk</span>
+                    <!-- НЕ пишем «CONNECTION ENCRYPTED», как телеграмный
+                         близнец: у VK нет сквозного шифрования обычных
+                         бесед, и такая надпись была бы враньём в интерфейсе,
+                         показывающем переписку. Говорим ровно то, что есть:
+                         версия API и TLS до api.vk.com. -->
+                    <span class="vk-enc">
+                        <span class="vk-pulse" aria-hidden="true"></span>
+                        <span class="vk-enc-text">VK API 5.199 · TLS</span>
+                    </span>
+                    <span id="vk-self-user" class="vk-self-user"></span>
+                    <button id="vk-theme-toggle" class="vk-icon-btn" type="button" title="Тема панели: авто / тёмная / светлая" aria-label="Переключить тему панели">◐</button>
+                    <button id="vk-logout" class="vk-icon-btn" type="button" title="Отвязать токен VK" aria-label="Отвязать токен VK" hidden>⏻</button>
+                </div>
+                <div id="vk-body">
+                    <!-- tabindex=-1: на мобильных фокус переносится сюда при
+                         открытии панели по ☰ (js/vk/mobile.js). -->
+                    <aside id="vk-contacts" tabindex="-1">
+                        <!-- ЧЕТЫРЕ СЕРВЕРНЫХ ФИЛЬТРА вместо телеграмных папок:
+                             у VK папок нет, а all/unread/important/unanswered
+                             — это параметр `filter` метода
+                             messages.getConversations, то есть переключение
+                             пункта = СЕТЕВОЙ ЗАПРОС, а не фильтрация уже
+                             загруженного списка. Состав константен, поэтому
+                             пункты статичны в разметке. -->
+                        <div class="vk-section-title">// FILTERS</div>
+                        <ul id="vk-dir-list" class="vk-list">
+                            <li class="vk-dir active" data-dir="all"><span class="vk-dir-name">~/all</span><span class="vk-dir-count" id="vk-dir-all-count"></span></li>
+                            <li class="vk-dir" data-dir="unread"><span class="vk-dir-name">~/unread</span><span class="vk-dir-count" id="vk-dir-unread-count"></span></li>
+                            <li class="vk-dir" data-dir="important"><span class="vk-dir-name">~/important</span><span class="vk-dir-count"></span></li>
+                            <li class="vk-dir" data-dir="unanswered"><span class="vk-dir-name">~/unanswered</span><span class="vk-dir-count"></span></li>
+                        </ul>
+                        <div class="vk-section-title" id="vk-nodes-title">// ~/all — 0 NODES</div>
+                        <ul id="vk-dialog-list" class="vk-list"></ul>
+                        <!-- COMMUNITIES, а не CHANNELS: у VK сообщество это
+                             peer_id < 0, и оно же «бот» с точки зрения UI. -->
+                        <div class="vk-section-title">// COMMUNITIES</div>
+                        <ul id="vk-community-list" class="vk-list"></ul>
+                    </aside>
+                    <div id="vk-contacts-scrim" hidden></div>
+                    <section id="vk-session">
+                        <div id="vk-session-head">SESSION ▸ —</div>
+                        <div id="vk-log"><div class="vk-log-spacer"></div></div>
+                        <div id="vk-typing"></div>
+                        <form id="vk-prompt" autocomplete="off">
+                            <span class="vk-prompt-sign">vk:~$</span>
+                            <span class="vk-input-wrap">
+                                <input id="vk-input" type="text" autocomplete="off" spellcheck="false" placeholder=" " aria-label="Сообщение">
+                                <span class="vk-caret" aria-hidden="true"></span>
+                            </span>
+                            <button id="vk-attach" class="vk-icon-btn" type="button" title="Прикрепить файл" aria-label="Прикрепить файл">⇪</button>
+                            <input id="vk-file-input" type="file" multiple hidden aria-hidden="true" tabindex="-1">
+                            <button id="vk-send" class="vk-send-btn" type="submit">TRANSMIT ⏎</button>
+                        </form>
+                    </section>
+                </div>
+                <div id="vk-statusbar">
+                    <span id="vk-mode" class="vk-mode vk-mode-offline">OFFLINE</span>
+                    <span class="vk-status-center">UTF-8 · VK API · LAT <span id="vk-lat">—</span></span>
+                    <span class="vk-status-right" id="vk-status-right"></span>
+                </div>
+
+                <!-- Оверлей логина: ОДИН шаг — вставка access_token. Никакого
+                     wizard'а: VK не шлёт код и не спрашивает пароль, токен
+                     пользователь добывает сам. -->
+                <div id="vk-login" hidden>
+                    <div class="vk-login-box">
+                        <div class="vk-login-title">// VK AUTH</div>
+                        <div id="vk-login-step-token" class="vk-login-step">
+                            <!-- Текст подсказки заменяется на пришедший с
+                                 бэкенда: правила выдачи scope `messages` у VK
+                                 меняются, и хардкод в разметке устарел бы
+                                 между релизами. Здесь — безопасный дефолт. -->
+                            <p class="vk-login-hint" id="vk-login-hint">Вставьте адресную строку целиком со страницы blank.html после входа (она начинается с https://oauth.vk.ru/blank.html#access_token=…) — разбор сделает сервер. Токен хранится локально в ~/.config/forge/vk.toml с правами 0600 и уходит только на api.vk.com.</p>
+                            <label class="vk-field"><span>access_token</span><input id="vk-token" type="password" autocomplete="off" spellcheck="false"></label>
+                            <button id="vk-login-token-submit" class="vk-login-btn" type="button">CONNECT ⏎</button>
+                        </div>
+                        <div id="vk-login-status" class="vk-login-status" hidden></div>
+                        <div id="vk-login-error" class="vk-login-error" hidden></div>
+                        <div id="vk-login-countdown" class="vk-login-countdown" hidden></div>
+                    </div>
+                </div>
+
+                <!-- CAPTCHA: ОТДЕЛЬНЫЙ оверлей, НЕ внутри #vk-login. Код 14 у
+                     VK прилетает на любой метод, в том числе посреди уже
+                     идущей переписки, — внутри оверлея логина он был бы
+                     недостижим. Картинка берётся через прокси бэкенда, а не
+                     по прямому captcha_img: браузер на серверы VK не ходит. -->
+                <div id="vk-captcha" hidden>
+                    <div class="vk-captcha-box">
+                        <div class="vk-captcha-title">// CAPTCHA</div>
+                        <p class="vk-captcha-hint">ВКонтакте просит подтвердить, что вы человек.</p>
+                        <img id="vk-captcha-img" alt="Проверочное изображение">
+                        <label class="vk-field"><span>код</span><input id="vk-captcha-key" type="text" autocomplete="off" spellcheck="false" inputmode="latin"></label>
+                        <button id="vk-captcha-submit" class="vk-login-btn" type="button">SEND ⏎</button>
+                        <button id="vk-captcha-cancel" class="vk-login-btn vk-login-btn-ghost" type="button">CANCEL</button>
+                        <div id="vk-captcha-error" class="vk-login-error" hidden></div>
+                    </div>
+                </div>
+
+                <!-- Оверлей drag&drop файлов. -->
+                <div id="vk-dropzone" hidden>
+                    <div class="vk-dropzone-box">DROP FILE TO TRANSMIT</div>
+                </div>
+
+                <!-- Лайтбокс просмотра медиа. Стрелки ‹ › — новые против
+                     Telegram: у сообщения VK до 10 вложений, поэтому лайтбокс
+                     листает альбом. -->
+                <div id="vk-lightbox" hidden>
+                    <button id="vk-lightbox-close" class="vk-icon-btn" type="button" title="Закрыть" aria-label="Закрыть">×</button>
+                    <button id="vk-lightbox-prev" class="vk-icon-btn" type="button" title="Предыдущее вложение" aria-label="Предыдущее вложение" hidden>‹</button>
+                    <img id="vk-lightbox-img" alt="">
+                    <button id="vk-lightbox-next" class="vk-icon-btn" type="button" title="Следующее вложение" aria-label="Следующее вложение" hidden>›</button>
+                    <div id="vk-lightbox-caption" class="vk-lightbox-caption"></div>
                 </div>
             </div>
         </main>

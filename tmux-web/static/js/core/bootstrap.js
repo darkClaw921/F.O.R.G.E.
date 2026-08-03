@@ -9,7 +9,7 @@ import {
     $btnNew, $btnNewPath, $windowNewBtn, $windowNewWorktreeBtn,
     $tabTerminal, $tabTasks, $tabGit, $tabDocker, $tabTelescope, $tabEcho,
     $tasksReload, $tasksNew,
-    $projectSettings, $screensaverToggle, $telegramToggle,
+    $projectSettings, $screensaverToggle, $telegramToggle, $vkToggle,
     $btnSidebarToggle, $sidebarOverlay, $layout,
     $claudeMemoryBtn,
 } from './dom.js';
@@ -52,6 +52,10 @@ import {
     initTelegramGate, suspendTelegram, resumeTelegram, teardownTelegram,
 } from '../telegram/main.js';
 import { initTelegramTheme, teardownTelegramTheme } from '../telegram/theme.js';
+import {
+    initVkGate, suspendVk, resumeVk, teardownVk,
+} from '../vk/main.js';
+import { initVkTheme, teardownVkTheme } from '../vk/theme.js';
 
 // ----- side-effect global listeners (app.js:745-851) -----
 // Sidebar overlay click / Esc / Cmd+B hotkey + mqlMobile change.
@@ -169,6 +173,10 @@ export async function bootstrap() {
         $telegramToggle.addEventListener('click', () => switchTab('telegram'));
     }
 
+    if ($vkToggle) {
+        $vkToggle.addEventListener('click', () => switchTab('vk'));
+    }
+
     // Тема панели Telegram: восстанавливается ДО гейта, чтобы вкладка, если
     // её откроют сразу, не мигнула чужой палитрой. Работает и при выключенном
     // плагине (разметка #telegram в index.html есть всегда) — накладных
@@ -185,6 +193,25 @@ export async function bootstrap() {
         initTelegramGate();
     } catch (e) {
         console.warn('[bootstrap] initTelegramGate failed', e);
+    }
+
+    // Тема панели VK — по тем же причинам ДО гейта: иначе вкладка, открытая
+    // сразу после загрузки, мигнула бы чужой палитрой. Второй MutationObserver
+    // на <html> приемлем: связать его с телеграмным означало бы править
+    // js/telegram/theme.js, а стоимость одного наблюдателя нулевая.
+    try {
+        initVkTheme();
+    } catch (e) {
+        console.warn('[bootstrap] initVkTheme failed', e);
+    }
+
+    // Гейт кнопки Ⓥ: GET /api/vk/status. 404 = плагин выключен, кнопка
+    // остаётся скрытой и в консоль НИЧЕГО не пишется (штатный путь для всех,
+    // кто запускает devforge без --vk).
+    try {
+        initVkGate();
+    } catch (e) {
+        console.warn('[bootstrap] initVkGate failed', e);
     }
 
     if (isRemoteMode()) {
@@ -220,6 +247,8 @@ export async function bootstrap() {
         teardownEcho();
         teardownTelegram();
         teardownTelegramTheme();
+        teardownVk();
+        teardownVkTheme();
     });
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
@@ -232,6 +261,7 @@ export async function bootstrap() {
             // WS Telegram постоянный (бейдж с любой вкладки), поэтому его
             // закрываем не по смене вкладки, а по уходу страницы в фон.
             suspendTelegram();
+            suspendVk();
         } else {
             fetchSessions();
             startPolling();
@@ -252,6 +282,7 @@ export async function bootstrap() {
                 }
             }
             resumeTelegram();
+            resumeVk();
         }
     });
 

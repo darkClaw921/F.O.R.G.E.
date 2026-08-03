@@ -1,0 +1,53 @@
+{
+  "response": {
+    "count": 1,
+    "items": [
+      {
+        "date": 1700000300,
+        "from_id": -55,
+        "id": 7001,
+        "out": 0,
+        "peer_id": -55,
+        "text": "выберите вариант",
+        "conversation_message_id": 1,
+        "attachments": [],
+        "payload": "{\"cmd\":\"start\"}",
+        "keyboard": {
+          "one_time": false,
+          "inline": true,
+          "author_id": -55,
+          "buttons": [
+            [
+              {
+                "color": "primary",
+                "action": { "type": "text", "label": "Да", "payload": "{\"cmd\":\"yes\"}" }
+              },
+              {
+                "color": "negative",
+                "action": { "type": "callback", "label": "Нет", "payload": "{\"cmd\":\"no\"}" }
+              }
+            ],
+            [
+              {
+                "action": {
+                  "type": "open_link",
+                  "label": "Сайт",
+                  "link": "https://example.org"
+                }
+              }
+            ]
+          ]
+        }
+      }
+    ],
+    "profiles": [],
+    "groups": [
+      {
+        "id": 55,
+        "name": "Тестовое сообщество",
+        "screen_name": "test_group",
+        "type": "group"
+      }
+    ]
+  }
+}

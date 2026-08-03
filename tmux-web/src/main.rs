@@ -298,6 +298,9 @@ async fn main() -> anyhow::Result<()> {
     // Opt-in плагин Telegram: без флага роуты не регистрируются вовсе
     // (`GET /api/telegram/status` → 404), поведение бинаря прежнее.
     let telegram_enabled = effective.telegram_enabled;
+    // Opt-in плагин VK — ровно та же схема: без флага `GET /api/vk/status`
+    // отдаёт 404, и фронт по этому 404 держит кнопку Ⓥ скрытой.
+    let vk_enabled = effective.vk_enabled;
 
     // Инициализация логирования. По умолчанию: info для всего + debug для tmux_web.
     // Переопределяется переменной окружения RUST_LOG.
@@ -900,6 +903,37 @@ async fn main() -> anyhow::Result<()> {
         app
     };
 
+    // Плагин forge-vk — opt-in, флаг `--vk` / `DEVFORGE_VK` /
+    // `server_config.json`. Устроен симметрично телеграмному блоку и стоит
+    // сразу после него, всё ещё ДО `.fallback(static_embed::serve_static)` и
+    // ДО `.layer(...)`: только при таком порядке bearer_auth и csrf_guard
+    // автоматически покрывают `/api/vk/*` и `/ws/vk` в remote-mode. Регистрация
+    // после `.fallback` дала бы 404 на роуты плагина, после `.layer` — дыру в
+    // авторизации.
+    //
+    // Ошибка init НЕ роняет сервер (как и у Telegram): VK — побочная вкладка,
+    // и сломанный `~/.config/forge/vk.toml` не должен мешать пользователю
+    // работать с терминалом. Логируем warn и стартуем без плагина — тогда
+    // `/api/vk/*` просто отсутствуют и отдают 404, а фронт прячет кнопку.
+    let mut vk_state: Option<std::sync::Arc<forge_vk::VkState>> = None;
+    let app = if vk_enabled {
+        match forge_vk::init(forge_vk::VkConfig::load()) {
+            Ok(state) => {
+                let app = forge_vk::register_routes(app, state.clone());
+                forge_vk::spawn_workers(&state).await;
+                tracing::info!("forge-vk: plugin registered");
+                vk_state = Some(state);
+                app
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "forge-vk: init failed, starting without plugin");
+                app
+            }
+        }
+    } else {
+        app
+    };
+
     let mut app = app
         // Embedded static fallback: serve_static резолвит "/" → index.html и
         // отдаёт остальные ассеты с правильным Content-Type из bytes-секции
@@ -976,6 +1010,7 @@ async fn main() -> anyhow::Result<()> {
     // listener и грейсфулли разлогинивает все активные соединения.
     let echo_for_shutdown = echo_state.clone();
     let telegram_for_shutdown = telegram_state.clone();
+    let vk_for_shutdown = vk_state.clone();
     let history_for_shutdown = app_state.history.clone();
     let shutdown_signal = async move {
         wait_for_shutdown_signal().await;
@@ -984,6 +1019,10 @@ async fn main() -> anyhow::Result<()> {
         // Telegram-плагин мог не запускаться (нет флага или init упал).
         if let Some(tg) = telegram_for_shutdown {
             forge_telegram::shutdown(&tg).await;
+        }
+        // То же для VK: `None` — плагин выключен или его init не удался.
+        if let Some(vk) = vk_for_shutdown {
+            forge_vk::shutdown(&vk).await;
         }
         // Финальный снимок истории сессий перед выходом — чтобы последнее
         // состояние активных сессий/окон попало в журнал, даже если до

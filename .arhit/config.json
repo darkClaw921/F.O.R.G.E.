@@ -5,7 +5,8 @@
     "tmux-web/static",
     "plugins/echo/src",
     "plugins/echo-host-api/src",
-    "plugins/telegram/src"
+    "plugins/telegram/src",
+    "plugins/vk/src"
   ],
   "ignore": [
     "node_modules",

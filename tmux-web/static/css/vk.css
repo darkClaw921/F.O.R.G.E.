@@ -1,0 +1,2080 @@
+/* tmux-web — VK-вкладка (плагин forge-vk)
+ *
+ * Терминальная стилистика Telegram-панели СОХРАНЕНА (это идентичность
+ * devforge, и 1800 строк выверенной вёрстки не переизобретаются ради второго
+ * мессенджера), но АКЦЕНТ СМЕНЁН с зелёного на синий.
+ *
+ * Почему цвет обязан отличаться. Две одинаково-зелёные панели опасны не
+ * эстетически, а ФУНКЦИОНАЛЬНО: при двух включённых плагинах пользователь
+ * отправит сообщение не в тот чат. Цветовой якорь решает это мгновенно и
+ * без единого лишнего элемента интерфейса.
+ *
+ * ЗАПРЕТ: брендовый VK-синий #0077FF как ЦВЕТ ТЕКСТА на тёмном фоне —
+ * контраст ниже AA. Акцент здесь — осветлённый #6AB4FF (9.2:1 на --v-bg),
+ * а брендовый оттенок не используется вовсе: панель принадлежит devforge, а
+ * не ВКонтакте.
+ *
+ * Панель живёт в собственной палитре и НЕ наследует токены приложения: все
+ * цвета объявлены на #vk, поэтому вкладка выглядит одинаково при любой теме
+ * devforge, а собственный тумблер ◐ переключает её светлую/тёмную версии
+ * через атрибут `data-vk-theme` (js/vk/theme.js).
+ *
+ * Разметка — index.html (#vk), поведение — js/vk/*.
+ *
+ * ИНВАРИАНТ ФАЙЛА: ни одного селектора с префиксом `.tg-`/`#tg-` и ни одного
+ * упоминания `#telegram`. Панели не должны уметь красить друг друга; правило
+ * «css/telegram.css не редактируется ни в одной фазе» держится именно на
+ * этом разделении.
+ *
+ * ВАЖНО про сайзинг: #main это flex-колонка. Панель обязана быть
+ * `flex: 1 1 auto; min-height: 0`, иначе лог с overflow растягивает
+ * контейнер и ломает layout соседних вкладок.
+ */
+
+/* ==== Шрифт ==============================================================
+   ОБЪЯВЛЕНИЯ ПРОДУБЛИРОВАНЫ из css/telegram.css:17-52 НАМЕРЕННО. Вынести оба
+   @font-face в общий css/fonts-mono.css было бы чище, но это правка
+   telegram.css, а правило проекта «css/telegram.css не редактируется ни в
+   одной фазе» дороже одного дубля: @font-face идемпотентен, браузер грузит
+   файл один раз независимо от числа объявлений. Если лицензия или путь
+   когда-нибудь поменяются — менять придётся В ОБОИХ местах.
+
+   JetBrains Mono ЗАВЕНДОРЕН (static/vendor/fonts/jetbrains-mono/, лицензия
+   OFL 1.1 — файл OFL.txt лежит рядом с начертаниями и обязан оставаться там).
+
+   Почему вендоринг, а не системный fallback:
+   - терминальная сетка дизайна держится на метриках именно этого шрифта; на
+     машине без него всё разъезжается (Menlo уже другой ширины);
+   - CDN ЗАПРЕЩЁН: devforge обязан работать офлайн и не ходить в сеть за
+     ассетами, а вкладка ещё и показывает переписку — внешний запрос с
+     Referer'ом здесь неуместен вдвойне;
+   - цена мала: Regular 92 КБ + Bold 95 КБ, оба уходят в бинарь через
+     rust-embed (static/** подхватывается целиком, mime_guess отдаёт
+     font/woff2 по расширению).
+
+   `local(...)` стоит первым: у кого шрифт установлен в системе, тот не
+   скачивает ничего. `font-display: swap` — текст виден сразу системным
+   моноширинным, подмена происходит после загрузки. */
+@font-face {
+    font-family: "JetBrains Mono";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: local("JetBrains Mono"), local("JetBrainsMono-Regular"),
+         url("/vendor/fonts/jetbrains-mono/JetBrainsMono-Regular.woff2") format("woff2");
+}
+@font-face {
+    font-family: "JetBrains Mono";
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: local("JetBrains Mono Bold"), local("JetBrainsMono-Bold"),
+         url("/vendor/fonts/jetbrains-mono/JetBrainsMono-Bold.woff2") format("woff2");
+}
+
+/* ---- Кнопка Ⓥ в #settings-bar (копия правил #telegram-toggle) ---- */
+#vk-toggle {
+    position: relative; /* якорь для бейджа непрочитанного */
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--fg-mute);
+    font-size: 1rem;
+    line-height: 1;
+    padding: 2px 6px;
+    transition: background 0.15s ease, transform 0.15s ease;
+}
+#vk-toggle:hover {
+    background: var(--bg-input-hover);
+    color: var(--fg);
+    transform: scale(1.08);
+}
+
+#vk-unread-badge {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+    border-radius: 7px;
+    background: #ffb020;
+    color: #1a1200;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 14px;
+    text-align: center;
+    pointer-events: none;
+}
+
+/* ==== Панель ============================================================ */
+
+#vk {
+    /* Обязательный сайзинг: без него лог распирает #main. */
+    flex: 1 1 auto;
+    min-height: 0;
+
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.55;
+    background: var(--v-bg);
+    color: var(--v-acc-dim);
+
+    /* Тёмная палитра — дефолт (в т.ч. при data-vk-theme="dark").
+       Каждое значение прогнано через контраст-чекер против --v-bg (#050709),
+       цифры — в комментариях: при 12px целимся в >= 4.5:1 для всего, что
+       является ТЕКСТОМ. */
+    --v-bg: #050709;
+    --v-panel: #070B10;
+    --v-bar: #0A1018;
+    --v-active: #0E1E33;
+    --v-acc: #6AB4FF;        /* 9.2:1  — основной акцент и текст  */
+    --v-acc-dim: #4C88C8;    /* 5.4:1  — второстепенный текст     */
+    --v-acc-faint: #12283F;  /* 1.4:1  — РАМКИ, не текст          */
+    /* Приглушённый ТЕКСТ (метки времени, разделители дат, приписки, превью
+       цитаты) — НЕ цвет рамок. Токен для того и заведён отдельно, но был
+       объявлен как `var(--v-acc-faint)` — то есть ровно той ошибкой, от
+       которой должен был защищать: текст цитаты давал 1.32:1 к --v-panel и
+       1.12:1 к --v-active и был физически невидим.
+
+       #7885A0 — 5.44:1 к --v-bg, 5.32:1 к --v-panel, 5.15:1 к --v-bar и
+       4.52:1 к --v-active (фон цитаты под курсором и в фокусе). Ниже 4.52
+       опускаться нельзя: цитата набрана 11px, послаблений для крупного
+       текста здесь нет.
+
+       ПОЧЕМУ РОЛИ РАЗВЕДЕНЫ НАСЫЩЕННОСТЬЮ, А НЕ ЯРКОСТЬЮ. Иерархия «автор
+       ярче превью» (см. .vk-reply-quote-name) просилась в яркость, но по
+       контрасту она недостижима: у самого --v-acc-dim к --v-active ровно
+       4.52:1, то есть порог 4.5 упирается в ТУ ЖЕ светлоту, что и у имени
+       автора, и «тише по яркости» означало бы «нечитаемо». Поэтому
+       приглушённый текст обесцвечен: сине-серый с размахом каналов 40
+       против насыщенного лазурного --v-acc-dim (#4C88C8, размах 124). При
+       равной светлоте цветной текст читается как акцент, серый — как
+       подпись. Яркости --v-acc-dim токен при этом не превышает. */
+    --v-faint-text: #7885A0; /* 5.4:1  — приглушённый ТЕКСТ       */
+    --v-acc-hi: #D6EBFF;     /* 16.5:1 — основной текст сообщений */
+    --v-amber: #FFB020;      /* 11.0:1 */
+    --v-cyan: #3DE1FF;       /* 12.9:1 */
+    --v-red: #FF3B57;        /* 5.8:1  */
+}
+
+/* Светлая палитра панели: переопределяет ВСЕ токены целиком, включая
+   собственный --v-faint-text. Контрасты — против --v-bg (#E6EAF0). */
+#vk[data-vk-theme="light"] {
+    --v-bg: #E6EAF0;
+    --v-panel: #FFFFFF;
+    --v-bar: #EEF2F8;
+    --v-active: #DCE8F7;
+    --v-acc: #0B5CAB;        /* 5.6:1 */
+    --v-acc-dim: #3D6488;    /* 5.2:1 */
+    --v-acc-faint: #B6C4D6;  /* 1.5:1 — РАМКИ */
+    /* Отдельный токен для приглушённого ТЕКСТА: #B6C4D6 на #E6EAF0 даёт
+       1.5:1 — для рамки ровно то, что нужно, а метки времени превращались бы
+       в невидимку. #5E7791 даёт 3.8:1: текст остаётся подчёркнуто
+       второстепенным, но читается. */
+    --v-faint-text: #5E7791;
+    --v-acc-hi: #0A2A45;     /* 12.2:1 — основной текст сообщений */
+    --v-amber: #8A5806;      /* 5.0:1 */
+    --v-cyan: #0A6688;       /* 5.3:1 */
+    --v-red: #B92440;        /* 5.1:1 */
+}
+
+/* Единственный !important в файле: панель обязана исчезать при
+   переключении вкладок, побеждая display:flex выше. */
+#vk[hidden] {
+    display: none !important;
+}
+
+/* ---- Titlebar ----
+   z-index выше оверлея логина (5): пока пользователь не вошёл, панель
+   закрыта #vk-login, но тумблер темы ◐ и ☰ обязаны оставаться доступны —
+   иначе на светлой теме devforge неавторизованная вкладка залипает в чужой
+   палитре, и починить это нечем. Лайтбокс и dropzone лежат ВЫШЕ баров
+   (z-index 7), поэтому их собственные кнопки не перекрываются. */
+#vk-titlebar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    background: var(--v-bar);
+    border-bottom: 1px solid var(--v-acc-faint);
+    position: relative;
+    z-index: 6;
+}
+
+.vk-dots {
+    display: inline-flex;
+    gap: 5px;
+}
+.vk-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    display: inline-block;
+}
+.vk-dot-red { background: var(--v-red); }
+.vk-dot-amber { background: var(--v-amber); }
+.vk-dot-green { background: var(--v-acc); }
+
+.vk-title {
+    color: var(--v-acc);
+    letter-spacing: 0.06em;
+}
+
+.vk-enc {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    color: var(--v-acc-dim);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* Пульсирующая точка «связь жива». Цвет задаётся не здесь, а классом
+   состояния на #vk-titlebar (его ставит main.js::setMode вместе с
+   Mode-бейджем статусбара) — так две индикации не могут разъехаться.
+   Анимируются ТОЛЬКО opacity и transform: они не вызывают reflow, поэтому
+   вечно живущая на открытой вкладке анимация ничего не стоит. */
+.vk-pulse {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--v-acc);
+    flex: 0 0 auto;
+    animation: vk-pulse 2s ease-in-out infinite;
+}
+@keyframes vk-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.3; transform: scale(0.78); }
+}
+#vk-titlebar.vk-conn-connected .vk-pulse { background: var(--v-acc); }
+#vk-titlebar.vk-conn-reconnecting .vk-pulse { background: var(--v-amber); }
+#vk-titlebar.vk-conn-offline .vk-pulse { background: var(--v-red); }
+/* Оборвалась связь — точка перестаёт «дышать»: мигающий красный читался бы
+   как «идёт работа», а работы как раз нет. */
+#vk-titlebar.vk-conn-offline .vk-pulse { animation: none; }
+
+.vk-self-user {
+    color: var(--v-acc-hi);
+    white-space: nowrap;
+}
+
+.vk-icon-btn {
+    background: transparent;
+    border: 1px solid var(--v-acc-faint);
+    border-radius: 4px;
+    color: var(--v-acc-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1;
+    padding: 3px 7px;
+}
+.vk-icon-btn:hover {
+    color: var(--v-acc);
+    border-color: var(--v-acc-dim);
+    background: var(--v-active);
+}
+
+/* Тумблер ◐ (js/vk/theme.js). Режим 'auto' — состояние по умолчанию и
+   выглядит как обычная кнопка; явно зафиксированная тема подсвечена, чтобы
+   пользователь видел, что панель больше не следует за темой devforge.
+   Полная подпись режима живёт в `title`. */
+#vk-theme-toggle[data-vk-theme-mode="dark"],
+#vk-theme-toggle[data-vk-theme-mode="light"] {
+    color: var(--v-acc);
+    border-color: var(--v-acc-dim);
+}
+
+/* ---- Тело: контакты + сессия ---- */
+#vk-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    /* Якорь для off-canvas-колонки контактов и её подложки на узких экранах
+       (см. блок @media в конце файла). На десктопе ни на что не влияет. */
+    position: relative;
+}
+
+/* Элементы, которые существуют только в мобильной раскладке: кнопка ☰ и
+   подложка. На десктопе их нет совсем — не «прозрачные», а display:none,
+   чтобы не ловили клики и не попадали в tab-order. */
+.vk-mobile-only {
+    display: none;
+}
+#vk-contacts-scrim {
+    display: none;
+}
+
+#vk-contacts {
+    flex: 0 0 322px;
+    width: 322px;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 8px 0;
+    background: var(--v-panel);
+    border-right: 1px solid var(--v-acc-faint);
+}
+/* Колонка получает фокус программно (открытие ☰ на мобильных) — рамка
+   фокуса здесь только мешала бы: видимый признак и так есть, панель выехала. */
+#vk-contacts:focus {
+    outline: none;
+}
+
+.vk-section-title {
+    padding: 8px 12px 4px;
+    color: var(--v-acc-dim);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.vk-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.vk-dir,
+.vk-dialog,
+.vk-community {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 4px 12px;
+    cursor: pointer;
+    color: var(--v-acc-dim);
+}
+.vk-dir:hover,
+.vk-dialog:hover,
+.vk-community:hover {
+    background: var(--v-active);
+    color: var(--v-acc);
+}
+.vk-dir.active,
+.vk-dialog.active,
+.vk-community.active {
+    background: var(--v-active);
+    color: var(--v-acc-hi);
+    border-left: 2px solid var(--v-acc);
+    padding-left: 10px;
+}
+
+/* Двухстрочный элемент диалога: имя + @ник + метки, строка статуса. */
+.vk-dialog {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1px;
+}
+
+/* ---- Первая строка: «Павел Дуров @durov [BOT] [M]» --------------------
+   Раньше здесь стоял один слаг (`durov@node`, максимум 24 знака), и строке
+   хватало обычного nowrap + ellipsis. Человеческое имя длины не имеет — у
+   бесед встречаются заголовки на 60+ символов, — и при том же правиле имя
+   вытеснило бы за край всё, что стоит правее: и ник, и [BOT], и [M].
+
+   Поэтому строка стала флексом с ЯВНЫМ ПОРЯДКОМ ЖЕРТВ:
+     * метки [BOT] и [M] не ужимаются никогда (flex-shrink: 0) — они несут
+       состояние беседы, а не текст, и «полметки» не бывает;
+     * @ник ужимается первым (shrink 200) — он приписка, и его потеря
+       восстановима наведением (подсказка «Имя (@ник)»);
+     * имя ужимается последним и получает ellipsis.
+   Счётчик непрочитанного живёт во второй строке (.vk-dialog-status) и под
+   это давление не попадает вовсе. */
+.vk-dialog-name {
+    display: flex;
+    align-items: baseline;
+    min-width: 0;
+    color: inherit;
+    overflow: hidden;
+    white-space: nowrap;
+}
+.vk-dialog-title {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* @ник (screen_name): приглушённый сине-серый (--v-faint-text, 5.3:1 к фону
+   колонки и 4.5:1 к фону подсвеченной строки — отдельного «яркого» токена,
+   в отличие от телеграмной панели, здесь не понадобилось). Отступ от имени —
+   CSS'ом, а не пробелом в тексте: пробельный узел во флекс-контейнере не
+   рендерится вовсе. */
+.vk-dialog-nick {
+    flex: 0 200 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-left: 6px;
+    color: var(--v-faint-text);
+}
+.vk-dialog-status {
+    color: var(--v-acc-dim);
+    font-size: 10px;
+    opacity: 0.85;
+}
+.vk-dialog-status .vk-online { color: var(--v-acc); }
+.vk-dialog-unread {
+    color: var(--v-amber);
+}
+.vk-dir-count,
+.vk-community-count {
+    margin-left: auto;
+    color: var(--v-acc-dim);
+    font-size: 10px;
+}
+
+/* Заглушённый (muted) диалог: строка приглушена целиком, рядом с именем —
+   терминальная метка [M] (цветные emoji в hacker-green дизайне не живут).
+   Непрочитанное таких диалогов не попадает ни в счётчики папок, ни в бейдж
+   на кнопке ✈ (см. format.js::mutedIds / dirUnread). */
+.vk-dialog.vk-muted,
+.vk-community.vk-muted {
+    opacity: 0.55;
+}
+.vk-dialog.vk-muted .vk-dialog-unread,
+.vk-community.vk-muted .vk-dialog-unread {
+    color: var(--v-acc-dim);
+}
+.vk-muted-mark {
+    flex: 0 0 auto;
+    margin-left: 6px;
+    color: var(--v-acc-dim);
+    font-size: 10px;
+}
+
+/* Маркер бота в строке диалога («[BOT]»).
+
+   Цвет отдельный (--v-cyan), а не приглушённый как у [M]: это не состояние
+   чата, а его ПРИРОДА — по ней пользователь глазами отделяет ботов от людей
+   в папке, где перемешаны и те и другие. Оттенок тот же, что у собственного
+   ника в ленте (.vk-line-nick-own) — «служебное, не человек».
+
+   Класс ставит dialogs.js::buildRow по DialogDto.bot; в обеих темах
+   --v-cyan определён (см. блок токенов). */
+.vk-dialog-bot {
+    flex: 0 0 auto;
+    margin-left: 6px;
+    color: var(--v-cyan);
+    font-size: 10px;
+}
+/* В заглушённой строке маркер не должен перетягивать взгляд: .vk-muted гасит
+   строку целиком через opacity, но насыщенный cyan переживает и это. */
+.vk-dialog.vk-muted .vk-dialog-bot,
+.vk-community.vk-muted .vk-dialog-bot {
+    color: var(--v-acc-dim);
+}
+
+/* ---- Сессия ---- */
+#vk-session {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--v-bg);
+}
+
+#vk-session-head {
+    flex: 0 0 auto;
+    padding: 6px 12px;
+    color: var(--v-acc-dim);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    border-bottom: 1px solid var(--v-acc-faint);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* @ник в шапке — та же иерархия, что и в колонке: имя основным, ник серым.
+   Шапка СОЗНАТЕЛЬНО осталась обычным блоком с ellipsis, а не флексом: она
+   обрезается справа, то есть при нехватке места жертвует хвостом
+   (⌁ PACKETS · ◇ KEY), а не именем открытой беседы. Это её поведение было и
+   до появления ника — менять его ради покраски одного слова незачем. */
+.vk-session-nick {
+    color: var(--v-faint-text);
+}
+
+#vk-log {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 8px 12px;
+    gap: 2px;
+}
+/* Прижимает содержимое лога к низу, пока строк мало. */
+.vk-log-spacer {
+    flex: 1 0 auto;
+}
+
+/* position: relative — ради кнопки «ответить», которая висит абсолютом у
+   правого края строки. В потоке она ломала бы перенос текста (pre-wrap ниже)
+   и вставала бы перед «⋯» у неподтверждённых сообщений. Единственные абсолюты
+   внутри строки — оверлей ▶ и длительность у медиа, но их держит
+   `.vk-media-body` (у неё свой position), так что новый контекст их не тронет. */
+.vk-line {
+    position: relative;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--v-acc-dim);
+}
+.vk-line-time { color: var(--v-faint-text); }
+.vk-line-nick { color: var(--v-acc); }
+.vk-line-nick-own { color: var(--v-cyan); }
+.vk-line-text { color: var(--v-acc-hi); }
+.vk-line-system { color: var(--v-acc-dim); opacity: 0.8; }
+.vk-line-error { color: var(--v-red); }
+/* «(edited)» и прочие приписки — тише основного текста. */
+.vk-line-suffix { color: var(--v-faint-text); }
+
+/* Своё сообщение: чуть светлее фон строки — в терминальном логе это
+   единственный дешёвый способ отделить свои реплики от чужих, не сдвигая
+   колонку времени и не ломая моноширинную сетку. */
+.vk-line-own {
+    background: color-mix(in srgb, var(--v-active) 45%, transparent);
+}
+
+/* ---- Пересланные сообщения (js/vk/attachments.js::flattenForwards) -------
+   Аналога в Telegram-панели нет: там пересылка это плоский заголовок, а у VK
+   вложенные объекты произвольной глубины. Отступ по уровням рисует сам текст
+   («│ »), поэтому классов на каждый уровень не нужно. */
+.vk-fwd {
+    margin: 2px 0 2px 2ch;
+    border-left: 1px solid var(--v-faint);
+    padding-left: 8px;
+}
+.vk-fwd-line {
+    color: var(--v-acc-dim);
+    font-size: 11px;
+    opacity: 0.9;
+}
+/* Хвост «…ещё N пересланных»: скрытое обязано быть видно как факт, иначе
+   обрезанная цепочка читается как потеря данных. */
+.vk-fwd-more {
+    color: var(--v-faint-text);
+    font-size: 10px;
+    font-style: italic;
+}
+
+/* Контейнер карточек вложений. Заведён вместе с разметкой строки: у сообщения
+   VK до десяти вложений, и «слот на одно» пришлось бы переделывать вместе со
+   всей строкой. Карточки кладёт js/vk/media.js::renderAttachmentGroup. */
+.vk-line-media {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 4px;
+}
+.vk-line-media[hidden] {
+    display: none;
+}
+
+/* Группа карточек ОДНОГО сообщения. Колонкой, а не сеткой: карточка уже 360px
+   и на узкой панели вторая всё равно переехала бы вниз, а вертикальный поток
+   сохраняет порядок вложений — тот самый, что стоит в ключе кэша. */
+.vk-media-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* Хвост «…ещё N»: вложений больше, чем MAX_INLINE_CARDS. Не кнопка — раскрытие
+   потребовало бы догрузки, а бюджет 3 rps дороже удобства. */
+.vk-media-more {
+    font-size: 11px;
+    color: var(--v-acc-dim);
+    opacity: 0.75;
+    padding-left: 2px;
+}
+
+/* Отправлено, но ещё не подтверждено ВКонтакте: приглушено + «⋯».
+   Как только приходит реальный MessageDto, строка заменяется целиком. */
+.vk-msg-pending {
+    opacity: 0.55;
+}
+.vk-msg-pending::after {
+    content: " ⋯";
+    color: var(--v-amber);
+}
+
+/* Удалённое сообщение: строка остаётся на месте, чтобы лента не «съезжала». */
+.vk-line-deleted {
+    color: var(--v-faint-text);
+    font-style: italic;
+    opacity: 0.7;
+}
+
+/* ---- Ответ на сообщение: цитата, кнопка, подсветка оригинала ------------
+   (js/vk/reply.js + chat.js). Обе темы получаются даром: ни одного
+   литерального цвета, только токены #vk / #vk[data-vk-theme]. */
+
+/* Цитата над текстом строки: «на что отвечали». Обязана быть блоком — строка
+   лога это инлайновый контекст, и цитата встроилась бы в ту же строку сразу
+   за временем. Стили написаны так, чтобы одинаково работать и на <div>, и на
+   <button> (UA-рамка/шрифт кнопки сбрасываются явно).
+
+   nowrap + ellipsis — не украшение: `.vk-line` отдаёт по наследству
+   `white-space: pre-wrap`, и цитата на пол-экрана раздула бы каждую строку
+   лога, ради которой её и показывают одной строчкой. */
+.vk-reply-quote {
+    display: block;
+    box-sizing: border-box;
+    max-width: 100%;
+    width: 100%;
+    margin: 0 0 2px;
+    padding: 0 0 0 7px;
+    border: 0;
+    border-left: 2px solid var(--v-acc-faint);
+    border-radius: 0;
+    background: transparent;
+    font: inherit;
+    font-size: 11px;
+    line-height: 1.4;
+    text-align: left;
+    color: var(--v-acc-dim);
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.vk-reply-quote:hover,
+.vk-reply-quote:focus-visible {
+    border-left-color: var(--v-acc-dim);
+    background: var(--v-active);
+    outline: none;
+}
+/* Автор оригинала ярче превью: при обрезке по ellipsis именно он остаётся
+   видимым до конца, и по нему цитату узнают, даже когда от текста уцелело
+   два слова. */
+.vk-reply-quote-name {
+    color: var(--v-acc-dim);
+    margin-right: 6px;
+}
+.vk-reply-quote-text {
+    color: var(--v-faint-text);
+}
+/* Цитата, переходить в которой некуда: chat.js ставит `data-reply-to`
+   (вместе с role/tabindex) только когда у оригинала есть id — у ответа на
+   сторис его не существует в природе. Курсор-палец на таком блоке обещал бы
+   действие, которого нет, поэтому и наведение молчит. */
+.vk-reply-quote:not([data-reply-to]) {
+    cursor: default;
+}
+.vk-reply-quote:not([data-reply-to]):hover {
+    background: transparent;
+    border-left-color: var(--v-acc-faint);
+}
+
+/* Кнопка «ответить» на строке.
+
+   Прячется через opacity, а не display/visibility: место под неё зарезервировано
+   абсолютом (вне потока), а `opacity: 0` оставляет её в порядке табуляции —
+   иначе действие было бы недоступно с клавиатуры вовсе. `pointer-events: none`
+   в скрытом состоянии обязателен: невидимая кнопка поверх текста перехватывала
+   бы клики и выделение. Фокус её проявляет (`:focus-visible`), поэтому
+   клавиатурный путь остаётся видимым.
+
+   Своя подложка `--v-bar` — кнопка висит ПОВЕРХ текста длинных сообщений, на
+   прозрачном фоне читались бы обе надписи сразу. */
+.vk-reply-btn {
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 1;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease-out;
+
+    background: var(--v-bar);
+    border: 1px solid var(--v-acc-faint);
+    border-radius: 3px;
+    color: var(--v-acc-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 10px;
+    line-height: 1.2;
+    letter-spacing: 0.06em;
+    padding: 1px 6px;
+}
+.vk-line:hover > .vk-reply-btn,
+.vk-line:focus-within > .vk-reply-btn,
+.vk-reply-btn:focus-visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+.vk-reply-btn:hover,
+.vk-reply-btn:focus-visible {
+    color: var(--v-acc);
+    border-color: var(--v-acc-dim);
+    background: var(--v-active);
+    outline: none;
+}
+/* Устройства без курсора: hover там не наступает никогда, и кнопка,
+   спрятанная до наведения, была бы просто недоступна. Ширина экрана тут ни
+   при чём — сигнал именно «нечем наводить». */
+@media (hover: none) {
+    .vk-reply-btn {
+        opacity: 0.6;
+        pointer-events: auto;
+    }
+}
+
+/* Кратковременная подсветка оригинала, к которому перешли по цитате
+   (chat.js::flashRow держит класс REPLY_FLASH_MS и снимает его сам).
+
+   Амбер — в этом файле цвет «внимание сюда» (`.vk-msg-pending`,
+   `.vk-upload-card`). Маркер — inset-тень, а не border/padding: рамка сдвинула
+   бы текст строки на свои 2px ровно в тот момент, когда пользователь на неё
+   смотрит. Тень нарисована токеном напрямую, без color-mix: там, где color-mix
+   не поддержан, заливки не будет, а полоса слева останется — на вопрос «куда
+   меня перенесло» она отвечает и в одиночку.
+
+   Плотность заливки вынесена в переменные, а не вписана в @keyframes, по двум
+   причинам: светлой теме нужна вдвое более плотная (иначе тон теряется на
+   светлом фоне), и анимация обязана ЗАКАНЧИВАТЬСЯ ровно тем цветом, который
+   держит статическое правило — иначе на исходе анимации строка заметно
+   дёргает цветом, хотя ничего не произошло. */
+.vk-msg-highlight {
+    --vk-flash: color-mix(in srgb, var(--v-amber) 20%, transparent);
+    --vk-flash-peak: color-mix(in srgb, var(--v-amber) 48%, transparent);
+    background-color: var(--vk-flash);
+    box-shadow: inset 2px 0 0 0 var(--v-amber);
+    border-radius: 2px;
+    /* Короче времени жизни класса: вспышка гаснет, а подсветка держится, пока
+       её не снимет таймер. */
+    animation: vk-msg-flash 0.9s ease-out 1;
+}
+#vk[data-vk-theme="light"] .vk-msg-highlight {
+    --vk-flash: color-mix(in srgb, var(--v-amber) 30%, transparent);
+    --vk-flash-peak: color-mix(in srgb, var(--v-amber) 58%, transparent);
+}
+@keyframes vk-msg-flash {
+    from { background-color: var(--vk-flash-peak); }
+    to { background-color: var(--vk-flash); }
+}
+
+/* Кнопка повтора отправки внутри строки ошибки. */
+.vk-retry-btn {
+    background: transparent;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: var(--v-amber);
+    cursor: pointer;
+    text-decoration: underline;
+}
+.vk-retry-btn:hover { color: var(--v-acc-hi); }
+.vk-date-sep {
+    color: var(--v-faint-text);
+    text-align: center;
+    padding: 6px 0 2px;
+    letter-spacing: 0.1em;
+}
+
+#vk-typing {
+    flex: 0 0 auto;
+    min-height: 16px;
+    padding: 0 12px;
+    color: var(--v-acc-dim);
+    font-size: 10px;
+}
+
+#vk-prompt {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--v-bar);
+    border-top: 1px solid var(--v-acc-faint);
+}
+.vk-prompt-sign {
+    color: var(--v-acc);
+    white-space: nowrap;
+}
+.vk-input-wrap {
+    position: relative;
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+#vk-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--v-acc-hi);
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    caret-color: transparent; /* каретку рисуем сами (.vk-caret) */
+}
+/* Каретка терминала. Рисуем сами (у #vk-input caret-color: transparent),
+   потому что нативная каретка не мигает в такт остальной вкладке и исчезает
+   без фокуса.
+
+   Видна, только пока поле ПУСТОЕ: как только набран текст, за курсором следит
+   он сам, и вторая «каретка» в конце строки была бы враньём. Условие —
+   `:placeholder-shown` (в разметке placeholder=" "), а не JS-класс: состояние
+   меняется на каждое нажатие клавиши, и гонять за этим обработчик незачем.
+
+   `step-end` вместо плавного затухания: терминальная каретка не гаснет
+   плавно, она либо есть, либо нет. */
+.vk-caret {
+    width: 7px;
+    height: 14px;
+    background: var(--v-acc);
+    flex: 0 0 auto;
+    animation: vk-blink 1.05s step-end infinite;
+}
+@keyframes vk-blink {
+    0%, 50% { opacity: 1; }
+    50.01%, 100% { opacity: 0; }
+}
+#vk-input:not(:placeholder-shown) + .vk-caret {
+    opacity: 0;
+    animation: none;
+}
+.vk-send-btn {
+    background: var(--v-active);
+    border: 1px solid var(--v-acc-dim);
+    border-radius: 4px;
+    color: var(--v-acc);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    padding: 4px 10px;
+    white-space: nowrap;
+}
+.vk-send-btn:hover {
+    color: var(--v-acc-hi);
+    border-color: var(--v-acc);
+}
+
+/* ---- Статусбар ---- */
+#vk-statusbar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 10px;
+    background: var(--v-bar);
+    border-top: 1px solid var(--v-acc-faint);
+    color: var(--v-acc-dim);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    /* Как и titlebar — над оверлеем логина: состояние соединения видно и до
+       входа в аккаунт. */
+    position: relative;
+    z-index: 6;
+}
+.vk-mode {
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    padding: 1px 6px;
+}
+.vk-mode-connected { color: var(--v-acc); }
+.vk-mode-reconnecting { color: var(--v-amber); }
+.vk-mode-offline { color: var(--v-red); }
+.vk-status-center {
+    margin: 0 auto;
+    white-space: nowrap;
+}
+/* Счётчик контактов в сети: тем же зелёным, что и `[ONLINE]` в колонке —
+   пользователь связывает цифру со статусами, а не читает её как отдельную
+   метрику. */
+.vk-status-right {
+    white-space: nowrap;
+    color: var(--v-acc);
+}
+
+/* ---- Оверлеи ----
+   Три уровня. 5 — оверлей логина: он живёт долго и обязан пускать к барам
+   (тема, состояние связи). 7 — dropzone, лайтбокс и CAPTCHA: они
+   кратковременные, модальные и несут собственные кнопки, поэтому перекрывают
+   всё, включая titlebar.
+
+   ПОЧЕМУ CAPTCHA ВЫШЕ ЛОГИНА И ОТДЕЛЬНО ОТ НЕГО. У VK код 14 прилетает на
+   ЛЮБОЙ метод, а не только на проверку токена: пользователь может получить
+   captcha посреди переписки, уже войдя. Внутри #vk-login её оверлей был бы
+   недостижим (логин скрыт), а на слое 5 — перекрыт баром. */
+#vk-login,
+#vk-dropzone,
+#vk-lightbox,
+#vk-captcha {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 5;
+}
+#vk-dropzone,
+#vk-lightbox,
+#vk-captcha {
+    z-index: 7;
+}
+#vk-login[hidden],
+#vk-dropzone[hidden],
+#vk-lightbox[hidden],
+#vk-captcha[hidden] {
+    display: none;
+}
+
+#vk-login {
+    background: var(--v-bg);
+}
+.vk-login-box {
+    width: min(420px, 90%);
+    padding: 18px 20px;
+    background: var(--v-panel);
+    border: 1px solid var(--v-acc-faint);
+    border-radius: 6px;
+}
+.vk-login-title {
+    color: var(--v-acc);
+    letter-spacing: 0.1em;
+    margin-bottom: 12px;
+}
+.vk-login-hint {
+    color: var(--v-acc-dim);
+    font-size: 11px;
+    margin: 0 0 12px;
+}
+.vk-field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-bottom: 10px;
+    color: var(--v-acc-dim);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.vk-field input {
+    background: var(--v-bg);
+    border: 1px solid var(--v-acc-faint);
+    border-radius: 4px;
+    color: var(--v-acc-hi);
+    font-family: inherit;
+    font-size: 12px;
+    padding: 6px 8px;
+    text-transform: none;
+    letter-spacing: normal;
+}
+.vk-field input:focus {
+    outline: none;
+    border-color: var(--v-acc);
+}
+.vk-login-btn {
+    width: 100%;
+    background: var(--v-active);
+    border: 1px solid var(--v-acc-dim);
+    border-radius: 4px;
+    color: var(--v-acc);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    padding: 7px 10px;
+}
+.vk-login-btn:hover {
+    color: var(--v-acc-hi);
+    border-color: var(--v-acc);
+}
+/* BACK — второстепенное действие: тот же размер, но без подсветки фона. */
+.vk-login-btn-ghost {
+    margin-top: 6px;
+    background: transparent;
+    border-color: var(--v-acc-faint);
+    color: var(--v-acc-dim);
+}
+.vk-login-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+.vk-login-hint a {
+    color: var(--v-cyan);
+}
+/* Строка «>> connecting…» на время запроса шага. */
+.vk-login-status {
+    margin-top: 10px;
+    color: var(--v-acc-dim);
+    font-size: 11px;
+}
+.vk-login-error {
+    margin-top: 10px;
+    color: var(--v-red);
+    font-size: 11px;
+}
+.vk-login-countdown {
+    margin-top: 6px;
+    color: var(--v-amber);
+    font-size: 11px;
+}
+
+#vk-dropzone {
+    background: var(--v-bg);
+}
+.vk-dropzone-box {
+    border: 1px dashed var(--v-acc);
+    border-radius: 8px;
+    color: var(--v-acc);
+    letter-spacing: 0.12em;
+    padding: 40px 60px;
+}
+
+#vk-lightbox {
+    background: var(--v-bg);
+    flex-direction: column;
+    gap: 10px;
+    padding: 24px;
+}
+#vk-lightbox-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+}
+#vk-lightbox-img {
+    max-width: 100%;
+    max-height: 80%;
+    object-fit: contain;
+}
+.vk-lightbox-caption {
+    color: var(--v-acc-dim);
+    font-size: 11px;
+    text-align: center;
+}
+
+/* Стрелки галереи ‹ › — ЧЕГО НЕТ У TELEGRAM. У сообщения VK до 10 вложений,
+   поэтому лайтбокс листает не «одно фото сообщения», а альбом. Кнопки
+   скрываются целиком (`hidden` из JS), когда листать некуда: неактивная
+   стрелка на краю альбома выглядела бы поломкой. Позиционируются по краям, а
+   не в потоке, чтобы не сдвигать картинку при появлении. */
+#vk-lightbox-prev,
+#vk-lightbox-next {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 22px;
+    line-height: 1;
+    padding: 6px 10px;
+}
+#vk-lightbox-prev { left: 12px; }
+#vk-lightbox-next { right: 12px; }
+#vk-lightbox-prev[hidden],
+#vk-lightbox-next[hidden] {
+    display: none;
+}
+
+/* ---- CAPTCHA (VK код 14) ------------------------------------------------
+   Отдельный оверлей, а не шаг логина: см. блок «Оверлеи» выше. Картинка
+   грузится ЧЕРЕЗ ПРОКСИ бэкенда (`/api/vk/captcha/:sid`), а не по прямому
+   `captcha_img` из ответа VK — то же правило, что для медиа: браузер
+   пользователя на серверы ВКонтакте не ходит. */
+#vk-captcha {
+    background: var(--v-bg);
+}
+.vk-captcha-box {
+    width: min(360px, 90%);
+    padding: 18px 20px;
+    background: var(--v-panel);
+    border: 1px solid var(--v-acc-faint);
+    border-radius: 6px;
+    text-align: center;
+}
+.vk-captcha-title {
+    color: var(--v-acc);
+    letter-spacing: 0.1em;
+    margin-bottom: 12px;
+    text-align: left;
+}
+.vk-captcha-hint {
+    color: var(--v-acc-dim);
+    font-size: 11px;
+    margin: 0 0 12px;
+    text-align: left;
+}
+/* Белая подложка обязательна: картинки captcha у VK приходят с прозрачным
+   или светлым фоном, и на тёмной панели символы сливались бы с ним. */
+#vk-captcha-img {
+    display: block;
+    width: 100%;
+    max-width: 240px;
+    margin: 0 auto 12px;
+    background: #FFFFFF;
+    border: 1px solid var(--v-acc-faint);
+    border-radius: 4px;
+}
+#vk-captcha-img:not([src]) {
+    display: none;
+}
+
+/* ---- Медиа-карточка ----
+   Ширина 360px по дизайну; превью 184px. Радиус 3px (cornerRadius дизайна),
+   рамка --v-acc-faint, фон --v-bar: карточка читается как «врезка» в логе, но
+   не спорит с ним по яркости. Раскладка head/body/foot — три строки, каждая
+   со своим смыслом: что это → как выглядит → что с ним сделать. */
+.vk-media-card {
+    width: 360px;
+    max-width: 100%;
+    border: 1px solid var(--v-acc-faint);
+    border-radius: 3px;
+    margin: 4px 0 6px 0;
+    background: var(--v-bar);
+    overflow: hidden;
+}
+.vk-media-head,
+.vk-media-foot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    color: var(--v-acc-dim);
+    font-size: 10px;
+}
+/* ОБЯЗАТЕЛЬНОЕ правило: у `.vk-media-thumb` (display:block) и
+   `.vk-media-play` (display:flex) есть собственный `display`, а он перебивает
+   UA-правило `[hidden]{display:none}`. Без этой строки скрытые превью и
+   оверлей ▶ остаются на экране — например, ▶ появляется поверх фотографий. */
+.vk-media-card [hidden] {
+    display: none !important;
+}
+.vk-media-head {
+    border-bottom: 1px solid var(--v-acc-faint);
+}
+.vk-media-foot {
+    border-top: 1px solid var(--v-acc-faint);
+}
+.vk-media-glyph {
+    color: var(--v-acc);
+    flex: 0 0 auto;
+}
+/* Имя файла может быть любой длины — оно и сжимается. */
+.vk-media-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--v-acc-hi);
+}
+.vk-media-kind {
+    flex: 0 0 auto;
+    letter-spacing: 0.1em;
+    color: var(--v-acc-dim);
+}
+
+/* Область превью: фиксированная высота, чтобы лента не «прыгала», когда
+   картинка догрузилась (иначе scroll-якорь подгрузки истории врёт). */
+.vk-media-body {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 92px;
+    max-height: 184px;
+    background: var(--v-bg);
+    cursor: pointer;
+    overflow: hidden;
+}
+.vk-media-thumb {
+    display: block;
+    width: 100%;
+    max-height: 184px;
+    object-fit: cover;
+}
+.vk-media-icon {
+    font-size: 34px;
+    line-height: 1;
+    color: var(--v-acc-dim);
+    padding: 24px 0;
+}
+/* Псевдо-волна голосового: детерминированная по message_id (см. media.js). */
+.vk-media-wave {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 40px;
+    padding: 12px;
+}
+.vk-media-wave span {
+    display: block;
+    width: 3px;
+    background: var(--v-acc-dim);
+    border-radius: 1px;
+}
+/* Оверлей ▶ у видео и подпись длительности — поверх превью. */
+.vk-media-play {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--v-acc);
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--v-bg) 70%, transparent);
+    color: var(--v-acc);
+    font-size: 16px;
+    pointer-events: none;
+}
+.vk-media-duration {
+    position: absolute;
+    right: 6px;
+    bottom: 6px;
+    padding: 0 4px;
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--v-bg) 80%, transparent);
+    color: var(--v-acc-hi);
+    font-size: 10px;
+    pointer-events: none;
+}
+/* Слот плеера: подложка --v-bar с рамкой --v-acc-faint (как у карточки),
+   flex-строка «медиа + ✕». Внутри плеера клики — его собственные (пауза,
+   перемотка), поэтому курсор-«палец» тела карточки здесь неуместен. Обе темы
+   бесплатно: используются только палитровые переменные --v-*, которые
+   `#vk[data-vk-theme="light"]` переопределяет целиком. */
+.vk-media-player {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px;
+    background: var(--v-bar);
+    border: 1px solid var(--v-acc-faint);
+    border-radius: 3px;
+    cursor: default;
+}
+/* Плеер стилизуется по ВЛОЖЕННОСТИ, а не по классу элемента: класс вида
+   `.vk-media-video` уже занят самой карточкой (`vk-media-${kind}`), и правило
+   `width:100%` для него растягивало карточку видео на всю ширину лога. */
+.vk-media-player > video,
+.vk-media-player > audio {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+}
+/* Кнопка ✕ остановки: наследует вид .vk-media-btn, стоит справа от медиа —
+   НЕ поверх него, чтобы не перекрывать нативные controls узкого аудио. */
+.vk-media-player-close {
+    flex: 0 0 auto;
+}
+/* Пока открыт плеер, телу карточки нельзя резать высоту: max-height:184px с
+   overflow:hidden отрезал бы нижнюю полосу controls у высокого видео —
+   перемотка была бы недоступна чисто визуально. */
+.vk-media-playing .vk-media-body {
+    max-height: none;
+}
+
+.vk-media-meta {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+/* Домен вложения `link`. Показывается ИМЕННО домен, а не полный адрес: путь
+   ссылки из CRM легко перерастает ширину панели (см. format.js::linkDomain).
+   `max-width` + ellipsis — страховка на очень длинные поддомены: даже домен
+   бывает в полсотни символов, и расползаться карточке из-за этого нельзя. */
+.vk-media-link {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 16ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--v-acc);
+    text-decoration: none;
+    border-bottom: 1px dotted var(--v-acc-faint);
+}
+.vk-media-link:hover,
+.vk-media-link:focus-visible {
+    border-bottom-color: var(--v-acc);
+    text-decoration: none;
+}
+.vk-media-link[hidden] {
+    display: none;
+}
+.vk-media-progress {
+    flex: 1 1 auto;
+    height: 3px;
+    background: var(--v-acc-faint);
+    border-radius: 2px;
+    overflow: hidden;
+}
+.vk-media-progress-bar {
+    height: 100%;
+    width: 0;
+    background: var(--v-acc);
+    transition: width 0.12s linear;
+}
+/* Размер неизвестен (VK не сообщил `size` у вложения — так бывает у
+   стикеров и граффити): полоса «дышит» вместо вранья про проценты. */
+.vk-media-progress-indeterminate .vk-media-progress-bar {
+    animation: vk-media-pulse 1.1s ease-in-out infinite;
+}
+@keyframes vk-media-pulse {
+    0%, 100% { opacity: 0.25; }
+    50% { opacity: 1; }
+}
+.vk-media-status {
+    flex: 0 0 auto;
+    min-width: 46px;
+    text-align: right;
+    white-space: nowrap;
+}
+.vk-media-done {
+    color: var(--v-acc);
+}
+.vk-media-failed {
+    color: var(--v-red);
+}
+.vk-media-btn {
+    flex: 0 0 auto;
+    background: transparent;
+    border: 1px solid var(--v-acc-faint);
+    border-radius: 3px;
+    color: var(--v-acc-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    padding: 2px 6px;
+}
+.vk-media-btn:hover {
+    color: var(--v-acc);
+    border-color: var(--v-acc-dim);
+    background: var(--v-active);
+}
+.vk-media-retry {
+    color: var(--v-amber);
+    border-color: var(--v-amber);
+}
+/* Стикер — не файл: рамка и подложка только мешают. */
+.vk-media-sticker {
+    border-color: transparent;
+    background: transparent;
+}
+.vk-media-sticker .vk-media-body {
+    background: transparent;
+}
+.vk-media-sticker .vk-media-thumb {
+    object-fit: contain;
+}
+/* Индикатор загрузки полного файла в лайтбоксе. */
+#vk-lightbox-img:not([src]) {
+    min-height: 40px;
+}
+@media (prefers-reduced-motion: reduce) {
+    .vk-media-progress-bar {
+        transition: none;
+    }
+    .vk-media-progress-indeterminate .vk-media-progress-bar {
+        animation: none;
+        opacity: 0.6;
+    }
+}
+
+/* ---------------------------------------------------------------------------
+   Клавиатуры ботов (js/vk/botkb.js)
+
+   Две разных сущности с ОДНОЙ кнопкой:
+
+     .vk-kb      — inline-клавиатура ПОД строкой сообщения (живёт вместе с ним);
+     .vk-kb-bar  — полоса reply-клавиатуры НАД #vk-prompt (состояние диалога).
+
+   Кнопка рисуется как терминальная команда — `[ Текст ]`. Скобки даёт CSS
+   (::before/::after), а НЕ JS: в текстовом узле обязана лежать ровно подпись
+   от бота и ничего больше (см. XSS-инвариант botkb.js). Поэтому же скобки
+   помечены aria-hidden не могут быть — вместо этого у кнопки есть title с
+   чистым текстом.
+
+   Цвета — только через токены (--v-acc*/--v-cyan/--v-amber/--v-red), значит
+   обе темы работают без отдельных правил: светлая палитра переопределяет те
+   же переменные на #vk[data-vk-theme="light"].
+   --------------------------------------------------------------------------- */
+
+/* Инлайн-клавиатура: отдельный блок под текстом/медиа строки лога.
+   margin-left выравнивает её по началу ТЕКСТА сообщения, а не по метке
+   времени — иначе кнопки «уезжают» под столбец [12:03:41]. */
+.vk-kb {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 4px 0 2px 0;
+    padding-left: 2px;
+    max-width: 560px;
+}
+
+/* Ряд кнопок. wrap обязателен: ряд из пяти кнопок бота на 320px иначе даёт
+   горизонтальный скролл ВСЕЙ панели (та же болезнь, что была у
+   .vk-media-card с фиксированной шириной). */
+.vk-kb-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: stretch;
+}
+
+.vk-kb-btn {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    background: transparent;
+    border: 1px solid var(--v-acc-faint);
+    border-radius: 3px;
+    color: var(--v-acc-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 1.4;
+    letter-spacing: 0.04em;
+    padding: 3px 7px;
+    text-align: left;
+    /* Длинная подпись обязана обрезаться, а не растягивать ряд: у ботов
+       встречаются кнопки на всю ширину экрана телефона. */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.vk-kb-btn::before {
+    content: "[ ";
+    color: var(--v-acc-faint);
+}
+.vk-kb-btn::after {
+    content: " ]";
+    color: var(--v-acc-faint);
+}
+.vk-kb-btn:hover:not(:disabled) {
+    color: var(--v-acc);
+    border-color: var(--v-acc-dim);
+    background: var(--v-active);
+}
+.vk-kb-btn:hover:not(:disabled)::before,
+.vk-kb-btn:hover:not(:disabled)::after {
+    color: var(--v-acc-dim);
+}
+.vk-kb-btn:focus-visible {
+    outline: 1px solid var(--v-acc);
+    outline-offset: 1px;
+}
+.vk-kb-btn:disabled {
+    cursor: not-allowed;
+}
+
+/* Внешняя ссылка: цвет и стрелка «уходишь со страницы». Глиф — часть
+   оформления, а не подписи, поэтому он в ::after (у ::after кнопки-ссылки
+   скобка закрывается вместе со стрелкой). */
+.vk-kb-btn-url {
+    color: var(--v-cyan);
+    border-color: var(--v-cyan);
+    opacity: 0.85;
+}
+.vk-kb-btn-url::after {
+    content: " ↗ ]";
+}
+.vk-kb-btn-url:hover:not(:disabled) {
+    color: var(--v-cyan);
+    border-color: var(--v-cyan);
+    opacity: 1;
+}
+
+/* Неподдерживаемая в v1 кнопка: видна, но очевидно нерабочая. Прятать её
+   нельзя — тогда клавиатура бота выглядела бы неполной, и пользователь
+   решил бы, что кнопки «пропали». */
+.vk-kb-btn-unsupported {
+    color: var(--v-acc-dim);
+    border-style: dashed;
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+.vk-kb-btn-unsupported:hover {
+    background: transparent;
+    color: var(--v-acc-dim);
+    border-color: var(--v-acc-faint);
+}
+
+/* Ждём ответа бота: та же анимация «в пути», что у неподтверждённого
+   сообщения (.vk-msg-pending) — один язык на всю вкладку. */
+.vk-kb-btn-pending {
+    color: var(--v-amber);
+    border-color: var(--v-amber);
+    opacity: 0.7;
+}
+.vk-kb-btn-pending::after {
+    content: " ⋯ ]";
+}
+
+/* Лимит запросов (VK коды 6/9/29): кнопка гаснет с обратным отсчётом (текст
+   ставит JS). Красный, а не амберный: это отказ VK, а не «идёт работа». */
+.vk-kb-btn-wait {
+    color: var(--v-red);
+    border-color: var(--v-red);
+    opacity: 0.75;
+    cursor: not-allowed;
+}
+
+/* --- Полоса reply-клавиатуры над полем ввода ---------------------------- */
+
+/* Узел создаётся в JS (botkb.js::ensureBar) и вставляется между #vk-typing и
+   #vk-prompt. Фон — как у бара ввода: полоса читается как продолжение
+   prompt'а, а не как ещё одно сообщение в ленте. */
+.vk-kb-bar {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 12px;
+    background: var(--v-bar);
+    border-top: 1px solid var(--v-acc-faint);
+    /* Клавиатура бота бывает на 8 рядов — она не должна съедать ленту. */
+    max-height: 40vh;
+    overflow-y: auto;
+}
+.vk-kb-bar[hidden] {
+    display: none;
+}
+.vk-kb-bar-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--v-faint-text);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+}
+.vk-kb-bar-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* Кнопки-служебки полосы (свернуть / развернуть) — те же .vk-kb-btn, но без
+   скобок: они не команды бота, а управление панелью. */
+.vk-kb-bar-close::before,
+.vk-kb-bar-close::after,
+.vk-kb-bar-show::before,
+.vk-kb-bar-show::after {
+    content: "";
+}
+.vk-kb-bar-close {
+    flex: 0 0 auto;
+    padding: 0 5px;
+    border-color: transparent;
+}
+.vk-kb-bar-close:hover:not(:disabled) {
+    border-color: var(--v-acc-dim);
+}
+.vk-kb-bar-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+/* Кнопки reply-клавиатуры тянутся на всю ширину ряда: у неё, в отличие от
+   inline, обычно 2-3 широкие клавиши, и «прижатые влево» смотрятся сломанно. */
+.vk-kb-bar-rows .vk-kb-row .vk-kb-btn {
+    flex: 1 1 auto;
+    text-align: center;
+}
+.vk-kb-bar-hint {
+    color: var(--v-amber);
+    font-size: 11px;
+}
+/* Свёрнутая полоса (single_use сработал или пользователь нажал ✕): остаётся
+   один способ вернуть клавиатуру. */
+.vk-kb-bar-collapsed .vk-kb-bar-rows {
+    flex-direction: row;
+}
+.vk-kb-bar-show {
+    flex: 0 0 auto;
+    color: var(--v-acc-dim);
+}
+
+/* --- Полоса «отвечаю на …» над полем ввода ------------------------------ */
+
+/* Тот же фон и та же верхняя линия, что у `.vk-kb-bar`: полосы стоят
+   вплотную (обе — прямые дети #vk-session и вставляются перед #vk-prompt),
+   и разнобой читался бы как поломка вёрстки.
+
+   Ровно ОДНА строка по высоте (nowrap + ellipsis у обеих подписей): полоса
+   не имеет права расти вместе с длиной цитируемого сообщения — она отъедает
+   высоту у ленты, а не у себя. Отсюда же ответ на «съест ли она поле ввода на
+   телефоне»: её высота не зависит ни от текста, ни от ширины экрана.
+
+   `[hidden]` объявлен явно: у полосы собственный `display: flex`, а он
+   перебивает UA-правило `[hidden]{display:none}` — chat.js прячет её именно
+   через `hidden`. */
+.vk-reply-bar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 5px 12px;
+    background: var(--v-bar);
+    border-top: 1px solid var(--v-acc-faint);
+    color: var(--v-acc-dim);
+    font-size: 11px;
+}
+.vk-reply-bar[hidden] {
+    display: none;
+}
+/* Маркер «отвечаю на» рисует CSS, а не JS: в полосу приходят только имя и
+   превью из VK, и добавлять к пользовательским данным служебный символ
+   пришлось бы конкатенацией — а тогда он попал бы и в обрезку по ellipsis. */
+.vk-reply-bar::before {
+    content: "↳";
+    flex: 0 0 auto;
+    color: var(--v-cyan);
+}
+/* Автор не сжимается до нечитаемости, но и не съедает всю полосу: имя нужно
+   целиком, превью можно и обрезать. */
+.vk-reply-bar-name {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 40%;
+    color: var(--v-cyan);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.vk-reply-bar-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--v-faint-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* ✕ — отказ от действия, поэтому подсвечивается красным (в этом файле красный
+   значит «VK/пользователь отказал», см. .vk-kb-btn-wait, .vk-media-failed),
+   а не зелёным «сделать». Рамка появляется только под курсором: в покое
+   полоса не должна выглядеть панелью с кнопками. */
+.vk-reply-cancel {
+    flex: 0 0 auto;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: var(--v-acc-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 1;
+    padding: 2px 6px;
+}
+.vk-reply-cancel:hover,
+.vk-reply-cancel:focus-visible {
+    color: var(--v-red);
+    border-color: var(--v-red);
+    outline: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Отправка файлов (js/vk/upload.js)
+   --------------------------------------------------------------------------- */
+
+/* Оверлей drag&drop.
+
+   Полупрозрачный, а не глухой: под ним обязана просвечивать лента — иначе
+   пользователь, тащущий файл, теряет из виду, в какой диалог он его несёт.
+   `background` без color-mix оставлен как fallback для старых браузеров. */
+#vk-dropzone {
+    background: var(--v-bg);
+    background: color-mix(in srgb, var(--v-bg) 82%, transparent);
+    pointer-events: none; /* оверлей не должен перехватывать сам drop */
+}
+.vk-dropzone-box {
+    background: var(--v-panel);
+    box-shadow: 0 0 0 1px var(--v-acc-faint), 0 0 24px rgba(0, 0, 0, 0.35);
+}
+
+/* Карточка отправляемого файла: та же геометрия, что у принятых медиа
+   (`.vk-media-card`), но акцент амберный — «ещё не доставлено». */
+.vk-upload-card {
+    border-color: var(--v-amber);
+}
+.vk-upload-card .vk-media-glyph,
+.vk-upload-card .vk-media-kind {
+    color: var(--v-amber);
+}
+.vk-upload-card .vk-media-progress-bar {
+    background: var(--v-amber);
+}
+/* Доставлено — карточка успевает мигнуть зелёным перед тем, как строку
+   заменит настоящее сообщение из ленты. */
+.vk-upload-card .vk-media-done {
+    color: var(--v-acc);
+}
+/* Провал: рамка красная, и строка перестаёт быть «в пути». */
+.vk-upload-failed .vk-upload-card {
+    border-color: var(--v-red);
+}
+.vk-upload-failed .vk-upload-card .vk-media-glyph,
+.vk-upload-failed .vk-upload-card .vk-media-kind {
+    color: var(--v-red);
+}
+.vk-upload-cancel {
+    color: var(--v-amber);
+    border-color: var(--v-acc-faint);
+}
+.vk-upload-cancel:hover {
+    border-color: var(--v-amber);
+}
+
+/* ---------------------------------------------------------------------------
+   «Уменьшить движение»
+
+   Один блок на ВСЕ анимации и переходы вкладки. Перечислены поимённо, а не
+   через `#vk *`: подавлять чужие переходы !important-ом — способ
+   сломать то, чего не видел. Каретка при этом не исчезает, а становится
+   постоянной (она — указатель места ввода, а не украшение), пульс-точка
+   замирает в полном цвете (состояние связи по-прежнему видно).
+   --------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+    .vk-caret {
+        animation: none;
+        opacity: 1;
+    }
+    .vk-pulse {
+        animation: none;
+        opacity: 1;
+        transform: none;
+    }
+    #vk-contacts {
+        transition: none;
+    }
+    #vk-toggle {
+        transition: none;
+    }
+    /* Подсветка оригинала НЕ гасится совсем — она отвечает на вопрос «куда
+       меня перенесло», и без неё переход по цитате теряет смысл. Убирается
+       только затухание: заливка держится ровно столько, сколько на строке
+       висит класс. */
+    .vk-msg-highlight {
+        animation: none;
+    }
+    /* Кнопка «ответить» появляется мгновенно вместо проявления. */
+    .vk-reply-btn {
+        transition: none;
+    }
+}
+
+/* ---------------------------------------------------------------------------
+   Узкие экраны (js/vk/mobile.js)
+
+   Media-queries живут ЗДЕСЬ, а не в mobile.css: vk.css остаётся
+   самодостаточным — вкладку можно выключить целиком, не разбирая чужой файл.
+   Порядок @import в style.css это позволяет (vk.css идёт раньше
+   mobile.css, а пересекающихся селекторов у них нет).
+
+   Порог 768px продублирован в js/vk/mobile.js::TG_MOBILE_MAX_WIDTH —
+   JS обязан знать, узкий ли экран, чтобы не закрывать несуществующую панель.
+   --------------------------------------------------------------------------- */
+@media (max-width: 768px) {
+    /* Клавиатура на телефоне съедает низ вьюпорта. `dvh` (динамическая
+       высота) обновляется при её появлении, `vh` — нет, и поле ввода
+       уезжало бы под клавиатуру. Первое правило — фолбэк для браузеров без
+       dvh. */
+    #vk {
+        max-height: 100vh;
+        max-height: 100dvh;
+    }
+
+    .vk-mobile-only {
+        display: inline-flex;
+        align-items: center;
+    }
+
+    /* Колонка контактов выезжает поверх ленты. Ширина не 322px, а доля
+       экрана с потолком: на 320px фиксированная колонка не помещалась бы, а
+       кусочек ленты справа обязан оставаться видимым — он показывает, что
+       панель временная. */
+    #vk-contacts {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 4;
+        flex: 0 0 auto;
+        /* 80%, а не 100%: справа обязана оставаться видимой полоса ленты —
+           она и показывает, что панель временная, и служит зоной закрытия
+           (подложка). На 375px это ~75px, на 320px — ~64px. */
+        width: min(322px, 80%);
+        transform: translateX(-100%);
+        transition: transform 0.18s ease-out;
+        box-shadow: 0 0 24px rgba(0, 0, 0, 0.45);
+        /* Инерционный скролл списка на тач-устройствах. */
+        -webkit-overflow-scrolling: touch;
+    }
+    #vk.vk-contacts-open #vk-contacts {
+        transform: translateX(0);
+    }
+
+    /* Подложка появляется вместе с колонкой: клик по ней закрывает панель
+       (js/vk/mobile.js), а визуально она отделяет список от ленты. */
+    #vk-contacts-scrim {
+        display: block;
+        position: absolute;
+        inset: 0;
+        z-index: 3;
+        background: rgba(0, 0, 0, 0.45);
+    }
+    #vk-contacts-scrim[hidden] {
+        display: none;
+    }
+
+    /* Лента занимает всю ширину: колонка больше не отнимает место в потоке. */
+    #vk-session {
+        flex: 1 1 100%;
+        min-width: 0;
+    }
+
+    /* Компактные бары. Из titlebar уходит длинная строка «CONNECTION
+       ENCRYPTED — MTPROTO 2.0», но НЕ пульсирующая точка: состояние связи
+       остаётся видимым, а место освобождается под ☰ и имя аккаунта. */
+    .vk-enc-text {
+        display: none;
+    }
+    .vk-enc {
+        gap: 0;
+    }
+    #vk-titlebar {
+        gap: 8px;
+        padding: 6px 8px;
+    }
+    .vk-self-user {
+        max-width: 34vw;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    #vk-statusbar {
+        gap: 8px;
+        padding: 4px 8px;
+    }
+
+    /* Медиа-карточки перестают быть фиксированными 360px: на 320px они
+       вылезали бы за край и давали горизонтальный скролл всей страницы. */
+    .vk-media-card {
+        width: 100%;
+    }
+
+    /* Клавиатуры ботов на телефоне: ряд из 4-5 кнопок обязан переноситься и
+       делить ширину поровну, иначе горизонтальный скролл получает вся панель.
+       min-width:0 нужен именно здесь — без него flex-элемент не даёт себя
+       сжать ниже ширины содержимого, и text-overflow не срабатывает. */
+    .vk-kb {
+        max-width: 100%;
+    }
+    .vk-kb-row .vk-kb-btn {
+        flex: 1 1 40%;
+        min-width: 0;
+        text-align: center;
+    }
+    .vk-kb-bar {
+        padding: 6px 8px;
+        /* На телефоне ленту закрывает ещё и системная клавиатура — полосе
+           остаётся меньше места, чем на десктопе. */
+        max-height: 33vh;
+    }
+
+    /* Полоса ответа на телефоне: те же 8px по бокам, что у остальных баров.
+       Высота уже ограничена одной строкой (nowrap), поэтому поле ввода она
+       не съест — но имя автора ужимаем сильнее, иначе на 320px от превью
+       остаётся два символа и полоса перестаёт отвечать на вопрос «на что
+       именно я отвечаю». */
+    .vk-reply-bar {
+        padding: 5px 8px;
+        gap: 6px;
+    }
+    .vk-reply-bar-name {
+        max-width: 30%;
+    }
+
+    /* Кнопка «ответить» на узком экране: тач-устройства ловятся правилом
+       `@media (hover: none)` выше, здесь — только компактный размер, чтобы
+       она не накрывала текст сообщения. */
+    .vk-reply-btn {
+        font-size: 9px;
+        padding: 1px 5px;
+    }
+
+    /* Кнопка отправки на телефоне — глиф вместо слова: «TRANSMIT ⏎» съедало
+       больше половины строки ввода. */
+    #vk-log {
+        padding: 8px 8px;
+    }
+    #vk-prompt {
+        gap: 6px;
+        padding: 6px 8px;
+    }
+    .vk-send-btn {
+        padding: 4px 8px;
+    }
+}
+
+/* Совсем узкие экраны: из статусбара уходит и центральная секция
+   «UTF-8 · MTPROTO · LAT», оставляя Mode-бейдж и счётчик онлайна — то, что
+   меняется и потому имеет смысл. */
+@media (max-width: 480px) {
+    .vk-status-center {
+        display: none;
+    }
+    /* Центр пропал — правую ячейку прижимаем к краю сами (раньше её
+       отталкивал `margin: 0 auto` центральной секции). */
+    .vk-status-right {
+        margin-left: auto;
+    }
+    .vk-title {
+        display: none;
+    }
+}
+
+/* ───────────────────────── клавиатурная навигация ─────────────────────────
+
+   Курсор клавиатуры (js/vk/keynav.js) и оверлей шпаргалки. Курсор —
+   отдельный класс, а не :focus: строки ленты фокусируются программно с
+   preventScroll, и полагаться на :focus нельзя — он слетает при любом клике
+   мимо, тогда как курсор обязан пережить его и остаться там, где был. */
+
+.vk-kb-cursor {
+    position: relative;
+    background: var(--v-active);
+    outline: none;
+}
+/* Полоска слева, а не рамка вокруг: рамка сдвигала бы текст строки на
+   пиксель и лента «дёргалась» бы при каждом шаге курсора. */
+.vk-kb-cursor::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--v-acc);
+}
+/* Строка сообщения — единственное место, где слева уже есть время: полоску
+   отодвигаем за границу padding'а, чтобы она не села поверх цифр. */
+#vk-log .vk-line.vk-kb-cursor::before {
+    left: -6px;
+}
+.vk-kb-cursor:focus-visible {
+    outline: none;
+}
+
+/* ── шпаргалка ── */
+
+.vk-keys-help {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: color-mix(in srgb, var(--v-bg) 82%, transparent);
+    backdrop-filter: blur(2px);
+}
+.vk-keys-help-card {
+    max-width: 640px;
+    width: 100%;
+    max-height: 100%;
+    overflow-y: auto;
+    background: var(--v-panel);
+    border: 1px solid var(--v-acc-dim);
+    border-radius: 4px;
+    padding: 14px 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+.vk-keys-help-title {
+    color: var(--v-acc);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    margin-bottom: 10px;
+}
+.vk-keys-help-group {
+    margin-bottom: 12px;
+}
+.vk-keys-help-group-title {
+    color: var(--v-amber);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+}
+.vk-keys-help-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 2px 0;
+    font-size: 12px;
+    line-height: 1.5;
+}
+.vk-keys-help-key {
+    flex: 0 0 auto;
+    min-width: 58px;
+    text-align: center;
+    border: 1px solid var(--v-acc-faint);
+    border-radius: 3px;
+    padding: 1px 6px;
+    color: var(--v-acc);
+    font-family: inherit;
+    font-size: 11px;
+}
+/* Действие, потерявшее клавишу из-за конфликта переназначений, обязано
+   выглядеть отключённым — иначе пользователь ждал бы от него реакции. */
+.vk-keys-help-key-none {
+    color: var(--v-acc-faint);
+    border-style: dashed;
+}
+.vk-keys-help-label {
+    color: var(--v-acc-dim);
+}
+.vk-keys-help-hint {
+    color: var(--v-faint-text);
+    font-size: 11px;
+}
+.vk-keys-help-foot {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--v-acc-faint);
+    color: var(--v-faint-text);
+    font-size: 11px;
+}
+
+@media (max-width: 480px) {
+    /* На телефоне подсказки к действиям съедают половину экрана, а сама
+       шпаргалка нужна и там: прячем пояснения, оставляя клавиши. */
+    .vk-keys-help-hint {
+        display: none;
+    }
+    .vk-keys-help-card {
+        padding: 10px 12px;
+    }
+}
+
+/* Папка, из которой при действующем белом списке не видно ни одного чата.
+   Пункт остаётся в навигации (структура аккаунта — не наше дело её прятать),
+   но приглушается: пустой список внутри иначе читался бы как сбой загрузки. */
+.vk-dir.vk-dir-filtered-out .vk-dir-name {
+    opacity: 0.45;
+}
