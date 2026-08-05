@@ -296,10 +296,15 @@ pub async fn capture_pane_full(session: &str, lines: i32) -> anyhow::Result<Stri
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-/// Формат строки `list-panes` для [`find_claude_pane`]:
-/// `win.pane|команда|окно_активно|панель_активна`.
-const LP_FORMAT: &str =
-    "#{window_index}.#{pane_index}|#{pane_current_command}|#{window_active}|#{pane_active}";
+/// Формат строки `list-panes` для [`find_claude_pane`] и
+/// [`list_claude_pane_targets`]:
+/// `win.pane|команда|окно_активно|панель_активна|имя_окна`.
+///
+/// `#{window_name}` идёт ПОСЛЕДНИМ и добавлен позже остальных: [`pick_claude_pane`]
+/// читает только первые четыре поля, поэтому дописывание пятого его не задело.
+/// Имя окна нужно истории авто-апрува — человеку понятно «vim» или «server»,
+/// а не индекс `1.0`.
+const LP_FORMAT: &str = "#{window_index}.#{pane_index}|#{pane_current_command}|#{window_active}|#{pane_active}|#{window_name}";
 
 /// Похоже ли `pane_current_command` на запущенный Claude Code CLI.
 ///
@@ -341,6 +346,141 @@ fn pick_claude_pane(list_panes_output: &str) -> Option<String> {
         }
     }
     best.map(|(_, target)| target)
+}
+
+/// Панель сессии, пригодная для опроса авто-апрувом.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaneTarget {
+    /// Target-суффикс `"win.pane"` для `-t <session>:<target>`. Пустая строка
+    /// означает активную панель сессии.
+    pub target: String,
+    /// Имя окна (`#{window_name}`) — то, что видит человек в статусбаре tmux
+    /// и в истории апрувов. Может быть пустым, если tmux его не отдал.
+    pub window: String,
+}
+
+/// Собирает из вывода `list-panes -s` (формат [`LP_FORMAT`]) ВСЕ панели с
+/// Claude — в порядке листинга tmux (окно за окном, панель за панелью).
+///
+/// Отличие от [`pick_claude_pane`], который возвращает ОДНУ «лучшую» панель:
+/// авто-апруву нужны все, потому что prompt может висеть в неактивном окне
+/// (пользователь работает в другом окне той же сессии), и такой prompt тоже
+/// должен подтверждаться.
+///
+/// Если Claude-панелей не нашлось — возвращается одна запись с ПУСТЫМ
+/// `target` (= активная панель сессии, target `"<session>:"`) и именем
+/// активного окна, если его удалось прочитать. Это тот же фолбэк, что у
+/// [`resolve_target`]: Claude может не опознаться по `pane_current_command`
+/// (обёртки, нестандартная установка), и терять сессию целиком нельзя.
+///
+/// Чистая функция — вынесена ради юнит-тестов.
+fn collect_claude_panes(list_panes_output: &str) -> Vec<PaneTarget> {
+    let mut out = Vec::new();
+    let mut active_window = String::new();
+    for line in list_panes_output.lines() {
+        let mut parts = line.split('|');
+        let (Some(target), Some(cmd), Some(win_active), Some(_pane_active)) =
+            (parts.next(), parts.next(), parts.next(), parts.next())
+        else {
+            continue;
+        };
+        let window = parts.next().unwrap_or("").to_string();
+        if win_active == "1" && active_window.is_empty() {
+            active_window = window.clone();
+        }
+        if is_claude_command(cmd) {
+            out.push(PaneTarget {
+                target: target.to_string(),
+                window,
+            });
+        }
+    }
+    if out.is_empty() {
+        out.push(PaneTarget {
+            target: String::new(),
+            window: active_window,
+        });
+    }
+    out
+}
+
+/// Перечисляет панели сессии, в которых имеет смысл искать prompt Claude Code.
+///
+/// Возвращает список [`PaneTarget`] — суффикс `"win.pane"` для
+/// [`capture_pane_target`] / [`send_key_target`] плюс имя окна для истории
+/// апрувов. Пустой `target` означает «активная панель сессии» — см.
+/// [`collect_claude_panes`].
+///
+/// Нужна авто-апруву ([`crate::auto_approve`]): [`capture_pane`] смотрит
+/// только активную панель активного окна, поэтому prompt в фоновом окне
+/// оставался бы незамеченным.
+///
+/// При исчезнувшей сессии / незапущенном сервере — `Ok(vec![])` (нечего
+/// обходить), прочие сбои tmux — `Err`.
+pub async fn list_claude_pane_targets(session: &str) -> anyhow::Result<Vec<PaneTarget>> {
+    // `:` в конце — session-target, см. `capture_pane`.
+    let target = format!("{session}:");
+    let output = Command::new("tmux")
+        .args(["list-panes", "-s", "-t", &target, "-F", LP_FORMAT])
+        .output()
+        .await
+        .context("failed to spawn `tmux list-panes`")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("no server running") || stderr.contains("can't find session") {
+            return Ok(Vec::new());
+        }
+        return Err(anyhow!(
+            "tmux list-panes failed (exit {:?}): {}",
+            output.status.code(),
+            stderr.trim()
+        ));
+    }
+
+    Ok(collect_claude_panes(&String::from_utf8_lossy(
+        &output.stdout,
+    )))
+}
+
+/// Захватывает видимую часть КОНКРЕТНОЙ панели сессии.
+///
+/// `pane` — суффикс вида `"win.pane"` из [`list_claude_pane_targets`]; пустая
+/// строка означает активную панель сессии (target `"<session>:"`).
+///
+/// В остальном идентична [`capture_pane`] (флаг `-J`, «сессия исчезла» →
+/// `Ok("")`), от которой отличается только адресацией: та всегда смотрит
+/// активную панель активного окна.
+pub async fn capture_pane_target(session: &str, pane: &str) -> anyhow::Result<String> {
+    let target = format!("{session}:{pane}");
+    let output = Command::new("tmux")
+        .args(["capture-pane", "-p", "-J", "-t", &target])
+        .output()
+        .await
+        .context("failed to spawn `tmux capture-pane` (is tmux installed?)")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("no server running")
+            || stderr.contains("can't find session")
+            || stderr.contains("can't find pane")
+            || stderr.contains("can't find window")
+        {
+            tracing::debug!(
+                session = %session,
+                pane = %pane,
+                "tmux capture-pane: target absent, returning empty pane"
+            );
+            return Ok(String::new());
+        }
+        return Err(anyhow!(
+            "tmux capture-pane failed (exit {:?}): {}",
+            output.status.code(),
+            stderr.trim()
+        ));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
 /// Ищет в сессии панель, в которой запущен Claude Code CLI.
@@ -418,18 +558,7 @@ pub async fn send_keys(session: &str, text: &str) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let target = match find_claude_pane(session).await {
-        Ok(Some(pane)) => format!("{session}:{pane}"),
-        Ok(None) => format!("{session}:"),
-        Err(e) => {
-            tracing::warn!(
-                session = %session,
-                error = ?e,
-                "find_claude_pane failed; falling back to session active pane"
-            );
-            format!("{session}:")
-        }
-    };
+    let target = resolve_target(session).await;
 
     for line in text.split('\n') {
         if !line.is_empty() {
@@ -463,6 +592,101 @@ pub async fn send_keys(session: &str, text: &str) -> anyhow::Result<()> {
                 stderr.trim()
             ));
         }
+    }
+    Ok(())
+}
+
+/// Резолвит tmux-target для доставки ввода в сессию.
+///
+/// Возвращает `"<session>:<win>.<pane>"` — панель с запущенным Claude CLI
+/// (см. [`find_claude_pane`]), либо `"<session>:"` (активная панель) если
+/// Claude-панель не найдена или tmux вернул ошибку. Завершающее `:`
+/// обязательно: без него tmux резолвит числовое имя сессии как номер окна
+/// текущей сессии (тот же баг, что был у [`capture_pane`]).
+///
+/// Общий шаг [`send_keys`] и [`send_key`] — вынесен, чтобы правило выбора
+/// панели было ровно в одном месте.
+async fn resolve_target(session: &str) -> String {
+    match find_claude_pane(session).await {
+        Ok(Some(pane)) => format!("{session}:{pane}"),
+        Ok(None) => format!("{session}:"),
+        Err(e) => {
+            tracing::warn!(
+                session = %session,
+                error = ?e,
+                "find_claude_pane failed; falling back to session active pane"
+            );
+            format!("{session}:")
+        }
+    }
+}
+
+/// Именованные клавиши tmux, которые отправляются БЕЗ флага `-l`.
+///
+/// `tmux send-keys Enter` нажимает Enter, а `tmux send-keys -l -- Enter`
+/// напечатал бы пять букв «Enter». Всё, чего нет в этом списке, считается
+/// литералом и уходит с `-l`.
+const NAMED_KEYS: &[&str] = &[
+    "Enter", "Escape", "Space", "Tab", "BSpace", "Up", "Down", "Left", "Right", "Home", "End",
+    "C-c", "C-d",
+];
+
+/// Отправляет ОДНУ клавишу в конкретную панель сессии — без добавления Enter.
+///
+/// Нужна авто-апруву ([`crate::auto_approve`]): пункт меню Claude Code
+/// выбирается нажатием цифры, и лишний Enter после выбора улетел бы уже в
+/// поле ввода как пустое сообщение. [`send_keys`] для этого не годится — он
+/// по контракту дожимает Enter после каждой строки.
+///
+/// `pane` — суффикс вида `"win.pane"` из [`list_claude_pane_targets`]; пустая
+/// строка означает активную панель сессии. Панель задаёт ВЫЗЫВАЮЩИЙ, а не
+/// [`resolve_target`]: авто-апрув обязан нажать ровно в ту панель, в которой
+/// увидел prompt ([`capture_pane_target`]), иначе в сессии с несколькими
+/// окнами клавиша уходила бы в другое окно.
+///
+/// - имя сессии валидируется через [`is_valid_session_name`];
+/// - `key` из [`NAMED_KEYS`] уходит как именованная клавиша, всё остальное —
+///   литералом через `-l --` (разделитель защищает ключи, начинающиеся с `-`);
+/// - пустой `key` → `Ok(())` без действий.
+pub async fn send_key_target(session: &str, pane: &str, key: &str) -> anyhow::Result<()> {
+    if !is_valid_session_name(session) {
+        bail!(
+            "invalid session name `{}` (allowed: [A-Za-z0-9_-]+, non-empty)",
+            session
+        );
+    }
+    if key.is_empty() {
+        return Ok(());
+    }
+    send_key_to(&format!("{session}:{pane}"), key).await
+}
+
+/// Общая реализация отправки одной клавиши в готовый tmux-target.
+///
+/// `key` из [`NAMED_KEYS`] уходит как именованная клавиша, всё остальное —
+/// литералом через `-l --`.
+async fn send_key_to(target: &str, key: &str) -> anyhow::Result<()> {
+    let output = if NAMED_KEYS.contains(&key) {
+        Command::new("tmux")
+            .args(["send-keys", "-t", target, key])
+            .output()
+            .await
+            .context("failed to spawn `tmux send-keys <named>`")?
+    } else {
+        Command::new("tmux")
+            .args(["send-keys", "-t", target, "-l", "--", key])
+            .output()
+            .await
+            .context("failed to spawn `tmux send-keys -l`")?
+    };
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!(
+            "tmux send-keys failed (exit {:?}): {}",
+            output.status.code(),
+            stderr.trim()
+        ));
     }
     Ok(())
 }
@@ -1044,6 +1268,58 @@ mod tests {
     fn pick_claude_pane_skips_malformed_lines() {
         let out = "garbage\n1.0|2.1.170|1|1\n";
         assert_eq!(pick_claude_pane(out).as_deref(), Some("1.0"));
+    }
+
+    /// Компактный конструктор ожидаемого [`PaneTarget`] для тестов.
+    fn pt(target: &str, window: &str) -> PaneTarget {
+        PaneTarget {
+            target: target.to_string(),
+            window: window.to_string(),
+        }
+    }
+
+    #[test]
+    fn collect_claude_panes_returns_every_window() {
+        // Ключевой кейс авто-апрува: Claude в активном И в фоновом окне —
+        // обойти нужно оба, а не только активное.
+        let out = "0.0|2.1.170|1|1|main\n1.0|zsh|0|1|shell\n2.0|2.1.172|0|1|agent\n";
+        assert_eq!(
+            collect_claude_panes(out),
+            vec![pt("0.0", "main"), pt("2.0", "agent")]
+        );
+    }
+
+    #[test]
+    fn collect_claude_panes_includes_splits_in_same_window() {
+        let out = "0.0|2.1.170|1|1|main\n0.1|2.1.170|1|0|main\n";
+        assert_eq!(
+            collect_claude_panes(out),
+            vec![pt("0.0", "main"), pt("0.1", "main")]
+        );
+    }
+
+    #[test]
+    fn collect_claude_panes_falls_back_to_active_pane_with_window_name() {
+        // Claude не опознан по имени команды — не теряем сессию целиком, а
+        // смотрим активную панель (пустой суффикс = `<session>:`) и всё же
+        // подставляем имя АКТИВНОГО окна, чтобы история осталась читаемой.
+        let out = "0.0|zsh|1|1|editor\n1.0|vim|0|1|logs\n";
+        assert_eq!(collect_claude_panes(out), vec![pt("", "editor")]);
+        assert_eq!(collect_claude_panes(""), vec![pt("", "")]);
+    }
+
+    #[test]
+    fn collect_claude_panes_skips_malformed_lines() {
+        let out = "garbage\n1.0|2.1.170|1|1|main\n";
+        assert_eq!(collect_claude_panes(out), vec![pt("1.0", "main")]);
+    }
+
+    #[test]
+    fn collect_claude_panes_tolerates_missing_window_name() {
+        // Старый формат из пяти полей (без #{window_name}) не должен ломать
+        // разбор — имя окна просто пустое.
+        let out = "1.0|2.1.170|1|1\n";
+        assert_eq!(collect_claude_panes(out), vec![pt("1.0", "")]);
     }
 
     #[test]

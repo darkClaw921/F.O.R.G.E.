@@ -9,6 +9,9 @@
 
 mod attention;
 mod auth;
+// Авто-апрув интерактивных prompt'ов Claude Code в tmux-сессиях (opt-in,
+// тумблер `UserSettings::auto_approve_enabled`).
+mod auto_approve;
 // Состояние цепочки авто-промоута TODO (in-memory). Типы AutoChainEntry /
 // AutoChainMap используются `AppState.auto_chain` и `promote_todo_core`
 // (Фаза 3); фоновый воркер `run` добавит Фаза 4b.
@@ -55,6 +58,7 @@ mod pwa;
 mod push;
 mod push_store;
 mod server_config;
+mod session_files;
 mod session_history;
 mod static_embed;
 mod tasks;
@@ -213,6 +217,12 @@ struct AppState {
     /// промоутит следующую верхнюю TODO с флагом `auto_promote`. Не
     /// персистится (MVP, self-heal через ручной promote).
     auto_chain: auto_promote::AutoChainMap,
+    /// Журнал последних авто-апрувов ([`auto_approve::ApprovalHistory`]).
+    /// Cheap-clonable (`Arc<RwLock<VecDeque>>` внутри). Пишет воркер
+    /// `auto_approve::run` при каждом нажатии, читает
+    /// `GET /api/auto-approve/history` — кнопка «История» в настройках
+    /// интерфейса. Только в памяти: при рестарте процесса журнал пуст.
+    approvals: auto_approve::ApprovalHistory,
     /// PWA-контекст (opt-in, флаг `--pwa`). `Some` ⇒ PWA включён (VAPID
     /// загружен, роуты `/api/pwa/*` зарегистрированы); `None` (default) ⇒
     /// PWA выключен, никаких файловых операций в `~/.forge/` и `GET
@@ -588,6 +598,8 @@ async fn main() -> anyhow::Result<()> {
         // In-memory; persist намеренно не делаем (MVP). `std::sync::RwLock`
         // явно, т.к. в main.rs `RwLock` импортирован из `tokio::sync`.
         auto_chain: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+        // Журнал авто-апрувов: пустой на старте, наполняется воркером.
+        approvals: auto_approve::ApprovalHistory::new(),
         // PWA-контекст: Some только при --pwa и успешной инициализации VAPID
         // (см. блок pwa_ctx выше). None ⇒ PWA выключен.
         pwa: pwa_ctx,
@@ -670,6 +682,14 @@ async fn main() -> anyhow::Result<()> {
     // сессий (cross-project visibility).
     tokio::spawn(attention::watcher_loop(app_state.attention.clone()));
 
+    // Воркер авто-апрува: раз в 2с обходит сессии и подтверждает
+    // permission-prompt'ы Claude Code. В отличие от attention-watcher'а
+    // принимает `AppState` целиком — нужен `user_settings` (тумблер читается
+    // каждый тик, чтобы переключение в UI действовало сразу). Спавнится
+    // безусловно: при выключенном `auto_approve_enabled` воркер не делает ни
+    // одного tmux-вызова (opt-in инвариант, см. auto_approve.rs).
+    tokio::spawn(auto_approve::run(app_state.clone()));
+
     // Spawn push-воркера доставки web-push — ТОЛЬКО при включённом PWA
     // (`app_state.pwa == Some`). Воркер `push::attention_watcher` читает тот же
     // снапшот attention раз в 1.5с и на edge-trigger `false→true` шлёт пуш
@@ -721,6 +741,16 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/sessions/:name/windows",
             get(list_windows).post(create_window),
+        )
+        // Вставка файла из буфера обмена в терминал (Ctrl/Cmd+V). Статический
+        // сегмент `files` соседствует с `windows` — коллизий с `:index`-роутами
+        // нет. DefaultBodyLimit поднят с дефолтных 2 MiB: обычный скриншот
+        // ретины в них не помещается.
+        .route(
+            "/api/sessions/:name/files",
+            post(upload_session_file).layer(axum::extract::DefaultBodyLimit::max(
+                session_files::MAX_UPLOAD_BYTES,
+            )),
         )
         // Новое окно в изолированной git-worktree (радужная кнопка). Статический
         // сегмент `worktree` соседствует с параметром `:index` ниже — matchit
@@ -784,6 +814,9 @@ async fn main() -> anyhow::Result<()> {
             "/api/user-settings",
             get(get_user_settings).patch(patch_user_settings),
         )
+        // Журнал авто-апрувов (кнопка «История» в настройках интерфейса):
+        // что именно воркер подтвердил, в какой сессии и в каком окне.
+        .route("/api/auto-approve/history", get(get_auto_approve_history))
         // Phase 3 — глобальный конфиг notifier'а
         // (`~/.config/forge/notifier.json`). PUT — полная замена;
         // PATCH — частичный update. Используется фронтом Phase 5 (Settings
@@ -1715,6 +1748,97 @@ async fn rename_session(
             Err((StatusCode::BAD_REQUEST, format!("{e:#}")))
         }
     }
+}
+
+// =============================================================================
+// Paste-file endpoint (вставка файла из буфера обмена в сессию)
+// =============================================================================
+
+/// `POST /api/sessions/:name/files?name=<имя>&mime=<MIME>` — принимает файл,
+/// вставленный в терминал сочетанием Ctrl/Cmd+V, и кладёт его в проект сессии.
+///
+/// Тело — сырые байты файла (не multipart: единственный файл на запрос, и
+/// разбор multipart на бэкенде здесь ничего не даёт). Content-Type запроса
+/// всегда `application/octet-stream` — этого требует CSRF-guard
+/// (`auth::is_allowed_raw_body`), поэтому настоящий MIME едет в query-параметре
+/// `mime` и используется только для восстановления расширения у безымянных
+/// вставок (скриншот из буфера приезжает без имени файла).
+///
+/// Каталог назначения — `<root>/.forge/pasted/`, где `root` —
+/// [`paths::resolve_root`] от cwd активной панели сессии. Имя санитизируется
+/// ([`session_files::sanitize_file_name`]) и разводится при коллизии, так что
+/// запись физически не может выйти за пределы `pasted/` и не перезаписывает
+/// существующие файлы.
+///
+/// Ответ 200 + `{ "path": "<абсолютный>", "name": "<имя>", "size": <байт>,
+/// "insert": "<готовая для вставки в шелл строка>" }`.
+///
+/// Ошибки: 400 — сессии нет / невалидное имя / пустое тело; 413 (от
+/// `DefaultBodyLimit`) — файл больше [`session_files::MAX_UPLOAD_BYTES`];
+/// 500 — не удалось создать каталог или записать файл.
+async fn upload_session_file(
+    State(state): State<AppState>,
+    AxumPath(name): AxumPath<String>,
+    Query(q): Query<HashMap<String, String>>,
+    headers: AxumHeaderMap,
+    body: Bytes,
+) -> Result<Response, (StatusCode, String)> {
+    let content_type = headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    let path = format!("/api/sessions/{}/files", urlencode_minimal(&name));
+    if let Some(result) = try_proxy_to_remote(
+        &state,
+        &q,
+        reqwest::Method::POST,
+        &path,
+        content_type.as_deref(),
+        Some(body.clone()),
+        false,
+    )
+    .await
+    {
+        return result;
+    }
+
+    if body.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "пустое тело запроса".to_string()));
+    }
+
+    // cwd активной панели → корень проекта (та же логика, что у todos/git).
+    let cwd = tmux::session_cwd(&name)
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("{e:#}")))?;
+    let root = paths::resolve_root(Path::new(&cwd));
+
+    let raw_name = q.get("name").map(|s| s.as_str()).unwrap_or("");
+    let mime = q.get("mime").map(|s| s.as_str());
+    let saved = session_files::save_pasted(&root, raw_name, mime, &body)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")))?;
+
+    let abs = saved.to_string_lossy().to_string();
+    let file_name = saved
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    tracing::info!(
+        session = %name,
+        path = %abs,
+        size = body.len(),
+        "pasted file saved"
+    );
+
+    Ok(Json(serde_json::json!({
+        "path": abs,
+        "name": file_name,
+        "size": body.len(),
+        "insert": session_files::shell_quote(&abs),
+    }))
+    .into_response())
 }
 
 // =============================================================================
@@ -3715,6 +3839,20 @@ async fn get_user_settings(State(state): State<AppState>) -> Json<UserSettings> 
     Json(state.user_settings.get())
 }
 
+/// `GET /api/auto-approve/history` — журнал последних авто-апрувов.
+///
+/// Отдаёт до 200 записей (`auto_approve::HISTORY_CAP`), НОВЫЕ ПЕРВЫМИ: время,
+/// сессия, панель (`win.pane` — «в каком окне»), тип prompt'а, нажатый пункт,
+/// номер попытки и суть запроса (команда / адрес / заголовок вопроса).
+///
+/// Журнал живёт только в памяти процесса: после рестарта — пустой массив.
+/// Ошибок у эндпоинта нет — при выключенном авто-апруве он просто пуст.
+async fn get_auto_approve_history(
+    State(state): State<AppState>,
+) -> Json<Vec<auto_approve::ApprovalRecord>> {
+    Json(state.approvals.snapshot())
+}
+
 /// `PATCH /api/user-settings` — частичное обновление настроек.
 ///
 /// Тело: [`PatchUserSettingsReq`] — все поля опциональные, применяются
@@ -4531,6 +4669,7 @@ mod tests {
             notifier_config,
             history,
             auto_chain: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+            approvals: auto_approve::ApprovalHistory::new(),
             pwa,
         }
     }

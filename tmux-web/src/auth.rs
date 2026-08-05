@@ -321,6 +321,28 @@ const RAW_UPLOAD_PATHS: [&str; 2] = ["/api/telegram/upload", "/api/vk/upload"];
 /// Content-Type, на котором работает raw-загрузка файла.
 const RAW_UPLOAD_CONTENT_TYPE: &str = "application/octet-stream";
 
+/// Путь вставки файла в сессию — `/api/sessions/<имя>/files`.
+///
+/// Имя сессии в пути произвольное, поэтому точным сравнением (как для
+/// плагинных роутов выше) такой путь не описать. Правило нарочно жёсткое:
+/// после `/api/sessions/` ровно два сегмента, второй — `files`, имя сессии
+/// непустое. Остальные роуты `/api/sessions/...` (windows, worktree, history)
+/// под него не попадают, так что исключение покрывает ровно один эндпоинт.
+///
+/// Реальный MIME файла едет в query (`?mime=`), а НЕ в Content-Type: иначе
+/// вставка текстового файла ушла бы с `text/plain`, а это «простой» для CORS
+/// Content-Type — и исключение превратилось бы в дыру в CSRF-защите.
+fn is_session_file_upload_path(path: &str) -> bool {
+    let rest = match path.strip_prefix("/api/sessions/") {
+        Some(r) => r,
+        None => return false,
+    };
+    match rest.rsplit_once('/') {
+        Some((name, "files")) => !name.is_empty() && !name.contains('/'),
+        _ => false,
+    }
+}
+
 /// Разрешено ли этому запросу нести тело без `application/json`.
 ///
 /// Единственное исключение — raw-заливка файла (`POST /api/telegram/upload`,
@@ -338,7 +360,8 @@ const RAW_UPLOAD_CONTENT_TYPE: &str = "application/octet-stream";
 /// same-origin (`is_same_origin`) при этом остаётся ОБЯЗАТЕЛЬНОЙ и
 /// выполняется до вызова этой функции.
 fn is_allowed_raw_body(req: &Request<Body>) -> bool {
-    if !RAW_UPLOAD_PATHS.contains(&req.uri().path()) {
+    let path = req.uri().path();
+    if !RAW_UPLOAD_PATHS.contains(&path) && !is_session_file_upload_path(path) {
         return false;
     }
     req.headers()
@@ -787,6 +810,11 @@ mod tests {
             .route("/api/telegram/dialogs/:id/messages", post(ok_handler))
             .route("/api/vk/upload", post(ok_handler))
             .route("/api/vk/dialogs/:id/messages", post(ok_handler))
+            // Вставка файла из буфера в терминал сессии (см.
+            // `is_session_file_upload_path`) — соседний `windows` намеренно
+            // рядом, чтобы тест ловил расширение исключения на другие роуты.
+            .route("/api/sessions/:name/files", post(ok_handler))
+            .route("/api/sessions/:name/windows", post(ok_handler))
             .layer(from_fn(csrf_guard))
     }
 
@@ -958,6 +986,99 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    // --- вставка файла в терминал сессии (forge-660j) ---
+
+    /// Same-origin `POST /api/sessions/<имя>/files` с octet-stream проходит:
+    /// вставленный из буфера файл едет сырыми байтами.
+    #[tokio::test]
+    async fn session_file_upload_octet_stream_same_origin_allowed() {
+        let app = csrf_app();
+        let resp = app
+            .oneshot(csrf_req(
+                Method::POST,
+                "/api/sessions/dev/files?name=image.png&mime=image%2Fpng",
+                Some("http://127.0.0.1:7331"),
+                Some("127.0.0.1:7331"),
+                Some("application/octet-stream"),
+                "\x00PNG",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    /// Исключение НЕ отменяет same-origin и для вставки файла.
+    #[tokio::test]
+    async fn session_file_upload_cross_origin_still_rejected() {
+        let app = csrf_app();
+        let resp = app
+            .oneshot(csrf_req(
+                Method::POST,
+                "/api/sessions/dev/files",
+                Some("http://evil.example.com"),
+                Some("127.0.0.1:7331"),
+                Some("application/octet-stream"),
+                "\x00PNG",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    /// «Простой» для CORS Content-Type не проходит даже на разрешённом пути:
+    /// именно поэтому настоящий MIME файла едет в query, а не в заголовке.
+    #[tokio::test]
+    async fn session_file_upload_text_plain_rejected() {
+        let app = csrf_app();
+        let resp = app
+            .oneshot(csrf_req(
+                Method::POST,
+                "/api/sessions/dev/files?mime=text%2Fplain",
+                Some("http://127.0.0.1:7331"),
+                Some("127.0.0.1:7331"),
+                Some("text/plain"),
+                "hello",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+
+    /// Исключение точечное: соседний роут сессии с octet-stream по-прежнему
+    /// требует JSON.
+    #[tokio::test]
+    async fn other_session_routes_still_require_json() {
+        let app = csrf_app();
+        let resp = app
+            .oneshot(csrf_req(
+                Method::POST,
+                "/api/sessions/dev/windows",
+                Some("http://127.0.0.1:7331"),
+                Some("127.0.0.1:7331"),
+                Some("application/octet-stream"),
+                "\x00\x01binary",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+
+    /// Чистая проверка предиката пути — без HTTP-обвязки.
+    #[test]
+    fn session_file_upload_path_predicate() {
+        assert!(is_session_file_upload_path("/api/sessions/dev/files"));
+        assert!(is_session_file_upload_path(
+            "/api/sessions/my-session_1/files"
+        ));
+        assert!(!is_session_file_upload_path("/api/sessions/files"));
+        assert!(!is_session_file_upload_path("/api/sessions//files"));
+        assert!(!is_session_file_upload_path("/api/sessions/dev/windows"));
+        assert!(!is_session_file_upload_path(
+            "/api/sessions/dev/files/extra"
+        ));
+        assert!(!is_session_file_upload_path("/api/telegram/files"));
     }
 
     /// Исключение НЕ отменяет same-origin: чужой Origin по-прежнему 403.

@@ -1,6 +1,6 @@
 {
   "root": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E.",
-  "generatedAt": "2026-08-03T18:28:25.989Z",
+  "generatedAt": "2026-08-05T16:33:41.047Z",
   "nodes": [
     {
       "id": "tmux-web/static/app.js",
@@ -165,7 +165,7 @@
           "name": "bootstrap",
           "type": "function",
           "path": "tmux-web/static/js/core/bootstrap.js",
-          "line": 127,
+          "line": 128,
           "signature": "bootstrap()",
           "exports": [
             "bootstrap"
@@ -7322,11 +7322,20 @@
       ],
       "children": [
         {
+          "id": "tmux-web/static/js/settings/interface-tab.js:renderHistory",
+          "name": "renderHistory",
+          "type": "function",
+          "path": "tmux-web/static/js/settings/interface-tab.js",
+          "line": 31,
+          "signature": "renderHistory(host, records)",
+          "exports": []
+        },
+        {
           "id": "tmux-web/static/js/settings/interface-tab.js:buildInterfaceForm",
           "name": "buildInterfaceForm",
           "type": "function",
           "path": "tmux-web/static/js/settings/interface-tab.js",
-          "line": 25,
+          "line": 85,
           "signature": "buildInterfaceForm(settings, onSaved)",
           "exports": [
             "buildInterfaceForm"
@@ -15346,6 +15355,277 @@
           "type": "variable",
           "path": "tmux-web/static/js/telegram/ws.js",
           "line": 35,
+          "exports": []
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/terminal/paste-files.js",
+      "name": "paste-files.js",
+      "type": "file",
+      "path": "tmux-web/static/js/terminal/paste-files.js",
+      "exports": [
+        "initTerminalPasteFiles",
+        "initTerminalDropFiles",
+        "hasDraggedFiles",
+        "isTerminalTarget",
+        "clipboardFiles",
+        "pasteFileName",
+        "MAX_PASTE_BYTES"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/terminal/paste-files.js:initTerminalPasteFiles",
+          "name": "initTerminalPasteFiles",
+          "type": "function",
+          "path": "tmux-web/static/js/terminal/paste-files.js",
+          "line": 66,
+          "signature": "initTerminalPasteFiles()",
+          "docComment": "Вешает обработчик вставки файлов из буфера. Идемпотентна — повторный вызов\nне дублирует слушатель (флаг на document).",
+          "exports": [
+            "initTerminalPasteFiles"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/terminal/paste-files.js:initTerminalDropFiles",
+          "name": "initTerminalDropFiles",
+          "type": "function",
+          "path": "tmux-web/static/js/terminal/paste-files.js",
+          "line": 81,
+          "signature": "initTerminalDropFiles()",
+          "docComment": "Вешает обработчики перетаскивания файлов на `#terminal`. Идемпотентна.\n\n`dragover` обязателен и обязан звать `preventDefault`: без него браузер\nсчитает зону «не принимающей» и `drop` не приходит вовсе. `dragenter`\nнужен только для подсветки.",
+          "exports": [
+            "initTerminalDropFiles"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/terminal/paste-files.js:hasDraggedFiles",
+          "name": "hasDraggedFiles",
+          "type": "function",
+          "path": "tmux-web/static/js/terminal/paste-files.js",
+          "line": 103,
+          "signature": "hasDraggedFiles(e)",
+          "docComment": "Есть ли в переносе файлы (а не текст, ссылка или вкладка браузера).\n\nЧитается именно `types`: сам список файлов в `dragover`/`dragenter`\nнедоступен по соображениям приватности — браузер отдаёт его только в `drop`.",
+          "exports": [
+            "hasDraggedFiles"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/terminal/paste-files.js:onDragEnter",
+          "name": "onDragEnter",
+          "type": "function",
+          "path": "tmux-web/static/js/terminal/paste-files.js",
+          "line": 110,
+          "signature": "onDragEnter(e)",
+          "docComment": "Перетаскивание файла вошло в терминал — считаем глубину и подсвечиваем.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/terminal/paste-files.js:onDragOver",
+          "name": "onDragOver",
+          "type": "function",
+          "path": "tmux-web/static/js/terminal/paste-files.js",
+          "line": 121,
+          "signature": "onDragOver(e)",
+          "docComment": "Без `preventDefault` на `dragover` браузер отменяет перенос и `drop` не\nпроизойдёт — это главная причина, по которой обработчик вообще существует.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/terminal/paste-files.js:onDragLeave",
+          "name": "onDragLeave",
+          "type": "function",
+          "path": "tmux-web/static/js/terminal/paste-files.js",
+          "line": 128,
+          "signature": "onDragLeave(e)",
+          "docComment": "Курсор ушёл — гасим подсветку только когда вышли из терминала целиком.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/terminal/paste-files.js:onDrop",
+          "name": "onDrop",
+          "type": "function",
+          "path": "tmux-web/static/js/terminal/paste-files.js",
+          "line": 140,
+          "signature": "onDrop(e)",
+          "docComment": "Файлы брошены в терминал: тот же путь, что и у вставки из буфера.\n\n`preventDefault` обязателен и здесь — иначе браузер откроет брошенный файл\nвместо страницы, и сессия просто исчезнет с экрана.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/terminal/paste-files.js:isDropAllowed",
+          "name": "isDropAllowed",
+          "type": "function",
+          "path": "tmux-web/static/js/terminal/paste-files.js",
+          "line": 165,
+          "signature": "isDropAllowed()",
+          "docComment": "Активна ли вкладка терминала (на Tasks/Git бросок игнорируем).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/terminal/paste-files.js:onPaste",
+          "name": "onPaste",
+          "type": "function",
+          "path": "tmux-web/static/js/terminal/paste-files.js",
+          "line": 178,
+          "signature": "onPaste(e)",
+          "docComment": "Обработчик `paste` в фазе capture.\n\nМолча выходит (не мешая штатной вставке) во всех случаях, кроме одного:\nфокус в терминале, вкладка терминала активна, есть подключённая сессия и в\nбуфере лежат файлы.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/terminal/paste-files.js:isTerminalTarget",
+          "name": "isTerminalTarget",
+          "type": "function",
+          "path": "tmux-web/static/js/terminal/paste-files.js",
+          "line": 208,
+          "signature": "isTerminalTarget(target)",
+          "docComment": "Target события внутри контейнера терминала?\n\nРеальный target — скрытая `.xterm-helper-textarea` внутри `#terminal`,\nпоэтому проверяем через `contains`, а не по равенству.",
+          "exports": [
+            "isTerminalTarget"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/terminal/paste-files.js:clipboardFiles",
+          "name": "clipboardFiles",
+          "type": "function",
+          "path": "tmux-web/static/js/terminal/paste-files.js",
+          "line": 225,
+          "signature": "clipboardFiles(dt)",
+          "docComment": "Файлы из буфера обмена.\n\nСкриншот в части браузеров приезжает только через `items` (в `files` его\nнет), поэтому проверяем оба источника. Текстовые item'ы (`kind === 'string'`)\nигнорируются — иначе обычная вставка текста считалась бы вставкой файла.",
+          "exports": [
+            "clipboardFiles"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/terminal/paste-files.js:pasteFileName",
+          "name": "pasteFileName",
+          "type": "function",
+          "path": "tmux-web/static/js/terminal/paste-files.js",
+          "line": 251,
+          "signature": "pasteFileName(file, now)",
+          "docComment": "Имя для файла, которого браузер не назвал (или назвал обезличенно).\n\nСкриншот из буфера почти везде приходит как `image.png` либо вовсе без\nимени — в `.forge/pasted/` такие мгновенно сливаются в одну кучу. Дата в\nимени делает файл узнаваемым, а бэкенд всё равно разведёт коллизии\nсуффиксом `-2`.",
+          "exports": [
+            "pasteFileName"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/terminal/paste-files.js:uploadFiles",
+          "name": "uploadFiles",
+          "type": "function",
+          "path": "tmux-web/static/js/terminal/paste-files.js",
+          "line": 279,
+          "signature": "uploadFiles(files)",
+          "docComment": "Загружает файлы по одному и вставляет полученные пути в терминал.\n\nПоследовательно, а не параллельно: порядок путей в командной строке должен\nсовпадать с порядком файлов в буфере, и одновременная заливка нескольких\nскриншотов ничего не ускоряет.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/terminal/paste-files.js:uploadOne",
+          "name": "uploadOne",
+          "type": "function",
+          "path": "tmux-web/static/js/terminal/paste-files.js",
+          "line": 328,
+          "signature": "uploadOne(file)",
+          "docComment": "Заливает один файл и возвращает строку, готовую к вставке в шелл\n(абсолютный путь, при необходимости в кавычках).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/terminal/paste-files.js:insertIntoTerminal",
+          "name": "insertIntoTerminal",
+          "type": "function",
+          "path": "tmux-web/static/js/terminal/paste-files.js",
+          "line": 373,
+          "signature": "insertIntoTerminal(text)",
+          "docComment": "Вставляет текст в терминал так же, как обычная вставка из буфера:\n`term.paste` эмитит onData → байты уходят в PTY (с bracketed paste, если\nприложение его включило).\n\nПосле пути добавляется пробел — обычно за ним сразу печатают вопрос\n(«посмотри на этот скриншот»), и без пробела слова слипаются.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/terminal/paste-files.js:showDropzone",
+          "name": "showDropzone",
+          "type": "function",
+          "path": "tmux-web/static/js/terminal/paste-files.js",
+          "line": 394,
+          "signature": "showDropzone()",
+          "docComment": "Показывает рамку-подсказку поверх терминала на время переноса.\n\nЭлемент создаётся лениво при первом переносе: у большинства пользователей\ndrag&drop не случится ни разу, и держать лишний узел в DOM незачем.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/terminal/paste-files.js:hideDropzone",
+          "name": "hideDropzone",
+          "type": "function",
+          "path": "tmux-web/static/js/terminal/paste-files.js",
+          "line": 406,
+          "signature": "hideDropzone()",
+          "docComment": "Прячет рамку-подсказку.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/terminal/paste-files.js:showToast",
+          "name": "showToast",
+          "type": "function",
+          "path": "tmux-web/static/js/terminal/paste-files.js",
+          "line": 420,
+          "signature": "showToast(text, isError, ms)",
+          "docComment": "Небольшой тост в правом нижнем углу терминала.\n\nТерминал нельзя «замусорить» служебными сообщениями (они попадут в вывод\ntmux и испортят историю), поэтому статус показываем поверх DOM-оверлеем.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/terminal/paste-files.js:MAX_PASTE_BYTES",
+          "name": "MAX_PASTE_BYTES",
+          "type": "variable",
+          "path": "tmux-web/static/js/terminal/paste-files.js",
+          "line": 39,
+          "docComment": "Потолок размера одной вставки — 25 MiB (совпадает с MAX_UPLOAD_BYTES бэка).",
+          "exports": [
+            "MAX_PASTE_BYTES"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/terminal/paste-files.js:TOAST_OK_MS",
+          "name": "TOAST_OK_MS",
+          "type": "variable",
+          "path": "tmux-web/static/js/terminal/paste-files.js",
+          "line": 42,
+          "docComment": "Сколько миллисекунд держится тост об успехе.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/terminal/paste-files.js:TOAST_ERR_MS",
+          "name": "TOAST_ERR_MS",
+          "type": "variable",
+          "path": "tmux-web/static/js/terminal/paste-files.js",
+          "line": 45,
+          "docComment": "Сколько миллисекунд держится тост об ошибке (читать дольше).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/terminal/paste-files.js:toastEl",
+          "name": "toastEl",
+          "type": "variable",
+          "path": "tmux-web/static/js/terminal/paste-files.js",
+          "line": 47,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/terminal/paste-files.js:toastTimer",
+          "name": "toastTimer",
+          "type": "variable",
+          "path": "tmux-web/static/js/terminal/paste-files.js",
+          "line": 48,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/terminal/paste-files.js:dropzoneEl",
+          "name": "dropzoneEl",
+          "type": "variable",
+          "path": "tmux-web/static/js/terminal/paste-files.js",
+          "line": 50,
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/terminal/paste-files.js:dragDepth",
+          "name": "dragDepth",
+          "type": "variable",
+          "path": "tmux-web/static/js/terminal/paste-files.js",
+          "line": 60,
+          "docComment": "Глубина вложенности dragenter/dragleave.\n\n`dragleave` стреляет и при переходе между дочерними элементами внутри\n`#terminal` (у xterm их много: canvas'ы, helper-textarea, quick-cmd bar),\nпоэтому по одному событию подсветку гасить нельзя — она бы мигала. Считаем\nбаланс enter/leave и гасим на нуле.",
           "exports": []
         }
       ]

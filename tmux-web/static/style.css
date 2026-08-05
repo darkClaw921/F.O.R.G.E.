@@ -97,6 +97,9 @@
 /* === 16b. Command dock (desktop): часто набираемые команды + сниппеты === */
 @import url('./css/command-dock.css');
 
+/* === 16c. Вставка файлов в терминал (Ctrl/Cmd+V): статусный тост === */
+@import url('./css/paste-files.css');
+
 /* === 17. Mobile layout: @media (max-width: 768px / 480px) (2914-3197)
  *        ВАЖНО: должен быть последним, чтобы перекрывать desktop-правила. === */
 @import url('./css/mobile.css');

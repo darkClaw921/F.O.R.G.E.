@@ -8026,5 +8026,189 @@
       "чат не прокручивается до последнего сообщения telegram",
       "telegram лента уезжает вверх после загрузки превью"
     ]
+  },
+  {
+    "element": "session_files.rs",
+    "path": "session_files.rs",
+    "type": "file",
+    "content": "Модуль tmux-web/src/session_files.rs — приём файлов, вставленных в терминальную сессию из буфера обмена (Ctrl/Cmd+V).\n\nЗАЧЕМ. Через /ws/attach в PTY уходят только байты ввода — «положить» файл в tmux браузер не может. Поэтому вставка файла реализована в три шага: (1) фронт ловит paste с clipboardData.files; (2) POST /api/sessions/:name/files кладёт байты на диск и возвращает абсолютный путь; (3) фронт вставляет путь в терминал через term.paste — CLI (Claude Code и любой другой) получает его так, будто путь напечатали руками.\n\nКУДА ПИШЕТ. <root>/.forge/pasted/, где root = paths::resolve_root(tmux::session_cwd(session)) — тот же корень, к которому привязаны todos/notifier/git (.beads → .git → сам cwd). Каталог .forge уже в .gitignore проекта, поэтому вставленные скриншоты не засоряют git status.\n\nAPI модуля:\n- MAX_UPLOAD_BYTES = 25 MiB — потолок одной вставки; вешается как DefaultBodyLimit на роут (дефолт axum 2 MiB режет обычный скриншот ретины);\n- pasted_dir(root) -> <root>/.forge/pasted;\n- ext_for_mime(mime) -> расширение по MIME (png/jpg/gif/webp/svg/pdf/json/zip/txt/md/csv/html, иначе bin). MIME с параметрами (image/png; charset=binary) и в верхнем регистре разбирается корректно;\n- sanitize_file_name(raw, content_type, stamp) -> безопасное имя. Берёт ТОЛЬКО базовое имя (режет и по /, и по \\), фильтрует алфавит до ASCII [A-Za-z0-9._-+ ] (остальное → _, транслитерации намеренно нет: имя вставляется в командную строку), срезает ведущие точки (ни скрытых файлов, ни . / ..), обрезает stem до 80 и расширение до 16 символов, для пустого имени даёт pasted_<stamp>.<ext по MIME>, а имени без расширения добавляет расширение по MIME;\n- unique_path(dir, name) -> свободный путь: name.ext, name-2.ext, … до 1000 попыток (две вставки скриншотов подряд дают одинаковые image.png — молча перезаписать = потеря данных);\n- now_stamp() -> YYYYMMDD_HHMMSS в локальной зоне (файл смотрит человек);\n- save_pasted(root, raw_name, content_type, bytes) -> абсолютный путь записанного файла; create_dir_all + sanitize + unique_path + write;\n- shell_quote(path) -> путь в одинарных кавычках, если в нём есть что-то кроме [A-Za-z0-9/._-+~]; внутренняя кавычка экранируется каноническим '\\'' .\n\nБЕЗОПАСНОСТЬ. Имя из буфера — недоверенный ввод: sanitize_file_name делает выход за пределы pasted/ физически невозможным (../../etc/passwd → passwd, /Users/me/.ssh/id_rsa → id_rsa). 11 unit-тестов в модуле фиксируют каждое правило, включая save_pasted_writes_into_forge_pasted (проверяет и путь, и отсутствие перезаписи).\n\nСВЯЗИ: main.rs::upload_session_file (HTTP-обвязка), auth.rs::is_session_file_upload_path (исключение CSRF-guard), paths::resolve_root, tmux::session_cwd, static/js/terminal/paste-files.js (клиент).",
+    "createdAt": "2026-08-05T05:14:41.662Z",
+    "updatedAt": "2026-08-05T05:15:46.918Z",
+    "aliases": [
+      "вставка скриншота в сессию"
+    ]
+  },
+  {
+    "element": "upload_session_file",
+    "path": "",
+    "type": "unknown",
+    "content": "Handler tmux-web/src/main.rs — POST /api/sessions/:name/files?name=<имя>&mime=<MIME>.\n\nПринимает файл, вставленный в терминал сочетанием Ctrl/Cmd+V, и кладёт его в проект сессии.\n\nФОРМАТ ЗАПРОСА. Тело — сырые байты файла (не multipart: файл всегда один, разбор multipart ничего не даёт). Content-Type ВСЕГДА application/octet-stream — этого требует CSRF-guard (auth::is_allowed_raw_body), поэтому настоящий MIME файла едет в query-параметре mime. Если бы MIME ехал в Content-Type, вставка .txt ушла бы с text/plain — «простым» для CORS типом, и исключение в CSRF-guard стало бы дырой.\n\nЛОГИКА. try_proxy_to_remote (эндпоинт origin-aware, ?server=<id> уводит запрос на remote-инстанс — body: Option<Bytes> пропускает бинарь без изменений) → проверка непустого тела → tmux::session_cwd(name) → paths::resolve_root → session_files::save_pasted.\n\nОТВЕТ 200: {path: <абсолютный путь>, name: <итоговое имя файла>, size: <байт>, insert: <строка для вставки в шелл — путь, при необходимости в кавычках>}. Фронт вставляет именно insert.\n\nОШИБКИ: 400 — пустое тело, невалидное имя сессии, сессии нет; 413 — тело больше session_files::MAX_UPLOAD_BYTES (25 MiB, DefaultBodyLimit навешен прямо на роут); 415 — Content-Type не octet-stream (режет CSRF-guard до handler'а); 500 — не удалось создать каталог или записать файл.\n\nРоут зарегистрирован рядом с /api/sessions/:name/windows; статический сегмент files не конфликтует с :index-роутами (matchit отдаёт приоритет статике).\n\nСВЯЗИ: session_files.rs (вся файловая логика + санитизация), auth.rs::is_session_file_upload_path, static/js/terminal/paste-files.js (единственный клиент).",
+    "createdAt": "2026-08-05T05:15:16.821Z",
+    "updatedAt": "2026-08-05T05:15:16.821Z"
+  },
+  {
+    "element": "paste-files.js",
+    "path": "tmux-web/static/js/terminal/paste-files.js",
+    "type": "file",
+    "content": "Модуль tmux-web/static/js/terminal/paste-files.js — передача файлов в терминальную сессию двумя жестами: вставка из буфера (Ctrl/Cmd+V) и перетаскивание из ОС (drag&drop).\n\nЗАЧЕМ. Через WebSocket в PTY уходят только байты ввода, файл туда не положить. Модуль перехватывает жест, заливает файл на бэкенд и вставляет в терминал полученный абсолютный путь — дальше CLI (в первую очередь Claude Code) работает с ним как с обычным введённым путём. Шаги «залить + вставить путь» (uploadFiles) у обоих жестов общие, различается только способ добыть список файлов.\n\nГДЕ ВИСЯТ СЛУШАТЕЛИ.\n- paste — на document в фазе capture: xterm обрабатывает вставку в своём скрытом .xterm-helper-textarea и вызывает preventDefault, перехватить надо раньше него. Чтобы не ломать вставку в Telegram/VK/Echo/модалки, обрабатываются только события с target внутри #terminal (isTerminalTarget через contains) и только при state.activeTab === 'terminal'. Если в буфере нет файлов — событие не трогается, текст вставляет сам xterm.\n- dragenter/dragover/dragleave/drop — на самом #terminal, тоже в capture (внутренние элементы xterm иначе получили бы всплывающее событие первыми).\n\nAPI:\n- initTerminalPasteFiles() — слушатель вставки, идемпотентна (флаг document.__forgePasteFilesBound);\n- initTerminalDropFiles() — слушатели перетаскивания, идемпотентна (флаг .__forgeDropFilesBound); обе вызываются в core/bootstrap.js сразу после initTerminal;\n- MAX_PASTE_BYTES = 25 MiB — совпадает с MAX_UPLOAD_BYTES бэкенда, проверяется на клиенте, чтобы не гонять заведомо отвергнутые байты;\n- clipboardFiles(dt) — файлы из DataTransfer: сначала dt.files, затем dt.items (в части браузеров скриншот приходит только через items); items с kind === 'string' игнорируются;\n- hasDraggedFiles(e) — есть ли в переносе файлы; читается dataTransfer.types, потому что сам список файлов в dragenter/dragover браузер не отдаёт (приватность), только в drop;\n- pasteFileName(file, now) — имя для безымянной/обезличенной вставки (image.png, blob, unknown) → pasted_YYYYMMDD_HHMMSS; расширение доберёт бэкенд из ?mime=;\n- isTerminalTarget(target) — target внутри #terminal.\n\nDRAG&DROP, НЕОЧЕВИДНОЕ:\n- preventDefault на dragover ОБЯЗАТЕЛЕН: без него браузер считает зону не принимающей и drop не приходит вовсе;\n- preventDefault на drop обязателен тоже: иначе браузер откроет брошенный файл вместо страницы и сессия исчезнет с экрана;\n- dragDepth — счётчик баланса dragenter/dragleave: dragleave стреляет и при переходе между дочерними элементами #terminal (у xterm их много), по одному событию подсветку гасить нельзя, иначе она мигает;\n- .terminal-dropzone имеет pointer-events: none — иначе оверлей сам стал бы целью переноса, перехватил бы dragleave/drop у #terminal, подсветка залипла бы, а бросок потерялся;\n- брошенная папка приезжает как File нулевого размера (содержимое браузер читать не даёт) — отсекается на клиенте с понятным текстом, а не 400-й «пустое тело» от бэкенда.\n\nЗАГРУЗКА. Файлы шлются ПОСЛЕДОВАТЕЛЬНО (порядок путей в командной строке должен совпадать с порядком файлов). Запрос: POST /api/sessions/<name>/files?name=<имя>&mime=<MIME> через apiFetch (origin из state.attachWsOrigin — работает и для remote-сессий), Content-Type всегда application/octet-stream (требование CSRF-guard), body — сам File. Из ответа берётся поле insert.\n\nВСТАВКА. state.term.paste(path + ' ') — эмитит onData, байты уходят в PTY с учётом bracketed paste. Пробел в конце: за путём обычно сразу печатают вопрос. Если WS не открыт — путь не вставляется, показывается ошибка.\n\nСТАТУС. Тост .paste-toast (css/paste-files.css) в правом нижнем углу #terminal: прогресс висит до следующего сообщения, успех 2.5 с, ошибка 6 с. В сам терминал ничего не печатается — служебный текст ушёл бы в вывод tmux и остался в истории сессии.\n\nТЕСТЫ: e2e/tests/ui/session-files-ui.spec.ts — 4 UI-теста на оба жеста (синтетические DragEvent/ClipboardEvent с настоящими DataTransfer/File).\n\nСВЯЗИ: core/state.js (term/ws/currentSession/attachWsOrigin/activeTab), core/dom.js ($terminalEl), core/api.js (apiFetch), бэкенд main.rs::upload_session_file + session_files.rs.",
+    "createdAt": "2026-08-05T05:15:17.096Z",
+    "updatedAt": "2026-08-05T06:36:43.562Z",
+    "aliases": [
+      "перетаскивание файла в терминал drag and drop"
+    ]
+  },
+  {
+    "element": "paste-files-into-session",
+    "path": "",
+    "type": "page",
+    "content": "Фича: передача файлов в терминальную сессию — вставка из буфера (forge-660j) и drag&drop (forge-mgad).\n\nПРОБЛЕМА. В веб-терминале devforge нельзя было передать сессии файл: через /ws/attach в PTY уходят только байты ввода. Чтобы показать Claude Code скриншот, приходилось вручную сохранять его в проект и печатать путь.\n\nРЕШЕНИЕ. Ctrl/Cmd+V с файлом в буфере ИЛИ перетаскивание файла в область терминала → файл заливается на бэкенд → в терминал вставляется абсолютный путь к сохранённому файлу. Дальше это обычный текст в строке ввода CLI. Оба жеста делят один путь заливки и вставки, различается только способ добыть файлы из события.\n\nПОТОК:\n1. static/js/terminal/paste-files.js ловит paste на document (capture, target внутри #terminal, вкладка терминала активна) либо drop на #terminal (capture). Текст без файлов не трогается — его вставляет xterm.\n2. POST /api/sessions/<session>/files?name=<имя>&mime=<MIME>, тело — сырые байты, Content-Type: application/octet-stream.\n3. main.rs::upload_session_file → tmux::session_cwd → paths::resolve_root → session_files::save_pasted → <root>/.forge/pasted/<имя>.\n4. Ответ {path, name, size, insert}; фронт делает state.term.paste(insert + ' ').\n\nРЕШЕНИЯ И ИХ ПРИЧИНЫ (неочевидные развилки):\n- MIME в query, а не в Content-Type. CSRF-guard (auth.rs) пропускает мутирующий /api/* с телом только если это application/json либо путь из белого списка raw-заливок с application/octet-stream. Реальный Content-Type файла (например text/plain у .txt) — «простой» для CORS, и разрешить его значило бы открыть CSRF-вектор. Поэтому Content-Type фиксирован octet-stream, а MIME (нужный только для восстановления расширения) едет в ?mime=.\n- Белый список путей стал предикатом. RAW_UPLOAD_PATHS — точные строки, но имя сессии в пути произвольное. Добавлен auth.rs::is_session_file_upload_path: ровно два сегмента после /api/sessions/, второй — files, имя непустое. Соседние /api/sessions/:name/windows под исключение не попадают (закрыто тестом).\n- Файл кладётся в проект, а не в /tmp. Корень — paths::resolve_root от cwd активной панели, каталог .forge/pasted/. Путь внутри проекта переживает перезапуск, попадает в контекст CLI и уже игнорируется git (.forge в .gitignore).\n- В терминал вставляется абсолютный путь, а не относительный: cwd панели может отличаться от корня проекта, а абсолютный путь верен в любом случае.\n- Имя санитизируется до ASCII без транслитерации: путь идёт в командную строку, предсказуемость важнее красоты. Кириллическое имя превратится в подчёркивания — это осознанный размен.\n- Коллизии разводятся суффиксом -2/-3, а не перезаписью: два скриншота подряд приезжают как image.png, и перезапись была бы потерей данных.\n- Лимит 25 MiB через DefaultBodyLimit на конкретный роут (дефолт axum 2 MiB не вмещает скриншот ретины); клиент проверяет размер до отправки.\n- Статус показывается DOM-тостом поверх #terminal, а не печатается в терминал: печать ушла бы в вывод tmux и осталась в истории сессии.\n- Remote-сессии работают без отдельного кода: try_proxy_to_remote принимает body как Bytes, фронт передаёт origin из state.attachWsOrigin.\n- Drag&drop: preventDefault обязателен и на dragover (иначе drop не придёт вовсе), и на drop (иначе браузер откроет файл вместо страницы). Подсветка гасится по счётчику dragDepth, а не по первому dragleave — событие стреляет при переходе между дочерними элементами xterm. Оверлей .terminal-dropzone имеет pointer-events: none, иначе он сам перехватил бы бросок. Брошенная папка (File нулевого размера) отсекается на клиенте с понятным текстом.\n\nПРОВЕРЕНО:\n- эндпоинт вживую (devforge + tmux-сессия): вставка без имени → pasted_<stamp>.png; ../../evil file.png → evil file.png внутри pasted/ с закавыченным insert; повтор имени → evil file-2.png; Content-Type text/plain → 415; 30 МБ → 413; пустое тело → 400; несуществующая сессия → 400;\n- 16 unit-тестов Rust (session_files 11 + auth 5), весь бинарь: 598 passed;\n- 4 UI e2e-теста (e2e/tests/ui/session-files-ui.spec.ts): drop файла → файл на диске и путь в тосте, dragenter подсвечивает зону и drop её гасит, вставка обезличенного image.png → pasted_<дата>.png, пустой файл/папка → понятная ошибка. Тесты идемпотентны (уникальные имена + самоочистка в afterAll).\n\nФАЙЛЫ: tmux-web/src/session_files.rs (новый), tmux-web/src/main.rs (upload_session_file + роут), tmux-web/src/auth.rs (is_session_file_upload_path + тесты), tmux-web/static/js/terminal/paste-files.js (новый), tmux-web/static/css/paste-files.css (новый), tmux-web/static/style.css (@import), tmux-web/static/js/core/bootstrap.js (init обоих жестов), e2e/tests/ui/session-files-ui.spec.ts (новый).",
+    "createdAt": "2026-08-05T06:37:16.223Z",
+    "updatedAt": "2026-08-05T06:37:16.223Z"
+  },
+  {
+    "element": "tmux-web/src/auto_approve.rs",
+    "path": "tmux-web/src/auto_approve.rs",
+    "type": "file",
+    "content": "Модуль авто-апрува интерактивных prompt'ов Claude Code в tmux-сессиях (фича tw-pg5).\n\n## Зачем\nattention::detect_claude_prompt только ЗАМЕЧАЕТ prompt (оранжевое свечение карточки), нажимать «1» приходилось человеку. Модуль закрывает разрыв: фоновый воркер сам отправляет выбор через tmux::send_key, сессия не простаивает на «Do you want to proceed?».\n\n## Инвариант opt-in\nUserSettings::auto_approve_enabled по умолчанию false. При выключенном флаге run() не делает НИ ОДНОГО tmux-вызова — проверка флага стоит до list_sessions. Тот же инвариант, что у next_step_enabled.\n\n## API\n- enum PromptKind { Permission3, Permission2, AllowDeny, AllowBroad, Question, Plan }\n- classify_prompt(pane) -> Option<PromptKind> — чистая функция, нормализует панель через attention::normalize_ws (word-wrap footer'ов), порядок проверок: Plan/Question (по footer) → Chrome Allow → Yes-permission.\n- decide(kind, pane, &UserSettings) -> Option<&'static str> — какую цифру жать; None = не трогать.\n- is_dangerous(pane, extra) — блоклист (приватная).\n- run(state: AppState) — воркер, тик 2с.\n- DEFAULT_DANGEROUS — встроенный блоклист (rm -rf, git push --force, drop table, | sh, dd if=, chmod 777 и т.п.).\n\n## Таблица форм prompt'ов\n| Kind | Маркеры | Выбор |\n| Permission3 | '❯ 1. Yes' + '2. Yes,' + '3. No' | 1, broad → 2 |\n| Permission2 | '❯ 1. Yes' + '2. No' | всегда 1 |\n| AllowDeny | '❯ 1. Allow' + '2. Deny' | всегда 1 |\n| AllowBroad | '❯ 1. Allow' + '2. Allow all actions on' | 1, broad → 2 |\n| Question | 'Enter to select' + '↑/↓ to navigate' | 1, если auto_approve_questions |\n| Plan | 'Enter to select' + 'Tab/Arrow keys to navigate' | НИКОГДА |\n\nКлючевое правило broad-режима: второй пункт жмётся только там, где он расширяет разрешение (Yes-and-dont-ask / Allow-all). В двухопционных Yes/No и Allow/Deny второй пункт — отказ, поэтому Permission2 и AllowDeny вынесены в отдельные варианты.\n\nУтверждение плана (ExitPlanMode) не подтверждается никогда и настройкой не управляется.\n\n## Защиты\n- Стабильность: нажатие только если один и тот же hash_pane наблюдался два тика подряд (TUI рисуется кадрами).\n- Анти-луп: максимум MAX_ATTEMPTS=2 нажатия за серию «prompt непрерывно распознан». Первое — цифра, второе — цифра + Enter. Счётчик обнуляется, когда classify_prompt вернул None (prompt ушёл), а НЕ при смене хэша панели: нажатая цифра сама печатается на экран и меняет хэш — привязка к хэшу давала бы бесконечную очередь '1111…' в сессии, игнорирующей ввод (обнаружено живой проверкой).\n- Prune карты состояний по исчезнувшим сессиям.\n\n## Зависимости\ncrate::attention::normalize_ws, crate::user_settings::UserSettings, crate::AppState (нужен user_settings — потому воркер отдельный, а не внутри attention::watcher_loop, который намеренно берёт только Arc<AttentionState>), crate::tmux::{list_sessions, capture_pane, send_key}.\n\nСпавнится в main.rs: tokio::spawn(auto_approve::run(app_state.clone())) рядом с attention::watcher_loop. UI-тумблеры — static/js/settings/interface-tab.js. Тесты — 12 юнит-тестов в модуле (фикстуры всех форм, broad-правило, блоклист, word-wrap).",
+    "createdAt": "2026-08-05T14:47:08.289Z",
+    "updatedAt": "2026-08-05T14:48:25.161Z",
+    "aliases": [
+      "авто апрув",
+      "автоматически подтверждать запросы claude"
+    ]
+  },
+  {
+    "element": "auto_approve::classify_prompt",
+    "path": "",
+    "type": "unknown",
+    "content": "Классификатор prompt'ов Claude Code (tmux-web/src/auto_approve.rs). Принимает содержимое панели (tmux capture-pane), возвращает Option<PromptKind>.\n\nПанель прогоняется через attention::normalize_ws — все whitespace схлопываются в один пробел; без этого word-wrap длинного footer'а в узком терминале рвал бы маркеры (тот же приём, что в detect_claude_prompt).\n\nПорядок проверок значим: Plan и Question определяются по footer'у ('Enter to select' + 'Tab/Arrow keys to navigate' / '↑/↓ to navigate') и проверяются ПЕРВЫМИ — prompt плана тоже содержит нумерованные пункты '1. Yes, and auto-accept edits' и без раннего выхода совпал бы с permission-веткой.\n\nДальше Chrome-ветка ('❯ 1. Allow' → AllowBroad если есть '2. Allow all', иначе AllowDeny), затем Yes-ветка ('❯ 1. Yes' → Permission3 при '2. Yes,' + '3. No', иначе Permission2 при '2. No').\n\nNone = prompt'а нет (обычный shell-вывод, работающий Claude).",
+    "createdAt": "2026-08-05T14:47:34.833Z",
+    "updatedAt": "2026-08-05T14:47:34.833Z"
+  },
+  {
+    "element": "auto_approve::decide",
+    "path": "",
+    "type": "unknown",
+    "content": "Решение о нажатии (tmux-web/src/auto_approve.rs). decide(kind, pane, &UserSettings) -> Option<&'static str>: '1' / '2' — номер пункта, None — не трогать.\n\nЛогика:\n1. Plan → None всегда (утверждение плана человеку, настройкой не управляется).\n2. Question → '1' только если settings.auto_approve_questions (default true, действует внутри включённого авто-апрува).\n3. Блоклист (is_dangerous: DEFAULT_DANGEROUS + settings.auto_approve_blocklist, регистронезависимо, по нормализованной панели) → None. Проверяется ДО выбора пункта, поэтому блокирует и broad.\n4. broad = settings.auto_approve_broad && kind ∈ {Permission3, AllowBroad} → '2', иначе '1'.\n\nПочему broad ограничен двумя вариантами: в Permission2 (Yes/No) и AllowDeny (Allow/Deny) второй пункт — ОТКАЗ, и расширенный режим на них не распространяется. Регресс-тест broad_mode_picks_second_only_where_it_widens закрепляет это.",
+    "createdAt": "2026-08-05T14:47:35.117Z",
+    "updatedAt": "2026-08-05T14:47:35.117Z"
+  },
+  {
+    "element": "tmux::send_key",
+    "path": "",
+    "type": "unknown",
+    "content": "УСТАРЕЛО (tw-8jo): функция удалена, заменена на tmux::send_key_target(session, pane, key) — панель теперь задаёт вызывающий, чтобы нажатие уходило ровно в ту панель, где найден prompt. См. doc tmux::send_key_target.",
+    "createdAt": "2026-08-05T14:47:35.398Z",
+    "updatedAt": "2026-08-05T15:41:22.072Z"
+  },
+  {
+    "element": "tmux::resolve_target",
+    "path": "",
+    "type": "unknown",
+    "content": "tmux-web/src/tmux.rs — приватный общий резолв tmux-target для доставки ввода в сессию. Возвращает '<session>:<win>.<pane>' (панель с Claude CLI по find_claude_pane) либо '<session>:' — активная панель, если Claude-панель не найдена или tmux вернул ошибку (ошибка логируется warn'ом).\n\nЗавершающее двоеточие обязательно: без него tmux резолвит числовое имя сессии (например '8') как номер окна текущей сессии — тот же баг, что чинился в capture_pane.\n\nИспользуется send_keys и send_key.",
+    "createdAt": "2026-08-05T14:47:35.678Z",
+    "updatedAt": "2026-08-05T14:47:35.678Z"
+  },
+  {
+    "element": "user_settings::UserSettings",
+    "path": "",
+    "type": "unknown",
+    "content": "Настройки уровня пользователя (~/.forge/user_settings.json). Все поля #[serde(default)] — частичный/пустой файл валиден.\n\nГруппа авто-апрува (добавлена в tw-pg5, см. auto_approve.rs):\n- auto_approve_enabled: bool, default false — фича целиком (opt-in; при false воркер не делает tmux-вызовов);\n- auto_approve_broad: bool, default false — выбирать «Yes, and don't ask again» / «Allow all actions for this session», где такой пункт есть;\n- auto_approve_questions: bool, default TRUE (default_auto_approve_questions) — отвечать первым вариантом на AskUserQuestion; дефолт включённый, потому что флаг живёт внутри уже opt-in фичи и нужен для ВЫключения;\n- auto_approve_blocklist: Vec<String>, default пустой — пользовательские стоп-слова, ДОПОЛНЯЮТ auto_approve::DEFAULT_DANGEROUS. PATCH-семантика — полная замена списка (merge не позволил бы снять одну запись); санитайзер sanitize_blocklist (trim, lowercase, дедуп, ≤200 символов, ≤128 записей) — отдельный от sanitize_visible_list, потому что стоп-слово содержит пробелы и спецсимволы командной строки.\n\nОстальные группы: todo_* (дефолты карточек), echo_* (модель и нотификации Echo), cmd_hints_enabled, next_step_enabled, telegram_* и vk_* (хоткеи и белые списки видимости).\n\nЧитается воркерами каждый тик через state.user_settings.get() — переключение тумблера в UI действует сразу, без рестарта.",
+    "createdAt": "2026-08-05T14:48:24.338Z",
+    "updatedAt": "2026-08-05T14:48:24.338Z"
+  },
+  {
+    "element": "auto-approve-feature",
+    "path": "",
+    "type": "page",
+    "content": "# Авто-апрув prompt'ов Claude Code (tw-pg5)\n\nФоновый воркер F.O.R.G.E., который сам подтверждает интерактивные запросы Claude Code в tmux-сессиях, чтобы агент не простаивал на «Do you want to proceed?».\n\n## Состав изменения\n- tmux-web/src/auto_approve.rs — новый модуль: classify_prompt, decide, DEFAULT_DANGEROUS, воркер run(AppState), 12 юнит-тестов.\n- tmux-web/src/tmux.rs — send_key (одиночная клавиша без Enter) + вынесенный resolve_target; send_keys теперь использует resolve_target.\n- tmux-web/src/attention.rs — normalize_ws стала pub(crate) (переиспользуется классификатором, копия не заводилась).\n- tmux-web/src/user_settings.rs — 4 поля + PATCH-DTO + sanitize_blocklist.\n- tmux-web/src/main.rs — mod auto_approve + tokio::spawn(auto_approve::run(app_state.clone())).\n- tmux-web/static/js/settings/interface-tab.js — fieldset «Интерфейс» дополнен тумблером авто-апрува, чекбоксами broad/questions и textarea стоп-слов; зависимые контролы disabled, пока выключен главный.\n\n## Формы prompt'ов\nPermission3 (Yes / Yes-and-dont-ask / No), Permission2 (Yes / No), AllowDeny (Claude in Chrome: Allow / Deny), AllowBroad (Allow / Allow all actions on <host> for this session), Question (AskUserQuestion), Plan (ExitPlanMode).\n\nBroad-режим жмёт «2» ТОЛЬКО в Permission3 и AllowBroad — там второй пункт расширяет разрешение. В Permission2 и AllowDeny второй пункт — отказ, там всегда «1».\n\nПлан (ExitPlanMode) не подтверждается автоматически никогда.\n\n## Блоклист\nВстроенный DEFAULT_DANGEROUS (rm -rf, git push --force, git reset --hard, drop table/database, dd if=, mkfs, chmod 777, | sh, | bash, shutdown …) плюс пользовательские стоп-слова из настроек. Совпадение по нормализованной панели в нижнем регистре → prompt пропускается, свечение продолжает гореть.\n\n## Защиты от ложных нажатий\n- Гард стабильности: тот же hash_pane два тика подряд.\n- Анти-луп: не более 2 нажатий за серию «prompt непрерывно распознан»; счётчик обнуляется по исчезновению prompt'а (classify_prompt == None), а не по смене хэша — нажатая цифра сама печатается на экран и меняет хэш.\n\n## Как проверялось\nЮнит-тесты (12) + живая проверка на ИЗОЛИРОВАННОМ tmux-сервере (env TMUX_TMPDIR=/private/tmp/aa-verify, unset TMUX — иначе команды уходят на общий сервер и трогают рабочие сессии) с HOME во временной папке:\n1) фикстура Permission2 → в логе два auto-approved (attempt=1, затем attempt=2 с Enter), дальше молчание — анти-луп держит;\n2) фикстура с rm -rf и фикстура плана → 0 нажатий, в debug-логе «auto-approve skipped»;\n3) auto_approve_enabled=false → 0 нажатий и 0 обращений к tmux.\n\nИменно живая проверка выявила, что счётчик попыток нельзя вешать на хэш панели.",
+    "createdAt": "2026-08-05T14:48:24.611Z",
+    "updatedAt": "2026-08-05T14:48:24.611Z"
+  },
+  {
+    "element": "tmux::send_key_target",
+    "path": "",
+    "type": "unknown",
+    "content": "tmux-web/src/tmux.rs — отправка ОДНОЙ клавиши в КОНКРЕТНУЮ панель сессии, без добавления Enter (бывш. send_key, переименована в tw-8jo).\n\nЗачем отдельно от send_keys: send_keys по контракту дожимает Enter после каждой строки (доставка текста notifier'ом). Пункт меню Claude Code выбирается нажатием цифры, лишний Enter улетел бы в поле ввода пустым сообщением.\n\nПочему панель задаёт вызывающий, а не resolve_target: авто-апрув обязан нажать ровно в ту панель, в которой УВИДЕЛ prompt (capture_pane_target). Автоподбор «лучшей» Claude-панели в сессии с несколькими окнами отправил бы клавишу в другое окно — это был баг tw-8jo.\n\nСигнатура: send_key_target(session, pane, key), где pane — суффикс 'win.pane' из list_claude_pane_targets; пустая строка = активная панель сессии ('<session>:').\n\nРеализация: валидация имени сессии (is_valid_session_name), пустой key → Ok(()), затем общий send_key_to(target, key): ключи из NAMED_KEYS (Enter, Escape, Space, Tab, BSpace, стрелки, Home, End, C-c, C-d) шлются как именованные клавиши, всё прочее — литералом через '-l --'.",
+    "createdAt": "2026-08-05T15:41:02.482Z",
+    "updatedAt": "2026-08-05T15:41:02.482Z"
+  },
+  {
+    "element": "tmux::list_claude_pane_targets",
+    "path": "",
+    "type": "unknown",
+    "content": "tmux-web/src/tmux.rs — перечисляет панели сессии, в которых имеет смысл искать prompt Claude Code. Возвращает список target-суффиксов 'win.pane' для capture_pane_target/send_key_target.\n\nВыполняет 'tmux list-panes -s -t <session>: -F <LP_FORMAT>' и отдаёт результат чистой функции collect_claude_panes: берутся ВСЕ панели, чей pane_current_command проходит is_claude_command (литеральное 'claude' либо version-like строка вида 2.1.172). Если Claude-панелей нет — возвращается vec![\"\"], то есть один пустой суффикс = активная панель сессии (тот же фолбэк, что у resolve_target: Claude может не опознаться при нестандартной установке, и терять сессию целиком нельзя).\n\nОтличие от find_claude_pane/pick_claude_pane: те выбирают ОДНУ «лучшую» панель (приоритет активному окну), а здесь нужны все — prompt может висеть в фоновом окне, пока пользователь смотрит соседнее.\n\nИсчезнувшая сессия / незапущенный сервер → Ok(vec![]) (нечего обходить); прочие сбои tmux → Err.",
+    "createdAt": "2026-08-05T15:41:03.002Z",
+    "updatedAt": "2026-08-05T15:41:03.002Z"
+  },
+  {
+    "element": "tmux::capture_pane_target",
+    "path": "",
+    "type": "unknown",
+    "content": "tmux-web/src/tmux.rs — захват видимой части КОНКРЕТНОЙ панели: 'tmux capture-pane -p -J -t <session>:<win.pane>'.\n\npane — суффикс из list_claude_pane_targets; пустая строка = активная панель сессии. В остальном идентична capture_pane (флаг -J склеивает перенесённые tmux строки; отсутствующая сессия/панель/окно → Ok(\"\")), отличается только адресацией: capture_pane всегда смотрит активную панель активного окна и потому не видит prompt в фоновом окне.\n\nИспользуется воркером auto_approve::run по каждой панели каждой сессии.",
+    "createdAt": "2026-08-05T15:41:03.430Z",
+    "updatedAt": "2026-08-05T15:41:03.430Z"
+  },
+  {
+    "element": "auto_approve::run",
+    "path": "",
+    "type": "unknown",
+    "content": "Фоновый воркер авто-апрува (tmux-web/src/auto_approve.rs), тик 2с, спавнится в main.rs рядом с attention::watcher_loop. Принимает AppState целиком — нужен user_settings (тумблер читается каждый тик, переключение в UI действует сразу).\n\nЦикл тика:\n1. settings.auto_approve_enabled == false → continue ДО любых tmux-вызовов (opt-in инвариант: выключенная фича стоит ноль).\n2. list_sessions, затем по каждой сессии list_claude_pane_targets → capture_pane_target по КАЖДОЙ панели.\n3. classify_prompt → decide.\n4. Гард стабильности (тот же hash_pane два тика подряд) + анти-луп (≤2 нажатий за серию «prompt непрерывно распознан»).\n5. send_key_target в ТУ ЖЕ панель + tracing::info (session, pane, kind, choice, attempt) для аудита.\n6. Prune карты состояний по ключам, встреченным в этом тике.\n\nВСЕ ОКНА (фикс tw-8jo): состояние ключуется парой сессия+панель ('<session>\\0<win.pane>'), обход идёт по всем панелям всех окон, нажатие уходит в панель, где найден prompt. Раньше использовался capture_pane (активная панель активного окна) + send_key (автоподбор Claude-панели) — prompt в фоновом окне не подтверждался, а нажатие могло уйти в другое окно. Проверено вживую: сессия с активным окном 0 (zsh) и фоновым окном 1 с prompt'ом → в логе pane=1.0, нажатие в окне 1, окно 0 нетронуто.\n\nКлюч состояния — панель, а не сессия: у окон независимые prompt'ы, и счётчик попыток одного не должен глушить другой.",
+    "createdAt": "2026-08-05T15:41:22.691Z",
+    "updatedAt": "2026-08-05T15:41:23.097Z",
+    "aliases": [
+      "авто апрув во всех окнах"
+    ]
+  },
+  {
+    "element": "auto_approve::ApprovalHistory",
+    "path": "",
+    "type": "unknown",
+    "content": "Журнал последних авто-апрувов (tmux-web/src/auto_approve.rs, фича tw-vyk). Arc<RwLock<VecDeque<ApprovalRecord>>>, cheap-clone, живёт в AppState.approvals.\n\nAPI: new(), push(rec) — вытесняет самую старую запись при переполнении HISTORY_CAP=200, snapshot() — Vec<ApprovalRecord> НОВЫЕ ПЕРВЫМИ (разворот делается на бэке, чтобы фронтенд не сортировал).\n\nApprovalRecord { ts (unix secs), session, pane ('win.pane', пустая строка = активная панель), kind (Permission3/Permission2/AllowDeny/AllowBroad/Question строкой), choice ('1'/'2'), attempt (1 — цифра, 2 — цифра+Enter), subject }.\n\nТолько в памяти: при рестарте процесса журнал пуст. Персист не делается осознанно — это оперативный след последних действий, а не аудит; файл пришлось бы ротировать и чистить.\n\nПишет воркер auto_approve::run при каждом нажатии, читает handler main.rs::get_auto_approve_history (GET /api/auto-approve/history), рисует static/js/settings/interface-tab.js — кнопка «История» слева от чекбоксов авто-апрува.",
+    "createdAt": "2026-08-05T16:02:28.462Z",
+    "updatedAt": "2026-08-05T16:02:29.350Z",
+    "aliases": [
+      "история авто апрува"
+    ]
+  },
+  {
+    "element": "auto_approve::extract_subject",
+    "path": "",
+    "type": "unknown",
+    "content": "Вычленяет из панели суть запроса — колонку «Команда» в истории апрувов (tmux-web/src/auto_approve.rs).\n\nСтруктурированного источника нет: Claude Code — TUI, доступен только нарисованный текст. Алгоритм: найти строку со списком пунктов ('❯ 1.'), затем идти ВВЕРХ и собирать до трёх содержательных строк. Отбрасываются рамки TUI (clean_line убирает ─│╭╮╰╯━┃█▌ и схлопывает пробелы), пустые и служебные строки (is_noise: 'Do you want to proceed?', footer'ы 'Enter to select'/'Esc to cancel', сами пункты меню).\n\nСбор останавливается на строке-заголовке ('Bash command' или 'Claude in Chrome…') — всё выше относится к предыдущему выводу, который просто остался на экране (без этого в историю попадал хвост прошлой команды; замечено при живой проверке в браузере).\n\nРезультат обрезается до SUBJECT_MAX_CHARS=200 СИМВОЛОВ (не байтов — в командах бывает кириллица) с добавлением '…'.\n\nПримеры: 'Bash command ls -la /tmp'; 'Claude in Chrome wants to navigate on 192.168.11.192:3001 http://…'.",
+    "createdAt": "2026-08-05T16:02:28.757Z",
+    "updatedAt": "2026-08-05T16:02:28.757Z"
+  },
+  {
+    "element": "main::get_auto_approve_history",
+    "path": "",
+    "type": "unknown",
+    "content": "GET /api/auto-approve/history (tmux-web/src/main.rs) — журнал последних авто-апрувов для кнопки «История» в настройках интерфейса.\n\nОтдаёт Json<Vec<auto_approve::ApprovalRecord>> — до 200 записей, новые первыми: ts, session, pane ('win.pane' = в каком окне), kind, choice, attempt, subject (команда/адрес/заголовок вопроса).\n\nОшибок нет: при выключенном авто-апруве или после рестарта сервера возвращается пустой массив (журнал только в памяти). Роут зарегистрирован рядом с /api/user-settings, то есть под auth_middleware — фронтенд ходит обычным fetch (window.fetch патчится в core/auth.js и сам подставляет Bearer).",
+    "createdAt": "2026-08-05T16:02:29.051Z",
+    "updatedAt": "2026-08-05T16:02:29.051Z"
+  },
+  {
+    "element": "static/js/settings/interface-tab.js",
+    "path": "static/js/settings/interface-tab.js",
+    "type": "file",
+    "content": "Вкладка «Интерфейс» модалки настроек (tmux-web/static/js/settings/interface-tab.js). Экспортирует buildInterfaceForm(settings, onSaved) — fieldset с тумблерами и кнопкой истории авто-апрува.\n\nПоля (1:1 с UserSettings в src/user_settings.rs):\n- cmd_hints_enabled (default false), next_step_enabled (default false);\n- auto_approve_enabled (false), auto_approve_broad (false), auto_approve_questions (TRUE), auto_approve_blocklist (массив строк).\n\nДефолты: чекбоксы выключенных по умолчанию фич инициализируются строго '=== true'; auto_approve_questions — единственный с '!== false', потому что его дефолт включённый (он живёт внутри уже opt-in авто-апрува и нужен для ВЫключения).\n\nСтрока авто-апрува (.auto-approve-row) — flex: слева кнопка «История», справа главный чекбокс. Зависимые контролы (broad/questions/textarea стоп-слов) disabled и приглушены, пока главный тумблер выключен (syncAutoApprove).\n\nКнопка «История» тоглит панель .auto-approve-history и при каждом открытии заново тянет GET /api/auto-approve/history (журнал пополняется воркером в фоне, кэшировать нечего), затем renderHistory рисует таблицу: Время (toLocaleString), Сессия, Окно (pane 'win.pane' либо «активное»), Выбор ('1' / '1 + Enter' при attempt>1), Команда (моноширинная, обрезается многоточием, полный текст в title). Пустой ответ — не ошибка, показывается пояснение, что журнал очищается при перезапуске сервера.\n\nSave шлёт свои поля одним PATCH через updateUserSettings (user-settings-api.js); стоп-слова разбиваются по строкам с trim и отбрасыванием пустых (семантика полной замены списка на бэке). Стили — static/css/notifications.css (.auto-approve-row, .auto-approve-history-btn, .auto-approve-history, .auto-approve-history-table).",
+    "createdAt": "2026-08-05T16:02:47.162Z",
+    "updatedAt": "2026-08-05T16:02:47.162Z"
+  },
+  {
+    "element": "tmux::PaneTarget",
+    "path": "",
+    "type": "unknown",
+    "content": "tmux-web/src/tmux.rs — панель сессии, пригодная для опроса авто-апрувом. Возвращается list_claude_pane_targets / collect_claude_panes.\n\nПоля:\n- target: String — суффикс 'win.pane' для '-t <session>:<target>' (capture_pane_target / send_key_target). Пустая строка = активная панель сессии.\n- window: String — ИМЯ окна (#{window_name}), то, что человек видит в статусбаре tmux. Идёт в историю апрувов колонкой «Окно»: 'claude-agent' понятнее, чем индекс '1.0'. Может быть пустым, если tmux не отдал имя (старый формат из 4 полей) — тогда UI показывает индекс.\n\nLP_FORMAT расширен пятым полем #{window_name}; оно добавлено ПОСЛЕДНИМ, поэтому pick_claude_pane (читает первые 4 поля) не затронут, а разбор строк без пятого поля остаётся валидным (тест collect_claude_panes_tolerates_missing_window_name).\n\nФолбэк collect_claude_panes при неопознанном Claude: одна запись с пустым target и именем АКТИВНОГО окна — история остаётся читаемой даже без адреса панели.",
+    "createdAt": "2026-08-05T16:33:45.046Z",
+    "updatedAt": "2026-08-05T16:33:45.046Z"
+  },
+  {
+    "element": "auto_approve::ApprovalRecord",
+    "path": "",
+    "type": "unknown",
+    "content": "Запись журнала авто-апрува (tmux-web/src/auto_approve.rs), сериализуется в JSON для GET /api/auto-approve/history.\n\nПоля: ts (unix secs), session (имя tmux-сессии), window (ИМЯ окна — #{window_name}, основная колонка «Окно» в UI), pane ('win.pane' — точный адрес нажатия, уходит в tooltip), kind (Permission3/Permission2/AllowDeny/AllowBroad/Question), choice ('1'/'2'), attempt (1 — цифра, 2 — цифра+Enter), subject (команда/адрес/заголовок вопроса, см. extract_subject).\n\nПочему и window, и pane: имя окна — для человека, индекс — точный адрес, куда ушла клавиша (в окне может быть несколько панелей). UI показывает window, при пустом — pane, при пустом обоих — «активное».",
+    "createdAt": "2026-08-05T16:33:45.349Z",
+    "updatedAt": "2026-08-05T16:33:45.349Z"
   }
 ]

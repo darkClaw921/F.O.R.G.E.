@@ -25,6 +25,7 @@ import {
 import { renderSidebar } from '../sidebar/sidebar.js';
 import { loadActiveThemeOrNull } from '../themes/api.js';
 import { initTerminal, showPlaceholder, setStatus } from '../terminal/xterm.js';
+import { initTerminalPasteFiles, initTerminalDropFiles } from '../terminal/paste-files.js';
 import { switchTab } from '../tabs/tabs.js';
 import { initTuiTabs, closeGitWs } from '../tabs/tui-tabs.js';
 import {
@@ -129,6 +130,12 @@ export async function bootstrap() {
     restoreSidebarState();
     const termTheme = await loadActiveThemeOrNull();
     initTerminal(termTheme);
+    // Передача файлов в сессию — только после того, как xterm создал свои
+    // элементы внутри #terminal: слушатель вставки висит на document в capture
+    // и ориентируется на target внутри #terminal, drag&drop — на самом
+    // #terminal, тоже в capture.
+    initTerminalPasteFiles();
+    initTerminalDropFiles();
     applyTerminalFontSize();
     showPlaceholder(true);
     setStatus('disconnected', 'disconnected');

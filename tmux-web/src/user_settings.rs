@@ -173,8 +173,52 @@ fn default_vk_hotkeys_enabled() -> bool {
     true
 }
 
+/// Default-функция для `auto_approve_questions` — true.
+///
+/// Отдельная функция по тем же соображениям, что и у хоткеев: одинаковое
+/// значение сегодня не означает связанности завтра. Флаг действует только
+/// внутри включённого `auto_approve_enabled` (сам он по умолчанию `false`),
+/// поэтому `true` здесь не меняет поведение «из коробки».
+fn default_auto_approve_questions() -> bool {
+    true
+}
+
 /// Максимально допустимое значение приоритета (4 = backlog).
 const MAX_PRIORITY: u8 = 4;
+
+/// Максимальное число пользовательских стоп-слов авто-апрува.
+const MAX_BLOCKLIST_ENTRIES: usize = 128;
+
+/// Максимальная длина одного стоп-слова авто-апрува.
+const MAX_BLOCKLIST_ENTRY_LEN: usize = 200;
+
+/// Приводит список стоп-слов авто-апрува к безопасному виду.
+///
+/// Отдельный санитайзер, а не [`sanitize_visible_list`]: там записи — короткие
+/// ASCII-id без пробелов, а стоп-слово — фрагмент командной строки
+/// (`rm -rf`, `git push --force`, `| sh`), в котором пробелы и спецсимволы
+/// как раз и несут смысл. Поэтому набор символов не ограничивается вовсе.
+///
+/// Отбрасываются пустые после trim записи и слишком длинные; всё приводится
+/// к нижнему регистру (сравнение в [`crate::auto_approve`] регистронезависимое
+/// и ожидает уже нормализованный список); дубликаты схлопываются с сохранением
+/// порядка — порядок виден пользователю в textarea настроек.
+fn sanitize_blocklist(raw: Vec<String>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    raw.into_iter()
+        .filter_map(|item| {
+            let item = item.trim().to_lowercase();
+            if item.is_empty() || item.len() > MAX_BLOCKLIST_ENTRY_LEN {
+                return None;
+            }
+            if !seen.insert(item.clone()) {
+                return None;
+            }
+            Some(item)
+        })
+        .take(MAX_BLOCKLIST_ENTRIES)
+        .collect()
+}
 
 /// Максимальное число записей в белом списке видимости Telegram.
 ///
@@ -366,6 +410,30 @@ pub struct UserSettings {
     /// `DialogDto.id` плагина VK).
     #[serde(default)]
     pub vk_visible_peers: Vec<String>,
+    /// Авто-апрув интерактивных prompt'ов Claude Code в tmux-сессиях
+    /// (см. [`crate::auto_approve`]). Default `false` — фича opt-in и
+    /// нажимает клавиши за пользователя, см. инвариант в шапке модуля.
+    /// При выключенном флаге воркер не делает ни одного tmux-вызова.
+    #[serde(default)]
+    pub auto_approve_enabled: bool,
+    /// Расширенный апрув: выбирать «Yes, and don't ask again» / «Allow all
+    /// actions for this session», когда такой пункт есть. Default `false` —
+    /// разовое подтверждение. Действует только внутри включённого
+    /// `auto_approve_enabled` и только там, где второй пункт действительно
+    /// расширяющий (в двухопционных Yes/No и Allow/Deny второй пункт — отказ).
+    #[serde(default)]
+    pub auto_approve_broad: bool,
+    /// Отвечать ли автоматически на вопросы `AskUserQuestion` (первый
+    /// вариант). Default `true`: тумблер нужен, чтобы выключить, а сам
+    /// авто-апрув уже opt-in. Prompt утверждения плана (`ExitPlanMode`)
+    /// не подтверждается автоматически НИКОГДА и флагом не управляется.
+    #[serde(default = "default_auto_approve_questions")]
+    pub auto_approve_questions: bool,
+    /// Пользовательские стоп-слова: если подстрока встречается в панели с
+    /// prompt'ом, авто-апрув пропускает его (остаётся человеку). Дополняет
+    /// встроенный список `auto_approve::DEFAULT_DANGEROUS`, а не заменяет его.
+    #[serde(default)]
+    pub auto_approve_blocklist: Vec<String>,
 }
 
 impl Default for UserSettings {
@@ -391,6 +459,10 @@ impl Default for UserSettings {
             vk_filter_enabled: false,
             vk_visible_kinds: Vec::new(),
             vk_visible_peers: Vec::new(),
+            auto_approve_enabled: false,
+            auto_approve_broad: false,
+            auto_approve_questions: default_auto_approve_questions(),
+            auto_approve_blocklist: Vec::new(),
         }
     }
 }
@@ -466,6 +538,20 @@ pub struct PatchUserSettingsReq {
     /// Белый список отдельных бесед VK. Семантика — ПОЛНАЯ ЗАМЕНА списка.
     #[serde(default)]
     pub vk_visible_peers: Option<Vec<String>>,
+    /// Включить/выключить авто-апрув prompt'ов Claude Code целиком.
+    #[serde(default)]
+    pub auto_approve_enabled: Option<bool>,
+    /// Включить/выключить расширенный апрув («не спрашивать снова»).
+    #[serde(default)]
+    pub auto_approve_broad: Option<bool>,
+    /// Включить/выключить автоответ на вопросы `AskUserQuestion`.
+    #[serde(default)]
+    pub auto_approve_questions: Option<bool>,
+    /// Стоп-слова авто-апрува. Семантика — ПОЛНАЯ ЗАМЕНА списка (как у
+    /// `telegram_visible_folders`): снять одно стоп-слово в merge-семантике
+    /// было бы нечем. Пустой список = только встроенный блоклист.
+    #[serde(default)]
+    pub auto_approve_blocklist: Option<Vec<String>>,
 }
 
 #[derive(Debug)]
@@ -622,6 +708,21 @@ impl UserSettingsStore {
         }
         if let Some(v) = payload.vk_visible_peers {
             inner.settings.vk_visible_peers = sanitize_visible_list(v);
+        }
+        if let Some(v) = payload.auto_approve_enabled {
+            inner.settings.auto_approve_enabled = v;
+        }
+        if let Some(v) = payload.auto_approve_broad {
+            inner.settings.auto_approve_broad = v;
+        }
+        if let Some(v) = payload.auto_approve_questions {
+            inner.settings.auto_approve_questions = v;
+        }
+        if let Some(v) = payload.auto_approve_blocklist {
+            // Замена целиком, а не merge — см. комментарий у поля в
+            // PatchUserSettingsReq. Пустой список законен: это «только
+            // встроенный блоклист».
+            inner.settings.auto_approve_blocklist = sanitize_blocklist(v);
         }
 
         save_locked(&inner)?;

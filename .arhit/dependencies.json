@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-03T18:28:29.716Z",
+  "generatedAt": "2026-08-05T16:33:44.762Z",
   "dependencies": [
     {
       "from": "tmux-web/static/command-dock.js",
@@ -2725,6 +2725,18 @@
     },
     {
       "from": "tmux-web/static/js/core/bootstrap.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "import",
+      "toElement": "initTerminalPasteFiles"
+    },
+    {
+      "from": "tmux-web/static/js/core/bootstrap.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "import",
+      "toElement": "initTerminalDropFiles"
+    },
+    {
+      "from": "tmux-web/static/js/core/bootstrap.js",
       "to": "tmux-web/static/js/tabs/tabs.js",
       "type": "import",
       "toElement": "switchTab"
@@ -3140,6 +3152,20 @@
       "type": "call",
       "fromElement": "bootstrap",
       "toElement": "initTerminal"
+    },
+    {
+      "from": "tmux-web/static/js/core/bootstrap.js",
+      "to": "tmux-web/static/js/core/bootstrap.js",
+      "type": "call",
+      "fromElement": "bootstrap",
+      "toElement": "initTerminalPasteFiles"
+    },
+    {
+      "from": "tmux-web/static/js/core/bootstrap.js",
+      "to": "tmux-web/static/js/core/bootstrap.js",
+      "type": "call",
+      "fromElement": "bootstrap",
+      "toElement": "initTerminalDropFiles"
     },
     {
       "from": "tmux-web/static/js/core/bootstrap.js",
@@ -21444,6 +21470,111 @@
       "from": "tmux-web/static/js/settings/interface-tab.js",
       "to": "tmux-web/static/js/settings/interface-tab.js",
       "type": "call",
+      "fromElement": "renderHistory",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "renderHistory",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "renderHistory",
+      "toElement": "host.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "renderHistory",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "renderHistory",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "renderHistory",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "renderHistory",
+      "toElement": "head.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "renderHistory",
+      "toElement": "table.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "renderHistory",
+      "toElement": "records.forEach"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "renderHistory",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "renderHistory",
+      "toElement": "cells.forEach"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "renderHistory",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "renderHistory",
+      "toElement": "tr.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "renderHistory",
+      "toElement": "table.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "renderHistory",
+      "toElement": "host.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
       "fromElement": "buildInterfaceForm",
       "toElement": "document.createElement"
     },
@@ -21586,6 +21717,272 @@
       "type": "call",
       "fromElement": "buildInterfaceForm",
       "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "apRow.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "apWrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "apWrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createTextNode"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "apRow.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "histBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "fetch"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "renderHistory"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "r.json"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "broadWrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "broadWrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createTextNode"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "qWrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "qWrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createTextNode"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "s.auto_approve_blocklist.join"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "blockWrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "ap.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "syncAutoApprove"
     },
     {
       "from": "tmux-web/static/js/settings/interface-tab.js",
@@ -21635,6 +22032,13 @@
       "type": "call",
       "fromElement": "buildInterfaceForm",
       "toElement": "saveBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/settings/interface-tab.js",
+      "to": "tmux-web/static/js/settings/interface-tab.js",
+      "type": "call",
+      "fromElement": "buildInterfaceForm",
+      "toElement": "line.trim"
     },
     {
       "from": "tmux-web/static/js/settings/interface-tab.js",
@@ -49909,6 +50313,500 @@
       "type": "call",
       "fromElement": "handleFrame",
       "toElement": "console.debug"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/core/state.js",
+      "type": "import",
+      "toElement": "state"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/core/dom.js",
+      "type": "import",
+      "toElement": "$terminalEl"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/core/api.js",
+      "type": "import",
+      "toElement": "apiFetch"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "initTerminalPasteFiles",
+      "toElement": "document.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "hasDraggedFiles",
+      "toElement": "Array.from"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "onDragEnter",
+      "toElement": "hasDraggedFiles"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "onDragEnter",
+      "toElement": "isDropAllowed"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "onDragEnter",
+      "toElement": "e.preventDefault"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "onDragEnter",
+      "toElement": "showDropzone"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "onDragOver",
+      "toElement": "hasDraggedFiles"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "onDragOver",
+      "toElement": "isDropAllowed"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "onDragOver",
+      "toElement": "e.preventDefault"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "onDragLeave",
+      "toElement": "hasDraggedFiles"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "onDragLeave",
+      "toElement": "Math.max"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "onDragLeave",
+      "toElement": "hideDropzone"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "onDrop",
+      "toElement": "hasDraggedFiles"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "onDrop",
+      "toElement": "e.preventDefault"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "onDrop",
+      "toElement": "hideDropzone"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "onDrop",
+      "toElement": "isDropAllowed"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "onDrop",
+      "toElement": "showToast"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "onDrop",
+      "toElement": "Array.from"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "onDrop",
+      "toElement": "showToast"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "onDrop",
+      "toElement": "uploadFiles"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "onPaste",
+      "toElement": "isTerminalTarget"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "onPaste",
+      "toElement": "clipboardFiles"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "onPaste",
+      "toElement": "e.preventDefault"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "onPaste",
+      "toElement": "showToast"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "onPaste",
+      "toElement": "e.preventDefault"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "onPaste",
+      "toElement": "e.stopPropagation"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "onPaste",
+      "toElement": "uploadFiles"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "clipboardFiles",
+      "toElement": "Array.from"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "clipboardFiles",
+      "toElement": "Array.from"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "clipboardFiles",
+      "toElement": "it.getAsFile"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "clipboardFiles",
+      "toElement": "out.push"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "pasteFileName",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "pasteFileName",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "pasteFileName",
+      "toElement": "d.getFullYear"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "pasteFileName",
+      "toElement": "p"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "pasteFileName",
+      "toElement": "d.getMonth"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "pasteFileName",
+      "toElement": "p"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "pasteFileName",
+      "toElement": "d.getDate"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "pasteFileName",
+      "toElement": "p"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "pasteFileName",
+      "toElement": "d.getHours"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "pasteFileName",
+      "toElement": "p"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "pasteFileName",
+      "toElement": "d.getMinutes"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "pasteFileName",
+      "toElement": "p"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "pasteFileName",
+      "toElement": "d.getSeconds"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "uploadFiles",
+      "toElement": "showToast"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "uploadFiles",
+      "toElement": "showToast"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "uploadFiles",
+      "toElement": "Math.round"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "uploadFiles",
+      "toElement": "showToast"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "uploadFiles",
+      "toElement": "uploadOne"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "uploadFiles",
+      "toElement": "insertIntoTerminal"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "uploadFiles",
+      "toElement": "showToast"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "uploadFiles",
+      "toElement": "console.warn"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "uploadFiles",
+      "toElement": "showToast"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "uploadOne",
+      "toElement": "pasteFileName"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "uploadOne",
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "uploadOne",
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "uploadOne",
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "uploadOne",
+      "toElement": "apiFetch"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "uploadOne",
+      "toElement": "resp.text"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "uploadOne",
+      "toElement": "resp.json"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "insertIntoTerminal",
+      "toElement": "showToast"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "insertIntoTerminal",
+      "toElement": "state.term.paste"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "insertIntoTerminal",
+      "toElement": "state.term.focus"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "showDropzone",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "showToast",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "showToast",
+      "toElement": "toastEl.classList.toggle"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "showToast",
+      "toElement": "clearTimeout"
+    },
+    {
+      "from": "tmux-web/static/js/terminal/paste-files.js",
+      "to": "tmux-web/static/js/terminal/paste-files.js",
+      "type": "call",
+      "fromElement": "showToast",
+      "toElement": "setTimeout"
     },
     {
       "from": "tmux-web/static/js/terminal/xterm.js",

@@ -380,7 +380,7 @@ pub fn detect_claude_prompt(pane: &str) -> bool {
 /// строк) в один пробел. См. раздел «Нормализация whitespace» в
 /// [`detect_claude_prompt`] — нужно для устойчивости детекции к переносу
 /// длинного footer в узких терминалах.
-fn normalize_ws(s: &str) -> String {
+pub(crate) fn normalize_ws(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
