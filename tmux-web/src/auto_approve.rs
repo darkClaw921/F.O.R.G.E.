@@ -42,13 +42,29 @@
 //!
 //! # Блоклист
 //!
-//! Перед нажатием содержимое панели проверяется на опасные подстроки:
-//! встроенный [`DEFAULT_DANGEROUS`] плюс пользовательский
-//! `UserSettings::auto_approve_blocklist` (дополнение, не замена). Совпадение →
-//! prompt пропускается и остаётся человеку (свечение продолжает гореть).
-//! Проверка идёт по всей панели, а не только по строке команды: prompt рисует
-//! команду в рамке с переносами, и вычленять её из TUI-разметки надёжнее не
-//! получится, а лишняя строгость здесь дешевле пропущенного `rm -rf`.
+//! Перед нажатием текст запроса проверяется на опасные подстроки: встроенный
+//! [`DEFAULT_DANGEROUS`] плюс пользовательский
+//! `UserSettings::auto_approve_blocklist` (дополнение, не замена).
+//!
+//! Область проверки — блок команды ([`extract_command_region`]): от заголовка
+//! («Bash command» / «Claude in Chrome wants …») до списка пунктов. Раньше
+//! проверялась вся панель, но это давало ложные блокировки: `rm -rf` в выводе
+//! ПРЕДЫДУЩЕЙ команды, оставшемся на экране, блокировал следующий безобидный
+//! prompt. Если заголовок не найден (уполз за верх капчи), fallback — вся
+//! панель: лишняя строгость дешевле пропущенного `rm -rf`.
+//!
+//! # LLM-эскалация блоклиста
+//!
+//! Совпадение с блоклистом больше не приговор: команда отправляется в Claude
+//! Sonnet через локальный CLI `claude -p --model sonnet` (используется
+//! авторизация Claude Code на машине — API-ключ не нужен) с вопросом «это
+//! безобидное удаление временных/тестовых данных?». Ответ `approve=true` →
+//! prompt подтверждается как обычно (в истории kind помечается `+LLM`);
+//! `approve=false`, сбой вызова или отсутствие бинарника `claude` в PATH →
+//! старое поведение, prompt остаётся человеку (отсутствие бинарника выключает
+//! эскалацию до конца работы процесса). Вердикты кэшируются по хэшу текста
+//! команды, чтобы один и тот же висящий prompt не порождал вызов CLI на
+//! каждом тике.
 //!
 //! # Защита от ложных и повторных нажатий
 //!
@@ -250,45 +266,89 @@ pub fn classify_prompt(pane: &str) -> Option<PromptKind> {
     None
 }
 
+/// Результат [`decide`]: что делать с распознанным prompt'ом.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Decision {
+    /// Не трогать: план или выключенный автоответ на вопросы.
+    Skip,
+    /// Нажать пункт (`"1"` или `"2"`).
+    Press(&'static str),
+    /// Сработал блоклист. Внутри — пункт, который был бы нажат, не будь
+    /// блокировки: он нужен LLM-эскалации, чтобы после `approve=true` нажать
+    /// ровно то же самое.
+    Blocked(&'static str),
+}
+
 /// Решает, какую клавишу отправить для распознанного prompt'а.
-///
-/// `None` — не трогать (план, выключенный автоответ на вопросы, срабатывание
-/// блоклиста). `Some("1")` / `Some("2")` — номер пункта.
 ///
 /// Блоклист проверяется ПОСЛЕ раннего выхода по `Plan`/`Question`, но ДО
 /// выбора пункта: опасная команда блокирует любой апрув, включая broad.
-pub fn decide(kind: PromptKind, pane: &str, s: &UserSettings) -> Option<&'static str> {
+/// Совпадение возвращается как [`Decision::Blocked`], а не тихий `Skip`, —
+/// воркер по нему запускает LLM-эскалацию.
+pub fn decide(kind: PromptKind, pane: &str, s: &UserSettings) -> Decision {
     match kind {
-        PromptKind::Plan => return None,
+        PromptKind::Plan => return Decision::Skip,
         PromptKind::Question => {
             return if s.auto_approve_questions {
-                Some("1")
+                Decision::Press("1")
             } else {
-                None
+                Decision::Skip
             };
         }
         _ => {}
     }
 
-    if is_dangerous(pane, &s.auto_approve_blocklist) {
-        return None;
-    }
-
     let broad =
         s.auto_approve_broad && matches!(kind, PromptKind::Permission3 | PromptKind::AllowBroad);
-    Some(if broad { "2" } else { "1" })
+    let choice = if broad { "2" } else { "1" };
+
+    if is_dangerous(pane, &s.auto_approve_blocklist) {
+        return Decision::Blocked(choice);
+    }
+    Decision::Press(choice)
 }
 
-/// Проверяет панель на опасные подстроки: [`DEFAULT_DANGEROUS`] плюс
+/// Вырезает из панели блок текущего запроса — от заголовка («Bash command» /
+/// «Claude in Chrome wants …») до списка пунктов `❯ 1.`.
+///
+/// Именно по этому блоку идёт проверка блоклиста: всё, что выше заголовка, —
+/// прошлый вывод, оставшийся на экране, и `rm -rf` в нём не должен блокировать
+/// следующий безобидный prompt. `None` — заголовок не найден (уполз за верх
+/// захвата); вызывающий обязан откатиться к проверке всей панели.
+pub fn extract_command_region(pane: &str) -> Option<String> {
+    let lines: Vec<&str> = pane.lines().collect();
+    let menu = lines.iter().position(|l| l.contains("❯ 1."))?;
+
+    // Ближайший к меню заголовок блока — начало текущего запроса.
+    let start = (0..menu).rev().find(|&i| {
+        let c = clean_line(lines[i]);
+        c == "Bash command" || c.starts_with("Claude in Chrome")
+    })?;
+
+    let mut out: Vec<String> = Vec::new();
+    for line in &lines[start..menu] {
+        let c = clean_line(line);
+        if c.is_empty() || is_noise(&c) {
+            continue;
+        }
+        out.push(c);
+    }
+    Some(out.join("\n"))
+}
+
+/// Проверяет текст запроса на опасные подстроки: [`DEFAULT_DANGEROUS`] плюс
 /// пользовательский список (дополнение, не замена).
 ///
-/// Панель нормализуется (`normalize_ws`) и приводится к нижнему регистру:
-/// команда в prompt'е может быть разорвана переносом рамки TUI, а регистр
-/// (`DROP TABLE` / `drop table`) для опасности значения не имеет.
-/// Пользовательские записи приходят уже в нижнем регистре — их приводит
-/// `user_settings::sanitize_blocklist`; здесь на всякий случай тоже.
+/// Область проверки — [`extract_command_region`]; если блок не вычленяется,
+/// консервативный fallback на всю панель. Текст нормализуется (`normalize_ws`)
+/// и приводится к нижнему регистру: команда в prompt'е может быть разорвана
+/// переносом рамки TUI, а регистр (`DROP TABLE` / `drop table`) для опасности
+/// значения не имеет. Пользовательские записи приходят уже в нижнем регистре —
+/// их приводит `user_settings::sanitize_blocklist`; здесь на всякий случай
+/// тоже.
 fn is_dangerous(pane: &str, extra: &[String]) -> bool {
-    let hay = normalize_ws(pane).to_lowercase();
+    let scope = extract_command_region(pane).unwrap_or_else(|| pane.to_string());
+    let hay = normalize_ws(&scope).to_lowercase();
     DEFAULT_DANGEROUS.iter().any(|n| hay.contains(n))
         || extra
             .iter()
@@ -392,6 +452,121 @@ struct SessionState {
     attempts: u8,
 }
 
+/// Модель для LLM-эскалации блоклиста — alias для `claude -p --model`.
+/// Sonnet: классификация одной команды — не та задача, ради которой стоит
+/// платить за Opus.
+const LLM_MODEL: &str = "sonnet";
+
+/// Таймаут одного вызова `claude -p`. CLI стартует и отвечает за 5–20 с;
+/// вызов идёт внутри тика воркера и на время ожидания задерживает обход
+/// остальных панелей — но prompt всё равно никуда не денется до следующего
+/// тика.
+const LLM_TIMEOUT: Duration = Duration::from_secs(90);
+
+/// Максимум закэшированных вердиктов. При переполнении кэш просто чистится:
+/// это защита от бесконечного роста, а не LRU — повторный вопрос по живому
+/// prompt'у стоит один вызов CLI.
+const VERDICT_CACHE_CAP: usize = 512;
+
+/// Исход обращения к `claude -p` — см. [`llm_blocklist_verdict`].
+enum LlmOutcome {
+    /// Модель ответила: `true` — апрувить, `false` — оставить человеку.
+    Verdict(bool),
+    /// Бинарник `claude` не найден в PATH — эскалацию можно выключать до
+    /// конца работы процесса, повторные попытки бессмысленны.
+    Unavailable,
+    /// Разовый сбой (таймаут, не-нулевой exit, кривой вывод) — не кэшировать,
+    /// на следующем тике попробуем ещё раз.
+    Failed,
+}
+
+/// Спрашивает у Sonnet через локальный `claude -p`, безопасно ли подтвердить
+/// команду из блоклиста.
+///
+/// CLI использует авторизацию Claude Code на машине, поэтому API-ключ не
+/// нужен. Рабочая директория — временная папка: `claude -p` в корне проекта
+/// потянул бы CLAUDE.md и память проекта, что тут не нужно и замедляет ответ.
+/// Модель просят ответить строго одним JSON-объектом; из вывода на всякий
+/// случай вырезается диапазон от первой `{` до последней `}` (модель может
+/// обернуть ответ в markdown-фенс).
+async fn llm_blocklist_verdict(command: &str) -> LlmOutcome {
+    let prompt = format!(
+        "Ты — фильтр безопасности авто-подтверждения команд в среде разработчика.\n\
+         Команда попала в блоклист авто-апрува по опасной подстроке (rm -rf, git reset --hard, drop table и т.п.).\n\
+         Реши, можно ли подтвердить её автоматически.\n\n\
+         approve=true ТОЛЬКО если операция явно затрагивает лишь временные файлы, тестовые данные, \
+         артефакты сборки или scratch-директории (/tmp, target/, dist/, node_modules, кэши, \
+         временные переменные вроде $SP) и не может задеть исходный код, пользовательские данные, \
+         git-историю или систему.\n\
+         approve=false во всех остальных и во всех сомнительных случаях.\n\n\
+         Не используй инструменты. Ответь СРАЗУ и ТОЛЬКО одним JSON-объектом вида \
+         {{\"approve\": true|false, \"reason\": \"коротко почему\"}} — без markdown и пояснений.\n\n\
+         Запрос на подтверждение:\n{command}"
+    );
+
+    let result = tokio::time::timeout(
+        LLM_TIMEOUT,
+        tokio::process::Command::new("claude")
+            .arg("-p")
+            .arg("--model")
+            .arg(LLM_MODEL)
+            .arg(prompt)
+            .current_dir(std::env::temp_dir())
+            .stdin(std::process::Stdio::null())
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await;
+
+    let out = match result {
+        Err(_) => {
+            tracing::warn!("auto-approve LLM: claude -p timed out");
+            return LlmOutcome::Failed;
+        }
+        Ok(Err(e)) if e.kind() == std::io::ErrorKind::NotFound => {
+            tracing::warn!("auto-approve LLM: `claude` not found in PATH, escalation disabled");
+            return LlmOutcome::Unavailable;
+        }
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "auto-approve LLM: claude -p spawn failed");
+            return LlmOutcome::Failed;
+        }
+        Ok(Ok(out)) => out,
+    };
+
+    if !out.status.success() {
+        tracing::warn!(
+            status = %out.status,
+            stderr = %String::from_utf8_lossy(&out.stderr),
+            "auto-approve LLM: claude -p non-zero exit"
+        );
+        return LlmOutcome::Failed;
+    }
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let json_slice = match (stdout.find('{'), stdout.rfind('}')) {
+        (Some(a), Some(b)) if a < b => &stdout[a..=b],
+        _ => {
+            tracing::warn!(output = %stdout, "auto-approve LLM: no JSON in claude output");
+            return LlmOutcome::Failed;
+        }
+    };
+    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(json_slice) else {
+        tracing::warn!(output = %stdout, "auto-approve LLM: bad JSON in claude output");
+        return LlmOutcome::Failed;
+    };
+    let Some(approve) = parsed["approve"].as_bool() else {
+        tracing::warn!(output = %stdout, "auto-approve LLM: no `approve` field");
+        return LlmOutcome::Failed;
+    };
+    tracing::info!(
+        approve,
+        reason = %parsed["reason"].as_str().unwrap_or(""),
+        "auto-approve LLM verdict"
+    );
+    LlmOutcome::Verdict(approve)
+}
+
 /// Фоновый воркер авто-апрува.
 ///
 /// Спавнится в `main.rs` рядом с `attention::watcher_loop`. Принимает
@@ -418,6 +593,13 @@ struct SessionState {
 /// так же, как в активном.
 pub async fn run(state: AppState) {
     let mut seen: HashMap<String, SessionState> = HashMap::new();
+
+    // Флаг доступности LLM-эскалации: гаснет навсегда, если `claude` не
+    // найден в PATH — плодить попытки спавна на каждом тике бессмысленно.
+    let mut llm_available = true;
+    // Кэш вердиктов: хэш текста команды → approve. Живёт всё время работы
+    // процесса; один и тот же висящий prompt опрашивает модель ровно один раз.
+    let mut verdicts: HashMap<u64, bool> = HashMap::new();
 
     loop {
         tokio::time::sleep(TICK).await;
@@ -488,14 +670,59 @@ pub async fn run(state: AppState) {
                     continue;
                 }
 
-                let Some(choice) = decide(kind, &pane, &settings) else {
-                    tracing::debug!(
-                        session = %s.name,
-                        pane = %pane_target,
-                        kind = ?kind,
-                        "auto-approve skipped (plan / questions off / blocklist)"
-                    );
-                    continue;
+                // `llm_ok` — прошёл ли prompt через LLM-эскалацию блоклиста
+                // (для пометки `+LLM` в истории и логе).
+                let (choice, llm_ok) = match decide(kind, &pane, &settings) {
+                    Decision::Press(c) => (c, false),
+                    Decision::Skip => {
+                        tracing::debug!(
+                            session = %s.name,
+                            pane = %pane_target,
+                            kind = ?kind,
+                            "auto-approve skipped (plan / questions off)"
+                        );
+                        continue;
+                    }
+                    Decision::Blocked(c) => {
+                        // Блоклист. Пробуем LLM-эскалацию: вердикт из кэша
+                        // или один вызов `claude -p`.
+                        let region = extract_command_region(&pane)
+                            .unwrap_or_else(|| extract_subject(&pane));
+                        let allow = if !llm_available || region.is_empty() {
+                            false
+                        } else {
+                            let vkey = hash_pane(&region);
+                            match verdicts.get(&vkey) {
+                                Some(&v) => v,
+                                None => match llm_blocklist_verdict(&region).await {
+                                    LlmOutcome::Verdict(v) => {
+                                        if verdicts.len() >= VERDICT_CACHE_CAP {
+                                            verdicts.clear();
+                                        }
+                                        verdicts.insert(vkey, v);
+                                        v
+                                    }
+                                    LlmOutcome::Unavailable => {
+                                        llm_available = false;
+                                        false
+                                    }
+                                    // Разовый сбой не кэшируем: на следующем
+                                    // тике попробуем ещё раз.
+                                    LlmOutcome::Failed => false,
+                                },
+                            }
+                        };
+                        if !allow {
+                            tracing::debug!(
+                                session = %s.name,
+                                pane = %pane_target,
+                                kind = ?kind,
+                                "auto-approve skipped (blocklist, LLM not approving)"
+                            );
+                            continue;
+                        }
+                        (c, true)
+                    }
                 };
 
                 let attempt = entry.attempts + 1;
@@ -533,12 +760,19 @@ pub async fn run(state: AppState) {
                 }
 
                 let subject = extract_subject(&pane);
+                // `+LLM` в kind помечает апрув, прошедший через эскалацию
+                // блоклиста, — в истории видно, что решение принимала модель.
+                let kind_label = if llm_ok {
+                    format!("{kind:?}+LLM")
+                } else {
+                    format!("{kind:?}")
+                };
                 state.approvals.push(ApprovalRecord {
                     ts: now_secs(),
                     session: s.name.clone(),
                     window: pt.window.clone(),
                     pane: pane_target.clone(),
-                    kind: format!("{kind:?}"),
+                    kind: kind_label,
                     choice: choice.to_string(),
                     attempt,
                     subject: subject.clone(),
@@ -549,6 +783,7 @@ pub async fn run(state: AppState) {
                     window = %pt.window,
                     pane = %pane_target,
                     kind = ?kind,
+                    llm = llm_ok,
                     choice = %choice,
                     attempt,
                     subject = %subject,
@@ -678,36 +913,54 @@ drwxr-xr-x  5 user staff 160 Jan  1 00:00 .
     #[test]
     fn plan_is_never_auto_approved() {
         let permissive = settings(true, true, &[]);
-        assert_eq!(decide(PromptKind::Plan, PLAN, &permissive), None);
+        assert_eq!(decide(PromptKind::Plan, PLAN, &permissive), Decision::Skip);
     }
 
     #[test]
     fn question_respects_toggle() {
         assert_eq!(
             decide(PromptKind::Question, QUESTION, &settings(false, true, &[])),
-            Some("1")
+            Decision::Press("1")
         );
         assert_eq!(
             decide(PromptKind::Question, QUESTION, &settings(false, false, &[])),
-            None
+            Decision::Skip
         );
     }
 
     #[test]
     fn narrow_mode_picks_first_option() {
         let s = settings(false, true, &[]);
-        assert_eq!(decide(PromptKind::Permission3, PERMISSION3, &s), Some("1"));
-        assert_eq!(decide(PromptKind::AllowBroad, ALLOW_BROAD, &s), Some("1"));
+        assert_eq!(
+            decide(PromptKind::Permission3, PERMISSION3, &s),
+            Decision::Press("1")
+        );
+        assert_eq!(
+            decide(PromptKind::AllowBroad, ALLOW_BROAD, &s),
+            Decision::Press("1")
+        );
     }
 
     #[test]
     fn broad_mode_picks_second_only_where_it_widens() {
         let s = settings(true, true, &[]);
-        assert_eq!(decide(PromptKind::Permission3, PERMISSION3, &s), Some("2"));
-        assert_eq!(decide(PromptKind::AllowBroad, ALLOW_BROAD, &s), Some("2"));
+        assert_eq!(
+            decide(PromptKind::Permission3, PERMISSION3, &s),
+            Decision::Press("2")
+        );
+        assert_eq!(
+            decide(PromptKind::AllowBroad, ALLOW_BROAD, &s),
+            Decision::Press("2")
+        );
         // Здесь второй пункт — отказ, broad-режим на него не распространяется.
-        assert_eq!(decide(PromptKind::Permission2, PERMISSION2, &s), Some("1"));
-        assert_eq!(decide(PromptKind::AllowDeny, ALLOW_DENY, &s), Some("1"));
+        assert_eq!(
+            decide(PromptKind::Permission2, PERMISSION2, &s),
+            Decision::Press("1")
+        );
+        assert_eq!(
+            decide(PromptKind::AllowDeny, ALLOW_DENY, &s),
+            Decision::Press("1")
+        );
     }
 
     #[test]
@@ -717,7 +970,7 @@ drwxr-xr-x  5 user staff 160 Jan  1 00:00 .
         assert_eq!(classify_prompt(pane), Some(PromptKind::Permission2));
         assert_eq!(
             decide(PromptKind::Permission2, pane, &settings(false, true, &[])),
-            None
+            Decision::Blocked("1")
         );
     }
 
@@ -726,7 +979,7 @@ drwxr-xr-x  5 user staff 160 Jan  1 00:00 .
         let pane = "Bash command\n  psql -c 'DROP TABLE users'\n❯ 1. Yes\n  2. No\n";
         assert_eq!(
             decide(PromptKind::Permission2, pane, &settings(false, true, &[])),
-            None
+            Decision::Blocked("1")
         );
     }
 
@@ -736,16 +989,16 @@ drwxr-xr-x  5 user staff 160 Jan  1 00:00 .
         // Без стоп-слова — подтверждаем.
         assert_eq!(
             decide(PromptKind::Permission2, pane, &settings(false, true, &[])),
-            Some("1")
+            Decision::Press("1")
         );
-        // Со стоп-словом — пропускаем.
+        // Со стоп-словом — блокируем (кандидат на LLM-эскалацию).
         assert_eq!(
             decide(
                 PromptKind::Permission2,
                 pane,
                 &settings(false, true, &["release.sh"])
             ),
-            None
+            Decision::Blocked("1")
         );
     }
 
@@ -755,8 +1008,57 @@ drwxr-xr-x  5 user staff 160 Jan  1 00:00 .
         let pane = "Bash command\n  git push\n  --force origin master\n❯ 1. Yes\n  2. No\n";
         assert_eq!(
             decide(PromptKind::Permission2, pane, &settings(false, true, &[])),
-            None
+            Decision::Blocked("1")
         );
+    }
+
+    #[test]
+    fn blocklist_ignores_scrollback_above_header() {
+        // `rm -rf` в выводе ПРЕДЫДУЩЕЙ команды, оставшемся на экране, не
+        // должен блокировать следующий безобидный prompt: проверка идёт по
+        // блоку текущего запроса (от заголовка до пунктов), а не по панели.
+        let pane = "\
+$ cleanup.sh
+running rm -rf /tmp/old-build
+done
+Bash command
+  ls -la
+Do you want to proceed?
+❯ 1. Yes
+  2. No
+";
+        assert_eq!(
+            decide(PromptKind::Permission2, pane, &settings(false, true, &[])),
+            Decision::Press("1")
+        );
+    }
+
+    #[test]
+    fn blocklist_falls_back_to_whole_pane_without_header() {
+        // Заголовок «Bash command» уполз за верх захвата — консервативный
+        // откат к проверке всей панели: строгость дешевле пропущенного rm -rf.
+        let pane = "  rm -rf /home/user\nDo you want to proceed?\n❯ 1. Yes\n  2. No\n";
+        assert_eq!(
+            decide(PromptKind::Permission2, pane, &settings(false, true, &[])),
+            Decision::Blocked("1")
+        );
+    }
+
+    #[test]
+    fn extract_command_region_takes_current_block() {
+        let pane = "\
+старый вывод rm -rf где-то тут
+Bash command
+  rm -rf $SP/cand2_render
+  docker run --rm reels-maker:latest sh
+Do you want to proceed?
+❯ 1. Yes
+  2. No
+";
+        let region = extract_command_region(pane).expect("header present");
+        assert!(region.starts_with("Bash command"), "region = {region:?}");
+        assert!(region.contains("rm -rf $SP/cand2_render"));
+        assert!(!region.contains("старый вывод"));
     }
 
     #[test]
