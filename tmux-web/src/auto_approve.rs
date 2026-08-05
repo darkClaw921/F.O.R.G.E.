@@ -232,9 +232,9 @@ pub enum PromptKind {
 /// пункты и без раннего выхода мог бы совпасть с permission-веткой.
 pub fn classify_prompt(pane: &str) -> Option<PromptKind> {
     // Гейт против «процитированного prompt'а» — см.
-    // `attention::prompt_footer_visible`: маркеры меню, показанные в diff'е
+    // `attention::prompt_at_bottom`: маркеры меню, показанные в diff'е
     // или cat'е исходника, не должны приводить к нажатиям в чужой ввод.
-    if !crate::attention::prompt_footer_visible(pane) {
+    if !crate::attention::prompt_at_bottom(pane) {
         return None;
     }
     let norm = normalize_ws(pane);
@@ -851,7 +851,6 @@ Do you want to proceed?
 Claude in Chrome wants to create a browser window and read your tabs
 ❯ 1. Allow
   2. Deny (esc)
- Esc to cancel · Tab to amend · ctrl+e to explain
 ";
 
     /// Claude in Chrome — навигация с расширенным пунктом.
@@ -860,7 +859,6 @@ Claude in Chrome wants to navigate on 192.168.11.192:3001
 http://192.168.11.192:3001/profi48/auto_call_bot
 ❯ 1. Allow
   2. Allow all actions on 192.168.11.192:3001 for this session
- Esc to cancel · Tab to amend · ctrl+e to explain
 ";
 
     const PLAN: &str = "\
@@ -924,6 +922,23 @@ drwxr-xr-x  5 user staff 160 Jan  1 00:00 .
             classify_prompt(PERMISSION3_WRAPPED),
             Some(PromptKind::Permission3)
         );
+    }
+
+    /// Трёхопционная Chrome-форма: `Allow / Allow all … / Deny (esc)` —
+    /// живой кейс с navigate+screenshot. Классифицируется как AllowBroad,
+    /// footer'а у неё нет — панель заканчивается самим меню.
+    #[test]
+    fn classifies_chrome_three_option_broad() {
+        let pane = "\
+Claude in Chrome wants to navigate and take a screenshot on 109.172.47.224:4000
+ http://109.172.47.224:4000/
+❯ 1. Allow
+  2. Allow all actions on 109.172.47.224:4000 for this session
+  3. Deny (esc)
+";
+        assert_eq!(classify_prompt(pane), Some(PromptKind::AllowBroad));
+        let s = settings(true, true, &[]);
+        assert_eq!(decide(PromptKind::AllowBroad, pane, &s), Decision::Press("2"));
     }
 
     #[test]

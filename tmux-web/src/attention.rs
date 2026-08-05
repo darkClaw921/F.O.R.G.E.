@@ -371,7 +371,7 @@ impl AttentionState {
 /// не переносятся, поэтому раньше работал только он). Нормализация покрывает
 /// word-wrap (перенос по границам слов — штатное поведение TUI).
 pub fn detect_claude_prompt(pane: &str) -> bool {
-    if !prompt_footer_visible(pane) {
+    if !prompt_at_bottom(pane) {
         return false;
     }
     let norm = normalize_ws(pane);
@@ -379,19 +379,26 @@ pub fn detect_claude_prompt(pane: &str) -> bool {
 }
 
 /// Гейт против «процитированного prompt'а»: настоящий prompt Claude Code
-/// всегда рисует footer-подсказку («Esc to cancel · Tab to amend · ctrl+e to
-/// explain» у permission, «Enter to select · … · Esc to cancel» у
-/// plan/question) ПОСЛЕДНЕЙ строкой панели — поле ввода и статус-бар на время
-/// prompt'а скрыты. Текст с теми же маркерами, просто показанный в терминале
-/// (diff с тест-фикстурами, cat исходника, лог), стоит ВЫШЕ поля ввода и
-/// статус-бара, поэтому footer'ом снизу не заканчивается.
+/// рисуется В САМОМ НИЗУ панели — поле ввода и статус-бар на это время
+/// скрыты. Текст с теми же маркерами, просто показанный в терминале (diff с
+/// тест-фикстурами, cat исходника, лог), стоит ВЫШЕ поля ввода и статус-бара.
+///
+/// «Низ панели — это prompt», если последние непустые строки — одно из двух:
+/// - footer-подсказка («Esc to cancel · Tab to amend · ctrl+e to explain» у
+///   permission, «Enter to select · … · Esc to cancel» у plan/question);
+/// - пункт меню вида `2. …` / `3. Deny (esc)` — prompt'ы Claude in Chrome
+///   отдельного footer'а НЕ рисуют и заканчиваются самим меню (esc указан
+///   прямо в пункте Deny). Обнаружено живым кейсом: footer-гейт первой
+///   редакции перекрыл авто-апрув настоящих Chrome-prompt'ов.
 ///
 /// Без этого гейта воркер авто-апрува однажды принял diff собственных тестов
-/// за AllowBroad-prompt и напечатал «2» в поле ввода чужой сессии.
+/// за AllowBroad-prompt и напечатал «2» в поле ввода чужой сессии. Строки
+/// diff'а под пункт меню не маскируются: у них префикс `+`/`-`, и главное —
+/// цитата не может оказаться ПОД полем ввода и статус-баром.
 ///
 /// Берутся последние 4 непустые строки: в узком терминале footer переносится
 /// по словам, и «Esc to cancel» может уехать со своей строки на соседнюю.
-pub(crate) fn prompt_footer_visible(pane: &str) -> bool {
+pub(crate) fn prompt_at_bottom(pane: &str) -> bool {
     let mut tail: Vec<&str> = pane
         .lines()
         .rev()
@@ -401,7 +408,20 @@ pub(crate) fn prompt_footer_visible(pane: &str) -> bool {
     // Возвращаем исходный порядок строк: footer мог перенестись («… Esc to» /
     // «cancel»), и склейка в обратном порядке разорвала бы искомую фразу.
     tail.reverse();
-    normalize_ws(&tail.join(" ")).contains("Esc to cancel")
+    if normalize_ws(&tail.join(" ")).contains("Esc to cancel") {
+        return true;
+    }
+    // Chrome-форма: меню заканчивает панель. Пункт мог перенестись по словам,
+    // поэтому смотрим две последние строки — при переносе номер остаётся на
+    // предпоследней, а последняя несёт хвост текста пункта.
+    tail.iter().rev().take(2).any(|line| {
+        let t = line.trim_start().trim_start_matches('❯').trim_start();
+        let mut c = t.chars();
+        matches!(
+            (c.next(), c.next(), c.next()),
+            (Some(d), Some('.'), Some(' ')) if d.is_ascii_digit()
+        )
+    })
 }
 
 /// Схлопывает все последовательности whitespace (пробелы, табы, переносы
@@ -580,10 +600,14 @@ Do you want to proceed?
     #[test]
     fn detects_chrome_allow_prompts() {
         assert!(detect_claude_prompt(
-            "Claude in Chrome wants to read your tabs\n❯ 1. Allow\n  2. Deny (esc)\n Esc to cancel · Tab to amend · ctrl+e to explain\n"
+            "Claude in Chrome wants to read your tabs\n❯ 1. Allow\n  2. Deny (esc)\n"
         ));
         assert!(detect_claude_prompt(
-            "Claude in Chrome wants to navigate\n❯ 1. Allow\n  2. Allow all actions on host for this session\n Esc to cancel · Tab to amend · ctrl+e to explain\n"
+            "Claude in Chrome wants to navigate\n❯ 1. Allow\n  2. Allow all actions on host for this session\n"
+        ));
+        // Трёхопционная форма Allow / Allow all / Deny — тоже без footer'а.
+        assert!(detect_claude_prompt(
+            "Claude in Chrome wants to navigate and take a screenshot on host\n❯ 1. Allow\n  2. Allow all actions on host for this session\n  3. Deny (esc)\n"
         ));
     }
 
