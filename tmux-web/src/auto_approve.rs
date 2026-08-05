@@ -231,6 +231,12 @@ pub enum PromptKind {
 /// проверяются первыми, потому что prompt плана тоже содержит нумерованные
 /// пункты и без раннего выхода мог бы совпасть с permission-веткой.
 pub fn classify_prompt(pane: &str) -> Option<PromptKind> {
+    // Гейт против «процитированного prompt'а» — см.
+    // `attention::prompt_footer_visible`: маркеры меню, показанные в diff'е
+    // или cat'е исходника, не должны приводить к нажатиям в чужой ввод.
+    if !crate::attention::prompt_footer_visible(pane) {
+        return None;
+    }
     let norm = normalize_ws(pane);
 
     if norm.contains("Enter to select") {
@@ -829,6 +835,7 @@ Do you want to proceed?
 ❯ 1. Yes
   2. Yes, and don't ask again for: ls commands
   3. No
+ Esc to cancel · Tab to amend · ctrl+e to explain
 ";
 
     /// Короткий permission без «don't ask again».
@@ -836,6 +843,7 @@ Do you want to proceed?
 Do you want to proceed?
 ❯ 1. Yes
   2. No
+ Esc to cancel · Tab to amend · ctrl+e to explain
 ";
 
     /// Claude in Chrome — чтение вкладок.
@@ -843,6 +851,7 @@ Do you want to proceed?
 Claude in Chrome wants to create a browser window and read your tabs
 ❯ 1. Allow
   2. Deny (esc)
+ Esc to cancel · Tab to amend · ctrl+e to explain
 ";
 
     /// Claude in Chrome — навигация с расширенным пунктом.
@@ -851,6 +860,7 @@ Claude in Chrome wants to navigate on 192.168.11.192:3001
 http://192.168.11.192:3001/profi48/auto_call_bot
 ❯ 1. Allow
   2. Allow all actions on 192.168.11.192:3001 for this session
+ Esc to cancel · Tab to amend · ctrl+e to explain
 ";
 
     const PLAN: &str = "\
@@ -880,6 +890,7 @@ drwxr-xr-x  5 user staff 160 Jan  1 00:00 .
   2. Yes, and don't ask again for: ffmpeg -y -v error -ss 9.0 -i
      /tmp/final.mp4 -frames:v 1 -q:v 3 out.jpg
   3. No
+ Esc to cancel · Tab to amend · ctrl+e to explain
 ";
 
     fn settings(broad: bool, questions: bool, blocklist: &[&str]) -> UserSettings {
@@ -971,7 +982,7 @@ drwxr-xr-x  5 user staff 160 Jan  1 00:00 .
     #[test]
     fn builtin_blocklist_blocks_destructive_command() {
         let pane =
-            "Bash command\n  rm -rf /tmp/build\nDo you want to proceed?\n❯ 1. Yes\n  2. No\n";
+            "Bash command\n  rm -rf /tmp/build\nDo you want to proceed?\n❯ 1. Yes\n  2. No\n Esc to cancel · Tab to amend · ctrl+e to explain\n";
         assert_eq!(classify_prompt(pane), Some(PromptKind::Permission2));
         assert_eq!(
             decide(PromptKind::Permission2, pane, &settings(false, true, &[])),

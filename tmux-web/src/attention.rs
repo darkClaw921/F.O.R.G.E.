@@ -371,8 +371,37 @@ impl AttentionState {
 /// не переносятся, поэтому раньше работал только он). Нормализация покрывает
 /// word-wrap (перенос по границам слов — штатное поведение TUI).
 pub fn detect_claude_prompt(pane: &str) -> bool {
+    if !prompt_footer_visible(pane) {
+        return false;
+    }
     let norm = normalize_ws(pane);
     detect_permission_prompt(&norm) || detect_plan_prompt(&norm) || detect_question_prompt(&norm)
+}
+
+/// Гейт против «процитированного prompt'а»: настоящий prompt Claude Code
+/// всегда рисует footer-подсказку («Esc to cancel · Tab to amend · ctrl+e to
+/// explain» у permission, «Enter to select · … · Esc to cancel» у
+/// plan/question) ПОСЛЕДНЕЙ строкой панели — поле ввода и статус-бар на время
+/// prompt'а скрыты. Текст с теми же маркерами, просто показанный в терминале
+/// (diff с тест-фикстурами, cat исходника, лог), стоит ВЫШЕ поля ввода и
+/// статус-бара, поэтому footer'ом снизу не заканчивается.
+///
+/// Без этого гейта воркер авто-апрува однажды принял diff собственных тестов
+/// за AllowBroad-prompt и напечатал «2» в поле ввода чужой сессии.
+///
+/// Берутся последние 4 непустые строки: в узком терминале footer переносится
+/// по словам, и «Esc to cancel» может уехать со своей строки на соседнюю.
+pub(crate) fn prompt_footer_visible(pane: &str) -> bool {
+    let mut tail: Vec<&str> = pane
+        .lines()
+        .rev()
+        .filter(|l| !l.trim().is_empty())
+        .take(4)
+        .collect();
+    // Возвращаем исходный порядок строк: footer мог перенестись («… Esc to» /
+    // «cancel»), и склейка в обратном порядке разорвала бы искомую фразу.
+    tail.reverse();
+    normalize_ws(&tail.join(" ")).contains("Esc to cancel")
 }
 
 /// Схлопывает все последовательности whitespace (пробелы, табы, переносы
@@ -421,6 +450,7 @@ Do you want to make this edit to file.rs?
   ❯ 1. Yes
     2. Yes, and don't ask again this session
     3. No, tell Claude what to do differently
+ Esc to cancel · Tab to amend · ctrl+e to explain
 ";
 
     /// Фикстура — file-create prompt Claude Code (другой вариант текста
@@ -430,6 +460,7 @@ Do you want to create mandelbrot.py?
  ❯ 1. Yes
    2. Yes, allow all edits during this session (shift+tab)
    3. No
+ Esc to cancel · Tab to amend · ctrl+e to explain
 ";
 
     /// Фикстура — обычный shell output без признаков prompt'а.
@@ -489,6 +520,7 @@ Do you want to make this edit?
     2. Yes, and don't ask
        again this session
     3. No
+ Esc to cancel · Tab to amend · ctrl+e to explain
 ";
 
     #[test]
@@ -518,18 +550,40 @@ Bash command
 Do you want to proceed?
 ❯ 1. Yes
   2. No
+ Esc to cancel · Tab to amend · ctrl+e to explain
 ";
         assert!(detect_claude_prompt(pane));
+    }
+
+    /// Процитированный prompt (diff/cat с маркерами меню) НАД полем ввода и
+    /// статус-баром — не настоящий prompt: footer'а внизу нет, детект молчит.
+    /// Живой кейс: воркер авто-апрува принял diff собственных тест-фикстур за
+    /// AllowBroad и напечатал «2» в поле ввода чужой сессии.
+    #[test]
+    fn ignores_quoted_prompt_above_input_box() {
+        let pane = "\
++❯ 1. Allow
++  2. Allow all actions on host for this session
++Do you want to proceed?
++❯ 1. Yes
++  2. No
+───────────────
+❯ 
+───────────────
+  ~/project │ master │ 30%: 257k
+  ⏵⏵ accept edits on
+";
+        assert!(!detect_claude_prompt(pane));
     }
 
     /// Prompt'ы Claude in Chrome: `Allow/Deny` и `Allow/Allow all`.
     #[test]
     fn detects_chrome_allow_prompts() {
         assert!(detect_claude_prompt(
-            "Claude in Chrome wants to read your tabs\n❯ 1. Allow\n  2. Deny (esc)\n"
+            "Claude in Chrome wants to read your tabs\n❯ 1. Allow\n  2. Deny (esc)\n Esc to cancel · Tab to amend · ctrl+e to explain\n"
         ));
         assert!(detect_claude_prompt(
-            "Claude in Chrome wants to navigate\n❯ 1. Allow\n  2. Allow all actions on host for this session\n"
+            "Claude in Chrome wants to navigate\n❯ 1. Allow\n  2. Allow all actions on host for this session\n Esc to cancel · Tab to amend · ctrl+e to explain\n"
         ));
     }
 
