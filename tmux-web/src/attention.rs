@@ -10,17 +10,16 @@
 //!
 //! ### Контракт детектора
 //!
-//! `detect_claude_prompt` срабатывает когда в панели одновременно присутствуют
-//! **три** маркера структуры меню выбора Claude Code:
-//! - `❯ 1. Yes` — курсор на первом варианте;
-//! - `2. Yes,` — второй вариант (любой sub-text: «and don't ask again»,
-//!   «allow all edits during this session» и пр.);
-//! - `3. No` — третий вариант (любой sub-text: «», «tell Claude what to do» и пр.).
+//! `detect_claude_prompt` срабатывает на известные формы меню выбора Claude
+//! Code (см. `detect_permission_prompt`): трёхопционный permission
+//! (`❯ 1. Yes` + `2. Yes,` + `3. No`), двухопционный (`❯ 1. Yes` + `2. No`),
+//! Claude in Chrome (`❯ 1. Allow` + `2. Deny`/`2. Allow all`), а также plan и
+//! question по их footer'ам.
 //!
-//! AND-семантика выбрана сознательно: каждый из маркеров может встретиться
-//! и в обычном выводе (например, в логах), но все три вместе — практически
-//! однозначно prompt. Маркеры намеренно сделаны «короткими», чтобы покрыть
-//! разные варианты Claude UI (file create, edit, bash, и т.п.).
+//! AND-семантика внутри каждой формы выбрана сознательно: каждый маркер по
+//! отдельности может встретиться в обычном выводе (например, в логах), но
+//! сочетание — практически однозначно prompt. Маркеры намеренно «короткие»,
+//! чтобы покрыть разные варианты Claude UI (file create, edit, bash и т.п.).
 //!
 //! ### Состояние
 //!
@@ -384,9 +383,22 @@ pub(crate) fn normalize_ws(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// Permission prompt: `❯ 1. Yes` + `2. Yes,` + `3. No`.
+/// Permission prompt во всех известных формах:
+/// - трёхопционный: `❯ 1. Yes` + `2. Yes,` + `3. No`;
+/// - двухопционный: `❯ 1. Yes` + `2. No` (короткий `Do you want to proceed?`);
+/// - Claude in Chrome: `❯ 1. Allow` + `2. Deny` / `2. Allow all`.
+///
+/// Двухопционные формы добавлены после живого кейса: prompt `1. Yes / 2. No`,
+/// оставленный человеку блоклистом авто-апрува, не зажигал свечение — тот же
+/// набор форм распознаёт `auto_approve::classify_prompt`.
 fn detect_permission_prompt(pane: &str) -> bool {
-    pane.contains("❯ 1. Yes") && pane.contains("2. Yes,") && pane.contains("3. No")
+    if pane.contains("❯ 1. Yes") {
+        return (pane.contains("2. Yes,") && pane.contains("3. No")) || pane.contains("2. No");
+    }
+    if pane.contains("❯ 1. Allow") {
+        return pane.contains("2. Deny") || pane.contains("2. Allow all");
+    }
+    false
 }
 
 /// Plan prompt (`ExitPlanMode`): footer с `Tab/Arrow keys to navigate`.
@@ -493,6 +505,32 @@ Do you want to make this edit?
     fn ignores_plain_shell_output() {
         assert!(!detect_claude_prompt(SHELL_FIXTURE));
         assert!(!detect_claude_prompt(""));
+    }
+
+    /// Двухопционный permission (`Do you want to proceed?` без «don't ask
+    /// again») — живой кейс: такой prompt, оставленный человеку блоклистом
+    /// авто-апрува, не зажигал свечение.
+    #[test]
+    fn detects_two_option_permission_prompt() {
+        let pane = "\
+Bash command
+  rm -rf src/old
+Do you want to proceed?
+❯ 1. Yes
+  2. No
+";
+        assert!(detect_claude_prompt(pane));
+    }
+
+    /// Prompt'ы Claude in Chrome: `Allow/Deny` и `Allow/Allow all`.
+    #[test]
+    fn detects_chrome_allow_prompts() {
+        assert!(detect_claude_prompt(
+            "Claude in Chrome wants to read your tabs\n❯ 1. Allow\n  2. Deny (esc)\n"
+        ));
+        assert!(detect_claude_prompt(
+            "Claude in Chrome wants to navigate\n❯ 1. Allow\n  2. Allow all actions on host for this session\n"
+        ));
     }
 
     #[test]
@@ -1253,8 +1291,33 @@ pub async fn watcher_loop(attention: Arc<AttentionState>) {
         let mut collected: Vec<SessionAttention> = Vec::with_capacity(sessions.len());
         let mut gens: Vec<GenSnapshot> = Vec::with_capacity(sessions.len());
         for s in sessions.iter() {
-            let pane = crate::tmux::capture_pane(&s.name).await.unwrap_or_default();
-            let detected = detect_claude_prompt(&pane);
+            // Prompt может висеть в ФОНОВОМ окне сессии (пользователь смотрит
+            // соседнее), поэтому обходим все Claude-панели, как auto_approve.
+            // `capture_pane` остаётся fallback'ом, когда Claude-панели не
+            // опознаны по имени процесса.
+            let claude_panes = crate::tmux::list_claude_pane_targets(&s.name)
+                .await
+                .unwrap_or_default();
+            let mut detected = false;
+            let mut pane = String::new();
+            if claude_panes.is_empty() {
+                pane = crate::tmux::capture_pane(&s.name).await.unwrap_or_default();
+                detected = detect_claude_prompt(&pane);
+            } else {
+                for pt in claude_panes.iter() {
+                    let p = crate::tmux::capture_pane_target(&s.name, &pt.target)
+                        .await
+                        .unwrap_or_default();
+                    if detect_claude_prompt(&p) {
+                        detected = true;
+                        pane = p;
+                        break;
+                    }
+                    if pane.is_empty() {
+                        pane = p;
+                    }
+                }
+            }
             let pane_hash = hash_pane(&pane);
 
             // Generation-detector: захват последних 50 строк pane (включая
