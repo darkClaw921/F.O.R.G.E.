@@ -1017,6 +1017,110 @@ export async function loadOlder(dialog) {
 }
 
 /**
+ * ДОГОН открытой беседы: перечитать её свежую страницу и дорисовать пропущенное
+ * (forge-oy0c).
+ *
+ * # Зачем это существует
+ *
+ * Лента открытой беседы живёт ОДНИМ источником — кадрами `new_message`. Кадр,
+ * которого не было, лентой не восполняется ничем, и таких дыр ровно три:
+ *
+ * 1. **фон вкладки.** `main.js::suspendVk` РВЁТ соединение, когда страница
+ *    уходит в фон, а `resumeVk` его поднимает. Всё, что пришло между ними, в
+ *    открытой беседе не появлялось никогда — пока пользователь не уйдёт в
+ *    другую беседу и не вернётся (это `openDialog`, то есть чтение по REST);
+ * 2. **обрыв связи.** Реконнект возвращает поток «с сейчас»;
+ * 3. **`resync`.** Клиент отстал (broadcast Lagged) либо обогащение пачки
+ *    отказало — сервер честно просит перечитать состояние. До forge-oy0c
+ *    `reloadData` перечитывал только КОЛОНКУ, и открытая лента оставалась
+ *    прежней.
+ *
+ * # Как склеивается
+ *
+ * Страница у VK — это ПОСЛЕДНИЕ `PAGE_SIZE` сообщений. Если она пересекается с
+ * загруженным (обычный случай), новые строки доклеиваются, а совпавшие по id
+ * заменяются свежей версией. Если пересечения НЕТ — за время отсутствия
+ * набралось больше страницы, — лента заменяется страницей целиком и `hasMore`
+ * взводится: дыру посреди истории показывать нельзя, а подгрузка вверх её
+ * закроет по требованию.
+ *
+ * # Прокрутка
+ *
+ * Решение принимается ДО перерисовки: стоял у нижней кромки — уезжает вниз к
+ * новому, читал историю — остаётся на месте. Отметка о прочтении уходит только
+ * в первом случае: дочитанным считается увиденное.
+ *
+ * @returns {Promise<number>} сколько строк добавилось
+ */
+export async function refreshActive() {
+    const id = vkState.activeDialogId;
+    if (!id || local.loading || !$vkLog) return 0;
+
+    const gen = local.gen.current();
+    local.loading = true;
+    const stick = local.stickBottom || isAtBottom($vkLog);
+    const prevTop = Number($vkLog.scrollTop) || 0;
+    try {
+        await vkLimiter.acquire(PRIORITY_USER);
+        if (local.gen.stale(gen)) return 0;
+        const resp = await vkCoalescer.submit('history', (signal) => vkApi.getMessages(id, {
+            limit: PAGE_SIZE,
+            signal,
+        }));
+        if (local.gen.stale(gen)) return 0;
+        const page = Array.isArray(resp && resp.messages) ? resp.messages : [];
+        if (page.length === 0) return 0;
+
+        const list = activeList();
+        const dialog = currentDialog();
+        const newestKnown = list.length ? list[list.length - 1].id : null;
+        const oldestPage = page[0].id;
+
+        let merged;
+        let added;
+        if (newestKnown === null || oldestPage > newestKnown) {
+            // Пересечения нет: между загруженным и страницей — дыра. Показывать
+            // её нельзя, поэтому лента начинается заново, как при открытии.
+            merged = page.slice();
+            added = page.length;
+            // Выше страницы история точно есть, если мы только что выбросили
+            // загруженное: подгрузка вверх обязана остаться доступной.
+            local.hasMore = !!(resp && resp.has_more) || list.length > 0;
+        } else {
+            merged = list;
+            added = 0;
+            for (const m of page) {
+                const { inserted, index } = insertMessage(merged, m);
+                if (inserted) added += 1;
+                // Совпавшую строку заменяем свежей версией: за время отсутствия
+                // её могли отредактировать, лайкнуть или удалить.
+                else if (index >= 0) merged[index] = m;
+            }
+        }
+        vkState.messages.set(id, merged);
+        renderHistory(merged, dialog);
+        updateHead(dialog, merged.length);
+        if (stick) {
+            scrollToBottom();
+            const maxId = merged.length ? merged[merged.length - 1].id : 0;
+            if (added > 0 && typeof local.onRead === 'function') local.onRead(id, maxId);
+        } else {
+            $vkLog.scrollTop = prevTop;
+        }
+        return added;
+    } catch (e) {
+        // Догон — фоновое действие: у него нет пользовательского намерения, и
+        // ошибочная строка в ленте объясняла бы то, чего человек не просил.
+        if (!local.gen.stale(gen) && !(e && e.name === 'AbortError')) {
+            console.debug('[vk-chat] refreshActive failed', e);
+        }
+        return 0;
+    } finally {
+        if (!local.gen.stale(gen)) local.loading = false;
+    }
+}
+
+/**
  * Подписка на скролл: подгрузка вверх у верхней границы и отметка о прочтении
  * у нижней.
  *

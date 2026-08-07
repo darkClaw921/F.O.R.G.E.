@@ -217,6 +217,9 @@ pub async fn run_task(
         model: Some(task.model.clone()),
         system: None,
         run_id: format!("autonomous:{run_id}"),
+        // Prompt автономной задачи — короткий и без переписки: оставляем
+        // историческую подачу positional-аргументом.
+        prompt_via_stdin: false,
     };
     let result = match state.runner.one_shot(req).await {
         Ok(r) => r,

@@ -34,6 +34,21 @@ node tmux-web/tests/frontend/messenger_ws_core.test.mjs   # ядро WS обще
 node tmux-web/tests/frontend/messenger_theme_core.test.mjs     # ядро темы панелей (яркость фона приложения)
 node tmux-web/tests/frontend/messenger_follow_factory.test.mjs # фабрика createFollow: два инстанса не пересекаются
 node tmux-web/tests/frontend/messenger_shared_parity.test.mjs  # ⚠ СТРАЖ ДУБЛИРОВАНИЯ движка комбинаций
+node tmux-web/tests/frontend/bitrix_contract.test.mjs   # ⚠ СТРАЖ КОНТРАКТА панели Битрикс24: кадры WS ↔ SERVER_FRAMES, dom.js ↔ index.html, пути api.js ↔ routes/mod.rs, изоляция CSS
+node tmux-web/tests/frontend/bitrix_login.test.mjs      # экран подключения Битрикс24 на фейковом DOM (секрет не остаётся в DOM, автоповтора нет)
+node tmux-web/tests/frontend/bitrix_format.test.mjs     # чистая логика панели Битрикс24: даты, превью, директории, рендер BB-сегментов УЗЛАМИ
+node tmux-web/tests/frontend/bitrix_visibility.test.mjs # белый список диалогов Битрикс24 (колонка, счётчики директорий, бейдж)
+node tmux-web/tests/frontend/bitrix_bbcode.test.mjs     # ⚠ СТРАЖ БЕЗОПАСНОГО РЕНДЕРА Битрикс24: сегменты и карточки ATTACH собираются УЗЛАМИ, XSS попадает в документ текстом
+node tmux-web/tests/frontend/bitrix_chat.test.mjs       # лента Битрикс24: stick-to-bottom защёлкой, догрузка сверху без скачка, системные строки, кнопки KEYBOARD
+node tmux-web/tests/frontend/bitrix_send.test.mjs       # цикл переписки Битрикс24: оптимистичная отправка, отсутствие автоповтора (Р9), счётчик символов (Р12), правка, удаление, лайк, дебаунс отметки о прочтении
+node tmux-web/tests/frontend/bitrix_realtime.test.mjs   # realtime Битрикс24 (Ф7): кадры WS, бейдж и белый список, гейты тоста, удаление БЕЗ исчезновения строки, полный resync после реконнекта
+node tmux-web/tests/frontend/bitrix_media.test.mjs      # медиа Битрикс24 (Ф8): пути прокси без внешних адресов, ленивая загрузка через IntersectionObserver, дедуп загрузок, revoke objectURL при смене диалога (аватары переживают), кадр download_progress
+node tmux-web/tests/frontend/bitrix_upload.test.mjs     # отправка файлов Битрикс24 (Ф9): три входа (⇪, drag&drop, Ctrl+V), клиентская проверка размера БЕЗ единого запроса, два этапа прогресса (фаза portal без процентов, Р8), одноразовый upload_id и повтор с первого этапа (Р9), отмена только до потребления
+node tmux-web/tests/frontend/bitrix_tasks.test.mjs      # задачи Битрикс24 (Ф10): карточка над лентой, кнопки СТРОГО по матрице action (после «Начать» появляется «Пауза»), перезапрос ленты после действия, ветка «задача без чата» (Р20) с заблокированным полем ввода, кадр task_update
+node tmux-web/tests/frontend/bitrix_keys.test.mjs       # хоткеи Битрикс24 (Ф11): сопоставление по event.code (русская раскладка не ломает j/k), owns() уступает vim по фокусу, preventDefault ТОЛЬКО при выполненном действии, переопределения bitrix_hotkeys поверх дефолтов, отсутствующий bitrix_hotkeys_enabled = ВКЛЮЧЕНО, в _debugState() нет секрета вебхука
+node tmux-web/tests/frontend/bitrix_theme_contrast.test.mjs # ⚠ СТРАЖ ЧИТАЕМОСТИ палитры Битрикс24 (Ф11): перебор ТОКЕНОВ из css/bitrix.css (а не копий цветов), 4.5:1 в обеих темах, приглушённый ТЕКСТ ≠ цвет РАМОК, светлая тема переопределяет все токены, акцент отличается по оттенку от VK и Telegram
+node tmux-web/tests/frontend/bitrix_reply.test.mjs      # чистая логика ответов Битрикс24 (forge-92x6): разбор цитаты `> Автор: текст` и `[QUOTE]`, поиск ОРИГИНАЛА по автору и началу текста (идентификатора ответа у портала нет — Р10)
+node tmux-web/tests/frontend/bitrix_reply_ui.test.mjs   # переход по цитате Битрикс24 (forge-92x6) на фейковом DOM: цитата отдельным узлом, клик подсвечивает оригинал, догрузка истории ради него, честное «не найден»
 node tmux-web/tests/frontend/vk_login.test.mjs           # экран логина VK на фейковом DOM
 node tmux-web/tests/frontend/vk_captcha.test.mjs         # оверлей captcha VK на фейковом DOM
 node tmux-web/tests/frontend/vk_format.test.mjs          # чистая логика панели VK (ключ медиа с индексом)
@@ -184,15 +199,32 @@ DOM/WebSocket/xterm top-level). При правке `mobile.js` синхронн
 
 Deep-link `?tab=` (PWA shortcuts, `js/pwa/bootstrap.js::routeTab`) держит СВОЙ
 белый список имён вкладок: `terminal`, `tasks`, `git`, `docker`, `telescope`,
-`echo`, `telegram`, `vk`. Новая вкладка обязана попасть в него явно — иначе
-ярлык на домашнем экране молча откроет терминал.
+`echo`, `telegram`, `vk`, `bitrix`. Новая вкладка обязана попасть в него явно —
+иначе ярлык на домашнем экране молча откроет терминал.
 
 ### Контракт панелей-мессенджеров
 
-Две панели (`#telegram`, `#vk`) живут в одном документе и делят клавиатуру,
-стек тостов `#echo-toasts` и форму настроек хоткеев. Автоматически это держат
-три файла: `messenger_shared_parity` (движок комбинаций не разъезжается),
-`hotkeys_panel_owner` (vim молчит, пока владеет ЛЮБАЯ панель) и секция
-«сосуществование» в `vk_keynav` (одновременно владеть клавиатурой панели не
-могут). E2E-сторона того же контракта — `e2e/tests/ui/vk-ui.spec.ts`
-(«две панели-мессенджера взаимоисключающи»).
+ТРИ панели (`#telegram`, `#vk`, `#bitrix`) живут в одном документе и делят
+клавиатуру, стек тостов `#echo-toasts` и форму настроек хоткеев. Автоматически
+это держат четыре файла: `messenger_shared_parity` (движок комбинаций не
+разъезжается), `hotkeys_panel_owner` (vim молчит, пока владеет ЛЮБАЯ панель, —
+и там же покрыт РЕЕСТР `window.ForgeApp.keyboardOwners`, введённый на третьей
+панели), `settings_hotkeys_form` (общая форма адресует РАЗНЫЕ поля настроек у
+всех трёх) и секция «сосуществование» в `vk_keynav`. E2E-сторона того же
+контракта — `e2e/tests/ui/vk-ui.spec.ts` («две панели-мессенджера
+взаимоисключающи») и `e2e/tests/ui/bitrix-ui.spec.ts` («три
+панели-мессенджера взаимоисключающи»).
+
+### E2E-спеки панелей (Playwright)
+
+```bash
+cd e2e && npx playwright test tests/ui/bitrix-ui.spec.ts   # 13 сценариев вкладки «Битрикс24»
+cd e2e && npx playwright test tests/ui/vk-ui.spec.ts       # соседняя панель: не сломана третьей
+cd e2e && npx playwright test tests/ui/telegram-ui.spec.ts # то же для Telegram
+cd e2e && npm run test:ui                                  # все UI-спеки разом
+```
+
+Сервер для e2e поднимается БЕЗ флагов плагинов, поэтому первый сценарий каждой
+спеки — «кнопка скрыта при 404», а остальные идут с `page.route`-моком статуса,
+поставленным ДО `page.goto`. Список взаимоисключающих панелей продублирован
+константой `HIDDEN_PANE_IDS` в трёх спеках: новая панель добавляется во все.

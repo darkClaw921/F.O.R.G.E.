@@ -1,0 +1,64 @@
+[package]
+name = "forge-bitrix"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Bitrix24 plugin для F.O.R.G.E. — вкладка мессенджера портала (чаты и чаты задач через входящий вебхук)"
+
+[dependencies]
+# Axum 0.7 обязан совпадать с tmux-web, forge-echo, forge-telegram и forge-vk:
+# иначе `Router` — разные типы и `app.merge(plugin_router)` не скомпилируется.
+axum = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+futures-util = { workspace = true }
+# `#[async_trait]` для объектно-безопасного `login::LoginBackend` (Ф3): он
+# отделяет чистый автомат подключения от сети, поэтому матрица переходов
+# тестируется без портала и без вебхука.
+async-trait = { workspace = true }
+
+# ЕДИНСТВЕННЫЙ транспорт плагина: REST портала
+# `<portal>/rest/<uid>/<code>/<method>.json` (Ф2), скачивание вложений по
+# `downloadUrl` (Ф8) и заливка файлов (Ф9). Версия и базовые features
+# объявлены в `[workspace.dependencies]` корневого Cargo.toml
+# (`default-features = false` + json/stream/rustls-tls).
+#
+# ИНВАРИАНТ: `default-features = false` здесь НЕ переопределяется и
+# переопределён быть не может (член workspace умеет только ДОБАВЛЯТЬ
+# features) — благодаря этому гейт `cargo tree -i openssl-sys` остаётся
+# пустым структурно, а не по дисциплине. Feature `multipart` НЕ добавляется:
+# Bitrix24 принимает файл одношаговой base64-заливкой в JSON-теле (Р7).
+reqwest = { workspace = true }
+
+# CancellationToken (graceful shutdown, как у forge-echo/telegram/vk) +
+# feature `io` для ReaderStream/StreamReader: стриминг медиа и загрузок без
+# буферизации файла целиком в памяти (Ф8/Ф9).
+tokio-util = { version = "0.7", features = ["io"] }
+
+# Конфиг плагина `~/.config/forge/bitrix.toml`. 0.8.x — та же линия, что у
+# forge-echo/telegram/vk, поэтому новый крейт в дерево не добавляется.
+toml = "0.8"
+
+# UUID v4 — идентификаторы upload-сессий (`upload_id`, Ф9) и источник джиттера
+# для backoff'а (Ф7). Отдельный крейт `rand` ради этого не заводится.
+uuid = { version = "1", features = ["v4"] }
+
+# Определение MIME по имени файла: и при приёме загрузки (Ф9), и при отдаче
+# кэшированных медиа (Ф8).
+mime_guess = "2"
+
+# Одношаговая заливка файла в портал (Р7) требует base64 самого тела, а не
+# multipart. Версия 0.22 уже в дереве (tmux-web, VAPID) — новых узлов нет.
+base64 = "0.22"
+
+[dev-dependencies]
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
+# НОВЫХ dev-зависимостей (wiremock/httpmock) здесь НЕ ЗАВОДИТСЯ намеренно:
+# стенд `tests/b24_stub.rs` (Ф2) — фейковый портал Bitrix24 — пишется на уже
+# имеющихся axum + tokio::net::TcpListener. Ровно ради него
+# `BitrixConfig::base_url_override` и существует.

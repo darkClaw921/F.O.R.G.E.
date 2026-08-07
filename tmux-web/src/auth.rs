@@ -316,7 +316,11 @@ fn is_json_content_type(req: &Request<Body>) -> bool {
 ///
 /// Поэтому список растёт ЯВНО, по одной строке на роут: добавление второго
 /// плагина не имеет права ослабить правило, ради которого оно написано.
-const RAW_UPLOAD_PATHS: [&str; 2] = ["/api/telegram/upload", "/api/vk/upload"];
+const RAW_UPLOAD_PATHS: [&str; 3] = [
+    "/api/telegram/upload",
+    "/api/vk/upload",
+    "/api/bitrix/upload",
+];
 
 /// Content-Type, на котором работает raw-загрузка файла.
 const RAW_UPLOAD_CONTENT_TYPE: &str = "application/octet-stream";
@@ -810,6 +814,8 @@ mod tests {
             .route("/api/telegram/dialogs/:id/messages", post(ok_handler))
             .route("/api/vk/upload", post(ok_handler))
             .route("/api/vk/dialogs/:id/messages", post(ok_handler))
+            .route("/api/bitrix/upload", post(ok_handler))
+            .route("/api/bitrix/dialogs/:id/messages", post(ok_handler))
             // Вставка файла из буфера в терминал сессии (см.
             // `is_session_file_upload_path`) — соседний `windows` намеренно
             // рядом, чтобы тест ловил расширение исключения на другие роуты.
@@ -1263,6 +1269,93 @@ mod tests {
                 .route("/api/vk/upload/extra", axum::routing::post(ok_handler))
                 .route("/api/vk/upload2", axum::routing::post(ok_handler))
                 .route("/api/telegram/upload/x", axum::routing::post(ok_handler))
+                .layer(from_fn(csrf_guard));
+            let resp = app
+                .oneshot(csrf_req(
+                    Method::POST,
+                    uri,
+                    Some("http://127.0.0.1:7331"),
+                    Some("127.0.0.1:7331"),
+                    Some("application/octet-stream"),
+                    "data",
+                ))
+                .await
+                .unwrap();
+            assert_eq!(
+                resp.status(),
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                "{uri}: сравнение обязано быть точным по полному пути"
+            );
+        }
+    }
+
+    // --- raw-загрузка файла в Bitrix24 (forge-b24-f1-twlx.7) ---
+    //
+    // Третий плагин с raw-телом. Соблазн заменить список префиксом стал ещё
+    // сильнее — тесты ниже фиксируют, почему нельзя.
+
+    /// Same-origin `POST /api/bitrix/upload` с octet-stream проходит.
+    #[tokio::test]
+    async fn bitrix_upload_octet_stream_same_origin_allowed() {
+        let app = csrf_app();
+        let resp = app
+            .oneshot(csrf_req(
+                Method::POST,
+                "/api/bitrix/upload",
+                Some("http://127.0.0.1:7331"),
+                Some("127.0.0.1:7331"),
+                Some("application/octet-stream"),
+                "\x00\x01binary",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    /// Исключение НЕ отменяет same-origin и для Bitrix24.
+    #[tokio::test]
+    async fn bitrix_upload_cross_origin_still_rejected() {
+        let app = csrf_app();
+        let resp = app
+            .oneshot(csrf_req(
+                Method::POST,
+                "/api/bitrix/upload",
+                Some("http://evil.example.com"),
+                Some("127.0.0.1:7331"),
+                Some("application/octet-stream"),
+                "\x00\x01binary",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    /// Сравнение осталось ТОЧНЫМ по полному пути: соседний мутирующий роут
+    /// того же плагина по-прежнему требует `application/json`.
+    #[tokio::test]
+    async fn other_bitrix_routes_still_require_json() {
+        let app = csrf_app();
+        let resp = app
+            .oneshot(csrf_req(
+                Method::POST,
+                "/api/bitrix/dialogs/chat7/messages",
+                Some("http://127.0.0.1:7331"),
+                Some("127.0.0.1:7331"),
+                Some("application/octet-stream"),
+                "{}",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+
+    /// Пути, ПОХОЖИЕ на `/api/bitrix/upload`, исключением не являются.
+    #[tokio::test]
+    async fn bitrix_lookalike_upload_paths_are_not_exempt() {
+        for uri in ["/api/bitrix/uploads", "/api/bitrix/upload/extra"] {
+            let app = Router::new()
+                .route("/api/bitrix/uploads", axum::routing::post(ok_handler))
+                .route("/api/bitrix/upload/extra", axum::routing::post(ok_handler))
                 .layer(from_fn(csrf_guard));
             let resp = app
                 .oneshot(csrf_req(

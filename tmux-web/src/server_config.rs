@@ -68,6 +68,11 @@ pub struct ServerConfig {
     /// default). `None`/`Some(false)` ⇒ файл не настаивает.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vk: Option<bool>,
+    /// Opt-in плагин Bitrix24 из файла. `Some(true)` ⇒ включает плагин даже
+    /// без CLI-флага `--bitrix` (file-источник в цепочке CLI > file > env >
+    /// default). `None`/`Some(false)` ⇒ файл не настаивает.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bitrix: Option<bool>,
 }
 
 
@@ -104,6 +109,12 @@ pub struct EffectiveConfig {
     /// регистрируются, кнопка Ⓥ во фронте остаётся скрытой (её гейт — 200 на
     /// `GET /api/vk/status`).
     pub vk_enabled: bool,
+    /// Opt-in плагин Bitrix24 (см. [`resolve`]). True ⇒ активирован через
+    /// `--bitrix` / `server_config.json` / env `DEVFORGE_BITRIX`. False
+    /// (default) ⇒ поведение байт-в-байт как раньше: роуты `/api/bitrix/*` и
+    /// `/ws/bitrix` не регистрируются, кнопка вкладки во фронте остаётся
+    /// скрытой (её гейт — 200 на `GET /api/bitrix/status`).
+    pub bitrix_enabled: bool,
 }
 
 /// Имя env-переменной, включающей PWA-режим (низший приоритет после CLI и
@@ -117,6 +128,10 @@ pub const ENV_TELEGRAM: &str = "DEVFORGE_TELEGRAM";
 /// Имя env-переменной, включающей плагин VK (низший приоритет после CLI и
 /// файла). Принимает те же truthy-значения, что и [`ENV_PWA`].
 pub const ENV_VK: &str = "DEVFORGE_VK";
+
+/// Имя env-переменной, включающей плагин Bitrix24 (низший приоритет после
+/// CLI и файла). Принимает те же truthy-значения, что и [`ENV_PWA`].
+pub const ENV_BITRIX: &str = "DEVFORGE_BITRIX";
 
 /// Парсинг truthy-значения env-флага: `1`/`true`/`yes`/`on` (любой регистр)
 /// ⇒ `true`; всё остальное ⇒ `false`.
@@ -207,7 +222,35 @@ pub fn save_to(path: &Path, cfg: &ServerConfig) -> Result<()> {
 /// **Auto-generation токена** делается в отдельной фазе (см.
 /// [`finalize_token`]) — `resolve` сам токен не генерирует, чтобы
 /// resolver оставался pure-функцией.
+///
+/// Тонкая обёртка над [`resolve_with_env`]: переменные окружения читаются
+/// ЗДЕСЬ и только здесь.
 pub fn resolve(cli_opts: &RunOptions, file_cfg: Option<&ServerConfig>) -> EffectiveConfig {
+    resolve_with_env(cli_opts, file_cfg, &|key| std::env::var(key).ok())
+}
+
+/// Тот же резолв, но с ЯВНЫМ источником переменных окружения.
+///
+/// # Зачем это существует
+///
+/// `std::env` — process-global. `cargo test` гоняет тесты одного бинаря в
+/// НЕСКОЛЬКО ПОТОКОВ, поэтому тест, выставляющий `DEVFORGE_PWA=1` (матрица
+/// env), и тест, утверждающий «`--bitrix` не включает PWA», в полном прогоне
+/// пересекались во времени — и второй падал раз в несколько запусков. Guard
+/// вида `if env::var(..).is_err()` окно сужает, но не закрывает: между
+/// проверкой и вызовом `resolve` переменную успевает выставить соседний поток.
+///
+/// Здесь окно закрыто целиком: тест передаёт СВОЙ источник (обычно пустой), и
+/// глобального окружения резолв не касается вовсе. Продовый путь по-прежнему
+/// один — [`resolve`].
+///
+/// `lookup` возвращает `Option<String>`: `None` означает «переменной нет», что
+/// для всех opt-in флагов равно «выключено».
+pub fn resolve_with_env(
+    cli_opts: &RunOptions,
+    file_cfg: Option<&ServerConfig>,
+    lookup: &dyn Fn(&str) -> Option<String>,
+) -> EffectiveConfig {
     // remote_mode: ТОЛЬКО CLI-флаг. Файл больше не подразумевает remote.
     let remote_mode = cli_opts.remote;
 
@@ -261,7 +304,7 @@ pub fn resolve(cli_opts: &RunOptions, file_cfg: Option<&ServerConfig>) -> Effect
     // приоритетов).
     let pwa_enabled = cli_opts.pwa
         || file_cfg.and_then(|f| f.pwa).unwrap_or(false)
-        || std::env::var(ENV_PWA)
+        || lookup(ENV_PWA)
             .map(|v| env_flag_is_truthy(&v))
             .unwrap_or(false);
 
@@ -270,7 +313,7 @@ pub fn resolve(cli_opts: &RunOptions, file_cfg: Option<&ServerConfig>) -> Effect
     // default(false).
     let telegram_enabled = cli_opts.telegram
         || file_cfg.and_then(|f| f.telegram).unwrap_or(false)
-        || std::env::var(ENV_TELEGRAM)
+        || lookup(ENV_TELEGRAM)
             .map(|v| env_flag_is_truthy(&v))
             .unwrap_or(false);
 
@@ -278,7 +321,16 @@ pub fn resolve(cli_opts: &RunOptions, file_cfg: Option<&ServerConfig>) -> Effect
     // CLI (--vk) > file (vk: true) > env (DEVFORGE_VK) > default(false).
     let vk_enabled = cli_opts.vk
         || file_cfg.and_then(|f| f.vk).unwrap_or(false)
-        || std::env::var(ENV_VK)
+        || lookup(ENV_VK)
+            .map(|v| env_flag_is_truthy(&v))
+            .unwrap_or(false);
+
+    // Bitrix24 opt-in: та же механика —
+    // CLI (--bitrix) > file (bitrix: true) > env (DEVFORGE_BITRIX) >
+    // default(false).
+    let bitrix_enabled = cli_opts.bitrix
+        || file_cfg.and_then(|f| f.bitrix).unwrap_or(false)
+        || lookup(ENV_BITRIX)
             .map(|v| env_flag_is_truthy(&v))
             .unwrap_or(false);
 
@@ -290,6 +342,7 @@ pub fn resolve(cli_opts: &RunOptions, file_cfg: Option<&ServerConfig>) -> Effect
         pwa_enabled,
         telegram_enabled,
         vk_enabled,
+        bitrix_enabled,
     }
 }
 
@@ -896,6 +949,212 @@ mod tests {
         }
     }
 
+    /// ПУСТОЕ окружение — источник переменных для не-env тестов Bitrix24.
+    ///
+    /// Соседи (PWA, Telegram, VK) защищаются guard'ом
+    /// `if env::var(..).is_err()`, и этого НЕ ДОСТАТОЧНО: `cargo test` гоняет
+    /// тесты одного бинаря в несколько потоков, а `pwa_env_matrix` выставляет
+    /// `DEVFORGE_PWA=1` process-global. Между guard'ом и вызовом `resolve`
+    /// переменная успевает появиться, и утверждение «`--bitrix` не включает
+    /// PWA» падало раз в несколько полных прогонов.
+    ///
+    /// Явный источник закрывает окно целиком: резолв не касается глобального
+    /// окружения вовсе. Продовый путь при этом остаётся ровно один — `resolve`.
+    fn no_env(_key: &str) -> Option<String> {
+        None
+    }
+
+    #[test]
+    fn resolve_bitrix_default_false() {
+        let eff = resolve_with_env(&RunOptions::default(), None, &no_env);
+        assert!(!eff.bitrix_enabled, "default без источников → false");
+    }
+
+    #[test]
+    fn resolve_bitrix_cli_flag_enables() {
+        let cli = RunOptions {
+            bitrix: true,
+            ..Default::default()
+        };
+        let eff = resolve_with_env(&cli, None, &no_env);
+        assert!(eff.bitrix_enabled, "--bitrix → bitrix_enabled true");
+        assert!(!eff.pwa_enabled, "--bitrix не включает PWA");
+    }
+
+    #[test]
+    fn resolve_bitrix_file_enables_without_cli() {
+        let file = ServerConfig {
+            bitrix: Some(true),
+            ..Default::default()
+        };
+        let eff = resolve_with_env(&RunOptions::default(), Some(&file), &no_env);
+        assert!(eff.bitrix_enabled, "file bitrix:true включает плагин");
+    }
+
+    #[test]
+    fn resolve_bitrix_cli_true_overrides_file_false() {
+        let cli = RunOptions {
+            bitrix: true,
+            ..Default::default()
+        };
+        let file = ServerConfig {
+            bitrix: Some(false),
+            ..Default::default()
+        };
+        assert!(
+            resolve_with_env(&cli, Some(&file), &no_env).bitrix_enabled,
+            "CLI true побеждает file:false"
+        );
+    }
+
+    /// `file: false` не включает плагин — и это видно БЕЗ оглядки на
+    /// окружение машины.
+    #[test]
+    fn resolve_bitrix_file_false_stays_off() {
+        let file = ServerConfig {
+            bitrix: Some(false),
+            ..Default::default()
+        };
+        let eff = resolve_with_env(&RunOptions::default(), Some(&file), &no_env);
+        assert!(!eff.bitrix_enabled, "file bitrix:false → off");
+    }
+
+    /// Четыре opt-in фичи независимы: включение одной не должно включать
+    /// остальные. Ловит копипасту вида `bitrix_enabled = cli_opts.vk`.
+    ///
+    /// Окружение ЯВНО пустое — иначе тест зависел бы от того, что в этот
+    /// момент выставили соседние потоки.
+    #[test]
+    fn resolve_bitrix_is_independent_of_the_other_plugins() {
+        let only_b24 = resolve_with_env(
+            &RunOptions {
+                bitrix: true,
+                ..Default::default()
+            },
+            None,
+            &no_env,
+        );
+        assert!(only_b24.bitrix_enabled);
+        assert!(!only_b24.vk_enabled, "--bitrix не включает VK");
+        assert!(!only_b24.telegram_enabled, "--bitrix не включает Telegram");
+        assert!(!only_b24.pwa_enabled, "--bitrix не включает PWA");
+
+        let only_vk = resolve_with_env(
+            &RunOptions {
+                vk: true,
+                ..Default::default()
+            },
+            None,
+            &no_env,
+        );
+        assert!(!only_vk.bitrix_enabled, "--vk не включает Bitrix24");
+
+        let all = resolve_with_env(
+            &RunOptions {
+                pwa: true,
+                telegram: true,
+                vk: true,
+                bitrix: true,
+                ..Default::default()
+            },
+            None,
+            &no_env,
+        );
+        assert!(
+            all.pwa_enabled && all.telegram_enabled && all.vk_enabled && all.bitrix_enabled
+        );
+    }
+
+    /// Матрица env-резолюции Bitrix24 — на ЯВНОМ источнике переменных.
+    ///
+    /// Глобального окружения тест не трогает вовсе: `std::env::set_var` в
+    /// многопоточном тестовом бинаре — это гонка не только с соседними
+    /// проверками, но и с чужими крейтами того же прогона. Что резолв
+    /// действительно читает процессное окружение, проверяет отдельный тест
+    /// ниже.
+    #[test]
+    fn bitrix_env_matrix() {
+        /// Источник, отдающий значение ТОЛЬКО для `DEVFORGE_BITRIX`.
+        fn env_with(value: &'static str) -> impl Fn(&str) -> Option<String> {
+            move |key: &str| (key == ENV_BITRIX).then(|| value.to_string())
+        }
+
+        // env=1 без CLI/file → включено.
+        assert!(
+            resolve_with_env(&RunOptions::default(), None, &env_with("1")).bitrix_enabled,
+            "env=1 включает"
+        );
+
+        // Резолюция — ИЛИ: truthy env побеждает file:false.
+        let file_false = ServerConfig {
+            bitrix: Some(false),
+            ..Default::default()
+        };
+        assert!(
+            resolve_with_env(&RunOptions::default(), Some(&file_false), &env_with("true"))
+                .bitrix_enabled,
+            "truthy env включает несмотря на file:false"
+        );
+
+        // Мусор в env не включает.
+        for junk in ["nope", "0", "false", "", "2"] {
+            let lookup = move |key: &str| (key == ENV_BITRIX).then(|| junk.to_string());
+            assert!(
+                !resolve_with_env(&RunOptions::default(), None, &lookup).bitrix_enabled,
+                "мусорный env {junk:?} не включает плагин"
+            );
+        }
+
+        // CLI побеждает env=0 и file:false.
+        let cli_b24 = RunOptions {
+            bitrix: true,
+            ..Default::default()
+        };
+        assert!(
+            resolve_with_env(&cli_b24, Some(&file_false), &env_with("0")).bitrix_enabled,
+            "CLI true побеждает env=0 и file:false"
+        );
+
+        // Переменной нет → default false; file:true достаточно.
+        assert!(!resolve_with_env(&RunOptions::default(), None, &no_env).bitrix_enabled);
+        let file_true = ServerConfig {
+            bitrix: Some(true),
+            ..Default::default()
+        };
+        assert!(resolve_with_env(&RunOptions::default(), Some(&file_true), &no_env).bitrix_enabled);
+
+        // Переменная ЧУЖОГО плагина Bitrix24 не включает.
+        let vk_env = |key: &str| (key == ENV_VK).then(|| "1".to_string());
+        let eff = resolve_with_env(&RunOptions::default(), None, &vk_env);
+        assert!(eff.vk_enabled && !eff.bitrix_enabled, "DEVFORGE_VK не включает Bitrix24");
+    }
+
+    /// `resolve` действительно читает процессное окружение — иначе
+    /// [`resolve_with_env`] проверял бы сам себя, а `DEVFORGE_BITRIX` не
+    /// работал бы вовсе.
+    ///
+    /// ЕДИНСТВЕННЫЙ тест, трогающий `DEVFORGE_BITRIX` глобально; окружение
+    /// восстанавливается. Остальные проверки Bitrix24 переведены на явный
+    /// источник и от него не зависят.
+    #[test]
+    fn resolve_reads_the_bitrix_variable_from_the_process_environment() {
+        let saved = std::env::var(ENV_BITRIX).ok();
+
+        std::env::set_var(ENV_BITRIX, "1");
+        assert!(
+            resolve(&RunOptions::default(), None).bitrix_enabled,
+            "resolve обязан читать DEVFORGE_BITRIX"
+        );
+
+        std::env::remove_var(ENV_BITRIX);
+        assert!(!resolve(&RunOptions::default(), None).bitrix_enabled);
+
+        match saved {
+            Some(v) => std::env::set_var(ENV_BITRIX, v),
+            None => std::env::remove_var(ENV_BITRIX),
+        }
+    }
+
     #[test]
     fn env_flag_is_truthy_matrix() {
         assert!(env_flag_is_truthy("1"));
@@ -1056,6 +1315,7 @@ mod tests {
             pwa_enabled: false,
             telegram_enabled: false,
             vk_enabled: false,
+            bitrix_enabled: false,
         };
         let got = finalize_token_at(&eff, &path);
         assert!(got.is_none(), "non-remote → no token");
@@ -1074,6 +1334,7 @@ mod tests {
             pwa_enabled: false,
             telegram_enabled: false,
             vk_enabled: false,
+            bitrix_enabled: false,
         };
         let got = finalize_token_at(&eff, &path).expect("token preserved");
         assert_eq!(got, "existing-token");
@@ -1093,6 +1354,7 @@ mod tests {
             pwa_enabled: false,
             telegram_enabled: false,
             vk_enabled: false,
+            bitrix_enabled: false,
         };
         let token = finalize_token_at(&eff, &path).expect("token generated");
         assert_eq!(token.len(), 64);
@@ -1126,6 +1388,7 @@ mod tests {
             pwa_enabled: false,
             telegram_enabled: false,
             vk_enabled: false,
+            bitrix_enabled: false,
         };
         let token = finalize_token_at(&eff, &path).expect("token generated");
 

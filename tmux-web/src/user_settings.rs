@@ -108,10 +108,48 @@
 //!     БЕЛЫЙ список, и фильтр считается ДЕЙСТВУЮЩИМ, только когда хотя бы один
 //!     из них непуст: включённый тумблер с пустым выбором показал бы пустую
 //!     панель, и пользователь прочитал бы это как поломку, а не как настройку.
+//!   - `bitrix_hotkeys_enabled` (bool, default **true**) — включена ли
+//!     клавиатурная навигация во вкладке «Битрикс24» (модули
+//!     `static/js/bitrix/keys.js` и `keynav.js`). Дефолт `true` по той же
+//!     причине, что у двух соседних панелей: вкладка уже opt-in (флаг
+//!     `--bitrix`), хоткеи живут только внутри неё и молчат в полях ввода.
+//!     Фронтенд читает флаг строго как `!== false`
+//!     (`static/js/bitrix/keynav.js::hotkeysEnabled`).
+//!   - `bitrix_hotkeys` (map String→String, default пустая) — переопределения
+//!     комбинаций Битрикс24. Как и у соседей, backend хранит и валидирует
+//!     только ФОРМУ (см. [`sanitize_hotkeys`]): реестр действий живёт
+//!     исключительно во фронтенде (`static/js/bitrix/keys.js`).
+//!   - `bitrix_filter_enabled` (bool, default **false**) — включён ли режим
+//!     «показывать только выбранные диалоги» во вкладке «Битрикс24». Фронтенд
+//!     читает флаг строго как `=== true`
+//!     (`static/js/bitrix/visibility.js::normalizeFilter`).
+//!
+//!     АСИММЕТРИЯ ДЕФОЛТОВ НАМЕРЕННА и повторяет обе соседние панели:
+//!     `*_hotkeys_enabled` по умолчанию ВКЛЮЧЕНО и читается `!== false`,
+//!     `*_filter_enabled` по умолчанию ВЫКЛЮЧЕНО и читается `=== true`.
+//!     Перепутать гейты нельзя: ошибка в одну сторону молча выключает хоткеи
+//!     у всех, кто ни разу не открывал настройки, а в другую — прячет чаты у
+//!     тех, кто белый список никогда не собирал.
+//!   - `bitrix_visible_kinds` (Vec<String>, default пустой) — белый список
+//!     ВИДОВ диалогов: `user` | `chat` | `task`. Словарь снова свой: папок и
+//!     серверных фильтров у портала нет, а семь видов диалога (`sg`,
+//!     `openline`, `copilot`, `collab` и прочие) сведены фронтендом к трём —
+//!     раскладывать настройку по редким видам значило бы требовать знания
+//!     внутренней терминологии портала. Отдельного ключа под чаты задач НЕТ:
+//!     `task` — такой же вид в этом же списке, и второй ключ разошёлся бы с
+//!     ним при первом же изменении.
+//!   - `bitrix_visible_peers` (Vec<String>, default пустой) — `DIALOG_ID`
+//!     отдельных диалогов (`"chat7"`, `"19"`, `"sg12"`), видимых независимо от
+//!     вида. Как и у соседей, оба списка — БЕЛЫЙ список, и фильтр считается
+//!     ДЕЙСТВУЮЩИМ, только когда хотя бы один из них непуст.
 //!
 //! Токена VK в этом файле нет и быть не должно: он живёт в конфиге плагина
 //! (`~/.config/forge/vk.toml`, права 0600), а `user_settings.json` читается
 //! фронтендом целиком через `GET /api/user-settings` и секретов не хранит.
+//! То же и строже — про Битрикс24: там секрет это ВЕСЬ URL входящего вебхука
+//! (`https://<портал>/rest/<user_id>/<code>/`), он живёт только в
+//! `~/.config/forge/bitrix.toml` с правами 0600 и в этот файл не попадает
+//! ни целиком, ни фрагментом.
 //!
 //! ### Persistence
 //!
@@ -170,6 +208,16 @@ fn default_telegram_hotkeys_enabled() -> bool {
 /// место, где общая функция сделала бы изменение одного дефолта незаметной
 /// сменой второго.
 fn default_vk_hotkeys_enabled() -> bool {
+    true
+}
+
+/// Default-функция для `bitrix_hotkeys_enabled` — true.
+///
+/// Третья одинаковая функция подряд — и это сознательно, по той же причине,
+/// что описана у `default_vk_hotkeys_enabled`: `#[serde(default = "...")]`
+/// связывает поле с ИМЕНЕМ функции, и общая на три панели функция превратила
+/// бы правку дефолта одной вкладки в молчаливую правку дефолта двух других.
+fn default_bitrix_hotkeys_enabled() -> bool {
     true
 }
 
@@ -410,6 +458,32 @@ pub struct UserSettings {
     /// `DialogDto.id` плагина VK).
     #[serde(default)]
     pub vk_visible_peers: Vec<String>,
+    /// Клавиатурная навигация во вкладке «Битрикс24». Default `true` — см.
+    /// шапку модуля: фича живёт внутри уже opt-in вкладки, тумблер нужен для
+    /// выключения, а не для включения. Фронт читает `!== false`.
+    #[serde(default = "default_bitrix_hotkeys_enabled")]
+    pub bitrix_hotkeys_enabled: bool,
+    /// Переопределения комбинаций Битрикс24: `id действия` → `комбинация`.
+    /// Пустая мапа = дефолтные клавиши из реестра фронтенда.
+    #[serde(default)]
+    pub bitrix_hotkeys: BTreeMap<String, String>,
+    /// Режим «показывать только выбранные диалоги» во вкладке «Битрикс24».
+    /// Default `false` — фича opt-in, нулевая конфигурация показывает все
+    /// диалоги. Фронт читает `=== true`.
+    #[serde(default)]
+    pub bitrix_filter_enabled: bool,
+    /// Белый список ВИДОВ диалогов: `user` | `chat` | `task`.
+    ///
+    /// Не директории колонки (`all`/`chats`/`tasks`/`unread`): те — локальная
+    /// нарезка ОДНОГО списка `im.recent.get`, а не свойство диалога, и
+    /// «показывать только непрочитанные» как постоянная настройка означало бы
+    /// исчезновение чата в момент его прочтения.
+    #[serde(default)]
+    pub bitrix_visible_kinds: Vec<String>,
+    /// Белый список отдельных диалогов: `DIALOG_ID` строками (`"chat7"`,
+    /// `"19"`, `"sg12"` — в формате `DialogDto.id` плагина Битрикс24).
+    #[serde(default)]
+    pub bitrix_visible_peers: Vec<String>,
     /// Авто-апрув интерактивных prompt'ов Claude Code в tmux-сессиях
     /// (см. [`crate::auto_approve`]). Default `false` — фича opt-in и
     /// нажимает клавиши за пользователя, см. инвариант в шапке модуля.
@@ -459,6 +533,11 @@ impl Default for UserSettings {
             vk_filter_enabled: false,
             vk_visible_kinds: Vec::new(),
             vk_visible_peers: Vec::new(),
+            bitrix_hotkeys_enabled: default_bitrix_hotkeys_enabled(),
+            bitrix_hotkeys: BTreeMap::new(),
+            bitrix_filter_enabled: false,
+            bitrix_visible_kinds: Vec::new(),
+            bitrix_visible_peers: Vec::new(),
             auto_approve_enabled: false,
             auto_approve_broad: false,
             auto_approve_questions: default_auto_approve_questions(),
@@ -538,6 +617,27 @@ pub struct PatchUserSettingsReq {
     /// Белый список отдельных бесед VK. Семантика — ПОЛНАЯ ЗАМЕНА списка.
     #[serde(default)]
     pub vk_visible_peers: Option<Vec<String>>,
+    /// Включить/выключить клавиатурную навигацию во вкладке «Битрикс24».
+    #[serde(default)]
+    pub bitrix_hotkeys_enabled: Option<bool>,
+    /// Переопределения комбинаций Битрикс24. Семантика — ПОЛНАЯ ЗАМЕНА карты,
+    /// а не слияние: только так UI может снять одно переопределение (прислать
+    /// карту без него). Пустая карта = сброс всех действий к дефолтам.
+    #[serde(default)]
+    pub bitrix_hotkeys: Option<BTreeMap<String, String>>,
+    /// Включить/выключить режим «показывать только выбранные диалоги» во
+    /// вкладке «Битрикс24».
+    #[serde(default)]
+    pub bitrix_filter_enabled: Option<bool>,
+    /// Белый список видов диалогов Битрикс24. Семантика — ПОЛНАЯ ЗАМЕНА
+    /// списка, как и у соседних панелей. Пустой список = «ничего не выбрано»,
+    /// и тогда включённый тумблер показывает ВСЁ (см. шапку модуля).
+    #[serde(default)]
+    pub bitrix_visible_kinds: Option<Vec<String>>,
+    /// Белый список отдельных диалогов Битрикс24. Семантика — ПОЛНАЯ ЗАМЕНА
+    /// списка.
+    #[serde(default)]
+    pub bitrix_visible_peers: Option<Vec<String>>,
     /// Включить/выключить авто-апрув prompt'ов Claude Code целиком.
     #[serde(default)]
     pub auto_approve_enabled: Option<bool>,
@@ -708,6 +808,29 @@ impl UserSettingsStore {
         }
         if let Some(v) = payload.vk_visible_peers {
             inner.settings.vk_visible_peers = sanitize_visible_list(v);
+        }
+        if let Some(v) = payload.bitrix_hotkeys_enabled {
+            inner.settings.bitrix_hotkeys_enabled = v;
+        }
+        if let Some(v) = payload.bitrix_hotkeys {
+            // Тот же санитайзер на все три панели: он проверяет только ФОРМУ
+            // (id из [a-z0-9_.-], непустые значения, потолок записей), а смысл
+            // id знает исключительно фронтенд. Замена целиком, а не merge —
+            // см. комментарий у поля в PatchUserSettingsReq.
+            inner.settings.bitrix_hotkeys = sanitize_hotkeys(v);
+        }
+        if let Some(v) = payload.bitrix_filter_enabled {
+            inner.settings.bitrix_filter_enabled = v;
+        }
+        if let Some(v) = payload.bitrix_visible_kinds {
+            // Записи вида — короткие ASCII-строки (`user`/`chat`/`task`), а
+            // записи диалогов — `DIALOG_ID` портала (`chat7`, `19`, `sg12`).
+            // Обе формы проходят общий санитайзер: он допускает
+            // `[0-9a-zA-Z_:.-]`, чего хватает и на то, и на другое.
+            inner.settings.bitrix_visible_kinds = sanitize_visible_list(v);
+        }
+        if let Some(v) = payload.bitrix_visible_peers {
+            inner.settings.bitrix_visible_peers = sanitize_visible_list(v);
         }
         if let Some(v) = payload.auto_approve_enabled {
             inner.settings.auto_approve_enabled = v;
@@ -1489,6 +1612,268 @@ mod tests {
         // Потолок общий на обе панели: карта приезжает из браузера и ложится в
         // файл ровно так же, как телеграмная.
         assert_eq!(res.vk_hotkeys.len(), MAX_TELEGRAM_HOTKEYS);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Битрикс24 (Ф11)
+    //
+    // Проверки сгруппированы вокруг ОДНОЙ ошибки, которую здесь легче всего
+    // сделать: перепутать гейты дефолтов двух флагов. `bitrix_hotkeys_enabled`
+    // по умолчанию ВКЛЮЧЁН (фронт читает `!== false`), `bitrix_filter_enabled`
+    // по умолчанию ВЫКЛЮЧЕН (фронт читает `=== true`). Перепутанные местами,
+    // они дают два молчаливых регресса: неработающие хоткеи и спрятанные чаты.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_bitrix_defaults_hotkeys_on_filter_off() {
+        let path = tmp_path("bitrix_defaults");
+        let store = UserSettingsStore::new(path.clone());
+        let s = store.get();
+        // Хоткеи — ВКЛ по умолчанию.
+        assert!(s.bitrix_hotkeys_enabled);
+        assert!(s.bitrix_hotkeys.is_empty());
+        // Фильтр — ВЫКЛ по умолчанию, списки пусты.
+        assert!(!s.bitrix_filter_enabled);
+        assert!(s.bitrix_visible_kinds.is_empty());
+        assert!(s.bitrix_visible_peers.is_empty());
+        // И то же самое у чистого `Default` — файла может не быть вовсе.
+        let d = UserSettings::default();
+        assert!(d.bitrix_hotkeys_enabled);
+        assert!(!d.bitrix_filter_enabled);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_bitrix_defaults_survive_partial_file() {
+        // Файл, записанный СТАРОЙ версией devforge (полей Битрикс24 в нём нет
+        // вовсе). Отсутствующее `bitrix_hotkeys_enabled` обязано читаться как
+        // `true`, иначе обновление молча выключит навигацию всем, кто ни разу
+        // не открывал настройки. Это ровно тот случай, который ловит
+        // `#[serde(default = "default_bitrix_hotkeys_enabled")]`.
+        let path = tmp_path("bitrix_partial");
+        std::fs::write(&path, br#"{"todo_default_priority":3}"#).unwrap();
+        let store = UserSettingsStore::new(path.clone());
+        let s = store.get();
+        assert!(s.bitrix_hotkeys_enabled);
+        assert!(s.bitrix_hotkeys.is_empty());
+        // А вот фильтр в том же файле обязан остаться выключенным.
+        assert!(!s.bitrix_filter_enabled);
+        // Соседние панели не задеты.
+        assert!(s.vk_hotkeys_enabled);
+        assert!(s.telegram_hotkeys_enabled);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_bitrix_visibility_patch_replaces_lists() {
+        let path = tmp_path("bitrix_visibility_patch");
+        let store = UserSettingsStore::new(path.clone());
+
+        let res = store
+            .patch(PatchUserSettingsReq {
+                bitrix_filter_enabled: Some(true),
+                bitrix_visible_kinds: Some(vec!["chat".to_string(), "task".to_string()]),
+                // DIALOG_ID портала полиморфен: число для личного диалога,
+                // строка `chat7`/`sg12` для группового. Санитайзер обязан
+                // пропускать обе формы.
+                bitrix_visible_peers: Some(vec![
+                    "chat7".to_string(),
+                    "19".to_string(),
+                    "sg12".to_string(),
+                ]),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert!(res.bitrix_filter_enabled);
+        assert_eq!(res.bitrix_visible_kinds, vec!["chat", "task"]);
+        assert_eq!(res.bitrix_visible_peers, vec!["chat7", "19", "sg12"]);
+
+        // Persistence.
+        let store2 = UserSettingsStore::new(path.clone());
+        assert_eq!(store2.get().bitrix_visible_peers.len(), 3);
+
+        // ЗАМЕНА, а не слияние: снять галочку иначе нечем.
+        let res2 = store2
+            .patch(PatchUserSettingsReq {
+                bitrix_visible_peers: Some(vec!["chat7".to_string()]),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert_eq!(res2.bitrix_visible_peers, vec!["chat7"]);
+        // Соседний список не задет — patch применяет только Some(..).
+        assert_eq!(res2.bitrix_visible_kinds, vec!["chat", "task"]);
+
+        // Выключение тумблера НЕ стирает выбор.
+        let res3 = store2
+            .patch(PatchUserSettingsReq {
+                bitrix_filter_enabled: Some(false),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert!(!res3.bitrix_filter_enabled);
+        assert_eq!(res3.bitrix_visible_peers, vec!["chat7"]);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_bitrix_visibility_patch_sanitizes_and_caps() {
+        let path = tmp_path("bitrix_visibility_sanitize");
+        let store = UserSettingsStore::new(path.clone());
+        let res = store
+            .patch(PatchUserSettingsReq {
+                bitrix_visible_kinds: Some(vec![
+                    "  task  ".to_string(),   // trim
+                    "chat".to_string(),
+                    "chat".to_string(),       // дубль
+                    String::new(),            // пустая
+                    "с пробелом".to_string(), // недопустимые символы
+                ]),
+                bitrix_visible_peers: Some(vec!["chat7".to_string(), "../etc".to_string()]),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert_eq!(res.bitrix_visible_kinds, vec!["task", "chat"]);
+        assert_eq!(res.bitrix_visible_peers, vec!["chat7"]);
+
+        // Потолок общий на все три панели.
+        let raw: Vec<String> = (0..(MAX_TELEGRAM_VISIBLE + 10))
+            .map(|i| format!("chat{i}"))
+            .collect();
+        let res2 = store
+            .patch(PatchUserSettingsReq {
+                bitrix_visible_peers: Some(raw),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert_eq!(res2.bitrix_visible_peers.len(), MAX_TELEGRAM_VISIBLE);
+        assert_eq!(res2.bitrix_visible_peers[0], "chat0");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_bitrix_hotkeys_patch_replaces_map_and_sanitizes() {
+        let path = tmp_path("bitrix_hotkeys_patch");
+        let store = UserSettingsStore::new(path.clone());
+
+        let mut first = BTreeMap::new();
+        first.insert("msg.reply".to_string(), "r".to_string());
+        first.insert("task.card".to_string(), "c".to_string());
+        // Мусор отбрасывается по ФОРМЕ: смысл id знает только фронтенд.
+        first.insert("MSG.SHOUT".to_string(), "x".to_string());
+        first.insert("msg.empty".to_string(), "   ".to_string());
+        let res = store
+            .patch(PatchUserSettingsReq {
+                bitrix_hotkeys: Some(first),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert_eq!(res.bitrix_hotkeys.len(), 2);
+        assert_eq!(res.bitrix_hotkeys.get("task.card").unwrap(), "c");
+
+        // Persistence + ЗАМЕНА карты целиком.
+        let store2 = UserSettingsStore::new(path.clone());
+        let mut second = BTreeMap::new();
+        second.insert("msg.reply".to_string(), "Shift+R".to_string());
+        let res2 = store2
+            .patch(PatchUserSettingsReq {
+                bitrix_hotkeys: Some(second),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert_eq!(res2.bitrix_hotkeys.len(), 1);
+        assert!(!res2.bitrix_hotkeys.contains_key("task.card"));
+        // Пустая карта — законный сброс к дефолтам, тумблер при этом не гаснет.
+        let res3 = store2
+            .patch(PatchUserSettingsReq {
+                bitrix_hotkeys: Some(BTreeMap::new()),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert!(res3.bitrix_hotkeys.is_empty());
+        assert!(res3.bitrix_hotkeys_enabled);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_bitrix_hotkeys_toggle_does_not_touch_neighbours() {
+        let path = tmp_path("bitrix_hotkeys_toggle");
+        let store = UserSettingsStore::new(path.clone());
+
+        let mut b24 = BTreeMap::new();
+        b24.insert("msg.copy".to_string(), "Ctrl+c".to_string());
+        let mut vk = BTreeMap::new();
+        vk.insert("msg.reply".to_string(), "q".to_string());
+        store
+            .patch(PatchUserSettingsReq {
+                bitrix_hotkeys: Some(b24),
+                vk_hotkeys: Some(vk),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+
+        let res = store
+            .patch(PatchUserSettingsReq {
+                bitrix_hotkeys_enabled: Some(false),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert!(!res.bitrix_hotkeys_enabled);
+        // Тумблер не трогает карту — иначе выключение стирало бы настройку.
+        assert_eq!(res.bitrix_hotkeys.get("msg.copy").unwrap(), "Ctrl+c");
+        // И не трогает соседние панели.
+        assert!(res.vk_hotkeys_enabled);
+        assert!(res.telegram_hotkeys_enabled);
+        assert_eq!(res.vk_hotkeys.get("msg.reply").unwrap(), "q");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_bitrix_hotkeys_capped() {
+        let path = tmp_path("bitrix_hotkeys_cap");
+        let store = UserSettingsStore::new(path.clone());
+        let mut raw = BTreeMap::new();
+        for i in 0..(MAX_TELEGRAM_HOTKEYS + 20) {
+            raw.insert(format!("act.{i:03}"), "j".to_string());
+        }
+        let res = store
+            .patch(PatchUserSettingsReq {
+                bitrix_hotkeys: Some(raw),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert_eq!(res.bitrix_hotkeys.len(), MAX_TELEGRAM_HOTKEYS);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_bitrix_settings_never_store_webhook_secret() {
+        // Секрет Битрикс24 — ВЕСЬ URL вебхука целиком. В user_settings.json он
+        // не попадает ни целиком, ни фрагментом: структура настроек его просто
+        // не умеет принять. Проверяем сериализованный файл: у `PatchUserSettingsReq`
+        // нет ни одного поля, куда URL мог бы приехать, а сам JSON не содержит
+        // ни `rest/`, ни `bitrix24.ru`.
+        let path = tmp_path("bitrix_no_secret");
+        let store = UserSettingsStore::new(path.clone());
+        store
+            .patch(PatchUserSettingsReq {
+                bitrix_filter_enabled: Some(true),
+                bitrix_visible_peers: Some(vec!["chat7".to_string()]),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        let body = std::fs::read_to_string(&path).expect("file must exist");
+        assert!(!body.contains("/rest/"));
+        assert!(!body.contains("webhook"));
+        assert!(!body.contains("bitrix24."));
+        // Зато сами настройки видимости на месте.
+        assert!(body.contains("bitrix_visible_peers"));
 
         let _ = std::fs::remove_file(&path);
     }

@@ -55,6 +55,11 @@ import {
     comboFromEvent as vkComboFromEvent, normalizeCombo as vkNormalizeCombo,
     overridesFromBindings as vkOverridesFromBindings,
 } from '../vk/keys.js';
+import {
+    B24_ACTIONS, B24_ACTION_GROUPS, bindingRows as b24BindingRows,
+    comboFromEvent as b24ComboFromEvent, normalizeCombo as b24NormalizeCombo,
+    overridesFromBindings as b24OverridesFromBindings,
+} from '../bitrix/keys.js';
 import { updateUserSettings } from './user-settings-api.js';
 
 /** Текст на кнопке в режиме записи. */
@@ -114,6 +119,32 @@ export const VK_HOTKEYS_CONFIG = {
     enabledKey: 'vk_hotkeys_enabled',
     mapKey: 'vk_hotkeys',
     invalidate: () => invalidatePanelBindings('vkKeys'),
+};
+
+/**
+ * Конфиг формы для панели «Битрикс24».
+ *
+ * Третий конфиг — и по-прежнему НИ ОДНОЙ строки самой формы не скопировано:
+ * ровно ради этого она и параметризована. Отличий снова три — реестр действий,
+ * имена двух полей настроек и тексты.
+ */
+export const B24_HOTKEYS_CONFIG = {
+    legend: 'Горячие клавиши Битрикс24',
+    hint: 'Клавиатурная навигация по панели Битрикс24: выбор диалога, чтение, '
+        + 'ответ и правка, вложения, действия над задачей — без мыши. Работает '
+        + 'только когда вкладка Битрикс24 открыта и фокус внутри неё; в поле '
+        + 'ввода одиночные клавиши не перехватываются. Внутри панели шпаргалку '
+        + 'открывает «?».',
+    toggleLabel: ' Клавиатурная навигация в Битрикс24',
+    actions: B24_ACTIONS,
+    groups: B24_ACTION_GROUPS,
+    bindingRows: b24BindingRows,
+    overridesFromBindings: b24OverridesFromBindings,
+    comboFromEvent: b24ComboFromEvent,
+    normalizeCombo: b24NormalizeCombo,
+    enabledKey: 'bitrix_hotkeys_enabled',
+    mapKey: 'bitrix_hotkeys',
+    invalidate: () => invalidatePanelBindings('b24Keys'),
 };
 
 /**

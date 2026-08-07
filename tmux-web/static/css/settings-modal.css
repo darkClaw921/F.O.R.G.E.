@@ -632,19 +632,23 @@ textarea.ds-prompt-textarea {
     }
 }
 
-/* ──────────── вкладки Telegram и VK: видимость чатов и бесед ────────────
+/* ─────── вкладки Telegram, VK и Битрикс24: видимость чатов и диалогов ───────
 
-   Белый список папок и чатов (js/settings/telegram-visibility-tab.js) и белый
-   список типов и бесед VK (js/settings/vk-visibility-tab.js). Правила общие:
-   формы отличаются СОДЕРЖИМЫМ списков, но не их устройством, а два набора
-   одинаковых правил разошлись бы при первой же правке. Классы при этом свои у
-   каждой панели (`tg-` / `vk-`) — чтобы поиск по коду вёл в нужную форму.
+   Белый список папок и чатов (js/settings/telegram-visibility-tab.js), белый
+   список типов и бесед VK (js/settings/vk-visibility-tab.js) и белый список
+   видов и диалогов Битрикс24 (js/settings/bitrix-visibility-tab.js). Правила
+   общие: формы отличаются СОДЕРЖИМЫМ списков, но не их устройством, а три
+   набора одинаковых правил разошлись бы при первой же правке. Классы при этом
+   свои у каждой панели (`tg-` / `vk-` / `b24-`) — чтобы поиск по коду вёл в
+   нужную форму. Третья панель ДОПИСЫВАЕТСЯ в парные селекторы, а не копирует
+   блок: копия и есть то самое расхождение, от которого правила общие.
 
    Списки прокручиваемые: у активного аккаунта чатов сотни, и без
    ограничения высоты форма выталкивала бы кнопку Save за пределы модалки. */
 
 .tg-visibility-group,
-.vk-visibility-group {
+.vk-visibility-group,
+.b24-visibility-group {
     font-size: 0.68rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -653,7 +657,8 @@ textarea.ds-prompt-textarea {
 }
 
 .tg-visibility-list,
-.vk-visibility-list {
+.vk-visibility-list,
+.b24-visibility-list {
     max-height: 220px;
     overflow-y: auto;
     border: 1px solid var(--border-input);
@@ -663,7 +668,8 @@ textarea.ds-prompt-textarea {
 }
 
 .tg-visibility-item,
-.vk-visibility-item {
+.vk-visibility-item,
+.b24-visibility-item {
     display: flex;
     align-items: baseline;
     gap: 6px;
@@ -673,7 +679,8 @@ textarea.ds-prompt-textarea {
 }
 
 .tg-visibility-label,
-.vk-visibility-label {
+.vk-visibility-label,
+.b24-visibility-label {
     flex: 1 1 auto;
     min-width: 0;
     overflow: hidden;
@@ -684,14 +691,16 @@ textarea.ds-prompt-textarea {
 /* Пометки чата (архив / без звука / бот) — подсказка, а не содержание:
    приглушены и не участвуют в переносе. */
 .tg-visibility-badge,
-.vk-visibility-badge {
+.vk-visibility-badge,
+.b24-visibility-badge {
     flex: 0 0 auto;
     font-size: 0.65rem;
     color: var(--fg-mute);
 }
 
 .tg-visibility-search,
-.vk-visibility-search {
+.vk-visibility-search,
+.b24-visibility-search {
     width: 100%;
     box-sizing: border-box;
     margin: 4px 0 6px;
@@ -703,24 +712,28 @@ textarea.ds-prompt-textarea {
     font-size: 0.75rem;
 }
 .tg-visibility-search:focus,
-.vk-visibility-search:focus {
+.vk-visibility-search:focus,
+.b24-visibility-search:focus {
     outline: none;
     border-color: var(--accent);
 }
 
 .tg-visibility-summary,
-.vk-visibility-summary {
+.vk-visibility-summary,
+.b24-visibility-summary {
     margin: 6px 0 2px;
 }
 /* Режим включён, но ничего не выбрано — предупреждение, а не ошибка:
    поведение при этом безопасное (видно всё), но не то, чего ждут. */
 .tg-visibility-summary.tg-visibility-warn,
-.vk-visibility-summary.vk-visibility-warn {
+.vk-visibility-summary.vk-visibility-warn,
+.b24-visibility-summary.b24-visibility-warn {
     color: var(--warn, #d08b00);
 }
 
 .tg-visibility-save-ok,
-.vk-visibility-save-ok {
+.vk-visibility-save-ok,
+.b24-visibility-save-ok {
     color: var(--ok, #3fa34d);
     margin-bottom: 6px;
 }

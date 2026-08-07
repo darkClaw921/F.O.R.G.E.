@@ -264,5 +264,50 @@ ok(vimHandled('j'), 'owns() вернул undefined: не владение, vim �
 globalThis.window.ForgeApp = undefined;
 ok(vimHandled('j'), 'ForgeApp отсутствует: vim работает');
 
+// ---------------------------------------------------------------------------
+// 4. РЕЕСТР (введён на третьей панели — Битрикс24)
+//
+// До Ф11 имена контрактов были захардкожены списком, и комментарий в
+// hotkeys.js обещал реестр «когда появится третья панель». Реестр —
+// `window.ForgeApp.keyboardOwners`: МАССИВ имён, в который панель дописывает
+// себя сама (js/bitrix/keynav.js::registerKeyboardOwner). Два имени,
+// появившихся ДО реестра, остаются засеянными в hotkeys.js: их регистрация
+// потребовала бы правки работающих js/telegram/keynav.js и js/vk/keynav.js.
+// ---------------------------------------------------------------------------
+
+// Контракт есть, а в реестре имени нет — панель невидима для vim. Это ровно
+// то состояние, в котором находится ЛЮБАЯ новая панель до регистрации, и
+// проверка ловит забытый вызов registerKeyboardOwner().
+globalThis.window.ForgeApp = { state: { userSettings } };
+globalThis.window.ForgeApp.b24Keys = panel(true);
+ok(vimHandled('j'), 'панель вне реестра: vim не спрашивает её и работает сам');
+
+// Зарегистрировалась — vim уступил, файл hotkeys.js при этом не менялся.
+globalThis.window.ForgeApp.keyboardOwners = ['b24Keys'];
+eq(vimHandled('j'), false, 'Битрикс24 в реестре и владеет: vim молчит');
+eq(vimHandled('1'), false, 'Битрикс24 владеет: vim не переключает вкладки цифрами');
+globalThis.window.ForgeApp.b24Keys = panel(false);
+ok(vimHandled('j'), 'Битрикс24 в реестре, но не владеет: vim работает');
+
+// Реестр ДОПОЛНЯЕТ засев, а не заменяет его: старые панели обязаны продолжать
+// работать при непустом реестре.
+globalThis.window.ForgeApp.vkKeys = panel(true);
+eq(vimHandled('j'), false, 'при непустом реестре засеянный vkKeys всё ещё опрашивается');
+globalThis.window.ForgeApp.vkKeys = panel(false);
+
+// Мусор в реестре не роняет опрос: не-строки, пустые строки и повторы.
+globalThis.window.ForgeApp.keyboardOwners = ['b24Keys', 'b24Keys', '', '   ', 42, null, { a: 1 }];
+globalThis.window.ForgeApp.b24Keys = panel(true);
+eq(vimHandled('j'), false, 'мусор в реестре пропущен, зарегистрированная панель найдена');
+
+// Реестр не массив (кто-то положил объект) — деградация до засеянных имён.
+globalThis.window.ForgeApp.keyboardOwners = { b24Keys: true };
+ok(vimHandled('j'), 'реестр не массив: игнорируется, поведение как до фичи');
+
+// Имя в реестре есть, а контракта под ним нет (панель ещё грузится) —
+// пропускается молча.
+globalThis.window.ForgeApp = { state: { userSettings }, keyboardOwners: ['b24Keys'] };
+ok(vimHandled('j'), 'имя зарегистрировано, контракта ещё нет: vim работает');
+
 console.log(`${checks - failures}/${checks} ассертов прошло (frontend/hotkeys_panel_owner)`);
 if (failures > 0) process.exit(1);

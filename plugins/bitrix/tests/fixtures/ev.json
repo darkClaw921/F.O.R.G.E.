@@ -1,0 +1,1871 @@
+{
+ "result": {
+  "events": [
+   {
+    "eventId": 5,
+    "type": "ONIMV2MESSAGEADD",
+    "date": "2026-08-05T20:13:29+03:00",
+    "data": {
+     "message": {
+      "id": 63,
+      "chatId": 7,
+      "chat_id": 7,
+      "authorId": 1,
+      "author_id": 1,
+      "date": "2026-08-05T20:13:28+03:00",
+      "text": "PROBE-B через im.message.add",
+      "isSystem": false,
+      "uuid": null,
+      "forward": null,
+      "params": [],
+      "viewedByOthers": false,
+      "block": null
+     },
+     "chat": {
+      "avatar": "",
+      "color": "#64a513",
+      "description": "",
+      "dialogId": "chat7",
+      "diskFolderId": 0,
+      "entityData1": "",
+      "entityData2": "",
+      "entityData3": "",
+      "entityId": "1",
+      "entityType": "TASKS_TASK",
+      "extranet": false,
+      "containsCollaber": false,
+      "id": 7,
+      "parentChatId": 0,
+      "parentMessageId": 0,
+      "name": "Прислать финальные тексты по фичам до конца недели",
+      "owner": 1,
+      "messageType": "X",
+      "type": "tasksTask",
+      "entityLink": {
+       "type": "TASKS",
+       "url": "/company/personal/user/1/tasks/task/view/1/?ta_sec=chat_tasks&ta_el=view_button",
+       "id": "1"
+      },
+      "permissions": {
+       "manageUsersAdd": "member",
+       "manageUsersDelete": "manager",
+       "manageUi": "member",
+       "manageSettings": "owner",
+       "manageMessages": "member",
+       "manageMessagesAutoDelete": "manager",
+       "manageGuestInvites": "manager",
+       "manageDelete": "member",
+       "canPost": "member"
+      },
+      "hasManageCapability": false,
+      "isNew": false,
+      "textFieldEnabled": true,
+      "backgroundId": null
+     },
+     "user": {
+      "id": 1,
+      "active": true,
+      "name": "Игорь Герасимов",
+      "firstName": "Игорь",
+      "lastName": "Герасимов",
+      "workPosition": null,
+      "color": "#df532d",
+      "avatar": "https://cdn-ru.bitrix24.ru/b38365992/main/8b7/8b71726a7927e18ebc0b40437dd3e42f/51d0e2ae03aacc5987efefcce1a430a9.jpg",
+      "gender": "M",
+      "birthday": "",
+      "extranet": false,
+      "bot": false,
+      "connector": false,
+      "externalAuthId": "socservices",
+      "status": "online",
+      "idle": false,
+      "lastActivityDate": false,
+      "mobileLastDate": false,
+      "desktopLastDate": false,
+      "absent": false,
+      "departments": [
+       1
+      ],
+      "phones": false,
+      "type": "user",
+      "website": "",
+      "email": "darkClaw921@yandex.ru"
+     },
+     "language": "ru",
+     "additionalMessages": []
+    }
+   },
+   {
+    "eventId": 7,
+    "type": "ONIMV2MESSAGEADD",
+    "date": "2026-08-05T20:14:43+03:00",
+    "data": {
+     "message": {
+      "id": 65,
+      "chatId": 7,
+      "chat_id": 7,
+      "authorId": 1,
+      "author_id": 1,
+      "date": "2026-08-05T20:14:43+03:00",
+      "text": "PROBE-C через task.commentitem.add",
+      "isSystem": false,
+      "uuid": null,
+      "forward": null,
+      "params": {
+       "NOTIFY": "N"
+      },
+      "viewedByOthers": false,
+      "block": null
+     },
+     "chat": {
+      "avatar": "",
+      "color": "#64a513",
+      "description": "",
+      "dialogId": "chat7",
+      "diskFolderId": 0,
+      "entityData1": "",
+      "entityData2": "",
+      "entityData3": "",
+      "entityId": "1",
+      "entityType": "TASKS_TASK",
+      "extranet": false,
+      "containsCollaber": false,
+      "id": 7,
+      "parentChatId": 0,
+      "parentMessageId": 0,
+      "name": "Прислать финальные тексты по фичам до конца недели",
+      "owner": 1,
+      "messageType": "X",
+      "type": "tasksTask",
+      "entityLink": {
+       "type": "TASKS",
+       "url": "/company/personal/user/1/tasks/task/view/1/?ta_sec=chat_tasks&ta_el=view_button",
+       "id": "1"
+      },
+      "permissions": {
+       "manageUsersAdd": "member",
+       "manageUsersDelete": "manager",
+       "manageUi": "member",
+       "manageSettings": "owner",
+       "manageMessages": "member",
+       "manageMessagesAutoDelete": "manager",
+       "manageGuestInvites": "manager",
+       "manageDelete": "member",
+       "canPost": "member"
+      },
+      "hasManageCapability": false,
+      "isNew": false,
+      "textFieldEnabled": true,
+      "backgroundId": null
+     },
+     "user": {
+      "id": 1,
+      "active": true,
+      "name": "Игорь Герасимов",
+      "firstName": "Игорь",
+      "lastName": "Герасимов",
+      "workPosition": null,
+      "color": "#df532d",
+      "avatar": "https://cdn-ru.bitrix24.ru/b38365992/main/8b7/8b71726a7927e18ebc0b40437dd3e42f/51d0e2ae03aacc5987efefcce1a430a9.jpg",
+      "gender": "M",
+      "birthday": "",
+      "extranet": false,
+      "bot": false,
+      "connector": false,
+      "externalAuthId": "socservices",
+      "status": "online",
+      "idle": false,
+      "lastActivityDate": false,
+      "mobileLastDate": false,
+      "desktopLastDate": false,
+      "absent": false,
+      "departments": [
+       1
+      ],
+      "phones": false,
+      "type": "user",
+      "website": "",
+      "email": "darkClaw921@yandex.ru"
+     },
+     "language": "ru",
+     "additionalMessages": []
+    }
+   },
+   {
+    "eventId": 9,
+    "type": "ONIMV2MESSAGEADD",
+    "date": "2026-08-05T20:20:18+03:00",
+    "data": {
+     "message": {
+      "id": 67,
+      "chatId": 27,
+      "chat_id": 27,
+      "authorId": 0,
+      "author_id": 0,
+      "date": "2026-08-05T20:20:18+03:00",
+      "text": "[USER=1 REPLACE]Игорь Герасимов[/USER] создал чат",
+      "isSystem": true,
+      "uuid": null,
+      "forward": null,
+      "params": {
+       "NOTIFY": "N"
+      },
+      "viewedByOthers": false,
+      "block": null
+     },
+     "chat": {
+      "avatar": "",
+      "color": "#29619b",
+      "description": "temp probe",
+      "dialogId": "chat27",
+      "diskFolderId": 0,
+      "entityData1": "",
+      "entityData2": "",
+      "entityData3": "",
+      "entityId": "",
+      "entityType": "",
+      "extranet": false,
+      "containsCollaber": false,
+      "id": 27,
+      "parentChatId": 0,
+      "parentMessageId": 0,
+      "name": "FORGE probe chat",
+      "owner": 1,
+      "messageType": "C",
+      "type": "chat",
+      "entityLink": {
+       "type": "",
+       "url": "",
+       "id": ""
+      },
+      "permissions": {
+       "manageUsersAdd": "member",
+       "manageUsersDelete": "manager",
+       "manageUi": "member",
+       "manageSettings": "owner",
+       "manageMessages": "member",
+       "manageMessagesAutoDelete": "manager",
+       "manageGuestInvites": "manager",
+       "manageDelete": "member",
+       "canPost": "member"
+      },
+      "hasManageCapability": false,
+      "isNew": false,
+      "textFieldEnabled": true,
+      "backgroundId": null
+     },
+     "user": [],
+     "language": "ru",
+     "additionalMessages": []
+    }
+   },
+   {
+    "eventId": 11,
+    "type": "ONIMV2MESSAGEADD",
+    "date": "2026-08-05T20:20:18+03:00",
+    "data": {
+     "message": {
+      "id": 69,
+      "chatId": 27,
+      "chat_id": 27,
+      "authorId": 0,
+      "author_id": 0,
+      "date": "2026-08-05T20:20:18+03:00",
+      "text": "Групповой чат. Общайтесь, делитесь файлами, комментируйте сообщения коллег и ставьте лайки",
+      "isSystem": true,
+      "uuid": null,
+      "forward": null,
+      "params": {
+       "COMPONENT_ID": "ChatCreationMessage",
+       "NOTIFY": "N"
+      },
+      "viewedByOthers": false,
+      "block": null
+     },
+     "chat": {
+      "avatar": "",
+      "color": "#29619b",
+      "description": "temp probe",
+      "dialogId": "chat27",
+      "diskFolderId": 0,
+      "entityData1": "",
+      "entityData2": "",
+      "entityData3": "",
+      "entityId": "",
+      "entityType": "",
+      "extranet": false,
+      "containsCollaber": false,
+      "id": 27,
+      "parentChatId": 0,
+      "parentMessageId": 0,
+      "name": "FORGE probe chat",
+      "owner": 1,
+      "messageType": "C",
+      "type": "chat",
+      "entityLink": {
+       "type": "",
+       "url": "",
+       "id": ""
+      },
+      "permissions": {
+       "manageUsersAdd": "member",
+       "manageUsersDelete": "manager",
+       "manageUi": "member",
+       "manageSettings": "owner",
+       "manageMessages": "member",
+       "manageMessagesAutoDelete": "manager",
+       "manageGuestInvites": "manager",
+       "manageDelete": "member",
+       "canPost": "member"
+      },
+      "hasManageCapability": false,
+      "isNew": false,
+      "textFieldEnabled": true,
+      "backgroundId": null
+     },
+     "user": [],
+     "language": "ru",
+     "additionalMessages": []
+    }
+   },
+   {
+    "eventId": 13,
+    "type": "ONIMV2MESSAGEADD",
+    "date": "2026-08-05T20:20:18+03:00",
+    "data": {
+     "message": {
+      "id": 71,
+      "chatId": 27,
+      "chat_id": 27,
+      "authorId": 0,
+      "author_id": 0,
+      "date": "2026-08-05T20:20:18+03:00",
+      "text": "[USER=1 REPLACE]Игорь Герасимов[/USER] пригласил в чат [USER=15 REPLACE]Максим Крылов[/USER]",
+      "isSystem": true,
+      "uuid": null,
+      "forward": null,
+      "params": {
+       "CODE": "CHAT_JOIN",
+       "NOTIFY": "N"
+      },
+      "viewedByOthers": false,
+      "block": null
+     },
+     "chat": {
+      "avatar": "",
+      "color": "#29619b",
+      "description": "temp probe",
+      "dialogId": "chat27",
+      "diskFolderId": 0,
+      "entityData1": "",
+      "entityData2": "",
+      "entityData3": "",
+      "entityId": "",
+      "entityType": "",
+      "extranet": false,
+      "containsCollaber": false,
+      "id": 27,
+      "parentChatId": 0,
+      "parentMessageId": 0,
+      "name": "FORGE probe chat",
+      "owner": 1,
+      "messageType": "C",
+      "type": "chat",
+      "entityLink": {
+       "type": "",
+       "url": "",
+       "id": ""
+      },
+      "permissions": {
+       "manageUsersAdd": "member",
+       "manageUsersDelete": "manager",
+       "manageUi": "member",
+       "manageSettings": "owner",
+       "manageMessages": "member",
+       "manageMessagesAutoDelete": "manager",
+       "manageGuestInvites": "manager",
+       "manageDelete": "member",
+       "canPost": "member"
+      },
+      "hasManageCapability": false,
+      "isNew": false,
+      "textFieldEnabled": true,
+      "backgroundId": null
+     },
+     "user": [],
+     "language": "ru",
+     "additionalMessages": []
+    }
+   },
+   {
+    "eventId": 15,
+    "type": "ONIMV2JOINCHAT",
+    "date": "2026-08-05T20:20:18+03:00",
+    "data": {
+     "dialogId": "chat27",
+     "chat": {
+      "avatar": "",
+      "color": "#29619b",
+      "description": "temp probe",
+      "dialogId": "chat27",
+      "diskFolderId": 0,
+      "entityData1": "",
+      "entityData2": "",
+      "entityData3": "",
+      "entityId": "",
+      "entityType": "",
+      "extranet": false,
+      "containsCollaber": false,
+      "id": 27,
+      "parentChatId": 0,
+      "parentMessageId": 0,
+      "name": "FORGE probe chat",
+      "owner": 1,
+      "messageType": "C",
+      "type": "chat",
+      "entityLink": {
+       "type": "",
+       "url": "",
+       "id": ""
+      },
+      "permissions": {
+       "manageUsersAdd": "member",
+       "manageUsersDelete": "manager",
+       "manageUi": "member",
+       "manageSettings": "owner",
+       "manageMessages": "member",
+       "manageMessagesAutoDelete": "manager",
+       "manageGuestInvites": "manager",
+       "manageDelete": "member",
+       "canPost": "member"
+      },
+      "hasManageCapability": false,
+      "isNew": false,
+      "textFieldEnabled": true,
+      "backgroundId": null
+     },
+     "user": {
+      "id": 1,
+      "active": true,
+      "name": "Игорь Герасимов",
+      "firstName": "Игорь",
+      "lastName": "Герасимов",
+      "workPosition": null,
+      "color": "#df532d",
+      "avatar": "https://cdn-ru.bitrix24.ru/b38365992/main/8b7/8b71726a7927e18ebc0b40437dd3e42f/51d0e2ae03aacc5987efefcce1a430a9.jpg",
+      "gender": "M",
+      "birthday": "",
+      "extranet": false,
+      "bot": false,
+      "connector": false,
+      "externalAuthId": "socservices",
+      "status": "online",
+      "idle": false,
+      "lastActivityDate": false,
+      "mobileLastDate": false,
+      "desktopLastDate": false,
+      "absent": false,
+      "departments": [
+       1
+      ],
+      "phones": false,
+      "type": "user",
+      "website": "",
+      "email": "darkClaw921@yandex.ru"
+     },
+     "language": "ru"
+    }
+   },
+   {
+    "eventId": 17,
+    "type": "ONIMV2JOINCHAT",
+    "date": "2026-08-05T20:20:18+03:00",
+    "data": {
+     "dialogId": "chat27",
+     "chat": {
+      "avatar": "",
+      "color": "#29619b",
+      "description": "temp probe",
+      "dialogId": "chat27",
+      "diskFolderId": 0,
+      "entityData1": "",
+      "entityData2": "",
+      "entityData3": "",
+      "entityId": "",
+      "entityType": "",
+      "extranet": false,
+      "containsCollaber": false,
+      "id": 27,
+      "parentChatId": 0,
+      "parentMessageId": 0,
+      "name": "FORGE probe chat",
+      "owner": 1,
+      "messageType": "C",
+      "type": "chat",
+      "entityLink": {
+       "type": "",
+       "url": "",
+       "id": ""
+      },
+      "permissions": {
+       "manageUsersAdd": "member",
+       "manageUsersDelete": "manager",
+       "manageUi": "member",
+       "manageSettings": "owner",
+       "manageMessages": "member",
+       "manageMessagesAutoDelete": "manager",
+       "manageGuestInvites": "manager",
+       "manageDelete": "member",
+       "canPost": "member"
+      },
+      "hasManageCapability": false,
+      "isNew": false,
+      "textFieldEnabled": true,
+      "backgroundId": null
+     },
+     "user": {
+      "id": 15,
+      "active": true,
+      "name": "Максим Крылов",
+      "firstName": "Максим",
+      "lastName": "Крылов",
+      "workPosition": null,
+      "color": "#3e99ce",
+      "avatar": "https://cdn-ru.bitrix24.ru/b38365992/resize_cache/137/ff58db95aecdfa09ae61b51b5fd8f63f/main/9cf/9cf177c141fce8883280ae87f5bc2c6f/4c4d49208af9eae7c7f5927da438f68e.png",
+      "gender": "M",
+      "birthday": "",
+      "extranet": false,
+      "bot": false,
+      "connector": false,
+      "externalAuthId": "socservices",
+      "status": "online",
+      "idle": false,
+      "lastActivityDate": false,
+      "mobileLastDate": false,
+      "desktopLastDate": false,
+      "absent": false,
+      "departments": [
+       1
+      ],
+      "phones": false,
+      "type": "user",
+      "website": "",
+      "email": "open.biz@yandex.ru"
+     },
+     "language": "ru"
+    }
+   },
+   {
+    "eventId": 19,
+    "type": "ONIMV2MESSAGEADD",
+    "date": "2026-08-05T20:20:18+03:00",
+    "data": {
+     "message": {
+      "id": 73,
+      "chatId": 27,
+      "chat_id": 27,
+      "authorId": 1,
+      "author_id": 1,
+      "date": "2026-08-05T20:20:18+03:00",
+      "text": "temp probe",
+      "isSystem": false,
+      "uuid": null,
+      "forward": null,
+      "params": [],
+      "viewedByOthers": false,
+      "block": null
+     },
+     "chat": {
+      "avatar": "",
+      "color": "#29619b",
+      "description": "temp probe",
+      "dialogId": "chat27",
+      "diskFolderId": 0,
+      "entityData1": "",
+      "entityData2": "",
+      "entityData3": "",
+      "entityId": "",
+      "entityType": "",
+      "extranet": false,
+      "containsCollaber": false,
+      "id": 27,
+      "parentChatId": 0,
+      "parentMessageId": 0,
+      "name": "FORGE probe chat",
+      "owner": 1,
+      "messageType": "C",
+      "type": "chat",
+      "entityLink": {
+       "type": "",
+       "url": "",
+       "id": ""
+      },
+      "permissions": {
+       "manageUsersAdd": "member",
+       "manageUsersDelete": "manager",
+       "manageUi": "member",
+       "manageSettings": "owner",
+       "manageMessages": "member",
+       "manageMessagesAutoDelete": "manager",
+       "manageGuestInvites": "manager",
+       "manageDelete": "member",
+       "canPost": "member"
+      },
+      "hasManageCapability": false,
+      "isNew": false,
+      "textFieldEnabled": true,
+      "backgroundId": null
+     },
+     "user": {
+      "id": 1,
+      "active": true,
+      "name": "Игорь Герасимов",
+      "firstName": "Игорь",
+      "lastName": "Герасимов",
+      "workPosition": null,
+      "color": "#df532d",
+      "avatar": "https://cdn-ru.bitrix24.ru/b38365992/main/8b7/8b71726a7927e18ebc0b40437dd3e42f/51d0e2ae03aacc5987efefcce1a430a9.jpg",
+      "gender": "M",
+      "birthday": "",
+      "extranet": false,
+      "bot": false,
+      "connector": false,
+      "externalAuthId": "socservices",
+      "status": "online",
+      "idle": false,
+      "lastActivityDate": false,
+      "mobileLastDate": false,
+      "desktopLastDate": false,
+      "absent": false,
+      "departments": [
+       1
+      ],
+      "phones": false,
+      "type": "user",
+      "website": "",
+      "email": "darkClaw921@yandex.ru"
+     },
+     "language": "ru",
+     "additionalMessages": []
+    }
+   },
+   {
+    "eventId": 21,
+    "type": "ONIMV2MESSAGEADD",
+    "date": "2026-08-05T20:20:18+03:00",
+    "data": {
+     "message": {
+      "id": 75,
+      "chatId": 27,
+      "chat_id": 27,
+      "authorId": 1,
+      "author_id": 1,
+      "date": "2026-08-05T20:20:18+03:00",
+      "text": "probe init",
+      "isSystem": false,
+      "uuid": null,
+      "forward": null,
+      "params": [],
+      "viewedByOthers": false,
+      "block": null
+     },
+     "chat": {
+      "avatar": "",
+      "color": "#29619b",
+      "description": "temp probe",
+      "dialogId": "chat27",
+      "diskFolderId": 0,
+      "entityData1": "",
+      "entityData2": "",
+      "entityData3": "",
+      "entityId": "",
+      "entityType": "",
+      "extranet": false,
+      "containsCollaber": false,
+      "id": 27,
+      "parentChatId": 0,
+      "parentMessageId": 0,
+      "name": "FORGE probe chat",
+      "owner": 1,
+      "messageType": "C",
+      "type": "chat",
+      "entityLink": {
+       "type": "",
+       "url": "",
+       "id": ""
+      },
+      "permissions": {
+       "manageUsersAdd": "member",
+       "manageUsersDelete": "manager",
+       "manageUi": "member",
+       "manageSettings": "owner",
+       "manageMessages": "member",
+       "manageMessagesAutoDelete": "manager",
+       "manageGuestInvites": "manager",
+       "manageDelete": "member",
+       "canPost": "member"
+      },
+      "hasManageCapability": false,
+      "isNew": false,
+      "textFieldEnabled": true,
+      "backgroundId": null
+     },
+     "user": {
+      "id": 1,
+      "active": true,
+      "name": "Игорь Герасимов",
+      "firstName": "Игорь",
+      "lastName": "Герасимов",
+      "workPosition": null,
+      "color": "#df532d",
+      "avatar": "https://cdn-ru.bitrix24.ru/b38365992/main/8b7/8b71726a7927e18ebc0b40437dd3e42f/51d0e2ae03aacc5987efefcce1a430a9.jpg",
+      "gender": "M",
+      "birthday": "",
+      "extranet": false,
+      "bot": false,
+      "connector": false,
+      "externalAuthId": "socservices",
+      "status": "online",
+      "idle": false,
+      "lastActivityDate": false,
+      "mobileLastDate": false,
+      "desktopLastDate": false,
+      "absent": false,
+      "departments": [
+       1
+      ],
+      "phones": false,
+      "type": "user",
+      "website": "",
+      "email": "darkClaw921@yandex.ru"
+     },
+     "language": "ru",
+     "additionalMessages": []
+    }
+   },
+   {
+    "eventId": 23,
+    "type": "ONIMV2MESSAGEADD",
+    "date": "2026-08-05T20:20:36+03:00",
+    "data": {
+     "message": {
+      "id": 77,
+      "chatId": 27,
+      "chat_id": 27,
+      "authorId": 1,
+      "author_id": 1,
+      "date": "2026-08-05T20:20:35+03:00",
+      "text": "PROBE plain [B]bold[/B] [URL]https://example.com[/URL]",
+      "isSystem": false,
+      "uuid": null,
+      "forward": null,
+      "params": [],
+      "viewedByOthers": false,
+      "block": null
+     },
+     "chat": {
+      "avatar": "",
+      "color": "#29619b",
+      "description": "temp probe",
+      "dialogId": "chat27",
+      "diskFolderId": 0,
+      "entityData1": "",
+      "entityData2": "",
+      "entityData3": "",
+      "entityId": "",
+      "entityType": "",
+      "extranet": false,
+      "containsCollaber": false,
+      "id": 27,
+      "parentChatId": 0,
+      "parentMessageId": 0,
+      "name": "FORGE probe chat",
+      "owner": 1,
+      "messageType": "C",
+      "type": "chat",
+      "entityLink": {
+       "type": "",
+       "url": "",
+       "id": ""
+      },
+      "permissions": {
+       "manageUsersAdd": "member",
+       "manageUsersDelete": "manager",
+       "manageUi": "member",
+       "manageSettings": "owner",
+       "manageMessages": "member",
+       "manageMessagesAutoDelete": "manager",
+       "manageGuestInvites": "manager",
+       "manageDelete": "member",
+       "canPost": "member"
+      },
+      "hasManageCapability": false,
+      "isNew": false,
+      "textFieldEnabled": true,
+      "backgroundId": null
+     },
+     "user": {
+      "id": 1,
+      "active": true,
+      "name": "Игорь Герасимов",
+      "firstName": "Игорь",
+      "lastName": "Герасимов",
+      "workPosition": null,
+      "color": "#df532d",
+      "avatar": "https://cdn-ru.bitrix24.ru/b38365992/main/8b7/8b71726a7927e18ebc0b40437dd3e42f/51d0e2ae03aacc5987efefcce1a430a9.jpg",
+      "gender": "M",
+      "birthday": "",
+      "extranet": false,
+      "bot": false,
+      "connector": false,
+      "externalAuthId": "socservices",
+      "status": "online",
+      "idle": false,
+      "lastActivityDate": false,
+      "mobileLastDate": false,
+      "desktopLastDate": false,
+      "absent": false,
+      "departments": [
+       1
+      ],
+      "phones": false,
+      "type": "user",
+      "website": "",
+      "email": "darkClaw921@yandex.ru"
+     },
+     "language": "ru",
+     "additionalMessages": []
+    }
+   },
+   {
+    "eventId": 25,
+    "type": "ONIMV2MESSAGEADD",
+    "date": "2026-08-05T20:20:37+03:00",
+    "data": {
+     "message": {
+      "id": 79,
+      "chatId": 27,
+      "chat_id": 27,
+      "authorId": 1,
+      "author_id": 1,
+      "date": "2026-08-05T20:20:36+03:00",
+      "text": "PROBE with attach",
+      "isSystem": false,
+      "uuid": null,
+      "forward": null,
+      "params": {
+       "ATTACH": [
+        {
+         "ID": 1785950436,
+         "BLOCKS": [
+          {
+           "MESSAGE": "attach text"
+          },
+          {
+           "LINK": [
+            {
+             "NAME": "Ссылка",
+             "LINK": "https://example.com",
+             "DESC": "описание"
+            }
+           ]
+          },
+          {
+           "GRID": [
+            {
+             "DISPLAY": "LINE",
+             "NAME": "Поле",
+             "VALUE": "Значение",
+             "COLOR_TOKEN": "base"
+            }
+           ]
+          }
+         ],
+         "DESCRIPTION": "",
+         "COLOR": "#8d51eb",
+         "COLOR_TOKEN": "base"
+        }
+       ]
+      },
+      "viewedByOthers": false,
+      "block": null
+     },
+     "chat": {
+      "avatar": "",
+      "color": "#29619b",
+      "description": "temp probe",
+      "dialogId": "chat27",
+      "diskFolderId": 0,
+      "entityData1": "",
+      "entityData2": "",
+      "entityData3": "",
+      "entityId": "",
+      "entityType": "",
+      "extranet": false,
+      "containsCollaber": false,
+      "id": 27,
+      "parentChatId": 0,
+      "parentMessageId": 0,
+      "name": "FORGE probe chat",
+      "owner": 1,
+      "messageType": "C",
+      "type": "chat",
+      "entityLink": {
+       "type": "",
+       "url": "",
+       "id": ""
+      },
+      "permissions": {
+       "manageUsersAdd": "member",
+       "manageUsersDelete": "manager",
+       "manageUi": "member",
+       "manageSettings": "owner",
+       "manageMessages": "member",
+       "manageMessagesAutoDelete": "manager",
+       "manageGuestInvites": "manager",
+       "manageDelete": "member",
+       "canPost": "member"
+      },
+      "hasManageCapability": false,
+      "isNew": false,
+      "textFieldEnabled": true,
+      "backgroundId": null
+     },
+     "user": {
+      "id": 1,
+      "active": true,
+      "name": "Игорь Герасимов",
+      "firstName": "Игорь",
+      "lastName": "Герасимов",
+      "workPosition": null,
+      "color": "#df532d",
+      "avatar": "https://cdn-ru.bitrix24.ru/b38365992/main/8b7/8b71726a7927e18ebc0b40437dd3e42f/51d0e2ae03aacc5987efefcce1a430a9.jpg",
+      "gender": "M",
+      "birthday": "",
+      "extranet": false,
+      "bot": false,
+      "connector": false,
+      "externalAuthId": "socservices",
+      "status": "online",
+      "idle": false,
+      "lastActivityDate": false,
+      "mobileLastDate": false,
+      "desktopLastDate": false,
+      "absent": false,
+      "departments": [
+       1
+      ],
+      "phones": false,
+      "type": "user",
+      "website": "",
+      "email": "darkClaw921@yandex.ru"
+     },
+     "language": "ru",
+     "additionalMessages": []
+    }
+   },
+   {
+    "eventId": 27,
+    "type": "ONIMV2MESSAGEADD",
+    "date": "2026-08-05T20:20:38+03:00",
+    "data": {
+     "message": {
+      "id": 81,
+      "chatId": 27,
+      "chat_id": 27,
+      "authorId": 1,
+      "author_id": 1,
+      "date": "2026-08-05T20:20:37+03:00",
+      "text": "PROBE keyboard",
+      "isSystem": false,
+      "uuid": null,
+      "forward": null,
+      "params": {
+       "KEYBOARD": [
+        {
+         "BOT_ID": 0,
+         "TYPE": "BUTTON",
+         "ACTION": "PUT",
+         "ACTION_VALUE": "hello",
+         "TEXT": "Кнопка",
+         "VOTE": "N",
+         "BLOCK": "N",
+         "WAIT": "N",
+         "CONTEXT": "ALL",
+         "DISABLED": "N",
+         "DISPLAY": "LINE",
+         "BG_COLOR": "#29619b",
+         "BG_COLOR_TOKEN": "base",
+         "TEXT_COLOR": "#fff"
+        }
+       ]
+      },
+      "viewedByOthers": false,
+      "block": null
+     },
+     "chat": {
+      "avatar": "",
+      "color": "#29619b",
+      "description": "temp probe",
+      "dialogId": "chat27",
+      "diskFolderId": 0,
+      "entityData1": "",
+      "entityData2": "",
+      "entityData3": "",
+      "entityId": "",
+      "entityType": "",
+      "extranet": false,
+      "containsCollaber": false,
+      "id": 27,
+      "parentChatId": 0,
+      "parentMessageId": 0,
+      "name": "FORGE probe chat",
+      "owner": 1,
+      "messageType": "C",
+      "type": "chat",
+      "entityLink": {
+       "type": "",
+       "url": "",
+       "id": ""
+      },
+      "permissions": {
+       "manageUsersAdd": "member",
+       "manageUsersDelete": "manager",
+       "manageUi": "member",
+       "manageSettings": "owner",
+       "manageMessages": "member",
+       "manageMessagesAutoDelete": "manager",
+       "manageGuestInvites": "manager",
+       "manageDelete": "member",
+       "canPost": "member"
+      },
+      "hasManageCapability": false,
+      "isNew": false,
+      "textFieldEnabled": true,
+      "backgroundId": null
+     },
+     "user": {
+      "id": 1,
+      "active": true,
+      "name": "Игорь Герасимов",
+      "firstName": "Игорь",
+      "lastName": "Герасимов",
+      "workPosition": null,
+      "color": "#df532d",
+      "avatar": "https://cdn-ru.bitrix24.ru/b38365992/main/8b7/8b71726a7927e18ebc0b40437dd3e42f/51d0e2ae03aacc5987efefcce1a430a9.jpg",
+      "gender": "M",
+      "birthday": "",
+      "extranet": false,
+      "bot": false,
+      "connector": false,
+      "externalAuthId": "socservices",
+      "status": "online",
+      "idle": false,
+      "lastActivityDate": false,
+      "mobileLastDate": false,
+      "desktopLastDate": false,
+      "absent": false,
+      "departments": [
+       1
+      ],
+      "phones": false,
+      "type": "user",
+      "website": "",
+      "email": "darkClaw921@yandex.ru"
+     },
+     "language": "ru",
+     "additionalMessages": []
+    }
+   },
+   {
+    "eventId": 29,
+    "type": "ONIMV2MESSAGEADD",
+    "date": "2026-08-05T20:21:05+03:00",
+    "data": {
+     "message": {
+      "id": 83,
+      "chatId": 27,
+      "chat_id": 27,
+      "authorId": 0,
+      "author_id": 0,
+      "date": "2026-08-05T20:21:04+03:00",
+      "text": "PROBE system",
+      "isSystem": true,
+      "uuid": null,
+      "forward": null,
+      "params": [],
+      "viewedByOthers": false,
+      "block": null
+     },
+     "chat": {
+      "avatar": "",
+      "color": "#29619b",
+      "description": "temp probe",
+      "dialogId": "chat27",
+      "diskFolderId": 0,
+      "entityData1": "",
+      "entityData2": "",
+      "entityData3": "",
+      "entityId": "",
+      "entityType": "",
+      "extranet": false,
+      "containsCollaber": false,
+      "id": 27,
+      "parentChatId": 0,
+      "parentMessageId": 0,
+      "name": "FORGE probe chat",
+      "owner": 1,
+      "messageType": "C",
+      "type": "chat",
+      "entityLink": {
+       "type": "",
+       "url": "",
+       "id": ""
+      },
+      "permissions": {
+       "manageUsersAdd": "member",
+       "manageUsersDelete": "manager",
+       "manageUi": "member",
+       "manageSettings": "owner",
+       "manageMessages": "member",
+       "manageMessagesAutoDelete": "manager",
+       "manageGuestInvites": "manager",
+       "manageDelete": "member",
+       "canPost": "member"
+      },
+      "hasManageCapability": false,
+      "isNew": false,
+      "textFieldEnabled": true,
+      "backgroundId": null
+     },
+     "user": [],
+     "language": "ru",
+     "additionalMessages": []
+    }
+   },
+   {
+    "eventId": 31,
+    "type": "ONIMV2MESSAGEADD",
+    "date": "2026-08-05T20:21:06+03:00",
+    "data": {
+     "message": {
+      "id": 85,
+      "chatId": 27,
+      "chat_id": 27,
+      "authorId": 1,
+      "author_id": 1,
+      "date": "2026-08-05T20:21:05+03:00",
+      "text": "PROBE reply",
+      "isSystem": false,
+      "uuid": null,
+      "forward": null,
+      "params": {
+       "REPLY_ID": "77"
+      },
+      "viewedByOthers": false,
+      "block": null
+     },
+     "chat": {
+      "avatar": "",
+      "color": "#29619b",
+      "description": "temp probe",
+      "dialogId": "chat27",
+      "diskFolderId": 0,
+      "entityData1": "",
+      "entityData2": "",
+      "entityData3": "",
+      "entityId": "",
+      "entityType": "",
+      "extranet": false,
+      "containsCollaber": false,
+      "id": 27,
+      "parentChatId": 0,
+      "parentMessageId": 0,
+      "name": "FORGE probe chat",
+      "owner": 1,
+      "messageType": "C",
+      "type": "chat",
+      "entityLink": {
+       "type": "",
+       "url": "",
+       "id": ""
+      },
+      "permissions": {
+       "manageUsersAdd": "member",
+       "manageUsersDelete": "manager",
+       "manageUi": "member",
+       "manageSettings": "owner",
+       "manageMessages": "member",
+       "manageMessagesAutoDelete": "manager",
+       "manageGuestInvites": "manager",
+       "manageDelete": "member",
+       "canPost": "member"
+      },
+      "hasManageCapability": false,
+      "isNew": false,
+      "textFieldEnabled": true,
+      "backgroundId": null
+     },
+     "user": {
+      "id": 1,
+      "active": true,
+      "name": "Игорь Герасимов",
+      "firstName": "Игорь",
+      "lastName": "Герасимов",
+      "workPosition": null,
+      "color": "#df532d",
+      "avatar": "https://cdn-ru.bitrix24.ru/b38365992/main/8b7/8b71726a7927e18ebc0b40437dd3e42f/51d0e2ae03aacc5987efefcce1a430a9.jpg",
+      "gender": "M",
+      "birthday": "",
+      "extranet": false,
+      "bot": false,
+      "connector": false,
+      "externalAuthId": "socservices",
+      "status": "online",
+      "idle": false,
+      "lastActivityDate": false,
+      "mobileLastDate": false,
+      "desktopLastDate": false,
+      "absent": false,
+      "departments": [
+       1
+      ],
+      "phones": false,
+      "type": "user",
+      "website": "",
+      "email": "darkClaw921@yandex.ru"
+     },
+     "language": "ru",
+     "additionalMessages": [
+      {
+       "id": 77,
+       "chatId": 27,
+       "chat_id": 27,
+       "authorId": 1,
+       "author_id": 1,
+       "date": "2026-08-05T20:20:35+03:00",
+       "text": "PROBE plain [B]bold[/B] [URL]https://example.com[/URL]",
+       "isSystem": false,
+       "uuid": null,
+       "forward": null,
+       "params": [],
+       "viewedByOthers": false,
+       "block": null
+      }
+     ]
+    }
+   },
+   {
+    "eventId": 33,
+    "type": "ONIMV2MESSAGEADD",
+    "date": "2026-08-05T20:21:13+03:00",
+    "data": {
+     "message": {
+      "id": 87,
+      "chatId": 9,
+      "chat_id": 9,
+      "authorId": 0,
+      "author_id": 0,
+      "date": "2026-08-05T20:21:13+03:00",
+      "text": "[USER=1]Игорь Герасимов[/USER] начал выполнять задачу",
+      "isSystem": true,
+      "uuid": null,
+      "forward": null,
+      "params": {
+       "NOTIFY": "N"
+      },
+      "viewedByOthers": false,
+      "block": null
+     },
+     "chat": {
+      "avatar": "",
+      "color": "#4ba984",
+      "description": "",
+      "dialogId": "chat9",
+      "diskFolderId": 0,
+      "entityData1": "",
+      "entityData2": "",
+      "entityData3": "",
+      "entityId": "3",
+      "entityType": "TASKS_TASK",
+      "extranet": false,
+      "containsCollaber": false,
+      "id": 9,
+      "parentChatId": 0,
+      "parentMessageId": 0,
+      "name": "Провести нагрузочное тестирование и подготовить стенд для поддержки",
+      "owner": 1,
+      "messageType": "X",
+      "type": "tasksTask",
+      "entityLink": {
+       "type": "TASKS",
+       "url": "/company/personal/user/0/tasks/task/view/3/?ta_sec=chat_tasks&ta_el=view_button",
+       "id": "3"
+      },
+      "permissions": {
+       "manageUsersAdd": "member",
+       "manageUsersDelete": "manager",
+       "manageUi": "member",
+       "manageSettings": "owner",
+       "manageMessages": "member",
+       "manageMessagesAutoDelete": "manager",
+       "manageGuestInvites": "manager",
+       "manageDelete": "member",
+       "canPost": "member"
+      },
+      "hasManageCapability": false,
+      "isNew": false,
+      "textFieldEnabled": true,
+      "backgroundId": null
+     },
+     "user": [],
+     "language": "ru",
+     "additionalMessages": []
+    }
+   },
+   {
+    "eventId": 35,
+    "type": "ONIMV2MESSAGEADD",
+    "date": "2026-08-05T20:22:16+03:00",
+    "data": {
+     "message": {
+      "id": 89,
+      "chatId": 9,
+      "chat_id": 9,
+      "authorId": 0,
+      "author_id": 0,
+      "date": "2026-08-05T20:22:16+03:00",
+      "text": "[USER=1]Игорь Герасимов[/USER] приостановил выполнение задачи",
+      "isSystem": true,
+      "uuid": null,
+      "forward": null,
+      "params": {
+       "NOTIFY": "N"
+      },
+      "viewedByOthers": false,
+      "block": null
+     },
+     "chat": {
+      "avatar": "",
+      "color": "#4ba984",
+      "description": "",
+      "dialogId": "chat9",
+      "diskFolderId": 0,
+      "entityData1": "",
+      "entityData2": "",
+      "entityData3": "",
+      "entityId": "3",
+      "entityType": "TASKS_TASK",
+      "extranet": false,
+      "containsCollaber": false,
+      "id": 9,
+      "parentChatId": 0,
+      "parentMessageId": 0,
+      "name": "Провести нагрузочное тестирование и подготовить стенд для поддержки",
+      "owner": 1,
+      "messageType": "X",
+      "type": "tasksTask",
+      "entityLink": {
+       "type": "TASKS",
+       "url": "/company/personal/user/0/tasks/task/view/3/?ta_sec=chat_tasks&ta_el=view_button",
+       "id": "3"
+      },
+      "permissions": {
+       "manageUsersAdd": "member",
+       "manageUsersDelete": "manager",
+       "manageUi": "member",
+       "manageSettings": "owner",
+       "manageMessages": "member",
+       "manageMessagesAutoDelete": "manager",
+       "manageGuestInvites": "manager",
+       "manageDelete": "member",
+       "canPost": "member"
+      },
+      "hasManageCapability": false,
+      "isNew": false,
+      "textFieldEnabled": true,
+      "backgroundId": null
+     },
+     "user": [],
+     "language": "ru",
+     "additionalMessages": []
+    }
+   },
+   {
+    "eventId": 37,
+    "type": "ONIMV2REACTIONCHANGE",
+    "date": "2026-08-05T20:22:54+03:00",
+    "data": {
+     "reaction": "like",
+     "action": "",
+     "message": {
+      "id": 79,
+      "chatId": 27,
+      "chat_id": 27,
+      "authorId": 1,
+      "author_id": 1,
+      "date": "2026-08-05T20:20:36+03:00",
+      "text": "PROBE with attach",
+      "isSystem": false,
+      "uuid": null,
+      "forward": null,
+      "params": {
+       "ATTACH": [
+        {
+         "ID": 1785950436,
+         "BLOCKS": [
+          {
+           "MESSAGE": "attach text"
+          },
+          {
+           "LINK": [
+            {
+             "NAME": "Ссылка",
+             "LINK": "https://example.com",
+             "DESC": "описание"
+            }
+           ]
+          },
+          {
+           "GRID": [
+            {
+             "DISPLAY": "LINE",
+             "NAME": "Поле",
+             "VALUE": "Значение",
+             "COLOR_TOKEN": "base"
+            }
+           ]
+          }
+         ],
+         "DESCRIPTION": "",
+         "COLOR": "#8d51eb",
+         "COLOR_TOKEN": "base"
+        }
+       ],
+       "LIKE": [
+        "1"
+       ]
+      },
+      "viewedByOthers": false,
+      "block": null
+     },
+     "chat": {
+      "avatar": "",
+      "color": "#29619b",
+      "description": "temp probe",
+      "dialogId": "chat27",
+      "diskFolderId": 0,
+      "entityData1": "",
+      "entityData2": "",
+      "entityData3": "",
+      "entityId": "",
+      "entityType": "",
+      "extranet": false,
+      "containsCollaber": false,
+      "id": 27,
+      "parentChatId": 0,
+      "parentMessageId": 0,
+      "name": "FORGE probe chat",
+      "owner": 1,
+      "messageType": "C",
+      "type": "chat",
+      "entityLink": {
+       "type": "",
+       "url": "",
+       "id": ""
+      },
+      "permissions": {
+       "manageUsersAdd": "member",
+       "manageUsersDelete": "manager",
+       "manageUi": "member",
+       "manageSettings": "owner",
+       "manageMessages": "member",
+       "manageMessagesAutoDelete": "manager",
+       "manageGuestInvites": "manager",
+       "manageDelete": "member",
+       "canPost": "member"
+      },
+      "hasManageCapability": false,
+      "isNew": false,
+      "textFieldEnabled": true,
+      "backgroundId": null
+     },
+     "user": {
+      "id": 1,
+      "active": true,
+      "name": "Игорь Герасимов",
+      "firstName": "Игорь",
+      "lastName": "Герасимов",
+      "workPosition": null,
+      "color": "#df532d",
+      "avatar": "https://cdn-ru.bitrix24.ru/b38365992/main/8b7/8b71726a7927e18ebc0b40437dd3e42f/51d0e2ae03aacc5987efefcce1a430a9.jpg",
+      "gender": "M",
+      "birthday": "",
+      "extranet": false,
+      "bot": false,
+      "connector": false,
+      "externalAuthId": "socservices",
+      "status": "online",
+      "idle": false,
+      "lastActivityDate": false,
+      "mobileLastDate": false,
+      "desktopLastDate": false,
+      "absent": false,
+      "departments": [
+       1
+      ],
+      "phones": false,
+      "type": "user",
+      "website": "",
+      "email": "darkClaw921@yandex.ru"
+     },
+     "language": "ru",
+     "additionalMessages": []
+    }
+   },
+   {
+    "eventId": 39,
+    "type": "ONIMV2REACTIONCHANGE",
+    "date": "2026-08-05T20:22:55+03:00",
+    "data": {
+     "reaction": "like",
+     "action": "",
+     "message": {
+      "id": 79,
+      "chatId": 27,
+      "chat_id": 27,
+      "authorId": 1,
+      "author_id": 1,
+      "date": "2026-08-05T20:20:36+03:00",
+      "text": "PROBE with attach",
+      "isSystem": false,
+      "uuid": null,
+      "forward": null,
+      "params": {
+       "ATTACH": [
+        {
+         "ID": 1785950436,
+         "BLOCKS": [
+          {
+           "MESSAGE": "attach text"
+          },
+          {
+           "LINK": [
+            {
+             "NAME": "Ссылка",
+             "LINK": "https://example.com",
+             "DESC": "описание"
+            }
+           ]
+          },
+          {
+           "GRID": [
+            {
+             "DISPLAY": "LINE",
+             "NAME": "Поле",
+             "VALUE": "Значение",
+             "COLOR_TOKEN": "base"
+            }
+           ]
+          }
+         ],
+         "DESCRIPTION": "",
+         "COLOR": "#8d51eb",
+         "COLOR_TOKEN": "base"
+        }
+       ]
+      },
+      "viewedByOthers": false,
+      "block": null
+     },
+     "chat": {
+      "avatar": "",
+      "color": "#29619b",
+      "description": "temp probe",
+      "dialogId": "chat27",
+      "diskFolderId": 0,
+      "entityData1": "",
+      "entityData2": "",
+      "entityData3": "",
+      "entityId": "",
+      "entityType": "",
+      "extranet": false,
+      "containsCollaber": false,
+      "id": 27,
+      "parentChatId": 0,
+      "parentMessageId": 0,
+      "name": "FORGE probe chat",
+      "owner": 1,
+      "messageType": "C",
+      "type": "chat",
+      "entityLink": {
+       "type": "",
+       "url": "",
+       "id": ""
+      },
+      "permissions": {
+       "manageUsersAdd": "member",
+       "manageUsersDelete": "manager",
+       "manageUi": "member",
+       "manageSettings": "owner",
+       "manageMessages": "member",
+       "manageMessagesAutoDelete": "manager",
+       "manageGuestInvites": "manager",
+       "manageDelete": "member",
+       "canPost": "member"
+      },
+      "hasManageCapability": false,
+      "isNew": false,
+      "textFieldEnabled": true,
+      "backgroundId": null
+     },
+     "user": {
+      "id": 1,
+      "active": true,
+      "name": "Игорь Герасимов",
+      "firstName": "Игорь",
+      "lastName": "Герасимов",
+      "workPosition": null,
+      "color": "#df532d",
+      "avatar": "https://cdn-ru.bitrix24.ru/b38365992/main/8b7/8b71726a7927e18ebc0b40437dd3e42f/51d0e2ae03aacc5987efefcce1a430a9.jpg",
+      "gender": "M",
+      "birthday": "",
+      "extranet": false,
+      "bot": false,
+      "connector": false,
+      "externalAuthId": "socservices",
+      "status": "online",
+      "idle": false,
+      "lastActivityDate": false,
+      "mobileLastDate": false,
+      "desktopLastDate": false,
+      "absent": false,
+      "departments": [
+       1
+      ],
+      "phones": false,
+      "type": "user",
+      "website": "",
+      "email": "darkClaw921@yandex.ru"
+     },
+     "language": "ru",
+     "additionalMessages": []
+    }
+   },
+   {
+    "eventId": 41,
+    "type": "ONIMV2MESSAGEADD",
+    "date": "2026-08-05T20:25:30+03:00",
+    "data": {
+     "message": {
+      "id": 91,
+      "chatId": 9,
+      "chat_id": 9,
+      "authorId": 0,
+      "author_id": 0,
+      "date": "2026-08-05T20:25:30+03:00",
+      "text": "[USER=1]Игорь Герасимов[/USER] отметил задачу как важную",
+      "isSystem": true,
+      "uuid": null,
+      "forward": null,
+      "params": {
+       "NOTIFY": "N"
+      },
+      "viewedByOthers": false,
+      "block": null
+     },
+     "chat": {
+      "avatar": "",
+      "color": "#4ba984",
+      "description": "",
+      "dialogId": "chat9",
+      "diskFolderId": 0,
+      "entityData1": "",
+      "entityData2": "",
+      "entityData3": "",
+      "entityId": "3",
+      "entityType": "TASKS_TASK",
+      "extranet": false,
+      "containsCollaber": false,
+      "id": 9,
+      "parentChatId": 0,
+      "parentMessageId": 0,
+      "name": "Провести нагрузочное тестирование и подготовить стенд для поддержки",
+      "owner": 1,
+      "messageType": "X",
+      "type": "tasksTask",
+      "entityLink": {
+       "type": "TASKS",
+       "url": "/company/personal/user/0/tasks/task/view/3/?ta_sec=chat_tasks&ta_el=view_button",
+       "id": "3"
+      },
+      "permissions": {
+       "manageUsersAdd": "member",
+       "manageUsersDelete": "manager",
+       "manageUi": "member",
+       "manageSettings": "owner",
+       "manageMessages": "member",
+       "manageMessagesAutoDelete": "manager",
+       "manageGuestInvites": "manager",
+       "manageDelete": "member",
+       "canPost": "member"
+      },
+      "hasManageCapability": false,
+      "isNew": false,
+      "textFieldEnabled": true,
+      "backgroundId": null
+     },
+     "user": [],
+     "language": "ru",
+     "additionalMessages": []
+    }
+   },
+   {
+    "eventId": 43,
+    "type": "ONIMV2MESSAGEADD",
+    "date": "2026-08-05T20:25:37+03:00",
+    "data": {
+     "message": {
+      "id": 93,
+      "chatId": 9,
+      "chat_id": 9,
+      "authorId": 0,
+      "author_id": 0,
+      "date": "2026-08-05T20:25:37+03:00",
+      "text": "[USER=1]Игорь Герасимов[/USER] снял отметку о важности задачи",
+      "isSystem": true,
+      "uuid": null,
+      "forward": null,
+      "params": {
+       "NOTIFY": "N"
+      },
+      "viewedByOthers": false,
+      "block": null
+     },
+     "chat": {
+      "avatar": "",
+      "color": "#4ba984",
+      "description": "",
+      "dialogId": "chat9",
+      "diskFolderId": 0,
+      "entityData1": "",
+      "entityData2": "",
+      "entityData3": "",
+      "entityId": "3",
+      "entityType": "TASKS_TASK",
+      "extranet": false,
+      "containsCollaber": false,
+      "id": 9,
+      "parentChatId": 0,
+      "parentMessageId": 0,
+      "name": "Провести нагрузочное тестирование и подготовить стенд для поддержки",
+      "owner": 1,
+      "messageType": "X",
+      "type": "tasksTask",
+      "entityLink": {
+       "type": "TASKS",
+       "url": "/company/personal/user/0/tasks/task/view/3/?ta_sec=chat_tasks&ta_el=view_button",
+       "id": "3"
+      },
+      "permissions": {
+       "manageUsersAdd": "member",
+       "manageUsersDelete": "manager",
+       "manageUi": "member",
+       "manageSettings": "owner",
+       "manageMessages": "member",
+       "manageMessagesAutoDelete": "manager",
+       "manageGuestInvites": "manager",
+       "manageDelete": "member",
+       "canPost": "member"
+      },
+      "hasManageCapability": false,
+      "isNew": false,
+      "textFieldEnabled": true,
+      "backgroundId": null
+     },
+     "user": [],
+     "language": "ru",
+     "additionalMessages": []
+    }
+   },
+   {
+    "eventId": 45,
+    "type": "ONIMV2MESSAGEADD",
+    "date": "2026-08-05T20:26:39+03:00",
+    "data": {
+     "message": {
+      "id": 95,
+      "chatId": 27,
+      "chat_id": 27,
+      "authorId": 0,
+      "author_id": 0,
+      "date": "2026-08-05T20:26:39+03:00",
+      "text": "Игорь Герасимов изменил название чата на \"FORGE probe chat renamed\"",
+      "isSystem": true,
+      "uuid": null,
+      "forward": null,
+      "params": [],
+      "viewedByOthers": false,
+      "block": null
+     },
+     "chat": {
+      "avatar": "",
+      "color": "#29619b",
+      "description": "temp probe",
+      "dialogId": "chat27",
+      "diskFolderId": 93,
+      "entityData1": "",
+      "entityData2": "",
+      "entityData3": "",
+      "entityId": "",
+      "entityType": "",
+      "extranet": false,
+      "containsCollaber": false,
+      "id": 27,
+      "parentChatId": 0,
+      "parentMessageId": 0,
+      "name": "FORGE probe chat renamed",
+      "owner": 1,
+      "messageType": "C",
+      "type": "chat",
+      "entityLink": {
+       "type": "",
+       "url": "",
+       "id": ""
+      },
+      "permissions": {
+       "manageUsersAdd": "member",
+       "manageUsersDelete": "manager",
+       "manageUi": "member",
+       "manageSettings": "owner",
+       "manageMessages": "member",
+       "manageMessagesAutoDelete": "manager",
+       "manageGuestInvites": "manager",
+       "manageDelete": "member",
+       "canPost": "member"
+      },
+      "hasManageCapability": false,
+      "isNew": false,
+      "textFieldEnabled": true,
+      "backgroundId": null
+     },
+     "user": [],
+     "language": "ru",
+     "additionalMessages": []
+    }
+   }
+  ],
+  "nextOffset": 46,
+  "hasMore": false
+ },
+ "time": {
+  "start": 1785951015,
+  "finish": 1785951015.179542,
+  "duration": 0.17954206466674805,
+  "processing": 0,
+  "date_start": "2026-08-05T20:30:15+03:00",
+  "date_finish": "2026-08-05T20:30:15+03:00",
+  "operating_reset_at": 1785951615,
+  "operating": 0
+ }
+}

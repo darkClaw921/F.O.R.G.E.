@@ -299,3 +299,89 @@ export const $vkLightboxNext = document.getElementById('vk-lightbox-next');
 export const $vkLightboxClose = document.getElementById('vk-lightbox-close');
 // Подпись под полноразмерным вложением: `имя · 1280×720 · 1.2 MB`.
 export const $vkLightboxCaption = document.getElementById('vk-lightbox-caption');
+
+// ---- Bitrix24 plugin ----
+//
+// Ref'ы вкладки «Битрикс24» (плагин forge-bitrix, opt-in `--bitrix`).
+// Устройство ровно то же, что у телеграмной и VK-секций выше: значения
+// вычисляются ОДИН РАЗ при импорте модуля, поэтому узлы обязаны быть в
+// разметке к этому моменту (панель #bitrix присутствует в index.html всегда,
+// даже при выключенном плагине — скрыт только `hidden`).
+//
+// СЛЕДСТВИЕ ДЛЯ ТЕСТОВ: стаб `document` обязан стоять ДО первого импорта
+// любого модуля js/bitrix/*, иначе все ref'ы окажутся null и тест будет
+// проверять пустоту. Код панели всё равно проверяет truthy у каждого узла:
+// index.html может приехать из старого кэша PWA, где секции #bitrix ещё нет.
+//
+// Имена: id кнопки — `bitrix-toggle` (по имени плагина), всё внутри панели —
+// с префиксом `b24-`. Разнесение имени модуля и DOM-префикса не новое:
+// telegram/`tg-` устроен так же.
+export const $bitrixToggle = document.getElementById('bitrix-toggle');
+export const $b24UnreadBadge = document.getElementById('b24-unread-badge');
+export const $b24 = document.getElementById('bitrix');
+export const $b24Titlebar = document.getElementById('b24-titlebar');
+export const $b24SelfUser = document.getElementById('b24-self-user');
+export const $b24ThemeToggle = document.getElementById('b24-theme-toggle');
+export const $b24Logout = document.getElementById('b24-logout');
+// Колонка диалогов: сама колонка, кнопка ☰ и подложка (js/bitrix/mobile.js).
+export const $b24Contacts = document.getElementById('b24-contacts');
+export const $b24ContactsToggle = document.getElementById('b24-contacts-toggle');
+export const $b24ContactsScrim = document.getElementById('b24-contacts-scrim');
+// Четыре ЛОКАЛЬНЫЕ директории одного списка (Р2). В отличие от VK это не
+// серверные фильтры: портал отдаёт один `im.recent.get`, а разделение
+// чаты/задачи/непрочитанные делается по полям строки.
+export const $b24DirList = document.getElementById('b24-dir-list');
+export const $b24DirAllCount = document.getElementById('b24-dir-all-count');
+export const $b24DirChatsCount = document.getElementById('b24-dir-chats-count');
+export const $b24DirTasksCount = document.getElementById('b24-dir-tasks-count');
+export const $b24DirUnreadCount = document.getElementById('b24-dir-unread-count');
+export const $b24NodesTitle = document.getElementById('b24-nodes-title');
+export const $b24DialogList = document.getElementById('b24-dialog-list');
+export const $b24SessionHead = document.getElementById('b24-session-head');
+// Шапка-карточка задачи над лентой — то, чего нет ни у Telegram, ни у VK:
+// чат задачи это обычный IM-чат с entity_type="TASKS_TASK", и карточка
+// показывает статус, срок и матрицу действий (Ф10).
+export const $b24TaskCard = document.getElementById('b24-task-card');
+export const $b24Log = document.getElementById('b24-log');
+export const $b24Typing = document.getElementById('b24-typing');
+// Очередь отправляемых файлов (Ф9). НАД полем ввода, а не в ленте:
+// `chat.renderHistory()` пересобирает `#b24-log` целиком, и карточка отправки
+// исчезала бы вместе с прогрессом от любого приехавшего сообщения.
+export const $b24Uploads = document.getElementById('b24-uploads');
+// Строка режима ввода (Ф6): цитата ответа либо правка. Режимы
+// взаимоисключающие, поэтому узел один.
+export const $b24PromptNote = document.getElementById('b24-prompt-note');
+export const $b24Prompt = document.getElementById('b24-prompt');
+export const $b24Input = document.getElementById('b24-input');
+// Счётчик символов (Р12): портал режет текст на 20 006 символах МОЛЧА, поэтому
+// предупреждать обязан фронт — до отправки.
+export const $b24CharCount = document.getElementById('b24-charcount');
+export const $b24Attach = document.getElementById('b24-attach');
+export const $b24FileInput = document.getElementById('b24-file-input');
+export const $b24Send = document.getElementById('b24-send');
+export const $b24Mode = document.getElementById('b24-mode');
+export const $b24StatusRight = document.getElementById('b24-status-right');
+export const $b24Lat = document.getElementById('b24-lat');
+// Оверлей подключения: один шаг — вставка URL входящего вебхука. Разбор
+// трёх форм ввода живёт ТОЛЬКО на бэкенде (Ф3).
+export const $b24Login = document.getElementById('b24-login');
+export const $b24LoginStepWebhook = document.getElementById('b24-login-step-webhook');
+// Текст подсказки приходит с бэкенда (`hint` в /api/bitrix/status):
+// интерфейс портала меняется, а разметку браузер держит в кэше PWA неделями.
+export const $b24LoginHint = document.getElementById('b24-login-hint');
+export const $b24Webhook = document.getElementById('b24-webhook');
+export const $b24LoginWebhookSubmit = document.getElementById('b24-login-webhook-submit');
+export const $b24LoginStatus = document.getElementById('b24-login-status');
+export const $b24LoginError = document.getElementById('b24-login-error');
+export const $b24LoginCountdown = document.getElementById('b24-login-countdown');
+// Предупреждение про выход (`logout_hint` в /api/bitrix/status): отозвать
+// входящий вебхук через REST невозможно, и на портале он остаётся
+// действующим — иначе «вышел» будет прочитано как «отозвал».
+export const $b24LogoutNote = document.getElementById('b24-logout-note');
+export const $b24Dropzone = document.getElementById('b24-dropzone');
+export const $b24Lightbox = document.getElementById('b24-lightbox');
+export const $b24LightboxImg = document.getElementById('b24-lightbox-img');
+export const $b24LightboxPrev = document.getElementById('b24-lightbox-prev');
+export const $b24LightboxNext = document.getElementById('b24-lightbox-next');
+export const $b24LightboxClose = document.getElementById('b24-lightbox-close');
+export const $b24LightboxCaption = document.getElementById('b24-lightbox-caption');

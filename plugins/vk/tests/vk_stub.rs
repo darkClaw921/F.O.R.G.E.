@@ -705,10 +705,30 @@ async fn code_six_is_retried_once_and_code_nine_is_never() {
     assert_eq!(api.status, StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(api.body.retry_after_secs, Some(60));
 
-    // Две шестёрки подряд — честный 429 пользователю.
+    // Две шестёрки подряд (forge-zzy7) — это ещё в пределах бюджета
+    // MAX_CODE6_RETRIES=2: стартовый залп (проверка токена + курсор
+    // LongPoll + список бесед) регулярно даёт именно такую картину, и один
+    // повтор её не разгребает. Пользователь не должен увидеть ошибку.
     stub.state.script(
         "messages.markAsRead",
         vec![
+            Reply::Error(vk_error(6, "Too many")),
+            Reply::Error(vk_error(6, "Too many")),
+            Reply::Response(json!(1)),
+        ],
+    );
+    stub.state.calls.lock().unwrap().clear();
+    client(&stub, 20)
+        .mark_as_read(1234, None, None)
+        .await
+        .expect("две шестёрки подряд обязаны чиниться вторым повтором");
+    assert_eq!(stub.state.calls_of("messages.markAsRead").len(), 3);
+
+    // Три шестёрки подряд — бюджет исчерпан, честный 429 пользователю.
+    stub.state.script(
+        "messages.markAsRead",
+        vec![
+            Reply::Error(vk_error(6, "Too many")),
             Reply::Error(vk_error(6, "Too many")),
             Reply::Error(vk_error(6, "Too many")),
         ],
@@ -719,7 +739,7 @@ async fn code_six_is_retried_once_and_code_nine_is_never() {
         .await
         .unwrap_err();
     assert_eq!(err.code(), Some(6));
-    assert_eq!(stub.state.calls_of("messages.markAsRead").len(), 2);
+    assert_eq!(stub.state.calls_of("messages.markAsRead").len(), 3);
 }
 
 /// Не-JSON от captive portal превращается в `decode`, а не в панику.

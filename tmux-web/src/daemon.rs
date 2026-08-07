@@ -25,7 +25,8 @@ use crate::cli;
 /// удаляется и старт продолжается (нормальный recovery после краша).
 ///
 /// Все опции (`--port`, `--remote`, `--bind`, `--token`, `--pwa`,
-/// `--telegram`, `--vk`) прокидываются в child-процесс `devforge run …`, чтобы он
+/// `--telegram`, `--vk`, `--bitrix`) прокидываются в child-процесс
+/// `devforge run …`, чтобы он
 /// точно унаследовал режим, выбранный пользователем (сборка аргументов —
 /// [`build_daemon_args`]). Без этого `devforge start --remote` молча
 /// превращался бы в localhost-режим, что нарушает single-source-of-truth
@@ -61,6 +62,9 @@ pub fn build_daemon_args(port: u16, opts: &cli::RunOptions) -> Vec<String> {
     }
     if opts.vk {
         args.push("--vk".to_string());
+    }
+    if opts.bitrix {
+        args.push("--bitrix".to_string());
     }
     args
 }
@@ -467,6 +471,23 @@ mod tests {
         );
     }
 
+    /// Тот же регресс-класс для `--bitrix`: без проброса `devforge start
+    /// --bitrix` молча поднял бы сервер БЕЗ плагина, а пользователь увидел
+    /// бы отсутствие вкладки «Битрикс24» и решил, что фича не работает.
+    #[test]
+    fn daemon_args_carry_bitrix() {
+        let opts = cli::RunOptions {
+            bitrix: true,
+            ..cli::RunOptions::default()
+        };
+        let args = build_daemon_args(7331, &opts);
+        assert!(args.iter().any(|a| a == "--bitrix"), "{args:?}");
+        assert!(
+            !args.iter().any(|a| a == "--vk" || a == "--telegram" || a == "--pwa"),
+            "лишних флагов быть не должно: {args:?}"
+        );
+    }
+
     #[test]
     fn daemon_args_carry_all_flags_together() {
         let opts = cli::RunOptions {
@@ -476,10 +497,19 @@ mod tests {
             pwa: true,
             telegram: true,
             vk: true,
+            bitrix: true,
             port: 9000,
         };
         let args = build_daemon_args(opts.port, &opts);
-        for expected in ["--remote", "--bind", "--token", "--pwa", "--telegram", "--vk"] {
+        for expected in [
+            "--remote",
+            "--bind",
+            "--token",
+            "--pwa",
+            "--telegram",
+            "--vk",
+            "--bitrix",
+        ] {
             assert!(args.iter().any(|a| a == expected), "{expected} потерян: {args:?}");
         }
     }

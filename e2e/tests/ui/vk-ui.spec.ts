@@ -37,7 +37,7 @@
 import { test, expect, Page } from '@playwright/test';
 
 /** Панели, которые обязаны быть скрыты, когда открыта одна из них. */
-const HIDDEN_PANE_IDS = ['tasks', 'echo', 'git', 'docker', 'telescope', 'telegram', 'vk'];
+const HIDDEN_PANE_IDS = ['tasks', 'echo', 'git', 'docker', 'telescope', 'telegram', 'vk', 'bitrix'];
 
 /** Подсказка «где взять токен» приходит С СЕРВЕРА (поле `hint` статуса). */
 const TOKEN_HINT =

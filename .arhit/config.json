@@ -6,7 +6,8 @@
     "plugins/echo/src",
     "plugins/echo-host-api/src",
     "plugins/telegram/src",
-    "plugins/vk/src"
+    "plugins/vk/src",
+    "plugins/bitrix/src"
   ],
   "ignore": [
     "node_modules",

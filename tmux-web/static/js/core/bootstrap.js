@@ -10,6 +10,7 @@ import {
     $tabTerminal, $tabTasks, $tabGit, $tabDocker, $tabTelescope, $tabEcho,
     $tasksReload, $tasksNew,
     $projectSettings, $screensaverToggle, $telegramToggle, $vkToggle,
+    $bitrixToggle,
     $btnSidebarToggle, $sidebarOverlay, $layout,
     $claudeMemoryBtn,
 } from './dom.js';
@@ -57,6 +58,10 @@ import {
     initVkGate, suspendVk, resumeVk, teardownVk,
 } from '../vk/main.js';
 import { initVkTheme, teardownVkTheme } from '../vk/theme.js';
+import {
+    initB24Gate, suspendB24, resumeB24, teardownB24,
+} from '../bitrix/main.js';
+import { initB24Theme, teardownB24Theme } from '../bitrix/theme.js';
 
 // ----- side-effect global listeners (app.js:745-851) -----
 // Sidebar overlay click / Esc / Cmd+B hotkey + mqlMobile change.
@@ -184,6 +189,10 @@ export async function bootstrap() {
         $vkToggle.addEventListener('click', () => switchTab('vk'));
     }
 
+    if ($bitrixToggle) {
+        $bitrixToggle.addEventListener('click', () => switchTab('bitrix'));
+    }
+
     // Тема панели Telegram: восстанавливается ДО гейта, чтобы вкладка, если
     // её откроют сразу, не мигнула чужой палитрой. Работает и при выключенном
     // плагине (разметка #telegram в index.html есть всегда) — накладных
@@ -221,6 +230,26 @@ export async function bootstrap() {
         console.warn('[bootstrap] initVkGate failed', e);
     }
 
+    // Тема панели Битрикс24 — по тем же причинам ДО гейта: иначе вкладка,
+    // открытая сразу после загрузки, мигнула бы чужой палитрой. Третий
+    // MutationObserver на <html> приемлем: связать его с соседними означало
+    // бы править js/telegram/theme.js и js/vk/theme.js, а стоимость одного
+    // наблюдателя нулевая.
+    try {
+        initB24Theme();
+    } catch (e) {
+        console.warn('[bootstrap] initB24Theme failed', e);
+    }
+
+    // Гейт кнопки Ⓑ: GET /api/bitrix/status. 404 = плагин выключен, кнопка
+    // остаётся скрытой и в консоль НИЧЕГО не пишется (штатный путь для всех,
+    // кто запускает devforge без --bitrix).
+    try {
+        initB24Gate();
+    } catch (e) {
+        console.warn('[bootstrap] initB24Gate failed', e);
+    }
+
     if (isRemoteMode()) {
         fetchRemoteServers().then(() => {
             loadActiveOriginFromStorage();
@@ -256,6 +285,8 @@ export async function bootstrap() {
         teardownTelegramTheme();
         teardownVk();
         teardownVkTheme();
+        teardownB24();
+        teardownB24Theme();
     });
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
@@ -269,6 +300,7 @@ export async function bootstrap() {
             // закрываем не по смене вкладки, а по уходу страницы в фон.
             suspendTelegram();
             suspendVk();
+            suspendB24();
         } else {
             fetchSessions();
             startPolling();
@@ -290,6 +322,7 @@ export async function bootstrap() {
             }
             resumeTelegram();
             resumeVk();
+            resumeB24();
         }
     });
 

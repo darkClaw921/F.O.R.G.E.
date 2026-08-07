@@ -311,6 +311,9 @@ async fn main() -> anyhow::Result<()> {
     // Opt-in плагин VK — ровно та же схема: без флага `GET /api/vk/status`
     // отдаёт 404, и фронт по этому 404 держит кнопку Ⓥ скрытой.
     let vk_enabled = effective.vk_enabled;
+    // Opt-in плагин Bitrix24 — та же схема: без флага `GET /api/bitrix/status`
+    // отдаёт 404, и фронт по этому 404 держит кнопку вкладки скрытой.
+    let bitrix_enabled = effective.bitrix_enabled;
 
     // Инициализация логирования. По умолчанию: info для всего + debug для tmux_web.
     // Переопределяется переменной окружения RUST_LOG.
@@ -967,6 +970,39 @@ async fn main() -> anyhow::Result<()> {
         app
     };
 
+    // Плагин forge-bitrix — opt-in, флаг `--bitrix` / `DEVFORGE_BITRIX` /
+    // `server_config.json`. Устроен симметрично VK-блоку и стоит сразу после
+    // него, всё ещё ДО `.fallback(static_embed::serve_static)` и ДО
+    // `.layer(...)`: только при таком порядке bearer_auth и csrf_guard
+    // автоматически покрывают `/api/bitrix/*` и `/ws/bitrix` в remote-mode.
+    // Регистрация после `.fallback` дала бы 404 на роуты плагина, после
+    // `.layer` — дыру в авторизации.
+    //
+    // Ошибка init НЕ роняет сервер (как у Telegram и VK): Bitrix24 — побочная
+    // вкладка, и сломанный `~/.config/forge/bitrix.toml` не должен мешать
+    // работать с терминалом. Логируем warn и стартуем без плагина — тогда
+    // `/api/bitrix/*` просто отсутствуют и отдают 404, а фронт прячет кнопку.
+    // Использовать здесь `?` ЗАПРЕЩЕНО: он превратил бы опечатку в конфиге
+    // плагина в отказ всего devforge.
+    let mut bitrix_state: Option<std::sync::Arc<forge_bitrix::B24State>> = None;
+    let app = if bitrix_enabled {
+        match forge_bitrix::init(forge_bitrix::BitrixConfig::load()) {
+            Ok(state) => {
+                let app = forge_bitrix::register_routes(app, state.clone());
+                forge_bitrix::spawn_workers(&state).await;
+                tracing::info!("forge-bitrix: plugin registered");
+                bitrix_state = Some(state);
+                app
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "forge-bitrix: init failed, starting without plugin");
+                app
+            }
+        }
+    } else {
+        app
+    };
+
     let mut app = app
         // Embedded static fallback: serve_static резолвит "/" → index.html и
         // отдаёт остальные ассеты с правильным Content-Type из bytes-секции
@@ -1044,6 +1080,7 @@ async fn main() -> anyhow::Result<()> {
     let echo_for_shutdown = echo_state.clone();
     let telegram_for_shutdown = telegram_state.clone();
     let vk_for_shutdown = vk_state.clone();
+    let bitrix_for_shutdown = bitrix_state.clone();
     let history_for_shutdown = app_state.history.clone();
     let shutdown_signal = async move {
         wait_for_shutdown_signal().await;
@@ -1056,6 +1093,11 @@ async fn main() -> anyhow::Result<()> {
         // То же для VK: `None` — плагин выключен или его init не удался.
         if let Some(vk) = vk_for_shutdown {
             forge_vk::shutdown(&vk).await;
+        }
+        // И для Bitrix24: shutdown идемпотентен, но вызывать его на
+        // отсутствующем плагине всё равно нечем.
+        if let Some(b24) = bitrix_for_shutdown {
+            forge_bitrix::shutdown(&b24).await;
         }
         // Финальный снимок истории сессий перед выходом — чтобы последнее
         // состояние активных сессий/окон попало в журнал, даже если до

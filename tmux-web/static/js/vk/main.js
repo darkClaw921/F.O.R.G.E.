@@ -101,6 +101,15 @@ const local = {
     readSent: new Map(),
     /** Список бесед уже загружен в этой сессии логина. */
     dataLoaded: false,
+    /**
+     * Соединение WS уже поднималось хотя бы раз (forge-oy0c).
+     *
+     * Отличает ПЕРВОЕ подключение от РЕКОННЕКТА. После первого историю только
+     * что прочитали по REST, догонять нечего. После реконнекта поток кадров
+     * прерывался, и всё, что пришло в это окно, в открытой ленте не появилось
+     * бы никогда — там нужен догон.
+     */
+    everConnected: false,
     /** dialog_id → когда показывали прошлый тост (мс). */
     lastToastAt: new Map(),
     /**
@@ -695,7 +704,18 @@ export function buildHandlers() {
     if (local.handlers) return local.handlers;
     local.handlers = {
         // --- соединение ---
-        open: () => setMode('connected'),
+        open: () => {
+            setMode('connected');
+            // РЕКОННЕКТ (а не первое подключение): между обрывом и
+            // восстановлением кадры не приходили, и открытая лента о них не
+            // знает. Список бесед догоняется сам следующей загрузкой, а
+            // историю открытой беседы догнать больше некому (forge-oy0c).
+            if (local.everConnected) {
+                void reloadData();
+                void vkChat.refreshActive();
+            }
+            local.everConnected = true;
+        },
         close: (info) => setMode(info && info.willReconnect ? 'reconnecting' : 'offline'),
         lat: (ms) => {
             if ($vkLat) $vkLat.textContent = `${ms}ms`;
@@ -709,6 +729,10 @@ export function buildHandlers() {
             local.flagsExtra.clear();
             void refreshStatus();
             void reloadData();
+            // Открытая лента — тоже состояние, и перечитывать её обязательно:
+            // `reloadData` обновляет только КОЛОНКУ, а пропущенные кадры были
+            // ровно про сообщения (forge-oy0c).
+            void vkChat.refreshActive();
         },
         ping: () => {},
 
@@ -963,7 +987,19 @@ export function suspendVk() {
     setMode('offline');
 }
 
-/** Страница вернулась из фона. */
+/**
+ * Страница вернулась из фона.
+ *
+ * Соединение на время фона РВЁТСЯ ([`suspendVk`]), поэтому возврат — это не
+ * только «подключиться заново»: пока связи не было, кадры `new_message` шли в
+ * никуда. Список бесед и открытую ленту надо ДОГНАТЬ по REST, иначе сообщение,
+ * пришедшее в открытую беседу, не появится в ней до перехода в другую беседу и
+ * обратно (forge-oy0c).
+ *
+ * Сам догон живёт в обработчике кадра `open`, а не здесь: соединение
+ * поднимается и после обрыва связи, без всякого фона, и две точки догона
+ * означали бы два одинаковых запроса на один возврат.
+ */
 export function resumeVk() {
     if (!vkState.enabled) return;
     connectVkWs(buildHandlers());

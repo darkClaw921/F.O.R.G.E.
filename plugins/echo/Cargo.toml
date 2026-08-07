@@ -34,6 +34,11 @@ uuid = { version = "1.23", features = ["v4"] }
 # Plugin boundary
 echo-host-api = { path = "../echo-host-api" }
 
+# Стриминговый раннер Claude CLI — общий крейт workspace. Вынесен из
+# plugins/echo/src/claude/, потому что тем же раннером пользуется forge-vk,
+# а зависеть на forge-echo плагин не может (плагины изолированы).
+forge-claude-runner = { path = "../claude-runner" }
+
 # Phase 6 — конфиг плагина (`~/.config/forge/echo.toml`). 0.8.x — последняя
 # стабильная линия toml-rs на момент написания.
 toml = "0.8"

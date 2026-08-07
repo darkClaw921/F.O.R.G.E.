@@ -29,6 +29,15 @@
                      Глиф Ⓥ (U+24CB) — один кодпоинт, монохромный во всех
                      системных шрифтах и не путается с ✈. -->
                 <button id="vk-toggle" type="button" title="VK" aria-label="VK" hidden>Ⓥ<span id="vk-unread-badge" hidden></span></button>
+                <!-- Bitrix24-вкладка (плагин forge-bitrix, opt-in `--bitrix`).
+                     hidden снимается из JS, когда GET /api/bitrix/status
+                     ответил 200; 404 = плагин выключен, и тогда кнопка
+                     остаётся скрытой, а в консоль ничего не пишется.
+                     Глиф Ⓑ (U+24B7) — один кодпоинт, монохромный во всех
+                     системных шрифтах, не путается ни с ✈, ни с Ⓥ.
+                     id кнопки `bitrix-toggle`, а DOM-префикс панели `b24-` —
+                     ровно как у Telegram (`telegram-toggle` + `tg-*`). -->
+                <button id="bitrix-toggle" type="button" title="Битрикс24" aria-label="Битрикс24" hidden>Ⓑ<span id="b24-unread-badge" hidden></span></button>
             </div>
             <header class="sidebar-header">
                 <h1>tmux-web</h1>
@@ -519,6 +528,173 @@
                     <img id="vk-lightbox-img" alt="">
                     <button id="vk-lightbox-next" class="vk-icon-btn" type="button" title="Следующее вложение" aria-label="Следующее вложение" hidden>›</button>
                     <div id="vk-lightbox-caption" class="vk-lightbox-caption"></div>
+                </div>
+            </div>
+
+            <!-- ========================= Bitrix24 ==========================
+                 Плагин forge-bitrix, opt-in `--bitrix`. Разметка присутствует
+                 ВСЕГДА, даже когда плагин выключен: все DOM-ref'ы панели
+                 резолвятся один раз при импорте js/core/dom.js, и отсутствие
+                 узлов обнулило бы их навсегда. Гейтится ТОЛЬКО видимость
+                 кнопки Ⓑ в #settings-bar (по 200/404 от GET
+                 /api/bitrix/status).
+
+                 DOM-префикс `b24-`, атрибут темы `data-b24-theme` — панель не
+                 наследует токены приложения, у неё своя палитра (css/bitrix.css).
+
+                 Отличие от Telegram и VK: диалог может быть ЧАТОМ ЗАДАЧИ
+                 (entity_type="TASKS_TASK"), поэтому над лентой живёт
+                 контейнер карточки задачи #b24-task-card, а директорий в
+                 колонке четыре: ~/all, ~/chats, ~/tasks, ~/unread. Второй
+                 вкладки под задачи НЕТ намеренно: комментарии задачи и
+                 сообщения её чата — один и тот же поток. -->
+            <div id="bitrix" class="tab-pane" hidden data-b24-theme="dark">
+                <div id="b24-titlebar">
+                    <!-- ☰ виден только на узких экранах (CSS .b24-mobile-only):
+                         там колонка диалогов уезжает за левый край и
+                         открывается поверх ленты. -->
+                    <button id="b24-contacts-toggle" class="b24-icon-btn b24-mobile-only" type="button" title="Список диалогов" aria-label="Список диалогов" aria-expanded="false" aria-controls="b24-contacts">☰</button>
+                    <span class="b24-dots" aria-hidden="true">
+                        <span class="b24-dot b24-dot-red"></span>
+                        <span class="b24-dot b24-dot-amber"></span>
+                        <span class="b24-dot b24-dot-green"></span>
+                    </span>
+                    <span class="b24-title">FORGE://bitrix</span>
+                    <!-- Ни слова про сквозное шифрование: у портала его нет.
+                         Говорим ровно то, что есть — REST по TLS через
+                         входящий вебхук. -->
+                    <span class="b24-enc">
+                        <span class="b24-pulse" aria-hidden="true"></span>
+                        <span class="b24-enc-text">REST WEBHOOK · TLS</span>
+                    </span>
+                    <span id="b24-self-user" class="b24-self-user"></span>
+                    <button id="b24-theme-toggle" class="b24-icon-btn" type="button" title="Тема панели: авто / тёмная / светлая" aria-label="Переключить тему панели">◐</button>
+                    <button id="b24-logout" class="b24-icon-btn" type="button" title="Отвязать вебхук Битрикс24" aria-label="Отвязать вебхук Битрикс24" hidden>⏻</button>
+                </div>
+                <div id="b24-body">
+                    <!-- tabindex=-1: на мобильных фокус переносится сюда при
+                         открытии панели по ☰. -->
+                    <aside id="b24-contacts" tabindex="-1">
+                        <!-- ЧЕТЫРЕ ДИРЕКТОРИИ ОДНОГО СПИСКА. В отличие от VK
+                             это НЕ серверные фильтры: портал отдаёт один
+                             список `im.recent.get`, а разделение
+                             чаты/задачи/непрочитанные делается по полям
+                             строки (entity_type, unread_count). Поэтому
+                             переключение директории — локальная операция,
+                             сетевого запроса не требует. -->
+                        <div class="b24-section-title">// DIRS</div>
+                        <ul id="b24-dir-list" class="b24-list">
+                            <li class="b24-dir active" data-dir="all"><span class="b24-dir-name">~/all</span><span class="b24-dir-count" id="b24-dir-all-count"></span></li>
+                            <li class="b24-dir" data-dir="chats"><span class="b24-dir-name">~/chats</span><span class="b24-dir-count" id="b24-dir-chats-count"></span></li>
+                            <li class="b24-dir" data-dir="tasks"><span class="b24-dir-name">~/tasks</span><span class="b24-dir-count" id="b24-dir-tasks-count"></span></li>
+                            <li class="b24-dir" data-dir="unread"><span class="b24-dir-name">~/unread</span><span class="b24-dir-count" id="b24-dir-unread-count"></span></li>
+                        </ul>
+                        <div class="b24-section-title" id="b24-nodes-title">// ~/all — 0 NODES</div>
+                        <ul id="b24-dialog-list" class="b24-list"></ul>
+                    </aside>
+                    <!-- Подложка под off-canvas колонкой на узких экранах. -->
+                    <div id="b24-contacts-scrim" hidden></div>
+                    <div id="b24-session">
+                        <div id="b24-session-head">SESSION ▸ —</div>
+                        <!-- Шапка-карточка задачи. Показывается только когда
+                             открытый диалог — чат задачи; для обычного чата
+                             остаётся hidden. Наполняется в Ф10. -->
+                        <div id="b24-task-card" class="b24-task-card" hidden></div>
+                        <ul id="b24-log" class="b24-log">
+                            <li class="b24-log-spacer" aria-hidden="true"></li>
+                        </ul>
+                        <div id="b24-typing" class="b24-typing" hidden></div>
+                        <!-- Очередь отправляемых файлов (Ф9). Живёт НАД полем
+                             ввода, а не в ленте: `renderHistory()` пересобирает
+                             `#b24-log` целиком на каждой правке и на каждом
+                             сообщении, вставшем не в конец, — карточка отправки
+                             исчезала бы вместе с прогрессом. Да и по существу
+                             это состояние строки ввода, а не история: в
+                             переписке файл появляется только после того, как
+                             портал его принял. -->
+                        <div id="b24-uploads" class="b24-uploads" hidden></div>
+                        <!-- Строка режима ввода: цитата ответа (Р10) либо
+                             правка сообщения. Одна на оба режима — они
+                             взаимоисключающие, а два узла означали бы
+                             состояние «правлю и одновременно отвечаю»,
+                             которого не существует. -->
+                        <div id="b24-prompt-note" class="b24-prompt-note" hidden></div>
+                        <form id="b24-prompt" autocomplete="off">
+                            <span class="b24-prompt-sign">&gt;</span>
+                            <span class="b24-input-wrap">
+                                <input id="b24-input" type="text" autocomplete="off" placeholder="сообщение">
+                                <span class="b24-caret" aria-hidden="true"></span>
+                            </span>
+                            <!-- Счётчик символов (Р12). Появляется только у
+                                 длинного текста: у портала жёсткий лимит
+                                 20 000 символов, и превышение он режет МОЛЧА —
+                                 пользователь обязан узнать об этом до
+                                 отправки, а не после. -->
+                            <span id="b24-charcount" class="b24-charcount" hidden></span>
+                            <button id="b24-attach" class="b24-icon-btn" type="button" title="Прикрепить файл" aria-label="Прикрепить файл">⇪</button>
+                            <input id="b24-file-input" type="file" hidden>
+                            <button id="b24-send" class="b24-send-btn" type="submit">SEND</button>
+                        </form>
+                    </div>
+                </div>
+                <div id="b24-statusbar">
+                    <span id="b24-mode" class="b24-mode b24-mode-offline">OFFLINE</span>
+                    <span class="b24-status-center"><span id="b24-lat"></span></span>
+                    <span id="b24-status-right" class="b24-status-right"></span>
+                </div>
+
+                <!-- Оверлей подключения. Один шаг: вставка URL входящего
+                     вебхука. Разбор трёх форм ввода живёт ТОЛЬКО на бэкенде
+                     (Ф3) — секрет не должен задерживаться во фронте. -->
+                <div id="b24-login" hidden>
+                    <div class="b24-login-box">
+                        <div class="b24-login-title">BITRIX24 // CONNECT</div>
+                        <div id="b24-login-step-webhook">
+                            <!-- Текст подсказки приходит С БЭКЕНДА (поле
+                                 `hint` в /api/bitrix/status): интерфейс
+                                 портала меняется, а разметку браузер держит
+                                 в кэше PWA неделями. Здесь — только
+                                 безопасный дефолт. -->
+                            <div id="b24-login-hint" class="b24-login-hint">Вставьте адрес входящего вебхука Битрикс24.</div>
+                            <!-- Инструкция «как создать вебхук». Статична и
+                                 продублирована к серверной подсказке: разметка
+                                 приезжает из кэша PWA и обязана оставаться
+                                 полезной даже с пустым `hint`. Ссылка идёт с
+                                 rel="noopener noreferrer" — панель не
+                                 сообщает документации, откуда пришёл клик. -->
+                            <ol class="b24-login-steps">
+                                <li>В Битрикс24: <b>Разработчикам → Другое → Входящий вебхук</b>.</li>
+                                <li>Отметьте права <b>«Чат и уведомления» (im)</b> и <b>«Задачи» (task)</b>.</li>
+                                <li>Сохраните и вставьте сюда адрес целиком — можно вместе с именем метода и без хвостового слэша.</li>
+                            </ol>
+                            <a class="b24-login-doc" href="https://helpdesk.bitrix24.ru/open/17280012/" target="_blank" rel="noopener noreferrer">документация: входящие вебхуки ↗</a>
+                            <label class="b24-field">
+                                <span class="b24-field-label">WEBHOOK URL</span>
+                                <input id="b24-webhook" type="password" autocomplete="off" spellcheck="false" placeholder="https://портал.bitrix24.ru/rest/1/код/">
+                            </label>
+                            <button id="b24-login-webhook-submit" class="b24-login-btn" type="button">CONNECT</button>
+                            <div id="b24-login-status" class="b24-login-status"></div>
+                            <div id="b24-login-error" class="b24-login-error" hidden></div>
+                            <div id="b24-login-countdown" class="b24-login-countdown" hidden></div>
+                            <!-- Что именно делает ⏻. Текст приходит с бэкенда
+                                 (`logout_hint`), здесь безопасный дефолт. -->
+                            <div id="b24-logout-note" class="b24-logout-note">Выход удаляет вебхук только из этого devforge — на портале он продолжит действовать.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Оверлей drag&drop файлов. -->
+                <div id="b24-dropzone" hidden>
+                    <div class="b24-dropzone-box">DROP FILE TO TRANSMIT</div>
+                </div>
+
+                <!-- Лайтбокс просмотра медиа. -->
+                <div id="b24-lightbox" hidden>
+                    <button id="b24-lightbox-close" class="b24-icon-btn" type="button" title="Закрыть" aria-label="Закрыть">×</button>
+                    <button id="b24-lightbox-prev" class="b24-icon-btn" type="button" title="Предыдущее вложение" aria-label="Предыдущее вложение" hidden>‹</button>
+                    <img id="b24-lightbox-img" alt="">
+                    <button id="b24-lightbox-next" class="b24-icon-btn" type="button" title="Следующее вложение" aria-label="Следующее вложение" hidden>›</button>
+                    <div id="b24-lightbox-caption" class="b24-lightbox-caption"></div>
                 </div>
             </div>
         </main>
