@@ -1,0 +1,3 @@
+# AnalysisError
+
+plugins/chat-analysis/src/error.rs. Закрытый список причин отказа ядра анализа: Busy(usize) — заняты все слоты параллельных анализов другими беседами (внутри — сколько идёт сейчас); CliUnavailable — бинаря Claude CLI по настроенному пути нет; NoPreviousAnalysis — REFRESH без сохранённого разбора; Storage(String) — хранилище не прочиталось/не записалось. thiserror, PartialEq (отказ проверяется сравнением: Busy(3) и Busy(2) — разные ответы пользователю). Display НЕ несёт путей и секретов — он уходит и в логи, и в тело ответа (тест display_leaks_neither_paths_nor_secrets). HTTP-код по варианту выбирает плагин (у VK — map_analysis_error): крейт общий на три мессенджера, а таблицы кодов у них свои.

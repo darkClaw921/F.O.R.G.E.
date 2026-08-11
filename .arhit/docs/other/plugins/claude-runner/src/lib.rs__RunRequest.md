@@ -8,4 +8,4 @@ prompt_via_stdin — ЕДИНСТВЕННОЕ функциональное от�
 
 Две ловушки stdin-режима: (1) писать ОБЯЗАТЕЛЬНО отдельной таской — на промпте больше pipe-буфера write_all блокируется до вычитывания дочерним процессом, а тот пишет в stdout, который мы ещё не читаем (взаимная блокировка); (2) shutdown() обязателен — без EOF на stdin claude -p не начинает генерацию.
 
-RunRequest::new(prompt) — конструктор с авто-UUID; with_prompt_via_stdin(bool) — билдер; impl Default существует ради ..Default::default() в струкnbsp-литералах вызывающих плагинов. Сборка argv вынесена в чистую build_args(&RunRequest) -> Vec<String>, чтобы тест мог напрямую проверить инвариант «промпта в argv нет».
+RunRequest::new(prompt) — конструктор с авто-UUID; with_prompt_via_stdin(bool) — билдер; impl Default существует ради ..Default::default() в struct-литералах вызывающих плагинов. Сборка argv вынесена в чистую build_args(&RunRequest) -> Vec<String>, чтобы тест мог напрямую проверить инвариант «промпта в argv нет».

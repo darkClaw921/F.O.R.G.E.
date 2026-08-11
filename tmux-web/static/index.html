@@ -296,6 +296,10 @@
                         <span class="tg-enc-text">CONNECTION ENCRYPTED — MTPROTO 2.0</span>
                     </span>
                     <span id="tg-self-user" class="tg-self-user"></span>
+                    <!-- Анализ переписки через Claude CLI. Кнопка стоит ПЕРЕД
+                         тумблером темы (как в панели VK): это действие над
+                         содержимым чата, а тема и выход — служебные. -->
+                    <button id="tg-analysis-toggle" class="tg-icon-btn" type="button" title="Анализ чата (Claude)" aria-label="Анализ чата через Claude">✦</button>
                     <button id="tg-theme-toggle" class="tg-icon-btn" type="button" title="Тема панели: авто / тёмная / светлая" aria-label="Переключить тему панели">◐</button>
                     <button id="tg-logout" class="tg-icon-btn" type="button" title="Выйти из аккаунта Telegram" aria-label="Выйти из аккаунта Telegram" hidden>⏻</button>
                 </div>
@@ -383,6 +387,75 @@
                     </div>
                 </div>
 
+                <!-- АНАЛИЗ ЧАТА ЧЕРЕЗ CLAUDE.
+                     Разметка СТАТИЧНА (как и остальные оверлеи панели), а не
+                     собирается в JS: core/dom.js резолвит все ref'ы ОДИН раз
+                     на верхнем уровне, и динамический попап заставил бы модуль
+                     ходить через querySelector в обход конвенции, а заодно
+                     сломал бы фейковый DOM тестов и e2e-селекторы. Динамически
+                     растут только строки вывода и тред Q&A.
+                     Слой: z-index 6 — выше #tg-login (5) и НИЖЕ dropzone и
+                     лайтбокса (7): эти два модальны и несут свои кнопки. -->
+                <div id="tg-analysis" hidden>
+                    <div class="tg-analysis-box">
+                        <div class="tg-analysis-head">
+                            <div class="tg-analysis-title">// АНАЛИЗ ЧАТА</div>
+                            <span id="tg-analysis-target" class="tg-analysis-target"></span>
+                            <button id="tg-analysis-close" class="tg-icon-btn tg-analysis-close" type="button" title="Закрыть (Esc)" aria-label="Закрыть анализ">✕</button>
+                        </div>
+                        <div class="tg-analysis-tabs" role="tablist">
+                            <button id="tg-analysis-tab-run" class="tg-analysis-tab" type="button" role="tab" aria-selected="true">АНАЛИЗ</button>
+                            <button id="tg-analysis-tab-ctx" class="tg-analysis-tab" type="button" role="tab" aria-selected="false">КОНТЕКСТ ЧАТА</button>
+                        </div>
+
+                        <div id="tg-analysis-pane-run" class="tg-analysis-pane">
+                            <div class="tg-analysis-controls">
+                                <label class="tg-field tg-analysis-depth-field"><span>глубина</span>
+                                    <select id="tg-analysis-depth">
+                                        <option value="50">50 сообщений</option>
+                                        <option value="200" selected>200 сообщений</option>
+                                        <option value="500">500 сообщений</option>
+                                    </select>
+                                </label>
+                                <button id="tg-analysis-start" class="tg-login-btn tg-analysis-btn" type="button">ANALYZE ✦</button>
+                                <button id="tg-analysis-refresh" class="tg-login-btn tg-analysis-btn" type="button" title="Дочитать новые сообщения и обновить разбор" disabled>REFRESH ↻</button>
+                                <button id="tg-analysis-cancel" class="tg-login-btn tg-login-btn-ghost tg-analysis-btn" type="button" hidden>STOP</button>
+                                <button id="tg-analysis-clear" class="tg-login-btn tg-login-btn-ghost tg-analysis-btn" type="button" title="Стереть сохранённый разбор">CLEAR ✕</button>
+                                <button id="tg-analysis-clear-thread" class="tg-login-btn tg-login-btn-ghost tg-analysis-btn" type="button" title="Очистить вопросы и ответы">CLEAR Q&amp;A</button>
+                            </div>
+                            <div id="tg-analysis-status" class="tg-analysis-status"></div>
+                            <div id="tg-analysis-updated" class="tg-analysis-updated"></div>
+                            <!-- Шапка разбора: сворачивает ТОЛЬКО #tg-analysis-out.
+                                 Статус, строка «разобрано до …» и тред стоят
+                                 СНАРУЖИ сворачиваемого узла намеренно — свёрнутый
+                                 разбор не должен уносить с экрана ни метку, ни
+                                 вопросы, ради которых его и сворачивают.
+                                 Настоящая <button>, а не div с onclick: шапка
+                                 обязана фокусироваться и срабатывать по
+                                 Enter/Space без единой строки кода. -->
+                            <button id="tg-analysis-out-toggle" class="tg-analysis-out-toggle" type="button" aria-expanded="true" aria-controls="tg-analysis-out" title="Свернуть или развернуть разбор"><span class="tg-analysis-out-caret" aria-hidden="true">▾</span><span>РАЗБОР</span></button>
+                            <div id="tg-analysis-out" class="tg-analysis-out"></div>
+                            <div id="tg-analysis-thread" class="tg-analysis-thread"></div>
+                            <form id="tg-analysis-ask" class="tg-analysis-ask">
+                                <textarea id="tg-analysis-question" class="tg-analysis-question" rows="2" spellcheck="false" placeholder="Спросить по этой переписке…"></textarea>
+                                <button id="tg-analysis-send" class="tg-login-btn tg-analysis-btn" type="submit">ASK ⏎</button>
+                            </form>
+                            <div id="tg-analysis-error" class="tg-login-error" hidden></div>
+                        </div>
+
+                        <div id="tg-analysis-pane-ctx" class="tg-analysis-pane" hidden>
+                            <p class="tg-analysis-hint">Заметка о собеседнике: кто он вам, о чём договаривались, на что смотреть. Подставляется в каждый анализ этого чата.</p>
+                            <textarea id="tg-analysis-prompt" class="tg-analysis-prompt" rows="8" spellcheck="false" placeholder="Например: подрядчик по ремонту, следи за сроками и суммами."></textarea>
+                            <div id="tg-analysis-prompt-count" class="tg-analysis-prompt-count"></div>
+                            <div class="tg-analysis-controls">
+                                <button id="tg-analysis-prompt-save" class="tg-login-btn tg-analysis-btn" type="button">SAVE ⌘⏎</button>
+                                <button id="tg-analysis-prompt-clear" class="tg-login-btn tg-login-btn-ghost tg-analysis-btn" type="button">CLEAR</button>
+                            </div>
+                            <div id="tg-analysis-prompt-status" class="tg-analysis-prompt-status"></div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Оверлей drag&drop файлов. -->
                 <div id="tg-dropzone" hidden>
                     <div class="tg-dropzone-box">DROP FILE TO TRANSMIT</div>
@@ -425,6 +498,10 @@
                         <span class="vk-enc-text">VK API 5.199 · TLS</span>
                     </span>
                     <span id="vk-self-user" class="vk-self-user"></span>
+                    <!-- Анализ переписки через Claude CLI. Кнопка стоит ПЕРЕД
+                         тумблером темы: это действие над содержимым беседы, а
+                         тема и отвязка токена — служебные. -->
+                    <button id="vk-analysis-toggle" class="vk-icon-btn" type="button" title="Анализ чата (Claude)" aria-label="Анализ чата через Claude">✦</button>
                     <button id="vk-theme-toggle" class="vk-icon-btn" type="button" title="Тема панели: авто / тёмная / светлая" aria-label="Переключить тему панели">◐</button>
                     <button id="vk-logout" class="vk-icon-btn" type="button" title="Отвязать токен VK" aria-label="Отвязать токен VK" hidden>⏻</button>
                 </div>
@@ -514,6 +591,76 @@
                     </div>
                 </div>
 
+                <!-- АНАЛИЗ ЧАТА ЧЕРЕЗ CLAUDE.
+                     Разметка СТАТИЧНА (как у #vk-captcha), а не собирается в
+                     JS: core/dom.js резолвит все ref'ы ОДИН раз на верхнем
+                     уровне, и динамический попап заставил бы модуль ходить
+                     через querySelector в обход конвенции, а заодно сломал бы
+                     фейковый DOM тестов и e2e-селекторы. Динамически растут
+                     только строки вывода и тред Q&A.
+                     Слой: z-index 6 — выше #vk-login (5) и НИЖЕ #vk-captcha
+                     (7): код 14 может прилететь во время выгрузки истории и
+                     обязан перекрыть попап. -->
+                <div id="vk-analysis" hidden>
+                    <div class="vk-analysis-box">
+                        <div class="vk-analysis-head">
+                            <div class="vk-analysis-title">// АНАЛИЗ ЧАТА</div>
+                            <span id="vk-analysis-target" class="vk-analysis-target"></span>
+                            <button id="vk-analysis-close" class="vk-icon-btn vk-analysis-close" type="button" title="Закрыть (Esc)" aria-label="Закрыть анализ">✕</button>
+                        </div>
+                        <div class="vk-analysis-tabs" role="tablist">
+                            <button id="vk-analysis-tab-run" class="vk-analysis-tab" type="button" role="tab" aria-selected="true">АНАЛИЗ</button>
+                            <button id="vk-analysis-tab-ctx" class="vk-analysis-tab" type="button" role="tab" aria-selected="false">КОНТЕКСТ ЧАТА</button>
+                        </div>
+
+                        <div id="vk-analysis-pane-run" class="vk-analysis-pane">
+                            <div class="vk-analysis-controls">
+                                <label class="vk-field vk-analysis-depth-field"><span>глубина</span>
+                                    <select id="vk-analysis-depth">
+                                        <option value="50">50 сообщений</option>
+                                        <option value="200" selected>200 сообщений</option>
+                                        <option value="500">500 сообщений</option>
+                                    </select>
+                                </label>
+                                <button id="vk-analysis-start" class="vk-login-btn vk-analysis-btn" type="button">ANALYZE ✦</button>
+                                <button id="vk-analysis-refresh" class="vk-login-btn vk-analysis-btn" type="button" title="Дочитать новые сообщения и обновить разбор" disabled>REFRESH ↻</button>
+                                <button id="vk-analysis-cancel" class="vk-login-btn vk-login-btn-ghost vk-analysis-btn" type="button" hidden>STOP</button>
+                                <button id="vk-analysis-clear" class="vk-login-btn vk-login-btn-ghost vk-analysis-btn" type="button" title="Стереть сохранённый разбор">CLEAR ✕</button>
+                                <button id="vk-analysis-clear-thread" class="vk-login-btn vk-login-btn-ghost vk-analysis-btn" type="button" title="Очистить вопросы и ответы">CLEAR Q&amp;A</button>
+                            </div>
+                            <div id="vk-analysis-status" class="vk-analysis-status"></div>
+                            <div id="vk-analysis-updated" class="vk-analysis-updated"></div>
+                            <!-- Шапка разбора: сворачивает ТОЛЬКО #vk-analysis-out.
+                                 Статус, строка «разобрано до …» и тред стоят
+                                 СНАРУЖИ сворачиваемого узла намеренно — свёрнутый
+                                 разбор не должен уносить с экрана ни метку, ни
+                                 вопросы, ради которых его и сворачивают.
+                                 Настоящая <button>, а не div с onclick: шапка
+                                 обязана фокусироваться и срабатывать по
+                                 Enter/Space без единой строки кода. -->
+                            <button id="vk-analysis-out-toggle" class="vk-analysis-out-toggle" type="button" aria-expanded="true" aria-controls="vk-analysis-out" title="Свернуть или развернуть разбор"><span class="vk-analysis-out-caret" aria-hidden="true">▾</span><span>РАЗБОР</span></button>
+                            <div id="vk-analysis-out" class="vk-analysis-out"></div>
+                            <div id="vk-analysis-thread" class="vk-analysis-thread"></div>
+                            <form id="vk-analysis-ask" class="vk-analysis-ask">
+                                <textarea id="vk-analysis-question" class="vk-analysis-question" rows="2" spellcheck="false" placeholder="Спросить по этой переписке…"></textarea>
+                                <button id="vk-analysis-send" class="vk-login-btn vk-analysis-btn" type="submit">ASK ⏎</button>
+                            </form>
+                            <div id="vk-analysis-error" class="vk-login-error" hidden></div>
+                        </div>
+
+                        <div id="vk-analysis-pane-ctx" class="vk-analysis-pane" hidden>
+                            <p class="vk-analysis-hint">Заметка о собеседнике: кто он вам, о чём договаривались, на что смотреть. Подставляется в каждый анализ этой беседы.</p>
+                            <textarea id="vk-analysis-prompt" class="vk-analysis-prompt" rows="8" spellcheck="false" placeholder="Например: подрядчик по ремонту, следи за сроками и суммами."></textarea>
+                            <div id="vk-analysis-prompt-count" class="vk-analysis-prompt-count"></div>
+                            <div class="vk-analysis-controls">
+                                <button id="vk-analysis-prompt-save" class="vk-login-btn vk-analysis-btn" type="button">SAVE ⌘⏎</button>
+                                <button id="vk-analysis-prompt-clear" class="vk-login-btn vk-login-btn-ghost vk-analysis-btn" type="button">CLEAR</button>
+                            </div>
+                            <div id="vk-analysis-prompt-status" class="vk-analysis-prompt-status"></div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Оверлей drag&drop файлов. -->
                 <div id="vk-dropzone" hidden>
                     <div class="vk-dropzone-box">DROP FILE TO TRANSMIT</div>
@@ -568,6 +715,11 @@
                         <span class="b24-enc-text">REST WEBHOOK · TLS</span>
                     </span>
                     <span id="b24-self-user" class="b24-self-user"></span>
+                    <!-- ✦ — попап «Анализ чата» (js/bitrix/analysis.js). Стоит
+                         в титлбаре, а не у строки ввода, по образцу Telegram и
+                         VK: кнопка относится к ОТКРЫТОМУ диалогу целиком, а не
+                         к отправке сообщения. -->
+                    <button id="b24-analysis-toggle" class="b24-icon-btn" type="button" title="Анализ чата (Claude)" aria-label="Анализ чата через Claude">✦</button>
                     <button id="b24-theme-toggle" class="b24-icon-btn" type="button" title="Тема панели: авто / тёмная / светлая" aria-label="Переключить тему панели">◐</button>
                     <button id="b24-logout" class="b24-icon-btn" type="button" title="Отвязать вебхук Битрикс24" aria-label="Отвязать вебхук Битрикс24" hidden>⏻</button>
                 </div>
@@ -679,6 +831,84 @@
                             <!-- Что именно делает ⏻. Текст приходит с бэкенда
                                  (`logout_hint`), здесь безопасный дефолт. -->
                             <div id="b24-logout-note" class="b24-logout-note">Выход удаляет вебхук только из этого devforge — на портале он продолжит действовать.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- АНАЛИЗ ЧАТА ЧЕРЕЗ CLAUDE.
+                     Разметка СТАТИЧНА (как и остальные оверлеи панели), а не
+                     собирается в JS: core/dom.js резолвит все ref'ы ОДИН раз
+                     на верхнем уровне, и динамический попап заставил бы модуль
+                     ходить через querySelector в обход конвенции, а заодно
+                     сломал бы фейковый DOM тестов и e2e-селекторы. Динамически
+                     растут только строки вывода и тред Q&A.
+                     Слой: z-index 6 — выше #b24-login (5) и НИЖЕ dropzone и
+                     лайтбокса (7): эти два модальны и несут свои кнопки. -->
+                <div id="b24-analysis" hidden>
+                    <div class="b24-analysis-box">
+                        <div class="b24-analysis-head">
+                            <div class="b24-analysis-title">// АНАЛИЗ ЧАТА</div>
+                            <span id="b24-analysis-target" class="b24-analysis-target"></span>
+                            <button id="b24-analysis-close" class="b24-icon-btn b24-analysis-close" type="button" title="Закрыть (Esc)" aria-label="Закрыть анализ">✕</button>
+                        </div>
+                        <div class="b24-analysis-tabs" role="tablist">
+                            <button id="b24-analysis-tab-run" class="b24-analysis-tab" type="button" role="tab" aria-selected="true">АНАЛИЗ</button>
+                            <button id="b24-analysis-tab-ctx" class="b24-analysis-tab" type="button" role="tab" aria-selected="false">КОНТЕКСТ ЧАТА</button>
+                        </div>
+
+                        <div id="b24-analysis-pane-run" class="b24-analysis-pane">
+                            <div class="b24-analysis-controls">
+                                <!-- ГЛУБИНА У ПОРТАЛА СВОЯ: 50 / 100 / 200, а
+                                     не 50 / 200 / 500, как у Telegram и VK.
+                                     `im.dialog.messages.get` отдаёт максимум 50
+                                     сообщений за вызов при бюджете 2 rps, то
+                                     есть 500 сообщений — это десять запросов и
+                                     пять секунд ожидания ПЕРЕД первым словом
+                                     модели. Тот же список стоит потолком на
+                                     бэкенде: селект не обещает того, чего
+                                     сервер не сделает. -->
+                                <label class="b24-field b24-analysis-depth-field"><span>глубина</span>
+                                    <select id="b24-analysis-depth">
+                                        <option value="50">50 сообщений</option>
+                                        <option value="100" selected>100 сообщений</option>
+                                        <option value="200">200 сообщений</option>
+                                    </select>
+                                </label>
+                                <button id="b24-analysis-start" class="b24-login-btn b24-analysis-btn" type="button">ANALYZE ✦</button>
+                                <button id="b24-analysis-refresh" class="b24-login-btn b24-analysis-btn" type="button" title="Дочитать новые сообщения и обновить разбор" disabled>REFRESH ↻</button>
+                                <button id="b24-analysis-cancel" class="b24-login-btn b24-login-btn-ghost b24-analysis-btn" type="button" hidden>STOP</button>
+                                <button id="b24-analysis-clear" class="b24-login-btn b24-login-btn-ghost b24-analysis-btn" type="button" title="Стереть сохранённый разбор">CLEAR ✕</button>
+                                <button id="b24-analysis-clear-thread" class="b24-login-btn b24-login-btn-ghost b24-analysis-btn" type="button" title="Очистить вопросы и ответы">CLEAR Q&amp;A</button>
+                            </div>
+                            <div id="b24-analysis-status" class="b24-analysis-status"></div>
+                            <div id="b24-analysis-updated" class="b24-analysis-updated"></div>
+                            <!-- Шапка разбора: сворачивает ТОЛЬКО #b24-analysis-out.
+                                 Статус, строка «разобрано до …» и тред стоят
+                                 СНАРУЖИ сворачиваемого узла намеренно — свёрнутый
+                                 разбор не должен уносить с экрана ни метку, ни
+                                 вопросы, ради которых его и сворачивают.
+                                 Настоящая <button>, а не div с onclick: шапка
+                                 обязана фокусироваться и срабатывать по
+                                 Enter/Space без единой строки кода. -->
+                            <button id="b24-analysis-out-toggle" class="b24-analysis-out-toggle" type="button" aria-expanded="true" aria-controls="b24-analysis-out" title="Свернуть или развернуть разбор"><span class="b24-analysis-out-caret" aria-hidden="true">▾</span><span>РАЗБОР</span></button>
+                            <div id="b24-analysis-out" class="b24-analysis-out"></div>
+                            <div id="b24-analysis-thread" class="b24-analysis-thread"></div>
+                            <form id="b24-analysis-ask" class="b24-analysis-ask">
+                                <textarea id="b24-analysis-question" class="b24-analysis-question" rows="2" spellcheck="false" placeholder="Спросить по этой переписке…"></textarea>
+                                <button id="b24-analysis-send" class="b24-login-btn b24-analysis-btn" type="submit">ASK ⏎</button>
+                            </form>
+                            <div id="b24-analysis-error" class="b24-login-error" hidden></div>
+                        </div>
+
+                        <div id="b24-analysis-pane-ctx" class="b24-analysis-pane" hidden>
+                            <p class="b24-analysis-hint">Заметка о собеседнике или задаче: кто он вам, о чём договаривались, на что смотреть. Подставляется в каждый анализ этого чата.</p>
+                            <textarea id="b24-analysis-prompt" class="b24-analysis-prompt" rows="8" spellcheck="false" placeholder="Например: подрядчик по внедрению, следи за сроками и суммами."></textarea>
+                            <div id="b24-analysis-prompt-count" class="b24-analysis-prompt-count"></div>
+                            <div class="b24-analysis-controls">
+                                <button id="b24-analysis-prompt-save" class="b24-login-btn b24-analysis-btn" type="button">SAVE ⌘⏎</button>
+                                <button id="b24-analysis-prompt-clear" class="b24-login-btn b24-login-btn-ghost b24-analysis-btn" type="button">CLEAR</button>
+                            </div>
+                            <div id="b24-analysis-prompt-status" class="b24-analysis-prompt-status"></div>
                         </div>
                     </div>
                 </div>
