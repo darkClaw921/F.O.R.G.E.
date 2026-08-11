@@ -759,6 +759,11 @@ mod tests {
         let dir = std::env::temp_dir().join("forge-bitrix-login-tests");
         BitrixConfig {
             cache_dir: dir.join("cache"),
+            // Герметичность: без явного пути хранилище заметок легло бы в живой
+            // ~/.forge/bitrix-chat-prompts.json разработчика, а CLI-заглушка
+            // гарантирует, что тест не запустит настоящий claude.
+            prompts_path: dir.join("prompts.json"),
+            claude_cli_path: dir.join("no-such-claude"),
             config_path: dir.join("bitrix.toml"),
             ..BitrixConfig::default()
         }

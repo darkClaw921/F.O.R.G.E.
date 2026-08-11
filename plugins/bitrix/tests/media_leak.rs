@@ -287,6 +287,11 @@ async fn the_media_routes_never_answer_with_a_location_header() {
         // секунды таймаута на каждый прогон и запрос наружу из `cargo test`.
         base_url_override: "http://127.0.0.1:1/rest/1/closed".into(),
         cache_dir: dir.path().join("cache"),
+        // Герметичность: без явного пути хранилище заметок легло бы в живой
+        // ~/.forge/bitrix-chat-prompts.json разработчика, а CLI-заглушка
+        // гарантирует, что тест не запустит настоящий claude.
+        prompts_path: dir.path().join("prompts.json"),
+        claude_cli_path: dir.path().join("no-such-claude"),
         config_path: dir.path().join("bitrix.toml"),
         ..BitrixConfig::default()
     };

@@ -214,6 +214,11 @@ async fn harness() -> Harness {
         webhook: WebhookUrl::new(format!("http://example.invalid/rest/{UID}/{CODE}/")),
         base_url_override: stub.base_url.clone(),
         cache_dir: dir.path().join("cache"),
+        // Герметичность: без явного пути хранилище заметок легло бы в живой
+        // ~/.forge/bitrix-chat-prompts.json разработчика, а CLI-заглушка
+        // гарантирует, что тест не запустит настоящий claude.
+        prompts_path: dir.path().join("prompts.json"),
+        claude_cli_path: dir.path().join("no-such-claude"),
         config_path: dir.path().join("bitrix.toml"),
         ..BitrixConfig::default()
     };
@@ -518,6 +523,11 @@ async fn the_ladder_rejects_before_reading_the_body() {
         webhook: WebhookUrl::new(format!("http://example.invalid/rest/{UID}/{CODE}/")),
         base_url_override: stub.base_url.clone(),
         cache_dir: dir.path().join("cache"),
+        // Герметичность: без явного пути хранилище заметок легло бы в живой
+        // ~/.forge/bitrix-chat-prompts.json разработчика, а CLI-заглушка
+        // гарантирует, что тест не запустит настоящий claude.
+        prompts_path: dir.path().join("prompts.json"),
+        claude_cli_path: dir.path().join("no-such-claude"),
         config_path: dir.path().join("bitrix.toml"),
         max_upload_bytes: 8,
         ..BitrixConfig::default()
@@ -557,6 +567,11 @@ async fn an_unauthorized_upload_is_rejected_first() {
     let state = B24State::new(BitrixConfig {
         base_url_override: stub.base_url.clone(),
         cache_dir: dir.path().join("cache"),
+        // Герметичность: без явного пути хранилище заметок легло бы в живой
+        // ~/.forge/bitrix-chat-prompts.json разработчика, а CLI-заглушка
+        // гарантирует, что тест не запустит настоящий claude.
+        prompts_path: dir.path().join("prompts.json"),
+        claude_cli_path: dir.path().join("no-such-claude"),
         config_path: dir.path().join("bitrix.toml"),
         ..BitrixConfig::default()
     });

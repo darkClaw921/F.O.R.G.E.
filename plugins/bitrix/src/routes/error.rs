@@ -19,9 +19,11 @@
 //! | 409 | `unsupported_auth`    | `WRONG_AUTH_TYPE` — метод недоступен входящему вебхуку в принципе |
 //! | 409 | `invalid_state`       | `CANT_EDIT_MESSAGE` и прочие «сейчас нельзя» |
 //! | 409 | `send_forbidden`      | `ERROR_NO_ACCESS`, `ACCESS_DENIED` — писать в этот чат нельзя |
+//! | 409 | `claude_unavailable`  | бинаря Claude CLI нет по настроенному пути (анализ чата) |
 //! | 411 | `length_required`     | `POST /upload` без `Content-Length` |
 //! | 413 | `too_large`           | файл больше `max_upload_bytes` |
 //! | 429 | `flood_wait`          | `QUERY_LIMIT_EXCEEDED` (интенсивность) или `OPERATION_TIME_LIMIT` (ресурсоёмкость) |
+//! | 500 | `storage_failed`      | локальный файл заметок и разборов не записался (анализ чата) |
 //! | 501 | `method_unavailable`  | `ERROR_METHOD_NOT_FOUND` — метода нет на этой редакции портала |
 //! | 502 | `bitrix_error`        | портал ответил ошибкой, которую не исправит ни ввод, ни повтор |
 //! | 503 | `not_connected`       | транспортный отказ, пустое тело при HTTP 200, обрыв TCP |
@@ -206,6 +208,50 @@ impl ApiError {
         Self::new(StatusCode::BAD_GATEWAY, "bitrix_error", message)
     }
 
+    /// 409 — бинаря Claude CLI нет по настроенному пути (анализ чата).
+    ///
+    /// Отдельный код от [`ApiError::invalid_state`] и от
+    /// [`ApiError::method_unavailable`]: чинится он не повтором и не другим
+    /// порталом, а установкой CLI либо правкой `claude_cli_path` в
+    /// `bitrix.toml`. Панель по этому коду показывает инструкцию, а не «сбой».
+    ///
+    /// Путь ПОДСТАВЛЯЕТСЯ вызывающим и уезжает пользователю намеренно: без
+    /// него сообщение «CLI не найден» не отвечает на единственный вопрос,
+    /// который у пользователя возникает, — «а где ты его искал?». Это кусок
+    /// файловой системы СВОЕЙ машины, а не чужой: панель открыта локально.
+    ///
+    /// Код и статус совпадают с VK и Telegram один в один — `err.code`
+    /// разбирает ОДИН общий фронтовый модуль
+    /// (`js/messenger/analysis-core.js`), и расхождение здесь означало бы
+    /// «в одной вкладке подсказка, в соседней сырая строка».
+    pub fn claude_unavailable(path: impl std::fmt::Display) -> Self {
+        Self::new(
+            StatusCode::CONFLICT,
+            "claude_unavailable",
+            format!(
+                "Claude CLI не найден: {path}. Установите его или задайте \
+                 claude_cli_path в ~/.config/forge/bitrix.toml"
+            ),
+        )
+    }
+
+    /// 500 — локальный файл заметок и разборов не записался (анализ чата).
+    ///
+    /// Не 502 и не 503: портал тут ни при чём, отказала НАША файловая система
+    /// (нет прав, кончилось место, на месте файла каталог). Единственная
+    /// ошибка плагина, в которой виноват не портал и не ввод.
+    ///
+    /// Текст заметки в сообщение НЕ попадает — только причина отказа: это
+    /// записи пользователя о конкретных людях, и в ответ (а оттуда в консоль
+    /// браузера и в логи прокси) они уезжать не должны.
+    pub fn storage_failed(message: impl Into<String>) -> Self {
+        Self::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "storage_failed",
+            message,
+        )
+    }
+
     /// 503 — транспортный отказ (см. [`crate::state::ConnHealth`]).
     ///
     /// Сюда же попадает ПУСТОЕ ТЕЛО при HTTP 200 — так портал выглядит, когда
@@ -247,7 +293,7 @@ mod tests {
     /// обязано валить тест, а не тихо менять поведение панели.
     #[test]
     fn the_error_table_is_frozen() {
-        let table: [(ApiError, u16, &str); 16] = [
+        let table: [(ApiError, u16, &str); 18] = [
             (ApiError::bad_input("x"), 400, "invalid_input"),
             (ApiError::unknown_dialog("x"), 404, "unknown_dialog"),
             (ApiError::unknown_message("x"), 404, "unknown_message"),
@@ -258,6 +304,12 @@ mod tests {
             (ApiError::unsupported_auth("x"), 409, "unsupported_auth"),
             (ApiError::invalid_state("x"), 409, "invalid_state"),
             (ApiError::send_forbidden("x"), 409, "send_forbidden"),
+            (
+                ApiError::claude_unavailable("/x/claude"),
+                409,
+                "claude_unavailable",
+            ),
+            (ApiError::storage_failed("x"), 500, "storage_failed"),
             (ApiError::length_required("x"), 411, "length_required"),
             (ApiError::too_large("x"), 413, "too_large"),
             (ApiError::flood_wait(1, "x"), 429, "flood_wait"),
@@ -269,6 +321,45 @@ mod tests {
             assert_eq!(err.status.as_u16(), status, "код {code}");
             assert_eq!(err.body.code, code);
         }
+    }
+
+    /// Два кода анализа чата стоят в ТОМ ЖЕ конверте и с теми же статусами,
+    /// что у VK и Telegram: `err.code` разбирает один общий фронтовый модуль.
+    ///
+    /// Заодно фиксируется разница в отношении к путям: путь до CLI показать
+    /// НАДО (это единственный ответ на вопрос «где ты его искал?», и машина
+    /// своя), а вот текст заметки в ошибку хранилища попадать НЕ ДОЛЖЕН — это
+    /// записи о конкретных людях.
+    #[tokio::test]
+    async fn the_analysis_errors_match_the_other_plugins() {
+        let resp = ApiError::claude_unavailable("/home/user/.local/bin/claude").into_response();
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
+        let bytes = axum::body::to_bytes(resp.into_body(), 64 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["error"]["code"], "claude_unavailable");
+        assert!(
+            v["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("/home/user/.local/bin/claude"),
+            "путь обязан быть в сообщении: {v}"
+        );
+
+        // Хранилище: сообщение собирает вызывающий, и он кладёт туда ПРИЧИНУ
+        // отказа, а не то, что пытался записать.
+        let resp = ApiError::storage_failed("failed to write /x/prompts.json: Permission denied")
+            .into_response();
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let bytes = axum::body::to_bytes(resp.into_body(), 64 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["error"]["code"], "storage_failed");
+        // Ни один из двух кодов не несёт `retry_after_secs`: ждать бессмысленно
+        // в обоих случаях.
+        assert!(v["error"].get("retry_after_secs").is_none(), "{v}");
     }
 
     #[tokio::test]

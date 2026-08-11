@@ -27,8 +27,13 @@
 
 import { notify } from '../echo/notifications.js';
 import {
-    $b24, $b24Mode, $b24SelfUser, $b24Titlebar, $b24UnreadBadge, $bitrixToggle,
+    $b24, $b24AnalysisToggle, $b24Mode, $b24SelfUser, $b24Titlebar,
+    $b24UnreadBadge, $bitrixToggle,
 } from '../core/dom.js';
+import {
+    initAnalysis, onAnalysisDelta, onAnalysisDone, onAnalysisError,
+    onAnalysisStarted, openAnalysis, teardownAnalysis, _debugAnalysisState,
+} from './analysis.js';
 import * as b24Api from './api.js';
 import {
     appendMessage, applyLikes, currentDialogId, initChat, markDeleted,
@@ -479,6 +484,17 @@ export function buildHandlers() {
         typing: noop,
         read: noop,
 
+        // --- анализ чата через Claude (Ф12) ---
+        //
+        // Кадры вещаются БЕЗ фильтрации по чату — попап (js/bitrix/analysis.js)
+        // сам решает, его ли это run, по паре (dialog_id, run_id), и сам копит
+        // дельты до кадра анимации. Обработчики поэтому только делегируют и
+        // DOM не трогают.
+        analysis_started: (evt) => onAnalysisStarted(evt),
+        analysis_delta: (evt) => onAnalysisDelta(evt),
+        analysis_done: (evt) => onAnalysisDone(evt),
+        analysis_error: (evt) => onAnalysisError(evt),
+
         // --- фоновая ошибка воркера ---
         error: (msg) => {
             if (msg && msg.code === 'flood_wait') {
@@ -564,10 +580,24 @@ export function initB24() {
     });
     if (local.inited) return;
     local.inited = true;
-    // ПОРЯДОК НАВЕСКИ ЗНАЧИМ: мобилка → медиа → загрузки → задачи → колонка →
-    // хоткеи.
+    // ПОРЯДОК НАВЕСКИ ЗНАЧИМ: анализ → мобилка → медиа → загрузки → задачи →
+    // колонка → хоткеи.
     //
-    // Мобильная раскладка идёт первой: её слушатель Escape закрывает выехавшую
+    // Попап анализа идёт ПЕРВЫМ: его слушатель Esc обязан зарегистрироваться
+    // раньше слушателей колонки, лайтбокса и полосы ответа, иначе одно нажатие
+    // закрывало бы то, что лежит ПОД попапом, а сам попап оставался бы на
+    // экране. Чужой Esc он при этом не отнимает: пока попап закрыт,
+    // обработчик выходит первой же строкой.
+    initAnalysis({
+        onNotice: (text) => showNotice(text),
+    });
+    // Кнопка ✦ в титлбаре. Навешивается здесь же, под флагом `inited`:
+    // `teardownB24` его сбрасывает, и без общего гейта повторный вход навесил
+    // бы второй слушатель, открывающий попап дважды за клик.
+    if ($b24AnalysisToggle) {
+        $b24AnalysisToggle.addEventListener('click', () => openAnalysis());
+    }
+    // Мобильная раскладка идёт следом: её слушатель Escape закрывает выехавшую
     // колонку, и он обязан оказаться в очереди РАНЬШЕ, чем Escape ленты и
     // лайтбокса, — иначе первый же Esc на узком экране снимал бы курсор
     // клавиатуры, оставляя колонку висеть поверх ленты.
@@ -687,6 +717,10 @@ export function teardownB24() {
     // снять его значит оставить обработчик, который на следующей странице
     // будет искать несуществующие узлы на каждое нажатие.
     teardownB24Keynav();
+    // Попап анализа держит свой слушатель Esc на document и кадр анимации для
+    // склейки дельт — оба обязаны сняться здесь, иначе первый переживёт
+    // страницу в bfcache, а второй выстрелит в мёртвый DOM.
+    teardownAnalysis();
     // ДО очистки состояния: `teardownMedia` отзывает objectURL'ы, читая карту
     // из `b24State`, а `clearB24AccountData` её обнуляет. Обратный порядок
     // оставил бы каждый скачанный блоб в памяти вкладки до перезагрузки.
@@ -752,6 +786,10 @@ export function _debugState() {
         mobile: _debugB24Mobile(),
         theme: _debugB24Theme(),
         keys: _debugKeynavState(),
+        // Ф12: попап анализа. Своё состояние (открытый чат, идущий run, тред,
+        // свёрнутость) невыводимо из остальных модулей — кадры анализа в DOM
+        // панели не оставляют следов до самого конца run'а.
+        analysis: _debugAnalysisState(),
         // Действующий белый список — в разобранном виде, тем же вызовом,
         // которым его читают колонка, бейдж и тосты. Тест сверяет ЧЕТЫРЕ точки
         // применения именно через него.

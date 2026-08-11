@@ -43,6 +43,13 @@
 //! | GET    | `/api/bitrix/media/:dialog/:mid/:index` | **Ф8** | синоним предыдущего (форма соседних панелей) |
 //! | GET    | `/api/bitrix/media/avatar/:user_id`     | **Ф8**  | аватар через прокси (Р6) |
 //! | POST   | `/api/bitrix/upload`                    | **Ф9** | приём файла (raw body + `X-Forge-File-Name`) |
+//! | GET    | `/api/bitrix/dialogs/:id/prompt`        | **анализ** | заметка пользователя к диалогу |
+//! | PUT    | `/api/bitrix/dialogs/:id/prompt`        | **анализ** | сохранить заметку (пустая строка — стереть) |
+//! | GET    | `/api/bitrix/dialogs/:id/analysis`      | **анализ** | последний сохранённый разбор + тред Q&A |
+//! | POST   | `/api/bitrix/dialogs/:id/analysis`      | **анализ** | запустить разбор / обновление / вопрос |
+//! | DELETE | `/api/bitrix/dialogs/:id/analysis`      | **анализ** | стереть разбор (тред и заметка целы) |
+//! | DELETE | `/api/bitrix/dialogs/:id/analysis/thread` | **анализ** | стереть тред Q&A (разбор и заметка целы) |
+//! | POST   | `/api/bitrix/dialogs/:id/analysis/cancel` | **анализ** | остановить идущий разбор |
 //!
 //! ## Решения, зафиксированные здесь навсегда
 //!
@@ -104,9 +111,20 @@
 //! Суб-модули: [`error`] — единый конверт ошибок, [`login`] — подключение и
 //! отвязка портала (Ф3), [`dialogs`] — директории, список диалогов, история и
 //! отправка (Ф4–Ф6), [`media`] — прокси вложений и аватаров (Ф8), [`upload`] —
-//! приём файла и заливка его в портал (Ф9). Группа `tasks` добавляется Ф10 тем
-//! же `.merge(...)`.
+//! приём файла и заливка его в портал (Ф9), [`analysis`] — анализ чата через
+//! Claude. Группа `tasks` добавляется Ф10 тем же `.merge(...)`.
+//!
+//! ## Две лестницы у группы анализа
+//!
+//! Семь путей анализа стоят на ДВУХ разных лестницах, и это зафиксированное
+//! решение, а не оплошность: `/prompt`, `GET|DELETE /analysis` и
+//! `DELETE /analysis/thread` работают с ЛОКАЛЬНЫМ файлом и связи с порталом не
+//! требуют (иначе вкладка прятала бы сделанный разбор ровно тогда, когда
+//! портал отвалился), а `POST /analysis` и `/analysis/cancel` начинаются с
+//! выгрузки истории и потому проходят полный `require_ready`. Подробности и
+//! схема — в шапке [`analysis`].
 
+pub mod analysis;
 pub mod dialogs;
 pub mod error;
 pub mod login;
@@ -258,6 +276,7 @@ pub fn build_router(state: Arc<B24State>) -> Router {
         .route("/ws/bitrix", get(crate::ws::bitrix_ws))
         .merge(login::router())
         .merge(dialogs::router())
+        .merge(analysis::router())
         .merge(tasks::router())
         .merge(media::router())
         .merge(upload::router(max_upload_bytes))
@@ -303,6 +322,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut c = BitrixConfig {
             cache_dir: dir.path().join("cache"),
+            // Герметичность: без явного пути хранилище заметок легло бы в живой
+            // ~/.forge/bitrix-chat-prompts.json разработчика, а CLI-заглушка
+            // гарантирует, что тест не запустит настоящий claude.
+            prompts_path: dir.path().join("prompts.json"),
+            claude_cli_path: dir.path().join("no-such-claude"),
             config_path: dir.path().join("bitrix.toml"),
             ..BitrixConfig::default()
         };

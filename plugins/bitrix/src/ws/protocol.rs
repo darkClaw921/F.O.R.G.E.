@@ -303,12 +303,166 @@ pub enum B24ServerMsg {
         retry_after_secs: Option<u64>,
     },
 
+    // --- «Анализ чата через Claude» ---------------------------------------
+    //
+    // ПОРЯДОК этих четырёх вариантов заморожен: `bitrix_contract.test.mjs`
+    // сверяет теги с `SERVER_FRAMES` в `js/bitrix/ws.js` по составу И порядку,
+    // а `server_frame_tags_are_frozen` ниже — по составу и порядку внутри
+    // крейта. Вставлены перед `Resync`/`Ping` — там же, где они стоят у VK и
+    // Telegram, чтобы три протокола читались одинаково.
+    /// Анализ начался; размеры транскрипта уже известны.
+    AnalysisStarted {
+        /// Идентификатор run'а; им же отменяют.
+        run_id: String,
+        /// Диалог (строкой), по которому идёт анализ.
+        dialog_id: String,
+        /// `analyze` | `refresh` | `ask`.
+        kind: String,
+        /// Сколько сообщений попало в транскрипт.
+        messages_used: u32,
+        /// Часть истории отброшена потолком символов.
+        truncated: bool,
+    },
+
+    /// Кусок ответа модели.
+    ///
+    /// КОАЛЕСЦИРОВАН ядром (не чаще одного кадра в
+    /// [`crate::analysis::DELTA_FLUSH_MS`] мс либо по накоплению
+    /// [`crate::analysis::DELTA_FLUSH_CHARS`] символов). Сырые дельты Claude
+    /// идут сотнями в секунду и переполнили бы broadcast
+    /// ([`crate::state::BROADCAST_CAPACITY`]), а переполнение — это `Lagged`,
+    /// то есть [`B24ServerMsg::Resync`] и перечитывание всего состояния.
+    AnalysisDelta {
+        /// Идентификатор run'а.
+        run_id: String,
+        /// Диалог (строкой).
+        dialog_id: String,
+        /// Приращение текста; склеивается конкатенацией в порядке получения.
+        text: String,
+    },
+
+    /// Анализ завершён (успехом, ошибкой, отменой или таймаутом).
+    AnalysisDone {
+        /// Идентификатор run'а.
+        run_id: String,
+        /// Диалог (строкой).
+        dialog_id: String,
+        /// Завершился ли run штатно.
+        ok: bool,
+        /// Причина неуспеха: `cancelled` | `timeout` | `error`.
+        reason: Option<String>,
+        /// Токенов на входе (из финального `result` Claude).
+        input_tokens: u64,
+        /// Токенов на выходе.
+        output_tokens: u64,
+    },
+
+    /// Ошибка run'а — текст от раннера ЦЕЛИКОМ.
+    ///
+    /// Сообщение не урезается намеренно: к нему уже приклеен хвост stderr
+    /// Claude CLI, и это единственный способ увидеть «CLI не залогинен» или
+    /// «model overloaded», не заглядывая в логи сервера.
+    ///
+    /// Отдельный кадр, а не [`B24ServerMsg::Error`]: тот несёт КОД из таблицы
+    /// REST и адресован панели целиком, а этот привязан к конкретному run'у и
+    /// рисуется внутри попапа.
+    AnalysisError {
+        /// Идентификатор run'а.
+        run_id: String,
+        /// Диалог (строкой).
+        dialog_id: String,
+        /// Текст ошибки как есть.
+        message: String,
+    },
+
     /// Клиент отстал (`broadcast::error::RecvError::Lagged`) или курсор
     /// событий признан устаревшим (Р18) — перечитать состояние по REST.
     Resync,
 
     /// Heartbeat. Клиент обязан ответить [`B24ClientMsg::Pong`].
     Ping,
+}
+
+/// Мост между ядром анализа и broadcast-каналом плагина
+/// ([`forge_chat_analysis::AnalysisSink`]).
+///
+/// Вся развязка плагина с крейтом — вот эти четыре метода. Ядро не знает ни
+/// про [`B24ServerMsg`], ни про broadcast: оно зовёт `started`/`delta`/`done`/
+/// `error`, а перевод в НАШ кадр и рассылка живут здесь, рядом с самим
+/// enum'ом — там же, где придётся править, если состав полей кадра изменится.
+///
+/// Методы трейта СИНХРОННЫЕ, и это существенно: их зовёт пампер ядра из своей
+/// таски, в том числе в горячем цикле дельт. `broadcast::Sender::send` —
+/// мгновенная неблокирующая операция, поэтому пампер не стои́т и буфер
+/// коалесцинга не растёт.
+///
+/// `SendError` глотается: отсутствие подписчиков — норма (никто не открыл
+/// вкладку), и это не повод ронять run, который уже идёт.
+#[derive(Debug, Clone)]
+pub struct B24AnalysisSink {
+    tx: tokio::sync::broadcast::Sender<B24ServerEvent>,
+}
+
+impl B24AnalysisSink {
+    /// Оборачивает broadcast-канал состояния.
+    #[must_use]
+    pub fn new(tx: tokio::sync::broadcast::Sender<B24ServerEvent>) -> Self {
+        Self { tx }
+    }
+}
+
+impl forge_chat_analysis::AnalysisSink for B24AnalysisSink {
+    fn started(
+        &self,
+        run_id: &str,
+        dialog_id: &str,
+        kind: &str,
+        messages_used: u32,
+        truncated: bool,
+    ) {
+        let _ = self.tx.send(B24ServerMsg::AnalysisStarted {
+            run_id: run_id.to_string(),
+            dialog_id: dialog_id.to_string(),
+            kind: kind.to_string(),
+            messages_used,
+            truncated,
+        });
+    }
+
+    fn delta(&self, run_id: &str, dialog_id: &str, text: &str) {
+        let _ = self.tx.send(B24ServerMsg::AnalysisDelta {
+            run_id: run_id.to_string(),
+            dialog_id: dialog_id.to_string(),
+            text: text.to_string(),
+        });
+    }
+
+    fn done(
+        &self,
+        run_id: &str,
+        dialog_id: &str,
+        ok: bool,
+        reason: Option<&str>,
+        input_tokens: u64,
+        output_tokens: u64,
+    ) {
+        let _ = self.tx.send(B24ServerMsg::AnalysisDone {
+            run_id: run_id.to_string(),
+            dialog_id: dialog_id.to_string(),
+            ok,
+            reason: reason.map(str::to_string),
+            input_tokens,
+            output_tokens,
+        });
+    }
+
+    fn error(&self, run_id: &str, dialog_id: &str, message: &str) {
+        let _ = self.tx.send(B24ServerMsg::AnalysisError {
+            run_id: run_id.to_string(),
+            dialog_id: dialog_id.to_string(),
+            message: message.to_string(),
+        });
+    }
 }
 
 /// Сообщения клиент → сервер.
@@ -411,6 +565,31 @@ mod tests {
                 message: "…".into(),
                 retry_after_secs: None,
             },
+            B24ServerMsg::AnalysisStarted {
+                run_id: "r1".into(),
+                dialog_id: "chat7".into(),
+                kind: "analyze".into(),
+                messages_used: 10,
+                truncated: false,
+            },
+            B24ServerMsg::AnalysisDelta {
+                run_id: "r1".into(),
+                dialog_id: "chat7".into(),
+                text: "…".into(),
+            },
+            B24ServerMsg::AnalysisDone {
+                run_id: "r1".into(),
+                dialog_id: "chat7".into(),
+                ok: true,
+                reason: None,
+                input_tokens: 1,
+                output_tokens: 2,
+            },
+            B24ServerMsg::AnalysisError {
+                run_id: "r1".into(),
+                dialog_id: "chat7".into(),
+                message: "…".into(),
+            },
             B24ServerMsg::Resync,
             B24ServerMsg::Ping,
         ];
@@ -432,6 +611,10 @@ mod tests {
                 "upload_progress",
                 "download_progress",
                 "error",
+                "analysis_started",
+                "analysis_delta",
+                "analysis_done",
+                "analysis_error",
                 "resync",
                 "ping",
             ]

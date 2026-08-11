@@ -41,6 +41,25 @@
 //! Мультипортальности в v1 нет (Р5): поле вебхука одно, повторное сохранение
 //! перезаписывает его.
 //!
+//! # «Анализ чата через Claude»
+//!
+//! Пять полей фичи живут здесь же: [`BitrixConfig::prompts_path`],
+//! [`BitrixConfig::claude_cli_path`], [`BitrixConfig::analysis_timeout_secs`],
+//! [`BitrixConfig::analysis_max_chars`], [`BitrixConfig::analysis_model`].
+//! Значения по умолчанию совпадают с VK и Telegram: это одна фича на три
+//! мессенджера.
+//!
+//! Env-override: `FORGE_BITRIX_PROMPTS_PATH`,
+//! `FORGE_BITRIX_CLAUDE_CLI_PATH`, `FORGE_BITRIX_ANALYSIS_TIMEOUT_SECS`,
+//! `FORGE_BITRIX_ANALYSIS_MAX_CHARS`, `FORGE_BITRIX_ANALYSIS_MODEL`.
+//! Первый обязателен для герметичности `cargo test`: без него любой тест,
+//! дёрнувший сохранение заметки, затирал бы живой
+//! `~/.forge/bitrix-chat-prompts.json` разработчика.
+//!
+//! Хранилище заметок пишет `forge_chat_analysis::prompts::save` через ОБЩУЮ
+//! `atomic::write_bytes_atomic` — тот же алгоритм, что у [`write_table`], но
+//! ровно в одном экземпляре на три плагина, а не третьей копией здесь.
+//!
 //! # Интервалы — данные, а не константы (Р4)
 //!
 //! `poll_active_secs` / `poll_idle_secs` / `recent_sync_secs` лежат в
@@ -118,6 +137,100 @@ pub const DEFAULT_REQUEST_TIMEOUT_SECS: u64 = 30;
 
 /// Верхняя граница любого из таймаутов (секунды).
 pub const MAX_TIMEOUT_SECS: u64 = 600;
+
+// ---------------------------------------------------------------------------
+// «Анализ чата через Claude».
+//
+// Значения совпадают с VK и Telegram (`plugins/vk/src/config.rs`,
+// `plugins/telegram/src/config.rs`) намеренно: это ОДНА фича на три
+// мессенджера, и разные умолчания означали бы, что в одной вкладке разбор
+// укладывается в бюджет, а в соседней — нет, без единого сообщения о причине.
+// ---------------------------------------------------------------------------
+
+/// Таймаут одного анализа чата, секунды. `0` ⇒ таймаут выключен.
+///
+/// Значение совпадает с [`forge_claude_runner::DEFAULT_RUN_TIMEOUT_SECS`] и
+/// продублировано здесь намеренно: это ДЕФОЛТ КОНФИГА плагина, а раннер живёт
+/// в чужом крейте и о `bitrix.toml` ничего не знает.
+pub const DEFAULT_ANALYSIS_TIMEOUT_SECS: u64 = 300;
+
+/// Потолок транскрипта, отдаваемого модели, в CODE POINTS.
+///
+/// Совпадает с [`crate::analysis::context::MAX_TRANSCRIPT_CHARS`]: константа
+/// задаёт величину, конфиг — возможность её подвинуть на конкретной машине.
+pub const DEFAULT_ANALYSIS_MAX_CHARS: usize = 60_000;
+
+/// Нижняя граница `analysis_max_chars`. Меньше 5 000 символов транскрипт
+/// перестаёт быть перепиской: в него влезает десяток реплик, и любой ответ
+/// модели будет выводом «данных не хватает».
+pub const MIN_ANALYSIS_MAX_CHARS: usize = 5_000;
+
+/// Верхняя граница `analysis_max_chars`. 200 000 code points — это уже около
+/// 50 тысяч токенов на один запрос; выше значение означает опечатку, а не
+/// намерение.
+pub const MAX_ANALYSIS_MAX_CHARS: usize = 200_000;
+
+/// Модель Claude для анализа чата по умолчанию.
+///
+/// `sonnet`, а не `opus`: анализ запускается кнопкой и должен стоить дёшево;
+/// значение — зафиксированное решение, а не подбор.
+pub const DEFAULT_ANALYSIS_MODEL: &str = "sonnet";
+
+/// Дефолтный путь хранилища пер-чатовых промптов
+/// (`~/.forge/bitrix-chat-prompts.json`).
+///
+/// Рядом с кэшем медиа, а НЕ рядом с `bitrix.toml`: это пользовательские
+/// данные вкладки, а не настройки, и переносить их вместе с конфигом (в
+/// котором лежит СЕКРЕТ вебхука) незачем. Заодно это разводит два файла с
+/// разной ценой утечки: заметки о собеседниках приватны, но вебхук — это
+/// доступ к порталу целиком.
+pub fn default_prompts_path() -> PathBuf {
+    if let Some(home) = std::env::var_os("HOME") {
+        PathBuf::from(home).join(".forge/bitrix-chat-prompts.json")
+    } else {
+        PathBuf::from("./bitrix-chat-prompts.json")
+    }
+}
+
+/// Фактический путь хранилища промптов: непустой `FORGE_BITRIX_PROMPTS_PATH`
+/// побеждает, иначе — [`default_prompts_path`].
+///
+/// Существует по той же причине, что и [`config_path`], и это не
+/// теоретическая аккуратность: `forge_chat_analysis::prompts::save` ПИШЕТ по
+/// этому пути, и без override любой `cargo test`, дёрнувший сохранение,
+/// затирал бы живые заметки разработчика в `~/.forge`.
+pub fn prompts_path() -> PathBuf {
+    match std::env::var_os("FORGE_BITRIX_PROMPTS_PATH") {
+        Some(v) if !v.is_empty() => PathBuf::from(v),
+        _ => default_prompts_path(),
+    }
+}
+
+/// Дефолтный путь бинаря Claude CLI (`$HOME/.local/bin/claude`).
+///
+/// Тот же дефолт, что у `forge_echo::config`, `forge_vk::config` и
+/// `forge_telegram::config`: все они запускают ОДИН И ТОТ ЖЕ CLI, и разные
+/// умолчания означали бы, что чат Echo работает, а анализ чата Битрикса — нет,
+/// без единого сообщения о причине.
+pub fn default_claude_cli_path() -> PathBuf {
+    if let Some(home) = std::env::var_os("HOME") {
+        PathBuf::from(home).join(".local/bin/claude")
+    } else {
+        PathBuf::from("claude")
+    }
+}
+
+fn default_analysis_timeout_secs() -> u64 {
+    DEFAULT_ANALYSIS_TIMEOUT_SECS
+}
+
+fn default_analysis_max_chars() -> usize {
+    DEFAULT_ANALYSIS_MAX_CHARS
+}
+
+fn default_analysis_model() -> Option<String> {
+    Some(DEFAULT_ANALYSIS_MODEL.to_string())
+}
 
 /// Дефолтный путь TOML-конфига плагина (`~/.config/forge/bitrix.toml`).
 pub fn default_config_path() -> PathBuf {
@@ -498,6 +611,42 @@ pub struct BitrixConfig {
     /// файла.
     #[serde(skip)]
     pub config_path: PathBuf,
+
+    // -----------------------------------------------------------------------
+    // «Анализ чата через Claude».
+    // -----------------------------------------------------------------------
+    /// Файл пер-чатовых заметок, сохранённых разборов и тредов Q&A.
+    ///
+    /// `#[serde(skip)]` — из `bitrix.toml` НЕ читается, как и
+    /// [`Self::config_path`], и по той же причине: это не настройка, а
+    /// расположение пользовательских данных, и переопределяется оно только
+    /// `FORGE_BITRIX_PROMPTS_PATH` (герметичность тестов, см.
+    /// [`prompts_path`]). Хранится ОТДЕЛЬНЫМ полем, а не вызовом
+    /// [`prompts_path`] в момент записи: иначе изменение переменной окружения
+    /// на середине жизни процесса раскидало бы заметки по двум файлам.
+    #[serde(skip, default = "prompts_path")]
+    pub prompts_path: PathBuf,
+
+    /// Путь бинаря Claude CLI.
+    ///
+    /// В ОТЛИЧИЕ от [`Self::prompts_path`] читается из TOML: это настройка
+    /// машины (у кого-то CLI лежит в `/opt`, у кого-то в `~/.bun/bin`), а не
+    /// расположение пользовательских данных.
+    #[serde(default = "default_claude_cli_path")]
+    pub claude_cli_path: PathBuf,
+
+    /// Таймаут одного анализа, секунды. `0` ⇒ без таймаута.
+    #[serde(default = "default_analysis_timeout_secs")]
+    pub analysis_timeout_secs: u64,
+
+    /// Потолок транскрипта в CODE POINTS.
+    #[serde(default = "default_analysis_max_chars")]
+    pub analysis_max_chars: usize,
+
+    /// Модель Claude (`--model`). `None` ⇒ флаг не передаётся вовсе, работает
+    /// дефолт самого CLI.
+    #[serde(default = "default_analysis_model")]
+    pub analysis_model: Option<String>,
 }
 
 impl Default for BitrixConfig {
@@ -516,6 +665,11 @@ impl Default for BitrixConfig {
             connect_timeout_secs: DEFAULT_CONNECT_TIMEOUT_SECS,
             request_timeout_secs: DEFAULT_REQUEST_TIMEOUT_SECS,
             config_path: config_path(),
+            prompts_path: prompts_path(),
+            claude_cli_path: default_claude_cli_path(),
+            analysis_timeout_secs: default_analysis_timeout_secs(),
+            analysis_max_chars: default_analysis_max_chars(),
+            analysis_model: default_analysis_model(),
         }
     }
 }
@@ -621,6 +775,32 @@ impl BitrixConfig {
             "FORGE_BITRIX_CONNECT_TIMEOUT_SECS",
             &mut self.connect_timeout_secs,
         );
+        if let Ok(v) = std::env::var("FORGE_BITRIX_PROMPTS_PATH") {
+            if !v.is_empty() {
+                self.prompts_path = PathBuf::from(v);
+            }
+        }
+        if let Ok(v) = std::env::var("FORGE_BITRIX_CLAUDE_CLI_PATH") {
+            if !v.is_empty() {
+                self.claude_cli_path = PathBuf::from(v);
+            }
+        }
+        if let Ok(v) = std::env::var("FORGE_BITRIX_ANALYSIS_MODEL") {
+            // Пустая строка здесь ЗНАЧИМА: `FORGE_BITRIX_ANALYSIS_MODEL=` —
+            // это «не передавать --model вовсе», единственный способ вернуться
+            // к дефолту самого CLI, не редактируя bitrix.toml.
+            let t = v.trim();
+            self.analysis_model = (!t.is_empty()).then(|| t.to_string());
+        }
+        apply_env_u64(
+            "FORGE_BITRIX_ANALYSIS_TIMEOUT_SECS",
+            &mut self.analysis_timeout_secs,
+        );
+        {
+            let mut chars = self.analysis_max_chars as u64;
+            apply_env_u64("FORGE_BITRIX_ANALYSIS_MAX_CHARS", &mut chars);
+            self.analysis_max_chars = usize::try_from(chars).unwrap_or(usize::MAX);
+        }
         apply_env_u64(
             "FORGE_BITRIX_REQUEST_TIMEOUT_SECS",
             &mut self.request_timeout_secs,
@@ -753,6 +933,61 @@ impl BitrixConfig {
         self.cache_dir = expand_tilde(&self.cache_dir);
         if self.config_path.as_os_str().is_empty() {
             self.config_path = config_path();
+        }
+        // Пустой путь означал бы запись в «» — то есть тихую потерю всех
+        // заметок; относительный превратился бы в РАЗНЫЕ файлы при разном
+        // рабочем каталоге процесса (devforge запускают и из репозитория, и из
+        // systemd). Поэтому путь приводится к абсолютному ЗДЕСЬ, один раз.
+        self.prompts_path = expand_tilde(&self.prompts_path);
+        if self.prompts_path.as_os_str().is_empty() {
+            tracing::warn!(
+                target: "forge_bitrix",
+                "forge-bitrix: empty prompts_path; falling back to the default"
+            );
+            self.prompts_path = default_prompts_path();
+        }
+        if self.prompts_path.is_relative() {
+            if let Ok(cwd) = std::env::current_dir() {
+                self.prompts_path = cwd.join(&self.prompts_path);
+            }
+        }
+        self.claude_cli_path = expand_tilde(&self.claude_cli_path);
+        if self.claude_cli_path.as_os_str().is_empty() {
+            tracing::warn!(
+                target: "forge_bitrix",
+                "forge-bitrix: empty claude_cli_path; falling back to the default"
+            );
+            self.claude_cli_path = default_claude_cli_path();
+        }
+        // Существование бинаря ЗДЕСЬ не проверяется намеренно: анализ — не
+        // условие работы вкладки, и отсутствие CLI не имеет права ни ронять
+        // старт, ни подменять путь. Отказ выносит роут, кодом
+        // `409 claude_unavailable`, и называет ровно этот путь.
+        if self.analysis_max_chars < MIN_ANALYSIS_MAX_CHARS
+            || self.analysis_max_chars > MAX_ANALYSIS_MAX_CHARS
+        {
+            tracing::warn!(
+                target: "forge_bitrix",
+                value = self.analysis_max_chars,
+                "forge-bitrix: analysis_max_chars is out of range; clamping"
+            );
+            self.analysis_max_chars = self
+                .analysis_max_chars
+                .clamp(MIN_ANALYSIS_MAX_CHARS, MAX_ANALYSIS_MAX_CHARS);
+        }
+        // `0` — легальное значение («таймаута нет»), поэтому чинится только
+        // пустая/пробельная модель: `--model ""` CLI отвергает целиком.
+        if let Some(model) = &self.analysis_model {
+            let t = model.trim();
+            if t.is_empty() {
+                tracing::warn!(
+                    target: "forge_bitrix",
+                    "forge-bitrix: empty analysis_model; falling back to the default"
+                );
+                self.analysis_model = default_analysis_model();
+            } else if t.len() != model.len() {
+                self.analysis_model = Some(t.to_string());
+            }
         }
     }
 
@@ -1357,6 +1592,160 @@ mod tests {
             Some(v) => std::env::set_var("FORGE_BITRIX_CONFIG_PATH", v),
             None => std::env::remove_var("FORGE_BITRIX_CONFIG_PATH"),
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // «Анализ чата через Claude».
+    // -----------------------------------------------------------------------
+
+    /// Дефолты фичи применяются без файла и без переменных окружения.
+    ///
+    /// `prompts_path` при этом сверяется НЕ с `default_prompts_path()`, а с
+    /// [`prompts_path`]: прогон `cargo test` может идти с уже выставленным
+    /// `FORGE_BITRIX_PROMPTS_PATH` (герметичный стенд), и жёсткое сравнение с
+    /// `~/.forge/...` красило бы тест в зависимости от окружения.
+    #[test]
+    fn analysis_defaults_apply_without_a_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = BitrixConfig::load_from_file(&dir.path().join("nope.toml"));
+        assert_eq!(cfg.prompts_path, prompts_path());
+        assert_eq!(cfg.claude_cli_path, default_claude_cli_path());
+        assert_eq!(cfg.analysis_timeout_secs, DEFAULT_ANALYSIS_TIMEOUT_SECS);
+        assert_eq!(cfg.analysis_max_chars, DEFAULT_ANALYSIS_MAX_CHARS);
+        assert_eq!(
+            cfg.analysis_model.as_deref(),
+            Some(DEFAULT_ANALYSIS_MODEL),
+            "по умолчанию анализ идёт на sonnet"
+        );
+        // Хранилище заметок — НЕ настройка: из TOML путь не читается вовсе.
+        assert!(cfg.prompts_path.is_absolute() || cfg.prompts_path.as_os_str().is_empty());
+    }
+
+    /// Настройки машины (путь CLI, таймаут, потолок, модель) читаются из TOML,
+    /// а путь хранилища — НЕТ.
+    #[test]
+    fn analysis_settings_come_from_the_file_but_the_store_path_does_not() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bitrix.toml");
+        std::fs::write(
+            &path,
+            concat!(
+                "claude_cli_path = \"/opt/claude\"\n",
+                "analysis_timeout_secs = 42\n",
+                "analysis_max_chars = 12345\n",
+                "analysis_model = \"opus\"\n",
+                "prompts_path = \"/tmp/hijacked.json\"\n",
+            ),
+        )
+        .unwrap();
+        let cfg = BitrixConfig::load_from_file(&path);
+        assert_eq!(cfg.claude_cli_path, PathBuf::from("/opt/claude"));
+        assert_eq!(cfg.analysis_timeout_secs, 42);
+        assert_eq!(cfg.analysis_max_chars, 12_345);
+        assert_eq!(cfg.analysis_model.as_deref(), Some("opus"));
+        assert_ne!(
+            cfg.prompts_path,
+            PathBuf::from("/tmp/hijacked.json"),
+            "prompts_path помечен #[serde(skip)] и из TOML читаться не смеет"
+        );
+    }
+
+    /// Env-override: `FORGE_BITRIX_*` побеждает и файл, и дефолты.
+    ///
+    /// Ветка сериализована мьютексом и восстанавливает прежние значения —
+    /// переменные процесса общие на все тесты крейта.
+    #[test]
+    fn analysis_env_overrides_win() {
+        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+        const KEYS: [&str; 5] = [
+            "FORGE_BITRIX_PROMPTS_PATH",
+            "FORGE_BITRIX_CLAUDE_CLI_PATH",
+            "FORGE_BITRIX_ANALYSIS_MODEL",
+            "FORGE_BITRIX_ANALYSIS_TIMEOUT_SECS",
+            "FORGE_BITRIX_ANALYSIS_MAX_CHARS",
+        ];
+        let previous: Vec<_> = KEYS.iter().map(|k| (*k, std::env::var_os(k))).collect();
+
+        std::env::set_var("FORGE_BITRIX_PROMPTS_PATH", "/tmp/forge-b24-prompts.json");
+        std::env::set_var("FORGE_BITRIX_CLAUDE_CLI_PATH", "/usr/local/bin/claude");
+        std::env::set_var("FORGE_BITRIX_ANALYSIS_MODEL", "haiku");
+        std::env::set_var("FORGE_BITRIX_ANALYSIS_TIMEOUT_SECS", "17");
+        std::env::set_var("FORGE_BITRIX_ANALYSIS_MAX_CHARS", "9000");
+
+        let mut cfg = BitrixConfig::default();
+        cfg.apply_env();
+        assert_eq!(
+            cfg.prompts_path,
+            PathBuf::from("/tmp/forge-b24-prompts.json")
+        );
+        assert_eq!(cfg.claude_cli_path, PathBuf::from("/usr/local/bin/claude"));
+        assert_eq!(cfg.analysis_model.as_deref(), Some("haiku"));
+        assert_eq!(cfg.analysis_timeout_secs, 17);
+        assert_eq!(cfg.analysis_max_chars, 9_000);
+
+        // Пустая строка ЗНАЧИМА: «не передавать --model вовсе».
+        std::env::set_var("FORGE_BITRIX_ANALYSIS_MODEL", "");
+        let mut cfg = BitrixConfig::default();
+        cfg.apply_env();
+        assert!(cfg.analysis_model.is_none());
+
+        for (k, v) in previous {
+            match v {
+                Some(v) => std::env::set_var(k, v),
+                None => std::env::remove_var(k),
+            }
+        }
+    }
+
+    /// Потолок транскрипта клампится, пустая модель чинится, путь хранилища
+    /// становится абсолютным — и всё это без ошибки.
+    #[test]
+    fn analysis_values_are_repaired_not_rejected() {
+        let mut c = BitrixConfig {
+            analysis_max_chars: 10,
+            analysis_model: Some("   ".into()),
+            prompts_path: PathBuf::from("relative-prompts.json"),
+            claude_cli_path: PathBuf::new(),
+            ..BitrixConfig::default()
+        };
+        c.validate_and_fix();
+        assert_eq!(c.analysis_max_chars, MIN_ANALYSIS_MAX_CHARS);
+        assert_eq!(c.analysis_model.as_deref(), Some(DEFAULT_ANALYSIS_MODEL));
+        assert!(c.prompts_path.is_absolute(), "{:?}", c.prompts_path);
+        assert_eq!(c.claude_cli_path, default_claude_cli_path());
+
+        let mut c = BitrixConfig {
+            analysis_max_chars: MAX_ANALYSIS_MAX_CHARS + 1,
+            // `0` — ЛЕГАЛЬНОЕ значение таймаута («его нет»), и чиниться не
+            // должно.
+            analysis_timeout_secs: 0,
+            ..BitrixConfig::default()
+        };
+        c.validate_and_fix();
+        assert_eq!(c.analysis_max_chars, MAX_ANALYSIS_MAX_CHARS);
+        assert_eq!(c.analysis_timeout_secs, 0);
+    }
+
+    /// Файл хранилища создаётся с правами owner-only.
+    ///
+    /// Пишет его `forge_chat_analysis::prompts::save` через общую
+    /// `atomic::write_bytes_atomic` — ту самую, что до этой фазы существовала
+    /// у Bitrix третьей копией внутри приватной `write_table`. Тест
+    /// зафиксирован здесь, потому что права — свойство ЭТОГО файла плагина.
+    #[test]
+    #[cfg(unix)]
+    fn the_prompt_store_is_written_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nested/prompts.json");
+        let store = forge_chat_analysis::prompts::PromptStore::default();
+        forge_chat_analysis::prompts::save(&path, &store).unwrap();
+
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "заметки о людях не лежат читаемыми для всех");
     }
 
     /// Таймауты — данные конфига: без них зависший портал держал бы вызов

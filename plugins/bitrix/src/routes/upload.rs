@@ -873,6 +873,11 @@ mod tests {
     fn state_in(dir: &Path) -> Arc<B24State> {
         B24State::new(BitrixConfig {
             cache_dir: dir.join("cache"),
+            // Герметичность: без явного пути хранилище заметок легло бы в живой
+            // ~/.forge/bitrix-chat-prompts.json разработчика, а CLI-заглушка
+            // гарантирует, что тест не запустит настоящий claude.
+            prompts_path: dir.join("prompts.json"),
+            claude_cli_path: dir.join("no-such-claude"),
             config_path: dir.join("bitrix.toml"),
             // Заведомо закрытый порт: ни один тест этого модуля не имеет права
             // уйти в живой портал, а состояние `authorized` без этого поля
@@ -1033,6 +1038,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let cfg = BitrixConfig {
             cache_dir: dir.path().join("cache"),
+            // Герметичность: без явного пути хранилище заметок легло бы в живой
+            // ~/.forge/bitrix-chat-prompts.json разработчика, а CLI-заглушка
+            // гарантирует, что тест не запустит настоящий claude.
+            prompts_path: dir.path().join("prompts.json"),
+            claude_cli_path: dir.path().join("no-such-claude"),
             ..BitrixConfig::default()
         };
         let p = staging_path(&cfg, "0191b0de-1111-4222-8333-444455556666");
@@ -1120,6 +1130,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let st = B24State::new(BitrixConfig {
             cache_dir: dir.path().join("cache"),
+            // Герметичность: без явного пути хранилище заметок легло бы в живой
+            // ~/.forge/bitrix-chat-prompts.json разработчика, а CLI-заглушка
+            // гарантирует, что тест не запустит настоящий claude.
+            prompts_path: dir.path().join("prompts.json"),
+            claude_cli_path: dir.path().join("no-such-claude"),
             config_path: dir.path().join("bitrix.toml"),
             base_url_override: "https://127.0.0.1:1/rest/1/abc123".into(),
             // Настоящие 25 МиБ в тесте не пришлёшь.
@@ -1161,6 +1176,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let st = B24State::new(BitrixConfig {
             cache_dir: dir.path().join("cache"),
+            // Герметичность: без явного пути хранилище заметок легло бы в живой
+            // ~/.forge/bitrix-chat-prompts.json разработчика, а CLI-заглушка
+            // гарантирует, что тест не запустит настоящий claude.
+            prompts_path: dir.path().join("prompts.json"),
+            claude_cli_path: dir.path().join("no-such-claude"),
             config_path: dir.path().join("bitrix.toml"),
             base_url_override: "https://127.0.0.1:1/rest/1/abc123".into(),
             max_upload_bytes: 8,

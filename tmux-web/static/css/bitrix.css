@@ -1518,6 +1518,21 @@
     padding: 5px 14px;
 }
 .b24-login-btn:hover { background: var(--b-active); }
+/* Второстепенное действие: тот же размер, но приглушённым контуром. Нужен ряду
+   кнопок попапа анализа (STOP, CLEAR, CLEAR Q&A): без этой разницы пять
+   одинаковых кнопок читались бы как пять равнозначных, и «стереть разбор»
+   стояло бы вровень с «разобрать». */
+.b24-login-btn-ghost {
+    border-color: var(--b-acc-faint);
+    color: var(--b-acc-dim);
+}
+/* Погашенная кнопка обязана ВЫГЛЯДЕТЬ погашенной: REFRESH и CLEAR блокируются
+   ядром попапа, пока сохранённого разбора нет, а кнопка, не отличимая от
+   рабочей, читается как «нажал — ничего не произошло». */
+.b24-login-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
 .b24-login-status {
     color: var(--b-faint-text);
     font-size: 11px;
@@ -1682,11 +1697,471 @@
     font-size: 11px;
 }
 
+/* ── попап «Анализ чата» (js/bitrix/analysis.js) ──────────────────────────
+   СЛОЙ 6, и это не косметика. Оверлей подключения — 5, dropzone и лайтбокс —
+   7. Анализ обязан лежать МЕЖДУ: под попапом не должно оказаться невидимого
+   экрана вставки вебхука, а модальные лайтбокс и dropzone со своими кнопками
+   обязаны перекрывать попап.
+
+   ЦВЕТА — ТОЛЬКО ТОКЕНЫ --b-*, ни одного литерала. Панель живёт в собственной
+   палитре с двумя темами (`data-b24-theme`), и захардкоженный цвет читался бы
+   ровно в одной из них — тот самый дефект, ради которого существует
+   tests/frontend/bitrix_theme_contrast.test.mjs.
+
+   Ни одно правило ниже не адресует чужие панели (#tg-*, #vk-*): их стили
+   правится нельзя, а взаимное подкрашивание — это сообщение, ушедшее не в тот
+   чат. */
+#b24-analysis {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    z-index: 6;
+    /* color-mix по токену, а не полупрозрачный литерал: подложка обязана
+       темнеть в тёмной теме и светлеть в светлой вместе с самой панелью. */
+    background: color-mix(in srgb, var(--b-bg) 82%, transparent);
+    backdrop-filter: blur(2px);
+}
+#b24-analysis[hidden] {
+    display: none;
+}
+/* Карточка — по образцу .b24-login-box: одна и та же «коробка поверх панели»
+   не должна выглядеть в двух местах по-разному. */
+.b24-analysis-box {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 680px;
+    max-height: 100%;
+    background: var(--b-panel);
+    border: 1px solid var(--b-acc-dim);
+    border-radius: 6px;
+    padding: 14px 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
+}
+.b24-analysis-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+.b24-analysis-title {
+    color: var(--b-acc);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+}
+/* Имя чата длинное и приходит извне (название задачи портала — почти всегда
+   предложение): сжимается и режется многоточием, а не растягивает карточку по
+   ширине экрана. */
+.b24-analysis-target {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--b-faint-text);
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.b24-analysis-close {
+    flex: 0 0 auto;
+}
+.b24-analysis-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--b-acc-faint);
+}
+.b24-analysis-tab {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--b-acc-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    padding: 5px 8px;
+}
+.b24-analysis-tab:hover {
+    color: var(--b-acc-hi);
+}
+.b24-analysis-tab-active {
+    color: var(--b-acc);
+    border-bottom-color: var(--b-acc);
+}
+.b24-analysis-pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+.b24-analysis-pane[hidden] {
+    display: none;
+}
+.b24-analysis-controls {
+    display: flex;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+/* Поле глубины — .b24-field, но не на всю ширину: рядом с ним живут кнопки. */
+.b24-analysis-depth-field {
+    flex: 0 0 auto;
+    margin-bottom: 0;
+}
+/* Подпись поля здесь — просто <span>, а не .b24-field-label: у экрана
+   подключения метки стоят колонкой над широкими полями, а тут одна короткая
+   строка в ряду кнопок, и класс с letter-spacing растянул бы её вдвое. */
+.b24-analysis-depth-field > span {
+    display: block;
+    color: var(--b-faint-text);
+    font-size: 10px;
+    margin-bottom: 4px;
+}
+.b24-analysis-depth-field select {
+    background: var(--b-bg);
+    border: 1px solid var(--b-acc-faint);
+    border-radius: 4px;
+    color: var(--b-acc-hi);
+    font-family: inherit;
+    font-size: 12px;
+    padding: 6px 8px;
+    letter-spacing: normal;
+    text-transform: none;
+}
+/* Кнопки в ряду не растягиваются и не съезжают вниз: .b24-login-btn задуман
+   для вертикальной колонки экрана подключения, а здесь их пять в строку. */
+.b24-analysis-btn {
+    width: auto;
+    flex: 0 0 auto;
+    margin-top: 0;
+}
+/* Метка сохранённого разбора: вторичная строка, читается как подпись, а не как
+   статус run'а. Пустая (разбора нет) — не занимает места вовсе, иначе попап до
+   первого запуска выглядел бы недорисованным. */
+.b24-analysis-updated {
+    color: var(--b-acc-dim);
+    font-size: 11px;
+    margin-bottom: 6px;
+}
+.b24-analysis-updated:empty {
+    display: none;
+}
+.b24-analysis-status,
+.b24-analysis-prompt-status {
+    color: var(--b-faint-text);
+    font-size: 11px;
+    min-height: 14px;
+    margin-bottom: 6px;
+}
+/* Шапка разбора — кнопка сворачивания.
+
+   Это <button>, но выглядит строкой-подписью: у неё нет ни рамки, ни фона,
+   иначе над блоком разбора появилась бы шестая кнопка в ряду и без того
+   плотных элементов управления. Видимость нажимаемости даёт каретка ▾/▸ и
+   подсветка на hover/фокусе.
+
+   Символ каретки ставит ядро попапа (js/messenger/analysis-core.js), а не
+   CSS-псевдоэлемент: состояние обязано читаться и с отключёнными стилями, и в
+   тексте страницы, который снимает e2e. */
+.b24-analysis-out-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    background: none;
+    border: 0;
+    border-radius: 3px;
+    color: var(--b-acc-dim);
+    cursor: pointer;
+    font: inherit;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+    padding: 2px 4px;
+    text-align: left;
+}
+.b24-analysis-out-toggle:hover,
+.b24-analysis-out-toggle:focus-visible {
+    color: var(--b-acc-hi);
+    outline: none;
+}
+.b24-analysis-out-toggle:focus-visible {
+    box-shadow: 0 0 0 1px var(--b-acc-faint);
+}
+.b24-analysis-out-caret {
+    display: inline-block;
+    font-size: 10px;
+}
+/* Свёрнутый разбор: подпись гаснет до вторичной. Это единственное, что от него
+   осталось на экране, и она не должна спорить за внимание с тредом. */
+.b24-analysis-out-toggle-off {
+    color: var(--b-faint-text);
+}
+
+/* Вывод модели: собственная прокрутка. Без max-height длинный разбор растянул
+   бы карточку за пределы панели, унеся поле вопроса за экран. */
+.b24-analysis-out {
+    white-space: pre-wrap;
+    overflow-y: auto;
+    overflow-wrap: anywhere;
+    max-height: 46vh;
+    min-height: 60px;
+    background: var(--b-bg);
+    border: 1px solid var(--b-acc-faint);
+    border-radius: 4px;
+    color: var(--b-acc-hi);
+    font-size: 12px;
+    line-height: 1.5;
+    padding: 8px 10px;
+}
+.b24-analysis-thread {
+    overflow-y: auto;
+    max-height: 24vh;
+    margin-top: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+}
+.b24-analysis-thread:empty {
+    display: none;
+}
+/* Вопрос пользователя — голубым, ответ модели — основным текстом ленты.
+   Разведены цветом, а не отступом: в длинном треде глазу нужна зацепка, с
+   какой строки начинается очередная пара. Оранжевый акцент здесь занят
+   заголовками карточки, поэтому вопрос берёт вторую «говорящую» роль
+   палитры. */
+.b24-analysis-qa-q {
+    color: var(--b-cyan);
+    white-space: pre-wrap;
+    margin-top: 6px;
+}
+.b24-analysis-qa-a {
+    color: var(--b-acc-hi);
+    white-space: pre-wrap;
+}
+.b24-analysis-ask {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    margin-top: 8px;
+}
+.b24-analysis-question,
+.b24-analysis-prompt {
+    flex: 1 1 auto;
+    width: 100%;
+    box-sizing: border-box;
+    resize: vertical;
+    background: var(--b-bg);
+    border: 1px solid var(--b-acc-faint);
+    border-radius: 4px;
+    color: var(--b-acc-hi);
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1.5;
+    padding: 6px 8px;
+}
+.b24-analysis-question:focus,
+.b24-analysis-prompt:focus {
+    outline: none;
+    border-color: var(--b-acc);
+}
+.b24-analysis-hint {
+    color: var(--b-faint-text);
+    font-size: 11px;
+    line-height: 1.5;
+    margin: 0 0 8px;
+}
+.b24-analysis-prompt-count {
+    color: var(--b-faint-text);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-align: right;
+    margin: 4px 0 8px;
+}
+
+/* ==== Отрисованный Markdown ==============================================
+   Разметку строит js/messenger/markdown.js — общий модуль мессенджеров, а не
+   код панели Битрикс24, поэтому классы у него НЕЙТРАЛЬНЫЕ (`md-*`). Красит их
+   ЗДЕСЬ панель — стили ограничены её контейнерами `.b24-analysis-out` и
+   `.b24-analysis-thread`, поэтому чужие вкладки от них не меняются.
+
+   ВАЖНО про `white-space`. У `.b24-analysis-out` стоит `pre-wrap` — это нужно
+   стримингу, который до кадра `analysis_done` показывает СЫРОЙ текст. После
+   перерисовки Markdown'ом `pre-wrap` даёт лишние пустые строки между блоками,
+   поэтому у самих блоков он сбрасывается в `normal`; переносы внутри блока
+   кода при этом сохраняются собственным правилом для `pre`. */
+.b24-analysis-out .md-p,
+.b24-analysis-out .md-h,
+.b24-analysis-out .md-ul,
+.b24-analysis-out .md-ol,
+.b24-analysis-out .md-quote,
+.b24-analysis-out .md-table,
+.b24-analysis-thread .md-p,
+.b24-analysis-thread .md-h,
+.b24-analysis-thread .md-ul,
+.b24-analysis-thread .md-ol,
+.b24-analysis-thread .md-quote,
+.b24-analysis-thread .md-table {
+    white-space: normal;
+}
+
+.b24-analysis-out .md-p,
+.b24-analysis-thread .md-p {
+    margin: 0 0 8px;
+}
+.b24-analysis-out .md-p:last-child,
+.b24-analysis-thread .md-p:last-child {
+    margin-bottom: 0;
+}
+
+/* Заголовки. Это попап, а не статья: h1 крупнее текста всего в полтора раза,
+   иначе один заголовок съедает треть видимой области разбора. */
+.b24-analysis-out .md-h,
+.b24-analysis-thread .md-h {
+    color: var(--b-acc);
+    font-weight: 700;
+    line-height: 1.3;
+    margin: 12px 0 6px;
+}
+.b24-analysis-out .md-h:first-child,
+.b24-analysis-thread .md-h:first-child {
+    margin-top: 0;
+}
+.b24-analysis-out h1.md-h,
+.b24-analysis-thread h1.md-h { font-size: 17px; }
+.b24-analysis-out h2.md-h,
+.b24-analysis-thread h2.md-h { font-size: 15px; }
+.b24-analysis-out h3.md-h,
+.b24-analysis-thread h3.md-h { font-size: 14px; }
+.b24-analysis-out h4.md-h,
+.b24-analysis-thread h4.md-h { font-size: 13px; }
+.b24-analysis-out h5.md-h,
+.b24-analysis-out h6.md-h,
+.b24-analysis-thread h5.md-h,
+.b24-analysis-thread h6.md-h {
+    font-size: 12px;
+    color: var(--b-acc-dim);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.b24-analysis-out .md-ul,
+.b24-analysis-out .md-ol,
+.b24-analysis-thread .md-ul,
+.b24-analysis-thread .md-ol {
+    margin: 0 0 8px;
+    padding-left: 20px;
+}
+/* Вложенный список не должен добавлять отбивку: пункт и так уже отступил. */
+.b24-analysis-out .md-li > .md-ul,
+.b24-analysis-out .md-li > .md-ol,
+.b24-analysis-thread .md-li > .md-ul,
+.b24-analysis-thread .md-li > .md-ol {
+    margin: 2px 0 0;
+}
+.b24-analysis-out .md-li,
+.b24-analysis-thread .md-li {
+    margin: 2px 0;
+}
+
+/* Код. Моноширинный уже унаследован (панель целиком на JetBrains Mono), здесь
+   важнее фон-врезка и СВОЙ горизонтальный скролл: длинная строка кода не
+   должна расширять карточку разбора. */
+.b24-analysis-out .md-code,
+.b24-analysis-thread .md-code {
+    background: var(--b-bar);
+    border: 1px solid var(--b-acc-faint);
+    border-radius: 3px;
+    color: var(--b-cyan);
+    padding: 0 3px;
+}
+.b24-analysis-out .md-pre,
+.b24-analysis-thread .md-pre {
+    background: var(--b-bar);
+    border: 1px solid var(--b-acc-faint);
+    border-radius: 4px;
+    margin: 0 0 8px;
+    max-width: 100%;
+    overflow-x: auto;
+    padding: 6px 8px;
+    white-space: pre;
+}
+.b24-analysis-out .md-pre .md-code-block,
+.b24-analysis-thread .md-pre .md-code-block {
+    background: none;
+    border: 0;
+    color: var(--b-acc-hi);
+    padding: 0;
+}
+
+.b24-analysis-out .md-quote,
+.b24-analysis-thread .md-quote {
+    border-left: 2px solid var(--b-acc-faint);
+    color: var(--b-faint-text);
+    margin: 0 0 8px;
+    padding: 0 0 0 8px;
+}
+
+.b24-analysis-out .md-hr,
+.b24-analysis-thread .md-hr {
+    background: var(--b-acc-faint);
+    border: 0;
+    height: 1px;
+    margin: 10px 0;
+}
+
+/* Таблица. ГЛАВНОЕ ПРАВИЛО: широкая таблица скроллится ВНУТРИ своей обёртки, а
+   не растягивает попап. Без `max-width: 100%` на обёртке flex-родитель растёт
+   под содержимое, и карточка разбора уезжает за экран вместе с полем вопроса.
+   `table-layout` намеренно не фиксируется: колонки должны считаться по
+   содержимому, скролл берёт на себя переполнение. */
+.b24-analysis-out .md-table-wrap,
+.b24-analysis-thread .md-table-wrap {
+    margin: 0 0 8px;
+    max-width: 100%;
+    overflow-x: auto;
+}
+.b24-analysis-out .md-table,
+.b24-analysis-thread .md-table {
+    border-collapse: collapse;
+    font-size: 11px;
+}
+.b24-analysis-out .md-table th,
+.b24-analysis-out .md-table td,
+.b24-analysis-thread .md-table th,
+.b24-analysis-thread .md-table td {
+    border: 1px solid var(--b-acc-faint);
+    padding: 3px 6px;
+    text-align: left;
+    vertical-align: top;
+    white-space: nowrap;
+}
+.b24-analysis-out .md-table th,
+.b24-analysis-thread .md-table th {
+    background: var(--b-bar);
+    color: var(--b-acc);
+    font-weight: 700;
+}
+.b24-analysis-out .md-table tbody tr:nth-child(even) td,
+.b24-analysis-thread .md-table tbody tr:nth-child(even) td {
+    background: var(--b-panel);
+}
+
 @media (max-width: 480px) {
     /* На телефоне подсказки к действиям съедают половину экрана, а сама
        шпаргалка нужна и там: прячем пояснения, оставляя клавиши. */
     .b24-keys-help-hint { display: none; }
     .b24-keys-help-card { padding: 10px 12px; }
+    /* Карточка анализа на телефоне занимает всю ширину: 680px «максимума» там
+       всё равно нет, а внутренние отступы съедают строку вопроса. */
+    .b24-analysis-box {
+        max-width: 100%;
+        padding: 10px 12px;
+    }
 }
 
 /* ---- Пользователь просил меньше движения ---- */

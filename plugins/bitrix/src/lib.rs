@@ -71,6 +71,7 @@
 //! будут.
 
 pub mod actions;
+pub mod analysis;
 pub mod api;
 pub mod attach;
 pub mod bbcode;
@@ -244,6 +245,9 @@ pub async fn spawn_workers(state: &Arc<B24State>) {
 ///    потом абортит. Пауза не косметическая: воркер событий на выходе
 ///    персистит курсор, а `abort()` в произвольной await-точке этого сделать
 ///    не даст.
+/// 3. `analysis.shutdown()` — убивает процессы `claude`, запущенные анализом
+///    чата, и закрывает хаб для новых стартов. Без него дочерний процесс
+///    пережил бы devforge и продолжал бы жечь токены осиротевшим.
 ///
 /// **Идемпотентна**: `CancellationToken` можно отменять сколько угодно раз, а
 /// список воркеров после первого прохода пуст. Это не теория — хост зовёт
@@ -253,6 +257,7 @@ pub async fn shutdown(state: &Arc<B24State>) {
     tracing::info!(target: "forge_bitrix", "forge-bitrix: shutdown initiated");
     state.shutdown.cancel();
     state.shutdown_workers().await;
+    state.analysis.shutdown().await;
     tracing::info!(target: "forge_bitrix", "forge-bitrix: shutdown complete");
 }
 
@@ -264,6 +269,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let cfg = BitrixConfig {
             cache_dir: dir.path().join("cache"),
+            // Герметичность: без явного пути хранилище заметок легло бы в живой
+            // ~/.forge/bitrix-chat-prompts.json разработчика, а CLI-заглушка
+            // гарантирует, что тест не запустит настоящий claude.
+            prompts_path: dir.path().join("prompts.json"),
+            claude_cli_path: dir.path().join("no-such-claude"),
             config_path: dir.path().join("bitrix.toml"),
             ..BitrixConfig::default()
         };
@@ -331,6 +341,11 @@ mod tests {
 
         let cfg = BitrixConfig {
             cache_dir: blocker.join("cache"),
+            // Герметичность: без явного пути хранилище заметок легло бы в живой
+            // ~/.forge/bitrix-chat-prompts.json разработчика, а CLI-заглушка
+            // гарантирует, что тест не запустит настоящий claude.
+            prompts_path: blocker.join("prompts.json"),
+            claude_cli_path: blocker.join("no-such-claude"),
             config_path: dir.path().join("bitrix.toml"),
             ..BitrixConfig::default()
         };

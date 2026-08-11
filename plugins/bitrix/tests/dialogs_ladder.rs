@@ -73,6 +73,11 @@ fn app_with(f: impl FnOnce(&mut BitrixConfig)) -> (tempfile::TempDir, Arc<B24Sta
     let dir = tempfile::tempdir().unwrap();
     let mut cfg = BitrixConfig {
         cache_dir: dir.path().join("cache"),
+        // Герметичность: без явного пути хранилище заметок легло бы в живой
+        // ~/.forge/bitrix-chat-prompts.json разработчика, а CLI-заглушка
+        // гарантирует, что тест не запустит настоящий claude.
+        prompts_path: dir.path().join("prompts.json"),
+        claude_cli_path: dir.path().join("no-such-claude"),
         config_path: dir.path().join("bitrix.toml"),
         // Порт 1 закрыт всегда: если запрос всё же дойдёт до сети, тест
         // упадёт по таймауту вместо того, чтобы молча проехать.
@@ -327,5 +332,200 @@ async fn the_data_routes_exist_even_without_a_webhook() {
     ] {
         let (status, _) = get(&app, uri).await;
         assert_eq!(status, StatusCode::CONFLICT, "{uri}");
+    }
+}
+
+
+/// Те же враждебные `:id` НА РОУТАХ АНАЛИЗА ЧАТА — со своими методами и с
+/// битым телом заодно.
+///
+/// Отдельным тестом, а не строкой в [`hostile_uris`], по двум причинам: у
+/// четырёх из семи путей метод не `GET` (иначе `405` пришёл бы раньше
+/// лестницы и ничего не проверил), и половина из них принимает ТЕЛО — а
+/// именно ради него тело объявлено `Option<Json<T>>`. Экстрактор `Json<T>`
+/// отверг бы `{not json` с кодом `400` ДО проверки авторизации и превратил бы
+/// роут в оракул валидности идентификаторов портала.
+#[tokio::test]
+async fn hostile_ids_on_the_analysis_routes_hit_auth_first() {
+    let (_dir, _state, app) = app_with(|_| {});
+
+    for value in HOSTILE {
+        for (method, tail, body) in [
+            ("GET", "prompt", None),
+            ("PUT", "prompt", Some("{not json")),
+            ("GET", "analysis", None),
+            ("POST", "analysis", Some("{not json")),
+            ("DELETE", "analysis", None),
+            ("DELETE", "analysis/thread", None),
+            ("POST", "analysis/cancel", Some("{not json")),
+        ] {
+            let uri = format!("/api/bitrix/dialogs/{value}/{tail}");
+            let req = axum::http::Request::builder().method(method).uri(&uri);
+            let req = match body {
+                Some(b) => req
+                    .header("content-type", "application/json")
+                    .body(Body::from(b))
+                    .unwrap(),
+                None => req.body(Body::empty()).unwrap(),
+            };
+            let resp = app.clone().oneshot(req).await.unwrap();
+            let status = resp.status();
+            let bytes = axum::body::to_bytes(resp.into_body(), 512 * 1024)
+                .await
+                .unwrap();
+            let json: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+            assert_eq!(
+                status,
+                StatusCode::CONFLICT,
+                "{method} {uri} → {status}, а обязан быть 409\n{json}"
+            );
+            assert_eq!(json["error"]["code"], "not_authorized", "{method} {uri}");
+            let text = serde_json::to_string(&json).unwrap();
+            assert!(!text.contains("script"), "{method} {uri}: эхо ввода {text}");
+        }
+    }
+}
+
+/// ФИКСАЦИЯ ДВУХ ЛЕСТНИЦ: локальные роуты анализа отвечают `200` БЕЗ связи с
+/// порталом, а запускающие — `503`.
+///
+/// Это не мелочь оформления, а функциональное требование: разбор и заметка
+/// лежат в локальном файле, и прятать их ровно тогда, когда портал отвалился,
+/// значило бы убирать контекст в момент, когда он полезнее всего. Добавленный
+/// когда-нибудь `require_ready` на `/prompt` покрасит этот тест.
+#[tokio::test]
+async fn the_analysis_routes_stand_on_two_different_ladders() {
+    // Вебхук принят, но связь ПАДАЮЩАЯ: `note_down` внутри окна грейса даёт
+    // ровно то состояние, в котором пользователь читает историю из кэша.
+    let (_dir, state, app) = app_with(|c| {
+        c.webhook = WebhookUrl::new("https://p.bitrix24.ru/rest/1/abc123def456/");
+    });
+    state
+        .set_login(LoginFlow::Authorized {
+            user: B24UserDto {
+                id: "1".into(),
+                ..Default::default()
+            },
+            portal: "p.bitrix24.ru".into(),
+        })
+        .await;
+    state
+        .note_down(chrono::Utc::now().timestamp(), "network is down")
+        .await;
+
+    // Локальный файл — 200 при мёртвой связи.
+    let (status, json) = get(&app, "/api/bitrix/dialogs/chat7/prompt").await;
+    assert_eq!(status, StatusCode::OK, "заметка не требует портала: {json}");
+    assert_eq!(json["prompt"], "");
+    assert!(json["updated_at"].is_null());
+
+    let (status, json) = get(&app, "/api/bitrix/dialogs/chat7/analysis").await;
+    assert_eq!(status, StatusCode::OK, "разбор не требует портала: {json}");
+    assert_eq!(json["text"], "");
+    assert!(
+        json["thread"].as_array().unwrap().is_empty(),
+        "тред всегда массив"
+    );
+
+    // А запуск и отмена — требуют: без портала истории не существует.
+    for (method, tail) in [("POST", "analysis"), ("POST", "analysis/cancel")] {
+        let req = axum::http::Request::builder()
+            .method(method)
+            .uri(format!("/api/bitrix/dialogs/chat7/{tail}"))
+            .header("content-type", "application/json")
+            .body(Body::from("{\"kind\":\"analyze\"}"))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::SERVICE_UNAVAILABLE,
+            "{method} {tail}"
+        );
+    }
+}
+
+/// Полный круг по локальным роутам: заметка, разбор и тред — ТРИ независимые
+/// величины, и очистка каждой не трогает две другие.
+#[tokio::test]
+async fn the_three_stored_values_are_independent() {
+    let (_dir, state, app) = connected_app().await;
+    let key = "chat7";
+
+    // Заметка через роут, разбор и тред — напрямую в хранилище (роут запуска
+    // потребовал бы живого портала).
+    let put = axum::http::Request::builder()
+        .method("PUT")
+        .uri("/api/bitrix/dialogs/chat7/prompt")
+        .header("content-type", "application/json")
+        .body(Body::from("{\"prompt\":\"  Это заказчик\\r\\n \"}"))
+        .unwrap();
+    let resp = app.clone().oneshot(put).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), 64 * 1024)
+        .await
+        .unwrap();
+    let json: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(json["prompt"], "Это заказчик", "сохранено обрезанным");
+    assert!(json["updated_at"].as_i64().unwrap() > 0);
+
+    {
+        let mut guard = state.prompts.lock().await;
+        guard.set_analysis(key, "РАЗБОР", 7042, 137, 1_800_000_000);
+        guard.push_turn(key, "вопрос", "ответ", 1_800_000_001);
+        forge_bitrix::analysis::prompts::save(&state.config.prompts_path, &guard).unwrap();
+    }
+
+    let (_, json) = get(&app, "/api/bitrix/dialogs/chat7/analysis").await;
+    assert_eq!(json["text"], "РАЗБОР");
+    assert_eq!(json["last_message_id"], 7042);
+    assert_eq!(json["messages_used"], 137);
+    assert_eq!(json["thread"][0]["q"], "вопрос");
+
+    // Стираем ТРЕД — разбор и заметка целы.
+    let del = |uri: &str| {
+        let uri = uri.to_string();
+        let app = app.clone();
+        async move {
+            let resp = app
+                .oneshot(
+                    axum::http::Request::builder()
+                        .method("DELETE")
+                        .uri(uri)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            let status = resp.status();
+            let bytes = axum::body::to_bytes(resp.into_body(), 64 * 1024)
+                .await
+                .unwrap();
+            let json: Value = serde_json::from_slice(&bytes).unwrap();
+            (status, json)
+        }
+    };
+
+    let (status, json) = del("/api/bitrix/dialogs/chat7/analysis/thread").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["cleared"], true);
+    let (_, json) = get(&app, "/api/bitrix/dialogs/chat7/analysis").await;
+    assert_eq!(json["text"], "РАЗБОР", "разбор не тронут");
+    assert!(json["thread"].as_array().unwrap().is_empty());
+
+    // Стираем РАЗБОР — заметка по-прежнему цела.
+    let (status, json) = del("/api/bitrix/dialogs/chat7/analysis").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["cleared"], true);
+    let (_, json) = get(&app, "/api/bitrix/dialogs/chat7/prompt").await;
+    assert_eq!(json["prompt"], "Это заказчик", "заметка пережила обе очистки");
+
+    // Повторное нажатие — НЕ ошибка: кнопку жмут из двух вкладок сразу.
+    for uri in [
+        "/api/bitrix/dialogs/chat7/analysis",
+        "/api/bitrix/dialogs/chat7/analysis/thread",
+    ] {
+        let (status, json) = del(uri).await;
+        assert_eq!(status, StatusCode::OK, "{uri}");
+        assert_eq!(json["cleared"], false, "{uri}");
     }
 }

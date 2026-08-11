@@ -220,6 +220,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let state = B24State::new(BitrixConfig {
             cache_dir: dir.path().join("cache"),
+            // Герметичность: без явного пути хранилище заметок легло бы в живой
+            // ~/.forge/bitrix-chat-prompts.json разработчика, а CLI-заглушка
+            // гарантирует, что тест не запустит настоящий claude.
+            prompts_path: dir.path().join("prompts.json"),
+            claude_cli_path: dir.path().join("no-such-claude"),
             config_path: dir.path().join("bitrix.toml"),
             ..BitrixConfig::default()
         });
@@ -249,6 +254,11 @@ mod tests {
 
         let state = B24State::new(BitrixConfig {
             cache_dir: dir.path().join("cache"),
+            // Герметичность: без явного пути хранилище заметок легло бы в живой
+            // ~/.forge/bitrix-chat-prompts.json разработчика, а CLI-заглушка
+            // гарантирует, что тест не запустит настоящий claude.
+            prompts_path: dir.path().join("prompts.json"),
+            claude_cli_path: dir.path().join("no-such-claude"),
             config_path: path.clone(),
             webhook: webhook.clone(),
             ..BitrixConfig::default()

@@ -45,6 +45,10 @@ export const SERVER_FRAMES = [
     'login_state', 'dialogs_patch', 'message_new', 'message_update',
     'message_delete', 'reaction', 'typing', 'read', 'counters', 'presence',
     'task_update', 'upload_progress', 'download_progress', 'error',
+    // Анализ чата через Claude (Ф12). Четыре кадра стоят ПЕРЕД служебными
+    // `resync`/`ping` — там же, где у VK и Telegram: порядок здесь не
+    // косметика, его побайтно сверяет с protocol.rs bitrix_contract.test.mjs.
+    'analysis_started', 'analysis_delta', 'analysis_done', 'analysis_error',
     'resync', 'ping',
 ];
 

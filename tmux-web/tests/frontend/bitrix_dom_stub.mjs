@@ -80,6 +80,15 @@ export function makeEl(tag) {
     });
 
     node.appendChild = (child) => {
+        // DocumentFragment (nodeType 11) РАСТВОРЯЕТСЯ при вставке: в дерево
+        // уходят его дети, а не он сам. Без этого правила отрисованный Markdown
+        // (js/messenger/markdown.js отдаёт именно фрагмент) оказался бы завёрнут
+        // в лишний узел, и тест попапа анализа проверял бы структуру, которой в
+        // браузере нет.
+        if (child && child.nodeType === 11) {
+            for (const kid of child.childNodes.slice()) node.appendChild(kid);
+            return child;
+        }
         detach(child);
         child.parentNode = node;
         node.childNodes.push(child);
@@ -223,8 +232,12 @@ export function dispatch(node, type, ev) {
         type,
         target: node,
         defaultPrevented: false,
+        // Флаг, а не пустышка: попап анализа ГАСИТ всплытие Esc, чтобы одно
+        // нажатие закрывало ровно одно окно (под ним слушают лайтбокс и полоса
+        // ответа). Без записи факта проверить это было бы нечем.
+        propagationStopped: false,
         preventDefault() { this.defaultPrevented = true; },
-        stopPropagation() {},
+        stopPropagation() { this.propagationStopped = true; },
     }, ev || {});
     (node.listeners.get(type) || []).slice().forEach((fn) => fn(e));
     return e;
@@ -303,6 +316,64 @@ export const $lightbox = el('b24-lightbox');
 // console и тест не может отличить «тост показан» от «тост подавлен».
 export const $toasts = el('echo-toasts');
 
+// ---------------------------------------------------------------------------
+// Попап «Анализ чата» (Ф12): js/bitrix/analysis.js поверх
+// js/messenger/analysis-core.js.
+//
+// Узлы заведены ВСЕ, которые перечислены в `refs` фабрики: ядро проверяет
+// каждый ref на существование и молча ничего не делает, если его нет, — забытый
+// узел дал бы тест, который зеленеет на бездействии.
+// ---------------------------------------------------------------------------
+
+export const $analysisToggle = el('b24-analysis-toggle', 'button');
+export const $analysis = el('b24-analysis');
+export const $analysisTarget = el('b24-analysis-target', 'span');
+export const $analysisClose = el('b24-analysis-close', 'button');
+export const $analysisTabRun = el('b24-analysis-tab-run', 'button');
+export const $analysisTabCtx = el('b24-analysis-tab-ctx', 'button');
+export const $analysisPaneRun = el('b24-analysis-pane-run');
+export const $analysisPaneCtx = el('b24-analysis-pane-ctx');
+export const $analysisDepth = el('b24-analysis-depth', 'select');
+export const $analysisStart = el('b24-analysis-start', 'button');
+export const $analysisRefresh = el('b24-analysis-refresh', 'button');
+export const $analysisCancel = el('b24-analysis-cancel', 'button');
+export const $analysisClear = el('b24-analysis-clear', 'button');
+export const $analysisClearThread = el('b24-analysis-clear-thread', 'button');
+export const $analysisStatus = el('b24-analysis-status');
+export const $analysisUpdated = el('b24-analysis-updated');
+export const $analysisOutToggle = el('b24-analysis-out-toggle', 'button');
+export const $analysisOut = el('b24-analysis-out');
+export const $analysisThread = el('b24-analysis-thread');
+export const $analysisAsk = el('b24-analysis-ask', 'form');
+export const $analysisQuestion = el('b24-analysis-question', 'textarea');
+export const $analysisSend = el('b24-analysis-send', 'button');
+export const $analysisError = el('b24-analysis-error');
+export const $analysisPrompt = el('b24-analysis-prompt', 'textarea');
+export const $analysisPromptCount = el('b24-analysis-prompt-count');
+export const $analysisPromptSave = el('b24-analysis-prompt-save', 'button');
+export const $analysisPromptClear = el('b24-analysis-prompt-clear', 'button');
+export const $analysisPromptStatus = el('b24-analysis-prompt-status');
+
+// Каретка внутри шапки разбора — ОТДЕЛЬНЫЙ узел с классом `b24-analysis-out-caret`
+// (так же, как в index.html): ядро ищет её `querySelector`'ом по префиксу
+// панели, и без неё состояние сворачивания читалось бы только по aria.
+export const $analysisOutCaret = makeEl('span');
+$analysisOutCaret.className = 'b24-analysis-out-caret';
+$analysisOutCaret.textContent = '▾';
+$analysisOutToggle.appendChild($analysisOutCaret);
+
+// Начальное состояние — ровно то, что стоит атрибутами в index.html: попап
+// спрятан, вкладка контекста скрыта, STOP скрыт, REFRESH погашен, глубина 100
+// (у портала свой список 50/100/200, см. js/bitrix/analysis.js).
+$analysis.hidden = true;
+$analysisPaneCtx.hidden = true;
+$analysisCancel.hidden = true;
+$analysisRefresh.disabled = true;
+$analysisError.hidden = true;
+$analysisDepth.value = '100';
+$analysis.appendChild($analysisPaneRun);
+$analysis.appendChild($analysisPaneCtx);
+
 export const $login = el('b24-login');
 export const $loginStep = el('b24-login-step-webhook');
 export const $hint = el('b24-login-hint');
@@ -328,6 +399,7 @@ $panel.appendChild($lightbox);
 $panel.appendChild($contactsScrim);
 $panel.appendChild($themeToggle);
 $panel.appendChild($contactsToggle);
+$panel.appendChild($analysis);
 $login.hidden = true;
 $error.hidden = true;
 $countdown.hidden = true;
@@ -340,6 +412,14 @@ export const $document = makeEl('#document');
 $document.getElementById = (id) => els.get(id) || null;
 $document.createElement = (tag) => makeEl(tag);
 $document.createTextNode = (t) => makeText(t);
+// Фрагмент нужен рендереру Markdown (js/messenger/markdown.js): он собирает
+// дерево ОТДЕЛЬНО и вставляет одной операцией. `nodeType: 11` — тот признак, по
+// которому appendChild выше растворяет фрагмент вместо вставки его самого.
+$document.createDocumentFragment = () => {
+    const frag = makeEl('#fragment');
+    frag.nodeType = 11;
+    return frag;
+};
 $document.body = $body;
 $document.documentElement = makeEl('html');
 $document.visibilityState = 'visible';
@@ -358,6 +438,11 @@ globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} }
 globalThis.history = { replaceState() {} };
 // Тост ставит класс появления через rAF; в Node его нет вовсе.
 globalThis.requestAnimationFrame = (fn) => setTimeout(fn, 0);
+// Отмена кадра нужна ядру попапа анализа: буфер дельт сливается кадром, а
+// `analysis_done` обязан слить остаток СИНХРОННО, погасив запрошенный кадр.
+// Без этой функции ядро оставило бы висеть таймер, и хвост ответа приехал бы
+// вторым, уже лишним, вызовом.
+globalThis.cancelAnimationFrame = (id) => clearTimeout(id);
 globalThis.window = {
     fetch: (...args) => globalThis.fetch(...args),
     addEventListener() {}, removeEventListener() {},

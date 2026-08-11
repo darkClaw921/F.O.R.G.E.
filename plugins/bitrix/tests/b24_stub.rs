@@ -620,6 +620,11 @@ fn stub_config(stub: &Stub, rps: u32, burst: u32) -> BitrixConfig {
         connect_timeout_secs: 1,
         request_timeout_secs: 1,
         cache_dir: std::env::temp_dir().join("forge-bitrix-stub-tests"),
+        // Герметичность: без явного пути хранилище заметок легло бы в живой
+        // ~/.forge/bitrix-chat-prompts.json разработчика, а CLI-заглушка
+        // гарантирует, что тест не запустит настоящий claude.
+        prompts_path: std::env::temp_dir().join("forge-bitrix-stub-tests").join("prompts.json"),
+        claude_cli_path: std::env::temp_dir().join("forge-bitrix-stub-tests").join("no-such-claude"),
         ..BitrixConfig::default()
     }
 }
@@ -1264,6 +1269,11 @@ fn login_harness(stub: &Stub) -> LoginHarness {
         // проверки «код не утёк» видят реальную строку.
         base_url_override: stub.base_url.clone(),
         cache_dir: dir.path().join("cache"),
+        // Герметичность: без явного пути хранилище заметок легло бы в живой
+        // ~/.forge/bitrix-chat-prompts.json разработчика, а CLI-заглушка
+        // гарантирует, что тест не запустит настоящий claude.
+        prompts_path: dir.path().join("prompts.json"),
+        claude_cli_path: dir.path().join("no-such-claude"),
         config_path: config_path.clone(),
         connect_timeout_secs: 2,
         request_timeout_secs: 2,
@@ -3143,6 +3153,11 @@ fn realtime_state(stub: &Stub, cache_dir: &std::path::Path, poll: PollTimings) -
     let cfg = BitrixConfig {
         base_url_override: stub.base_url.clone(),
         cache_dir: cache_dir.to_path_buf(),
+        // Герметичность: без явного пути хранилище заметок легло бы в живой
+        // ~/.forge/bitrix-chat-prompts.json разработчика, а CLI-заглушка
+        // гарантирует, что тест не запустит настоящий claude.
+        prompts_path: cache_dir.join("prompts.json"),
+        claude_cli_path: cache_dir.join("no-such-claude"),
         config_path: cache_dir.join("bitrix.toml"),
         connect_timeout_secs: 2,
         request_timeout_secs: 2,

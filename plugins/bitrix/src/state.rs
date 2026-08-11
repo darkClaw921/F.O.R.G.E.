@@ -508,6 +508,27 @@ pub struct B24State {
 
     /// Idle-таймаут WS. Тоже данные — по той же причине.
     pub ws_idle_timeout: Duration,
+
+    // --- «Анализ чата через Claude» ---------------------------------------
+    /// Пер-чатовые заметки, последние разборы и треды Q&A
+    /// (`forge_chat_analysis::prompts`).
+    ///
+    /// Под `Arc` — потому что ту же мапу держит [`crate::analysis::AnalysisHub`]:
+    /// сохранение разбора по концу run'а идёт под ТЕМ ЖЕ `Mutex`, что и правка
+    /// заметки из хендлера, и потому не может её обогнать.
+    ///
+    /// Ключ мапы — `dialog_id` СТРОКОЙ, в каноническом виде из
+    /// [`crate::dto::parse_dialog_id`] (`"chat27"`, `"19"`). У Bitrix он
+    /// строкой был изначально — в отличие от Telegram, где `PeerRef`
+    /// приходится конвертировать обратно, и от VK с его числовым `peer_id`.
+    pub prompts: Arc<Mutex<crate::analysis::prompts::PromptStore>>,
+
+    /// Реестр активных анализов чата ([`crate::analysis::AnalysisHub`]).
+    ///
+    /// Создаётся ОДИН раз здесь, а не на запрос: в нём живут дедуп по диалогу,
+    /// потолок параллелизма и таблица `run_id → процесс`, по которой работает
+    /// отмена. Хаб на запрос не знал бы ни о чём из этого.
+    pub analysis: crate::analysis::AnalysisHub,
 }
 
 impl B24State {
@@ -537,6 +558,21 @@ impl B24State {
         let (broadcast, _rx) = broadcast::channel(BROADCAST_CAPACITY);
         let login = LoginFlow::from_config(&config);
         let webhook = config.webhook.clone();
+        // Никаких `?`: `load` не умеет возвращать ошибку по построению —
+        // сломанный файл заметок не имеет права мешать плагину подняться.
+        let prompts = Arc::new(Mutex::new(crate::analysis::prompts::load(
+            &config.prompts_path,
+        )));
+        // Хаб получает ТУ ЖЕ мапу и тот же путь: сохранение разбора по концу
+        // run'а идёт под тем же `Mutex`, что и правка заметки из хендлера.
+        // Ядро анализа общее на три мессенджера, поэтому конфиг ему передаётся
+        // полями, а не типом: `BitrixConfig` крейту не виден по построению.
+        let analysis = crate::analysis::AnalysisHub::new(
+            config.claude_cli_path.clone(),
+            config.analysis_model.clone(),
+            config.analysis_timeout_secs,
+        )
+        .with_store(prompts.clone(), config.prompts_path.clone());
         Arc::new(Self {
             config,
             webhook: RwLock::new(webhook),
@@ -564,7 +600,108 @@ impl B24State {
             authorized_notify: Notify::new(),
             ws_heartbeat,
             ws_idle_timeout,
+            prompts,
+            analysis,
         })
+    }
+
+    // ------------------------------------------------------------------
+    // «Анализ чата через Claude».
+    // ------------------------------------------------------------------
+
+    /// Приёмник кадров анализа для [`crate::analysis::AnalysisHub::start`].
+    ///
+    /// Ядро анализа живёт в общем крейте и про
+    /// [`crate::ws::protocol::B24ServerMsg`] не знает: оно зовёт четыре метода
+    /// трейта, а [`crate::ws::protocol::B24AnalysisSink`] перекладывает их в
+    /// наши кадры и шлёт в тот же broadcast. Хелпер здесь (а не
+    /// `Arc::new(...)` в каждом роуте) ради одного: приёмник обязан вещать
+    /// ИМЕННО в канал этого состояния, иначе кадры run'а не увидит ни одна
+    /// открытая вкладка.
+    #[must_use]
+    pub fn analysis_sink(&self) -> Arc<dyn crate::analysis::AnalysisSink> {
+        Arc::new(crate::ws::protocol::B24AnalysisSink::new(
+            self.broadcast.clone(),
+        ))
+    }
+
+    /// Заметка пользователя к диалогу (снимок, не ссылка).
+    ///
+    /// Копия, а не guard: держать `Mutex` на время рендера ответа означало бы
+    /// сериализовать все запросы вкладки на одном локальном файле.
+    pub async fn chat_prompt(
+        &self,
+        dialog_id: &str,
+    ) -> Option<crate::analysis::prompts::ChatPrompt> {
+        self.prompts.lock().await.get(dialog_id).cloned()
+    }
+
+    /// Записывает заметку к диалогу и СРАЗУ сохраняет файл.
+    ///
+    /// Мапа и файл меняются под ОДНИМ lock'ом: иначе два одновременных
+    /// сохранения (две вкладки) могли бы записать файлы в порядке, обратном
+    /// порядку правок, и более старая заметка победила бы. Пустой текст —
+    /// удаление записи.
+    ///
+    /// # Errors
+    ///
+    /// Ошибка записи файла. Память в этом случае УЖЕ изменена — но источник
+    /// истины файл, и следующий успешный `save` его выровняет; откатывать
+    /// правку значило бы показать пользователю старый текст в поле, куда он
+    /// только что напечатал новый.
+    pub async fn set_chat_prompt(
+        &self,
+        dialog_id: &str,
+        raw: &str,
+        now: i64,
+    ) -> anyhow::Result<Option<crate::analysis::prompts::ChatPrompt>> {
+        let mut guard = self.prompts.lock().await;
+        let entry = guard.set(dialog_id, raw, now);
+        crate::analysis::prompts::save(&self.config.prompts_path, &guard)?;
+        Ok(entry)
+    }
+
+    /// Последний сохранённый разбор диалога (снимок, не ссылка).
+    pub async fn chat_analysis(
+        &self,
+        dialog_id: &str,
+    ) -> Option<crate::analysis::prompts::ChatAnalysis> {
+        self.prompts.lock().await.analysis(dialog_id).cloned()
+    }
+
+    /// Стирает разбор диалога. Возвращает `true`, если он был.
+    ///
+    /// Ни заметку, ни тред не трогает: три половины записи независимы — это
+    /// три разные кнопки в попапе.
+    ///
+    /// # Errors
+    ///
+    /// Ошибка записи файла.
+    pub async fn clear_chat_analysis(&self, dialog_id: &str) -> anyhow::Result<bool> {
+        let mut guard = self.prompts.lock().await;
+        let had = guard.clear_analysis(dialog_id);
+        crate::analysis::prompts::save(&self.config.prompts_path, &guard)?;
+        Ok(had)
+    }
+
+    /// Сохранённый тред вопросов диалога (снимок, не ссылка).
+    pub async fn chat_thread(&self, dialog_id: &str) -> Vec<crate::analysis::prompts::QaTurn> {
+        self.prompts.lock().await.thread(dialog_id).to_vec()
+    }
+
+    /// Стирает тред вопросов диалога («CLEAR Q&A»). Возвращает `true`, если он
+    /// был непустым.
+    ///
+    /// Ни заметку, ни разбор не трогает — см. [`Self::clear_chat_analysis`].
+    ///
+    /// # Errors
+    ///
+    /// Ошибка записи файла.
+    pub async fn clear_chat_thread(&self, dialog_id: &str) -> anyhow::Result<bool> {
+        let mut guard = self.prompts.lock().await;
+        let had = guard.clear_thread(dialog_id);
+        crate::analysis::prompts::save(&self.config.prompts_path, &guard)?;
+        Ok(had)
     }
 
     // ------------------------------------------------------------------
@@ -1052,6 +1189,11 @@ mod tests {
     fn cfg() -> BitrixConfig {
         BitrixConfig {
             cache_dir: std::env::temp_dir().join("forge-bitrix-tests"),
+            // Герметичность: без явного пути хранилище заметок легло бы в живой
+            // ~/.forge/bitrix-chat-prompts.json разработчика, а CLI-заглушка
+            // гарантирует, что тест не запустит настоящий claude.
+            prompts_path: std::env::temp_dir().join("forge-bitrix-tests").join("prompts.json"),
+            claude_cli_path: std::env::temp_dir().join("forge-bitrix-tests").join("no-such-claude"),
             ..BitrixConfig::default()
         }
     }

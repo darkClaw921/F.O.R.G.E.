@@ -496,6 +496,11 @@ mod tests {
     fn cfg() -> BitrixConfig {
         BitrixConfig {
             cache_dir: std::env::temp_dir().join("forge-bitrix-tests"),
+            // Герметичность: без явного пути хранилище заметок легло бы в живой
+            // ~/.forge/bitrix-chat-prompts.json разработчика, а CLI-заглушка
+            // гарантирует, что тест не запустит настоящий claude.
+            prompts_path: std::env::temp_dir().join("forge-bitrix-tests").join("prompts.json"),
+            claude_cli_path: std::env::temp_dir().join("forge-bitrix-tests").join("no-such-claude"),
             ..BitrixConfig::default()
         }
     }

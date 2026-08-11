@@ -236,6 +236,11 @@ async fn harness() -> (tempfile::TempDir, Arc<StubState>, Arc<B24State>, Router)
         webhook: WebhookUrl::new(format!("https://p.bitrix24.ru/rest/{UID}/{CODE}/")),
         base_url_override: base_url,
         cache_dir: dir.path().join("cache"),
+        // Герметичность: без явного пути хранилище заметок легло бы в живой
+        // ~/.forge/bitrix-chat-prompts.json разработчика, а CLI-заглушка
+        // гарантирует, что тест не запустит настоящий claude.
+        prompts_path: dir.path().join("prompts.json"),
+        claude_cli_path: dir.path().join("no-such-claude"),
         config_path: dir.path().join("bitrix.toml"),
         ..BitrixConfig::default()
     };
