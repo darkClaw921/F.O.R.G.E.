@@ -1919,3 +1919,436 @@
 .tg-dir.tg-dir-filtered-out .tg-dir-name {
     opacity: 0.45;
 }
+
+/* ── попап «Анализ чата» (js/telegram/analysis.js) ────────────────────────
+   СЛОЙ 6, и это не косметика. Оверлей логина — 5, dropzone и лайтбокс — 7.
+   Анализ обязан лежать МЕЖДУ: под попапом не должно оказаться невидимого
+   оверлея входа, а модальные лайтбокс и dropzone со своими кнопками обязаны
+   перекрывать попап.
+   Все цвета — только глобальные токены --t-*: панель живёт в собственной
+   палитре и обязана выглядеть корректно в обеих её темах (data-tg-theme).
+   Ни одно правило ниже не адресует чужие панели (#vk-*, #b24-*). */
+#tg-analysis {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    z-index: 6;
+    background: color-mix(in srgb, var(--t-bg) 82%, transparent);
+    backdrop-filter: blur(2px);
+}
+#tg-analysis[hidden] {
+    display: none;
+}
+/* Карточка — по образцу .tg-keys-help-card: одна и та же «коробка поверх
+   панели» не должна выглядеть в двух местах по-разному. */
+.tg-analysis-box {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 680px;
+    max-height: 100%;
+    background: var(--t-panel);
+    border: 1px solid var(--t-grn-dim);
+    border-radius: 4px;
+    padding: 14px 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
+}
+.tg-analysis-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+.tg-analysis-title {
+    color: var(--t-grn);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+}
+/* Имя чата длинное и приходит извне: сжимается и режется многоточием, а не
+   растягивает карточку по ширине экрана. */
+.tg-analysis-target {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--t-faint-text);
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.tg-analysis-close {
+    flex: 0 0 auto;
+}
+.tg-analysis-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--t-grn-faint);
+}
+.tg-analysis-tab {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--t-grn-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    padding: 5px 8px;
+}
+.tg-analysis-tab:hover {
+    color: var(--t-grn-hi);
+}
+.tg-analysis-tab-active {
+    color: var(--t-grn);
+    border-bottom-color: var(--t-grn);
+}
+.tg-analysis-pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+.tg-analysis-pane[hidden] {
+    display: none;
+}
+.tg-analysis-controls {
+    display: flex;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+/* Поле глубины — .tg-field, но не на всю ширину: рядом с ним живут кнопки. */
+.tg-analysis-depth-field {
+    flex: 0 0 auto;
+    margin-bottom: 0;
+}
+.tg-analysis-depth-field select {
+    background: var(--t-bg);
+    border: 1px solid var(--t-grn-faint);
+    border-radius: 4px;
+    color: var(--t-grn-hi);
+    font-family: inherit;
+    font-size: 12px;
+    padding: 6px 8px;
+    letter-spacing: normal;
+    text-transform: none;
+}
+/* Кнопки в ряду не растягиваются: .tg-login-btn шириной 100% превратил бы
+   каждую в собственную строку.
+
+   `margin-top` гасится намеренно: .tg-login-btn-ghost поднимает его ради
+   вертикальной колонки экрана логина, а в ГОРИЗОНТАЛЬНОМ ряду он ронял бы
+   вторичные кнопки (STOP, CLEAR, CLEAR Q&A) ниже основных. */
+.tg-analysis-btn {
+    width: auto;
+    flex: 0 0 auto;
+    margin-top: 0;
+}
+/* Метка сохранённого разбора: вторичная строка, читается как подпись, а не
+   как статус run'а. Пустая (разбора нет) — не занимает места вовсе, иначе
+   попап до первого запуска выглядел бы недорисованным. */
+.tg-analysis-updated {
+    color: var(--t-grn-dim);
+    font-size: 11px;
+    margin-bottom: 6px;
+}
+.tg-analysis-updated:empty {
+    display: none;
+}
+.tg-analysis-status,
+.tg-analysis-prompt-status {
+    color: var(--t-faint-text);
+    font-size: 11px;
+    min-height: 14px;
+    margin-bottom: 6px;
+}
+/* Шапка разбора — кнопка сворачивания.
+
+   Это <button>, но выглядит строкой-подписью: у неё нет ни рамки, ни фона,
+   иначе над блоком разбора появилась бы шестая кнопка в ряду и без того
+   плотных элементов управления. Видимость нажимаемости даёт каретка ▾/▸ и
+   подсветка на hover/фокусе.
+
+   Каретка поворачивается CSS'ом, а не подменой символа: символ ставит ядро
+   попапа один раз — так состояние читается и без стилей. */
+.tg-analysis-out-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    background: none;
+    border: 0;
+    border-radius: 3px;
+    color: var(--t-grn-dim);
+    cursor: pointer;
+    font: inherit;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+    padding: 2px 4px;
+    text-align: left;
+}
+.tg-analysis-out-toggle:hover,
+.tg-analysis-out-toggle:focus-visible {
+    color: var(--t-grn-hi);
+    outline: none;
+}
+.tg-analysis-out-toggle:focus-visible {
+    box-shadow: 0 0 0 1px var(--t-grn-faint);
+}
+.tg-analysis-out-caret {
+    display: inline-block;
+    font-size: 10px;
+}
+/* Свёрнутый разбор: подпись гаснет до вторичной. Это единственное, что от него
+   осталось на экране, и она не должна спорить за внимание с тредом. */
+.tg-analysis-out-toggle-off {
+    color: var(--t-faint-text);
+}
+
+/* Вывод модели: собственная прокрутка. Без max-height длинный разбор
+   растянул бы карточку за пределы панели, унеся поле вопроса за экран. */
+.tg-analysis-out {
+    white-space: pre-wrap;
+    overflow-y: auto;
+    overflow-wrap: anywhere;
+    max-height: 46vh;
+    min-height: 60px;
+    background: var(--t-bg);
+    border: 1px solid var(--t-grn-faint);
+    border-radius: 4px;
+    color: var(--t-grn-hi);
+    font-size: 12px;
+    line-height: 1.5;
+    padding: 8px 10px;
+}
+.tg-analysis-thread {
+    overflow-y: auto;
+    max-height: 24vh;
+    margin-top: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+}
+.tg-analysis-thread:empty {
+    display: none;
+}
+.tg-analysis-qa-q {
+    color: var(--t-amber);
+    white-space: pre-wrap;
+    margin-top: 6px;
+}
+.tg-analysis-qa-a {
+    color: var(--t-grn-hi);
+    white-space: pre-wrap;
+}
+.tg-analysis-ask {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    margin-top: 8px;
+}
+.tg-analysis-question,
+.tg-analysis-prompt {
+    flex: 1 1 auto;
+    width: 100%;
+    resize: vertical;
+    background: var(--t-bg);
+    border: 1px solid var(--t-grn-faint);
+    border-radius: 4px;
+    color: var(--t-grn-hi);
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1.5;
+    padding: 6px 8px;
+}
+.tg-analysis-question:focus,
+.tg-analysis-prompt:focus {
+    outline: none;
+    border-color: var(--t-grn);
+}
+.tg-analysis-hint {
+    color: var(--t-faint-text);
+    font-size: 11px;
+    line-height: 1.5;
+    margin: 0 0 8px;
+}
+.tg-analysis-prompt-count {
+    color: var(--t-faint-text);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-align: right;
+    margin: 4px 0 8px;
+}
+
+/* ==== Отрисованный Markdown ==============================================
+   Разметку строит js/messenger/markdown.js — общий модуль мессенджеров, а не
+   код панели Telegram, поэтому классы у него НЕЙТРАЛЬНЫЕ (`md-*`). Красит их
+   ЗДЕСЬ панель Telegram — стили ограничены её контейнерами `.tg-analysis-out`
+   и `.tg-analysis-thread`, поэтому чужие вкладки (VK, Битрикс24) от них не
+   меняются.
+
+   ВАЖНО про `white-space`. У `.tg-analysis-out` стоит `pre-wrap` — это нужно
+   стримингу, который до кадра `analysis_done` показывает СЫРОЙ текст. После
+   перерисовки Markdown'ом `pre-wrap` даёт лишние пустые строки между блоками,
+   поэтому у самих блоков он сбрасывается в `normal`; переносы внутри блока
+   кода при этом сохраняются собственным правилом для `pre`. */
+.tg-analysis-out .md-p,
+.tg-analysis-out .md-h,
+.tg-analysis-out .md-ul,
+.tg-analysis-out .md-ol,
+.tg-analysis-out .md-quote,
+.tg-analysis-out .md-table,
+.tg-analysis-thread .md-p,
+.tg-analysis-thread .md-h,
+.tg-analysis-thread .md-ul,
+.tg-analysis-thread .md-ol,
+.tg-analysis-thread .md-quote,
+.tg-analysis-thread .md-table {
+    white-space: normal;
+}
+
+.tg-analysis-out .md-p,
+.tg-analysis-thread .md-p {
+    margin: 0 0 8px;
+}
+.tg-analysis-out .md-p:last-child,
+.tg-analysis-thread .md-p:last-child {
+    margin-bottom: 0;
+}
+
+/* Заголовки. Это попап, а не статья: h1 крупнее текста всего в полтора раза,
+   иначе один заголовок съедает треть видимой области разбора. */
+.tg-analysis-out .md-h,
+.tg-analysis-thread .md-h {
+    color: var(--t-grn);
+    font-weight: 700;
+    line-height: 1.3;
+    margin: 12px 0 6px;
+}
+.tg-analysis-out .md-h:first-child,
+.tg-analysis-thread .md-h:first-child {
+    margin-top: 0;
+}
+.tg-analysis-out h1.md-h,
+.tg-analysis-thread h1.md-h { font-size: 17px; }
+.tg-analysis-out h2.md-h,
+.tg-analysis-thread h2.md-h { font-size: 15px; }
+.tg-analysis-out h3.md-h,
+.tg-analysis-thread h3.md-h { font-size: 14px; }
+.tg-analysis-out h4.md-h,
+.tg-analysis-thread h4.md-h { font-size: 13px; }
+.tg-analysis-out h5.md-h,
+.tg-analysis-out h6.md-h,
+.tg-analysis-thread h5.md-h,
+.tg-analysis-thread h6.md-h {
+    font-size: 12px;
+    color: var(--t-grn-dim);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.tg-analysis-out .md-ul,
+.tg-analysis-out .md-ol,
+.tg-analysis-thread .md-ul,
+.tg-analysis-thread .md-ol {
+    margin: 0 0 8px;
+    padding-left: 20px;
+}
+/* Вложенный список не должен добавлять отбивку: пункт и так уже отступил. */
+.tg-analysis-out .md-li > .md-ul,
+.tg-analysis-out .md-li > .md-ol,
+.tg-analysis-thread .md-li > .md-ul,
+.tg-analysis-thread .md-li > .md-ol {
+    margin: 2px 0 0;
+}
+.tg-analysis-out .md-li,
+.tg-analysis-thread .md-li {
+    margin: 2px 0;
+}
+
+/* Код. Моноширинный уже унаследован (панель целиком на JetBrains Mono), здесь
+   важнее фон-врезка и СВОЙ горизонтальный скролл: длинная строка кода не
+   должна расширять карточку разбора. */
+.tg-analysis-out .md-code,
+.tg-analysis-thread .md-code {
+    background: var(--t-bar);
+    border: 1px solid var(--t-grn-faint);
+    border-radius: 3px;
+    color: var(--t-cyan);
+    padding: 0 3px;
+}
+.tg-analysis-out .md-pre,
+.tg-analysis-thread .md-pre {
+    background: var(--t-bar);
+    border: 1px solid var(--t-grn-faint);
+    border-radius: 4px;
+    margin: 0 0 8px;
+    max-width: 100%;
+    overflow-x: auto;
+    padding: 6px 8px;
+    white-space: pre;
+}
+.tg-analysis-out .md-pre .md-code-block,
+.tg-analysis-thread .md-pre .md-code-block {
+    background: none;
+    border: 0;
+    color: var(--t-grn-hi);
+    padding: 0;
+}
+
+.tg-analysis-out .md-quote,
+.tg-analysis-thread .md-quote {
+    border-left: 2px solid var(--t-grn-faint);
+    color: var(--t-faint-text);
+    margin: 0 0 8px;
+    padding: 0 0 0 8px;
+}
+
+.tg-analysis-out .md-hr,
+.tg-analysis-thread .md-hr {
+    background: var(--t-grn-faint);
+    border: 0;
+    height: 1px;
+    margin: 10px 0;
+}
+
+/* Таблица. ГЛАВНОЕ ПРАВИЛО: широкая таблица скроллится ВНУТРИ своей обёртки, а
+   не растягивает попап. Без `max-width: 100%` на обёртке flex/грид-родитель
+   растёт под содержимое, и карточка разбора уезжает за экран вместе с полем
+   вопроса. `table-layout` намеренно не фиксируется: колонки должны считаться
+   по содержимому, скролл берёт на себя переполнение. */
+.tg-analysis-out .md-table-wrap,
+.tg-analysis-thread .md-table-wrap {
+    margin: 0 0 8px;
+    max-width: 100%;
+    overflow-x: auto;
+}
+.tg-analysis-out .md-table,
+.tg-analysis-thread .md-table {
+    border-collapse: collapse;
+    font-size: 11px;
+}
+.tg-analysis-out .md-table th,
+.tg-analysis-out .md-table td,
+.tg-analysis-thread .md-table th,
+.tg-analysis-thread .md-table td {
+    border: 1px solid var(--t-grn-faint);
+    padding: 3px 6px;
+    text-align: left;
+    vertical-align: top;
+    white-space: nowrap;
+}
+.tg-analysis-out .md-table th,
+.tg-analysis-thread .md-table th {
+    background: var(--t-bar);
+    color: var(--t-grn);
+    font-weight: 700;
+}
+.tg-analysis-out .md-table tbody tr:nth-child(even) td,
+.tg-analysis-thread .md-table tbody tr:nth-child(even) td {
+    background: var(--t-panel);
+}

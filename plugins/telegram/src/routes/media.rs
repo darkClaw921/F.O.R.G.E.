@@ -677,6 +677,7 @@ mod tests {
         TelegramConfig {
             session_path: dir.join("telegram.session"),
             cache_dir: dir.join("cache"),
+            prompts_path: dir.join("cache").join("chat-prompts.json"),
             ..TelegramConfig::default()
         }
     }

@@ -156,10 +156,155 @@ pub enum TgServerMsg {
     /// `GET /api/telegram/folders`. Полей нет намеренно: Telegram шлёт
     /// изменения тремя разными апдейтами, и проще один раз перечитать.
     FoldersChanged,
+    // --- «Анализ чата через Claude» ---------------------------------------
+    //
+    // ПОРЯДОК этих четырёх вариантов заморожен: `telegram_contract.test.mjs`
+    // сверяет теги с `SERVER_FRAMES` в `js/telegram/ws.js` по составу И
+    // порядку. Вставлены перед `Resync`/`Ping` — там же, где они стоят у VK,
+    // чтобы три протокола читались одинаково.
+    /// Анализ начался; размеры транскрипта уже известны.
+    AnalysisStarted {
+        /// Идентификатор run'а; им же отменяют.
+        run_id: String,
+        /// Диалог (строкой), по которому идёт анализ.
+        dialog_id: String,
+        /// `analyze` | `refresh` | `ask`.
+        kind: String,
+        /// Сколько сообщений попало в транскрипт.
+        messages_used: u32,
+        /// Часть истории отброшена потолком символов.
+        truncated: bool,
+    },
+    /// Кусок ответа модели.
+    ///
+    /// КОАЛЕСЦИРОВАН ядром (не чаще одного кадра в
+    /// [`crate::analysis::DELTA_FLUSH_MS`] мс либо по накоплению
+    /// [`crate::analysis::DELTA_FLUSH_CHARS`] символов). Сырые дельты Claude
+    /// идут сотнями в секунду и переполнили бы broadcast
+    /// ([`crate::state::BROADCAST_CAPACITY`]), а переполнение — это `Lagged`,
+    /// то есть [`TgServerMsg::Resync`] и перечитывание всего состояния.
+    AnalysisDelta {
+        /// Идентификатор run'а.
+        run_id: String,
+        /// Диалог (строкой).
+        dialog_id: String,
+        /// Приращение текста; склеивается конкатенацией в порядке получения.
+        text: String,
+    },
+    /// Анализ завершён (успехом, ошибкой, отменой или таймаутом).
+    AnalysisDone {
+        /// Идентификатор run'а.
+        run_id: String,
+        /// Диалог (строкой).
+        dialog_id: String,
+        /// Завершился ли run штатно.
+        ok: bool,
+        /// Причина неуспеха: `cancelled` | `timeout` | `error`.
+        reason: Option<String>,
+        /// Токенов на входе (из финального `result` Claude).
+        input_tokens: u64,
+        /// Токенов на выходе.
+        output_tokens: u64,
+    },
+    /// Ошибка run'а — текст от раннера ЦЕЛИКОМ.
+    ///
+    /// Сообщение не урезается намеренно: к нему уже приклеен хвост stderr
+    /// Claude CLI, и это единственный способ увидеть «CLI не залогинен» или
+    /// «model overloaded», не заглядывая в логи сервера.
+    AnalysisError {
+        /// Идентификатор run'а.
+        run_id: String,
+        /// Диалог (строкой).
+        dialog_id: String,
+        /// Текст ошибки как есть.
+        message: String,
+    },
     /// Клиент отстал/пропустил события — перечитать состояние по REST.
     Resync,
     /// Heartbeat. Клиент обязан ответить [`TgClientMsg::Pong`].
     Ping,
+}
+
+/// Мост между ядром анализа и broadcast-каналом плагина
+/// ([`forge_chat_analysis::AnalysisSink`]).
+///
+/// Вся развязка плагина с крейтом — вот эти четыре метода. Ядро не знает ни
+/// про [`TgServerMsg`], ни про broadcast: оно зовёт `started`/`delta`/`done`/
+/// `error`, а перевод в НАШ кадр и рассылка живут здесь, рядом с самим
+/// enum'ом — там же, где придётся править, если состав полей кадра изменится.
+///
+/// Методы трейта СИНХРОННЫЕ, и это существенно: их зовёт пампер ядра из своей
+/// таски, в том числе в горячем цикле дельт. `broadcast::Sender::send` —
+/// мгновенная неблокирующая операция, поэтому пампер не стои́т и буфер
+/// коалесцинга не растёт.
+///
+/// `SendError` глотается: отсутствие подписчиков — норма (никто не открыл
+/// вкладку), и это не повод ронять run, который уже идёт.
+#[derive(Debug, Clone)]
+pub struct TgAnalysisSink {
+    tx: tokio::sync::broadcast::Sender<TgServerEvent>,
+}
+
+impl TgAnalysisSink {
+    /// Оборачивает broadcast-канал состояния.
+    #[must_use]
+    pub fn new(tx: tokio::sync::broadcast::Sender<TgServerEvent>) -> Self {
+        Self { tx }
+    }
+}
+
+impl forge_chat_analysis::AnalysisSink for TgAnalysisSink {
+    fn started(
+        &self,
+        run_id: &str,
+        dialog_id: &str,
+        kind: &str,
+        messages_used: u32,
+        truncated: bool,
+    ) {
+        let _ = self.tx.send(TgServerMsg::AnalysisStarted {
+            run_id: run_id.to_string(),
+            dialog_id: dialog_id.to_string(),
+            kind: kind.to_string(),
+            messages_used,
+            truncated,
+        });
+    }
+
+    fn delta(&self, run_id: &str, dialog_id: &str, text: &str) {
+        let _ = self.tx.send(TgServerMsg::AnalysisDelta {
+            run_id: run_id.to_string(),
+            dialog_id: dialog_id.to_string(),
+            text: text.to_string(),
+        });
+    }
+
+    fn done(
+        &self,
+        run_id: &str,
+        dialog_id: &str,
+        ok: bool,
+        reason: Option<&str>,
+        input_tokens: u64,
+        output_tokens: u64,
+    ) {
+        let _ = self.tx.send(TgServerMsg::AnalysisDone {
+            run_id: run_id.to_string(),
+            dialog_id: dialog_id.to_string(),
+            ok,
+            reason: reason.map(str::to_string),
+            input_tokens,
+            output_tokens,
+        });
+    }
+
+    fn error(&self, run_id: &str, dialog_id: &str, message: &str) {
+        let _ = self.tx.send(TgServerMsg::AnalysisError {
+            run_id: run_id.to_string(),
+            dialog_id: dialog_id.to_string(),
+            message: message.to_string(),
+        });
+    }
 }
 
 /// Сообщения клиент → сервер.
@@ -251,6 +396,31 @@ mod tests {
                 broadcasts: true,
             },
             TgServerMsg::FoldersChanged,
+            TgServerMsg::AnalysisStarted {
+                run_id: "run-1".into(),
+                dialog_id: "123".into(),
+                kind: "analyze".into(),
+                messages_used: 137,
+                truncated: true,
+            },
+            TgServerMsg::AnalysisDelta {
+                run_id: "run-1".into(),
+                dialog_id: "123".into(),
+                text: "кусок ответа".into(),
+            },
+            TgServerMsg::AnalysisDone {
+                run_id: "run-1".into(),
+                dialog_id: "123".into(),
+                ok: false,
+                reason: Some("cancelled".into()),
+                input_tokens: 4096,
+                output_tokens: 512,
+            },
+            TgServerMsg::AnalysisError {
+                run_id: "run-1".into(),
+                dialog_id: "123".into(),
+                message: "spawn failed".into(),
+            },
             TgServerMsg::Resync,
             TgServerMsg::Ping,
         ]
@@ -382,9 +552,18 @@ mod tests {
             "notify_settings",
             "notify_defaults_changed",
             "folders_changed",
+            "analysis_started",
+            "analysis_delta",
+            "analysis_done",
+            "analysis_error",
             "resync",
             "ping",
         ];
+        assert_eq!(
+            all_server_msgs().len(),
+            expected.len(),
+            "zip ниже молча обрезал бы хвост, если списки разошлись"
+        );
         for (msg, tag) in all_server_msgs().iter().zip(expected) {
             let json = serde_json::to_string(msg).unwrap();
             assert!(
@@ -448,6 +627,10 @@ mod tests {
             TgServerMsg::NotifySettings { .. } => "notify_settings",
             TgServerMsg::NotifyDefaultsChanged { .. } => "notify_defaults_changed",
             TgServerMsg::FoldersChanged => "folders_changed",
+            TgServerMsg::AnalysisStarted { .. } => "analysis_started",
+            TgServerMsg::AnalysisDelta { .. } => "analysis_delta",
+            TgServerMsg::AnalysisDone { .. } => "analysis_done",
+            TgServerMsg::AnalysisError { .. } => "analysis_error",
             TgServerMsg::Resync => "resync",
             TgServerMsg::Ping => "ping",
         }
@@ -472,6 +655,10 @@ mod tests {
             "notify_settings",
             "notify_defaults_changed",
             "folders_changed",
+            "analysis_started",
+            "analysis_delta",
+            "analysis_done",
+            "analysis_error",
             "resync",
             "ping",
         ];
@@ -480,6 +667,15 @@ mod tests {
             actual.len(),
             expected.len(),
             "число образцов разошлось с числом вариантов: {actual:?}"
+        );
+        // ПОРЯДОК, а не только состав: `telegram_contract.test.mjs` сверяет
+        // этот же список с `SERVER_FRAMES` в `js/telegram/ws.js` позиция в
+        // позицию. Перестановка двух кадров ломает разбор на фронте молча —
+        // здесь она обязана краснеть.
+        assert_eq!(
+            actual.as_slice(),
+            expected.as_slice(),
+            "порядок вариантов TgServerMsg заморожен и зеркалится во фронт"
         );
         for tag in expected {
             assert!(actual.contains(&tag), "для варианта {tag} нет образца");

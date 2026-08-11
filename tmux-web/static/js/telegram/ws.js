@@ -12,10 +12,8 @@
 // 3. `resync` — отдельный колбэк: клиент отстал (broadcast Lagged), и
 //    состояние надо перечитать по REST целиком.
 //
-// Контракт кадров — plugins/telegram/src/ws/protocol.rs:
-//   server → client: login_state, new_message, message_edited,
-//     message_deleted, typing, online, read, upload_progress,
-//     download_progress, resync, ping;
+// Контракт кадров — plugins/telegram/src/ws/protocol.rs (см. SERVER_FRAMES
+// ниже: состав И ПОРЯДОК обязаны совпадать с enum `TgServerMsg`);
 //   client → server: pong (единственный).
 
 import { withWsToken } from '../core/auth.js';
@@ -24,6 +22,27 @@ import { tgState } from './state.js';
 
 /** Лестница реконнекта, мс. Последнее значение повторяется. */
 export const WS_BACKOFFS_MS = [1000, 2000, 5000, 10000];
+
+/**
+ * Кадры server → client — зеркало enum `TgServerMsg`
+ * (plugins/telegram/src/ws/protocol.rs), в ТОМ ЖЕ ПОРЯДКЕ.
+ *
+ * Константа существует ради контракта: разъезд «сервер шлёт кадр, фронт про
+ * него не знает» даёт молчаливый `console.debug`, а не ошибку сборки, поэтому
+ * список объявлен явно и сверяется тестом (по образцу js/vk/ws.js).
+ *
+ * Сам транспорт этот список НЕ использует: раскладка идёт по карте
+ * обработчиков из `main.js::buildHandlers`, а неизвестный тип не ошибка —
+ * сервер может начать присылать новые события раньше, чем обновится
+ * закешированный фронт.
+ */
+export const SERVER_FRAMES = [
+    'login_state', 'new_message', 'message_edited', 'message_deleted',
+    'typing', 'online', 'read', 'upload_progress', 'download_progress',
+    'notify_settings', 'notify_defaults_changed', 'folders_changed',
+    'analysis_started', 'analysis_delta', 'analysis_done', 'analysis_error',
+    'resync', 'ping',
+];
 
 /**
  * Период серверного ping'а, мс — HEARTBEAT_SECS в plugins/telegram/src/ws/mod.rs.

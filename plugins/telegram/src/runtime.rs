@@ -557,6 +557,7 @@ mod tests {
         let cfg = TelegramConfig {
             session_path: dir.path().join("telegram.session"),
             cache_dir: dir.path().join("cache"),
+            prompts_path: dir.path().join("cache").join("chat-prompts.json"),
             ..TelegramConfig::default()
         };
         let err = build_runtime(&cfg).await.unwrap_err().to_string();
@@ -567,6 +568,7 @@ mod tests {
             api_hash: None,
             session_path: dir.path().join("telegram.session"),
             cache_dir: dir.path().join("cache"),
+            prompts_path: dir.path().join("cache").join("chat-prompts.json"),
             ..TelegramConfig::default()
         };
         let err = build_runtime(&cfg).await.unwrap_err().to_string();
@@ -581,6 +583,7 @@ mod tests {
             api_hash: Some("hash".into()),
             session_path: dir.path().join("telegram.session"),
             cache_dir: dir.path().join("cache"),
+            prompts_path: dir.path().join("cache").join("chat-prompts.json"),
             ..TelegramConfig::default()
         };
         // Имитируем «второй процесс»: лок уже занят.
@@ -600,6 +603,7 @@ mod tests {
             api_hash: Some("hash".into()),
             session_path: dir.path().join("telegram.session"),
             cache_dir: dir.path().join("cache"),
+            prompts_path: dir.path().join("cache").join("chat-prompts.json"),
             ..TelegramConfig::default()
         };
         // Соединение ленивое: build_runtime не ходит в сеть.
@@ -623,6 +627,7 @@ mod tests {
             api_hash: Some("hash".into()),
             session_path: dir.path().join("telegram.session"),
             cache_dir: dir.path().join("cache"),
+            prompts_path: dir.path().join("cache").join("chat-prompts.json"),
             ..TelegramConfig::default()
         };
         // Путь сессии занят каталогом: read() падает НЕ NotFound'ом, и
@@ -650,6 +655,7 @@ mod tests {
             api_hash: Some("hash".into()),
             session_path: dir.path().join("telegram.session"),
             cache_dir: dir.path().join("cache"),
+            prompts_path: dir.path().join("cache").join("chat-prompts.json"),
             ..TelegramConfig::default()
         };
         let rt = build_runtime(&cfg).await.unwrap();
@@ -666,6 +672,7 @@ mod tests {
             api_hash: Some("hash".into()),
             session_path: dir.path().join("telegram.session"),
             cache_dir: dir.path().join("cache"),
+            prompts_path: dir.path().join("cache").join("chat-prompts.json"),
             ..TelegramConfig::default()
         };
         let mut rt = build_runtime(&cfg).await.unwrap();

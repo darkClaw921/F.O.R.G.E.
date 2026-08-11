@@ -36,6 +36,7 @@
 //! `Router` и собственное состояние, а зависимости на `AppState` нет
 //! вообще.
 
+pub mod analysis;
 pub mod config;
 pub mod dto;
 pub mod login;
@@ -224,15 +225,25 @@ pub async fn restore_session(state: &Arc<TelegramState>) {
 ///
 /// 1. `shutdown.cancel()` — будит WS-циклы и воркеров;
 /// 2. `shutdown_workers()` — abort'ит зарегистрированные задачи;
-/// 3. `clear_runtime()` — гасит MTProto-раннер и освобождает lock файла
+/// 3. `analysis.shutdown()` — убивает процессы `claude`, запущенные анализом
+///    чата, и закрывает хаб для новых стартов;
+/// 4. `clear_runtime()` — гасит MTProto-раннер и освобождает lock файла
 ///    сессии, иначе перезапущенный devforge не смог бы её открыть.
 ///
+/// Шаг 3 обязателен и НЕ покрывается `shutdown_workers`: пампер run'а — это
+/// таска ХАБА, а не зарегистрированный воркер плагина, а сам `claude` вообще
+/// чужой процесс. Без него остановленный devforge оставлял бы за собой живые
+/// `claude -p`, которые продолжали бы жечь токены и писать в файл заметок уже
+/// после выгрузки плагина.
+///
 /// Идемпотентна: `CancellationToken` можно отменять сколько угодно раз,
-/// список воркеров после первого прохода пуст, а рантайма может не быть.
+/// список воркеров после первого прохода пуст, хаб после первого прохода
+/// закрыт, а рантайма может не быть.
 pub async fn shutdown(state: &Arc<TelegramState>) {
     tracing::info!(target: "forge_telegram", "forge-telegram: shutdown initiated");
     state.shutdown.cancel();
     state.shutdown_workers().await;
+    state.analysis.shutdown().await;
     state.clear_runtime().await;
     tracing::info!(target: "forge_telegram", "forge-telegram: shutdown complete");
 }
@@ -246,6 +257,7 @@ mod tests {
         let cfg = TelegramConfig {
             session_path: dir.path().join("telegram.session"),
             cache_dir: dir.path().join("cache"),
+            prompts_path: dir.path().join("cache").join("chat-prompts.json"),
             ..TelegramConfig::default()
         };
         (dir, cfg)
@@ -424,6 +436,7 @@ mod tests {
             // parent обоих путей — обычный файл ⇒ create_dir_all падает.
             session_path: blocker.join("telegram.session"),
             cache_dir: blocker.join("cache"),
+            prompts_path: blocker.join("cache").join("chat-prompts.json"),
             ..TelegramConfig::default()
         };
         let state = init(cfg).expect("ошибка каталогов не фатальна для init");

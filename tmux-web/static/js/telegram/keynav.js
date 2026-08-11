@@ -149,6 +149,13 @@ export function panelVisible() {
     // несуществующим чатам смысла не имеет.
     const login = el('tg-login');
     if (login && login.hidden === false) return false;
+    // Попап анализа: в нём два поля ввода (вопрос модели и заметка о чате), и
+    // без этой ветки vim-навигация забирала бы буквы `j`/`k` себе — вопрос
+    // стало бы физически не набрать (следствие читает static/hotkeys.js).
+    // Esc при этом продолжает закрывать попап: его слушатель живёт в ядре
+    // попапа (js/messenger/analysis-core.js), а не здесь.
+    const analysis = el('tg-analysis');
+    if (analysis && analysis.hidden === false) return false;
     return true;
 }
 

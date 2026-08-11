@@ -14,8 +14,53 @@
 //! - [`dialogs`] — диалоги (в т.ч. `?folder=archive`), папки, сообщения,
 //!   нажатие inline-кнопок ботов, read, typing;
 //! - [`media`] — отдача принятых медиа из файлового кэша;
-//! - [`upload`] — приём файла от браузера (raw streaming body).
+//! - [`upload`] — приём файла от браузера (raw streaming body);
+//! - [`analysis`] — «Анализ чата через Claude»: заметка к диалогу,
+//!   сохранённый разбор, тред Q&A, запуск и отмена run'а.
+//!
+//! # ТАБЛИЦА-КОНТРАКТ ПУТЕЙ
+//!
+//! Единственный машиночитаемый список всей HTTP-поверхности плагина.
+//! `telegram_contract.test.mjs` парсит его и сверяет с путями в
+//! `tmux-web/static/js/telegram/api.js` В ОБЕ СТОРОНЫ: без этой сверки
+//! расхождение фронта и роутов даёт молчаливый 404 — запрос уходит, ответ
+//! приходит, а панель просто «ничего не делает».
+//!
+//! Формат строки заморожен: `| МЕТОД | путь | назначение | коды отказа |`.
+//! Путь пишется РОВНО так, как объявлен в axum-роутере (с `:id` / `:mid`),
+//! потому что тест сопоставляет его с шаблоном из `api.js` после подстановки
+//! плейсхолдеров. Добавили роут — обязаны добавить строку: полнота таблицы и
+//! есть то, что делает тест осмысленным.
+//!
+//! | Метод | Путь | Назначение | Коды отказа |
+//! |-------|------|------------|-------------|
+//! | GET | `/api/telegram/status` | состояние плагина и логина; 404 ⇒ плагин выключен | — |
+//! | POST | `/api/telegram/login/start` | шаг логина: телефон | 400, 409, 429 |
+//! | POST | `/api/telegram/login/code` | шаг логина: код из Telegram | 400, 409, 429 |
+//! | POST | `/api/telegram/login/password` | шаг логина: пароль 2FA | 400, 409, 429 |
+//! | POST | `/api/telegram/logout` | выход и удаление сессии | — |
+//! | GET | `/api/telegram/dialogs` | список диалогов (`limit`, `folder`) | 400, 409, 503 |
+//! | GET | `/api/telegram/folders` | папки (dialog filters) аккаунта | 409, 503 |
+//! | GET | `/api/telegram/dialogs/:id/messages` | история (`limit`, `before_id`) | 400, 404, 409, 429, 503 |
+//! | POST | `/api/telegram/dialogs/:id/messages` | отправка текста или медиа | 400, 404, 409, 413, 429, 503 |
+//! | GET | `/api/telegram/dialogs/:id/messages/:mid` | одно сообщение по id | 404, 409, 429, 503 |
+//! | POST | `/api/telegram/dialogs/:id/messages/:mid/callback` | нажатие inline-кнопки бота | 400, 404, 409, 429, 502, 503, 504 |
+//! | POST | `/api/telegram/dialogs/:id/read` | отметить прочитанным до `max_id` | 400, 404, 409, 429, 503 |
+//! | POST | `/api/telegram/dialogs/:id/typing` | «печатает…» / отмена | 400, 404, 409, 429, 503 |
+//! | GET | `/api/telegram/media/:dialog_id/:message_id` | байты медиа из файлового кэша | 404, 409, 429, 503 |
+//! | POST | `/api/telegram/upload` | приём файла от браузера | 409, 411, 413, 503 |
+//! | GET | `/api/telegram/dialogs/:id/prompt` | заметка пользователя к диалогу | 404, 409, 503 |
+//! | PUT | `/api/telegram/dialogs/:id/prompt` | сохранить заметку (пустая строка — стереть) | 400, 404, 409, 500, 503 |
+//! | GET | `/api/telegram/dialogs/:id/analysis` | последний сохранённый разбор + тред | 404, 409, 503 |
+//! | POST | `/api/telegram/dialogs/:id/analysis` | запустить разбор, обновление либо вопрос | 400, 404, 409, 429, 503 |
+//! | DELETE | `/api/telegram/dialogs/:id/analysis` | стереть сохранённый разбор | 404, 409, 500, 503 |
+//! | POST | `/api/telegram/dialogs/:id/analysis/cancel` | остановить идущий анализ | 404, 409, 503 |
+//! | DELETE | `/api/telegram/dialogs/:id/analysis/thread` | стереть тред вопросов | 404, 409, 500, 503 |
+//!
+//! WebSocket `/ws/telegram` в таблицу не входит намеренно: у него другой
+//! контракт (кадры `TgServerMsg`), и его сверяет отдельная ось того же теста.
 
+pub mod analysis;
 pub mod dialogs;
 pub mod error;
 pub mod login;
@@ -42,6 +87,7 @@ pub fn build_router(state: Arc<TelegramState>) -> Router {
         .merge(dialogs::router())
         .merge(media::router())
         .merge(upload::router(max_upload_bytes))
+        .merge(analysis::router())
         .route("/ws/telegram", get(crate::ws::telegram_ws))
         .with_state(state)
 }
@@ -67,6 +113,7 @@ mod tests {
         let cfg = TelegramConfig {
             session_path: dir.path().join("telegram.session"),
             cache_dir: dir.path().join("cache"),
+            prompts_path: dir.path().join("cache").join("chat-prompts.json"),
             ..TelegramConfig::default()
         };
         (dir, build_router(TelegramState::new(cfg)))
