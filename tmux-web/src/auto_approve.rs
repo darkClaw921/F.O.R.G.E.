@@ -50,8 +50,21 @@
 //! («Bash command» / «Claude in Chrome wants …») до списка пунктов. Раньше
 //! проверялась вся панель, но это давало ложные блокировки: `rm -rf` в выводе
 //! ПРЕДЫДУЩЕЙ команды, оставшемся на экране, блокировал следующий безобидный
-//! prompt. Если заголовок не найден (уполз за верх капчи), fallback — вся
-//! панель: лишняя строгость дешевле пропущенного `rm -rf`.
+//! prompt.
+//!
+//! Если заголовок не найден, область выбирает [`danger_scope`]:
+//! - prompt на правку файла («Do you want to overwrite hub.rs?» и родня) —
+//!   ТОЛЬКО строка самого запроса, без diff'а над ней. Исполняемой команды в
+//!   таком запросе нет, зато на экране показан код, и любое слово из списка
+//!   внутри КОДА (`hub.shutdown().await`, `DELETE FROM` в SQL-строке,
+//!   `| bash` в доке) молча блокировало правку — причём навсегда, потому что
+//!   отказ LLM кэшировался. Найдено живым кейсом в окне `wt:1785950679`.
+//!   Имя файла в строке запроса при этом проверяется: пользовательская запись
+//!   вроде `secrets.rs` продолжает работать;
+//! - иначе — узкое окно из [`FALLBACK_SCAN_LINES`] содержательных строк над
+//!   меню. Это тот же консервативный fallback («заголовок уполз за верх
+//!   капчи»), но без всего экрана: команда запроса всегда прилегает к меню,
+//!   а выше лежит чужой вывод.
 //!
 //! # LLM-эскалация блоклиста
 //!
@@ -65,13 +78,19 @@
 //! старое поведение, prompt остаётся человеку (отсутствие бинарника выключает
 //! эскалацию до конца работы процесса). Вердикты кэшируются по хэшу текста
 //! команды, чтобы один и тот же висящий prompt не порождал вызов CLI на
-//! каждом тике.
+//! каждом тике. Положительный вердикт живёт до конца работы процесса,
+//! ОТРИЦАТЕЛЬНЫЙ — только [`NEGATIVE_VERDICT_TTL`]: один неудачный ответ
+//! модели (или ответ по мусорному тексту) иначе хоронил висящий prompt до
+//! рестарта, и никакая смена обстоятельств уже не помогала.
 //!
 //! # Защита от ложных и повторных нажатий
 //!
 //! - **Стабильность.** Нажатие происходит только если один и тот же хэш
-//!   панели наблюдался два тика подряд: TUI перерисовывается кадрами, и по
-//!   недорисованному экрану можно попасть не в тот пункт.
+//!   наблюдался два тика подряд: TUI перерисовывается кадрами, и по
+//!   недорисованному экрану можно попасть не в тот пункт. Хэшируется НЕ вся
+//!   панель, а блок меню ([`stability_region`]): в окне с работающим
+//!   суб-агентом строка прогресса над prompt'ом анимируется быстрее тика, и
+//!   по полному хэшу гард не пропускал нажатие никогда.
 //! - **Анти-луп.** Пока prompt непрерывно распознаётся на экране, допускается
 //!   максимум 2 нажатия. Первое — цифра. Второе (если prompt всё ещё виден) —
 //!   цифра + `Enter`, страховка на случай, если в этой версии CLI цифра лишь
@@ -315,6 +334,34 @@ pub fn decide(kind: PromptKind, pane: &str, s: &UserSettings) -> Decision {
     Decision::Press(choice)
 }
 
+/// Заголовок блока запроса — верхняя граница текущего prompt'а.
+///
+/// Сравнение по ПРЕФИКСУ, а не по равенству: prompt, пришедший от суб-агента,
+/// подписан источником — `Bash command · from the run-phase agent`. Точное
+/// равенство `== "Bash command"` такой заголовок не находило, блок не
+/// вычленялся, и блоклист откатывался на всю панель — а там, в выводе
+/// предыдущих команд, легко находится `rm -rf`. В результате авто-апрув
+/// молча блокировал каждый запрос суб-агента: ровно тот случай, ради
+/// которого фича и нужна (человек не смотрит в это окно). Обнаружено живым
+/// кейсом в окне `wt:1785950679`.
+fn is_request_header(cleaned: &str) -> bool {
+    cleaned.starts_with("Bash command") || cleaned.starts_with("Claude in Chrome")
+}
+
+/// Строка меню текущего запроса — якорь, от которого пляшут
+/// [`extract_command_region`], [`extract_subject`] и [`stability_region`].
+///
+/// Ищется ПОСЛЕДНЕЕ вхождение `❯ 1.`, а не первое. Настоящий prompt всегда
+/// внизу панели (тот же инвариант, что у `attention::prompt_at_bottom`), а
+/// выше на экране легко остаётся ЧУЖОЕ такое же меню: `cat` собственных
+/// тест-фикстур, diff, лог прошлого запроса. С первым вхождением область
+/// проверки блоклиста строилась вокруг цитаты, а команда настоящего запроса
+/// в неё не попадала — то есть `rm -rf` в реальном prompt'е мог быть
+/// пропущен, если выше на экране висела цитата с меню.
+fn menu_line(lines: &[&str]) -> Option<usize> {
+    lines.iter().rposition(|l| l.contains("❯ 1."))
+}
+
 /// Вырезает из панели блок текущего запроса — от заголовка («Bash command» /
 /// «Claude in Chrome wants …») до списка пунктов `❯ 1.`.
 ///
@@ -324,12 +371,12 @@ pub fn decide(kind: PromptKind, pane: &str, s: &UserSettings) -> Decision {
 /// захвата); вызывающий обязан откатиться к проверке всей панели.
 pub fn extract_command_region(pane: &str) -> Option<String> {
     let lines: Vec<&str> = pane.lines().collect();
-    let menu = lines.iter().position(|l| l.contains("❯ 1."))?;
+    let menu = menu_line(&lines)?;
 
     // Ближайший к меню заголовок блока — начало текущего запроса.
     let start = (0..menu).rev().find(|&i| {
         let c = clean_line(lines[i]);
-        c == "Bash command" || c.starts_with("Claude in Chrome")
+        is_request_header(&c)
     })?;
 
     let mut out: Vec<String> = Vec::new();
@@ -346,20 +393,83 @@ pub fn extract_command_region(pane: &str) -> Option<String> {
 /// Проверяет текст запроса на опасные подстроки: [`DEFAULT_DANGEROUS`] плюс
 /// пользовательский список (дополнение, не замена).
 ///
-/// Область проверки — [`extract_command_region`]; если блок не вычленяется,
-/// консервативный fallback на всю панель. Текст нормализуется (`normalize_ws`)
-/// и приводится к нижнему регистру: команда в prompt'е может быть разорвана
-/// переносом рамки TUI, а регистр (`DROP TABLE` / `drop table`) для опасности
-/// значения не имеет. Пользовательские записи приходят уже в нижнем регистре —
-/// их приводит `user_settings::sanitize_blocklist`; здесь на всякий случай
-/// тоже.
+/// Область проверки — [`danger_scope`]; `None` оттуда означает «проверять
+/// нечего» (prompt на правку файла) и трактуется как «не опасно». Текст
+/// нормализуется (`normalize_ws`) и приводится к нижнему регистру: команда в
+/// prompt'е может быть разорвана переносом рамки TUI, а регистр
+/// (`DROP TABLE` / `drop table`) для опасности значения не имеет.
+/// Пользовательские записи приходят уже в нижнем регистре — их приводит
+/// `user_settings::sanitize_blocklist`; здесь на всякий случай тоже.
 fn is_dangerous(pane: &str, extra: &[String]) -> bool {
-    let scope = extract_command_region(pane).unwrap_or_else(|| pane.to_string());
+    let Some(scope) = danger_scope(pane) else {
+        return false;
+    };
     let hay = normalize_ws(&scope).to_lowercase();
     DEFAULT_DANGEROUS.iter().any(|n| hay.contains(n))
         || extra
             .iter()
             .any(|n| !n.trim().is_empty() && hay.contains(&n.to_lowercase()))
+}
+
+/// Сколько содержательных строк над меню проверяется блоклистом, если
+/// заголовок блока («Bash command» / «Claude in Chrome») в захвате не найден.
+///
+/// Столько же строк берёт [`extract_subject`]: суть запроса всегда прилегает к
+/// меню снизу экрана. Раньше здесь была вся панель — и она приносила в
+/// проверку прошлый вывод и diff редактируемого файла.
+const FALLBACK_SCAN_LINES: usize = 3;
+
+/// Текст, по которому работает блоклист, либо `None` — «команды в запросе нет,
+/// проверять нечего».
+///
+/// Порядок: блок команды → prompt на правку файла (→ `None`) → узкое окно над
+/// меню. Полная панель не берётся никогда: см. раздел «Блоклист» в шапке
+/// модуля.
+fn danger_scope(pane: &str) -> Option<String> {
+    if let Some(region) = extract_command_region(pane) {
+        return Some(region);
+    }
+    let lines: Vec<&str> = pane.lines().collect();
+    let menu = menu_line(&lines)?;
+
+    let mut picked: Vec<String> = Vec::new();
+    for line in lines[..menu].iter().rev() {
+        let cleaned = clean_line(line);
+        if cleaned.is_empty() || is_noise(&cleaned) {
+            continue;
+        }
+        // Запрос на правку файла: выше по экрану — diff, и он в область
+        // проверки не входит. Остаётся сама строка запроса — в ней есть имя
+        // файла, по которому пользовательский блоклист (`secrets.rs`) обязан
+        // работать.
+        if is_edit_request(&cleaned) {
+            return Some(cleaned);
+        }
+        picked.push(cleaned);
+        if picked.len() == FALLBACK_SCAN_LINES {
+            break;
+        }
+    }
+    picked.reverse();
+    Some(picked.join("\n"))
+}
+
+/// Строка-заголовок prompt'а на изменение файла — единственная форма, у
+/// которой нет исполняемой команды, зато на экране показан diff.
+///
+/// Формы перечислены явно, а не выводятся из префикса «Do you want to»:
+/// им же начинается `Do you want to proceed?` — заголовок ИМЕННО bash-запроса,
+/// и трактовать его как «команды нет» было бы дырой в блоклисте.
+fn is_edit_request(cleaned: &str) -> bool {
+    const FORMS: &[&str] = &[
+        "do you want to make this edit to",
+        "do you want to create",
+        "do you want to overwrite",
+        "do you want to write to",
+        "do you want to apply this edit to",
+    ];
+    let lower = cleaned.to_lowercase();
+    FORMS.iter().any(|f| lower.starts_with(f))
 }
 
 /// Максимальная длина `subject` в записи истории (в символах).
@@ -399,10 +509,7 @@ fn is_noise(line: &str) -> bool {
 /// по байтам — в командах бывает кириллица).
 pub fn extract_subject(pane: &str) -> String {
     let lines: Vec<&str> = pane.lines().collect();
-    let idx = lines
-        .iter()
-        .position(|l| l.contains("❯ 1."))
-        .unwrap_or(lines.len());
+    let idx = menu_line(&lines).unwrap_or(lines.len());
 
     let mut picked: Vec<String> = Vec::new();
     for line in lines[..idx].iter().rev() {
@@ -413,7 +520,7 @@ pub fn extract_subject(pane: &str) -> String {
         // Заголовок блока — верхняя граница сути запроса. Всё, что выше
         // («Bash command» / «Claude in Chrome wants …»), к запросу уже не
         // относится: это предыдущий вывод, который просто остался на экране.
-        let is_header = cleaned == "Bash command" || cleaned.starts_with("Claude in Chrome");
+        let is_header = is_request_header(&cleaned);
         picked.push(cleaned);
         if is_header || picked.len() == 3 {
             break;
@@ -443,7 +550,8 @@ fn now_secs() -> u64 {
 /// «prompt всё ещё на экране».
 #[derive(Debug, Clone, Copy)]
 struct SessionState {
-    /// Хэш панели с прошлого тика — вход гарда стабильности.
+    /// Хэш блока меню ([`stability_region`]) с прошлого тика — вход гарда
+    /// стабильности.
     pane_hash: u64,
     /// Сколько тиков подряд наблюдается этот хэш (1 = увидели впервые).
     seen: u32,
@@ -474,6 +582,17 @@ const LLM_TIMEOUT: Duration = Duration::from_secs(90);
 /// это защита от бесконечного роста, а не LRU — повторный вопрос по живому
 /// prompt'у стоит один вызов CLI.
 const VERDICT_CACHE_CAP: usize = 512;
+
+/// Срок жизни ОТРИЦАТЕЛЬНОГО вердикта LLM.
+///
+/// Положительный вердикт кэшируется навсегда: разрешение на конкретный текст
+/// команды со временем не портится. Отрицательный — нет: модель могла ответить
+/// «нет» по мусорному тексту (см. [`danger_scope`]) или просто неудачно, и
+/// вечный кэш означал, что висящий prompt уже никогда не будет переспрошен —
+/// до перезапуска процесса. Пять минут — компромисс: человек успевает ответить
+/// сам, а если prompt всё ещё висит, модель спрашивают заново, и это ~1 вызов
+/// CLI в 5 минут на панель, а не на каждый тик.
+const NEGATIVE_VERDICT_TTL: Duration = Duration::from_secs(300);
 
 /// Исход обращения к `claude -p` — см. [`llm_blocklist_verdict`].
 enum LlmOutcome {
@@ -608,9 +727,10 @@ pub async fn run(state: AppState) {
     // Флаг доступности LLM-эскалации: гаснет навсегда, если `claude` не
     // найден в PATH — плодить попытки спавна на каждом тике бессмысленно.
     let mut llm_available = true;
-    // Кэш вердиктов: хэш текста команды → approve. Живёт всё время работы
-    // процесса; один и тот же висящий prompt опрашивает модель ровно один раз.
-    let mut verdicts: HashMap<u64, bool> = HashMap::new();
+    // Кэш вердиктов: хэш текста команды → (approve, когда получен). Разрешение
+    // живёт всё время работы процесса, отказ — `NEGATIVE_VERDICT_TTL`, чтобы
+    // один неудачный ответ модели не хоронил висящий prompt до рестарта.
+    let mut verdicts: HashMap<u64, (bool, u64)> = HashMap::new();
 
     loop {
         tokio::time::sleep(TICK).await;
@@ -647,7 +767,11 @@ pub async fn run(state: AppState) {
                 if pane.is_empty() {
                     continue;
                 }
-                let hash = hash_pane(&pane);
+                // Хэш считается по блоку меню, а не по всей панели: над
+                // prompt'ом может анимироваться строка суб-агента, и по
+                // полному хэшу гард стабильности не срабатывал НИКОГДА (см.
+                // `stability_region`).
+                let hash = hash_pane(&stability_region(&pane));
                 // Ключ состояния — панель, а не сессия: у окон независимые
                 // prompt'ы, и счётчик попыток одного не должен глушить другой.
                 let key = format!("{}\u{0}{}", s.name, pane_target);
@@ -703,14 +827,20 @@ pub async fn run(state: AppState) {
                             false
                         } else {
                             let vkey = hash_pane(&region);
-                            match verdicts.get(&vkey) {
-                                Some(&v) => v,
+                            let now = now_secs();
+                            // Отказ считается годным только пока не истёк TTL;
+                            // просроченный — как будто его и не было.
+                            let cached = verdicts.get(&vkey).copied().filter(|&(allow, ts)| {
+                                allow || now.saturating_sub(ts) < NEGATIVE_VERDICT_TTL.as_secs()
+                            });
+                            match cached {
+                                Some((v, _)) => v,
                                 None => match llm_blocklist_verdict(&region).await {
                                     LlmOutcome::Verdict(v) => {
                                         if verdicts.len() >= VERDICT_CACHE_CAP {
                                             verdicts.clear();
                                         }
-                                        verdicts.insert(vkey, v);
+                                        verdicts.insert(vkey, (v, now_secs()));
                                         v
                                     }
                                     LlmOutcome::Unavailable => {
@@ -808,6 +938,45 @@ pub async fn run(state: AppState) {
         // индекса окна унаследовало бы чужой счётчик попыток).
         seen.retain(|k, _| live_keys.contains(k));
     }
+}
+
+/// Сколько строк ВЫШЕ меню `❯ 1.` входит в [`stability_region`] — ровно
+/// одна: строка-вопрос («Do you want to make this edit to config.rs?»,
+/// «Do you want to proceed?»). Брать больше нельзя: на две строки выше меню
+/// в окне с суб-агентом уже стоит анимированная строка статуса
+/// («✶ Gesticulating… (1h 16m 12s · ↓ 25.8k tokens)») — ровно то, от чего
+/// этот регион и защищает.
+const STABILITY_LEAD_LINES: usize = 1;
+
+/// Сколько последних строк берётся, если меню `❯ 1.` в панели не нашлось.
+const STABILITY_TAIL_LINES: usize = 6;
+
+/// Часть панели, по которой считается гард стабильности («экран не менялся»).
+///
+/// Хэшировать ВСЮ панель нельзя: если в окне работает суб-агент, Claude Code
+/// рисует над prompt'ом живую строку прогресса — спиннер `⏺ run-phase(…)`,
+/// таймер `6m 47s`, счётчик токенов. Она обновляется чаще, чем тик воркера
+/// (2 с), поэтому хэш панели отличался КАЖДЫЙ тик, `seen` никогда не
+/// доходило до 2, и prompt в таком окне не подтверждался вообще никогда.
+/// Обнаружено живым кейсом в worktree-окнах `wt:<ts>`, где типично гоняют
+/// `run-phase`: два подряд снятых `capture-pane` отличались ровно одним
+/// символом спиннера в строке суб-агента.
+///
+/// Берётся блок меню: от строки `❯ 1.` минус [`STABILITY_LEAD_LINES`] (чтобы
+/// заголовок запроса тоже участвовал — иначе два разных вопроса с
+/// одинаковыми пунктами были бы неотличимы) и до конца панели. Если меню не
+/// найдено (prompt'а нет — гард всё равно не сработает, но состояние
+/// обновляется) — последние [`STABILITY_TAIL_LINES`] строк.
+///
+/// Результат нормализуется [`normalize_ws`]: перенос по словам в узком
+/// терминале не должен считаться изменением экрана.
+fn stability_region(pane: &str) -> String {
+    let lines: Vec<&str> = pane.lines().collect();
+    let start = match menu_line(&lines) {
+        Some(menu) => menu.saturating_sub(STABILITY_LEAD_LINES),
+        None => lines.len().saturating_sub(STABILITY_TAIL_LINES),
+    };
+    normalize_ws(&lines[start..].join("\n"))
 }
 
 /// Хэш содержимого панели — детектор «экран не менялся».
@@ -1065,12 +1234,96 @@ Do you want to proceed?
     }
 
     #[test]
-    fn blocklist_falls_back_to_whole_pane_without_header() {
-        // Заголовок «Bash command» уполз за верх захвата — консервативный
-        // откат к проверке всей панели: строгость дешевле пропущенного rm -rf.
+    fn blocklist_falls_back_to_lines_above_menu_without_header() {
+        // Заголовок «Bash command» уполз за верх захвата — команда всё равно
+        // прилегает к меню, и узкое окно её видит.
         let pane = "  rm -rf /home/user\nDo you want to proceed?\n❯ 1. Yes\n  2. No\n";
         assert_eq!(
             decide(PromptKind::Permission2, pane, &settings(false, true, &[])),
+            Decision::Blocked("1")
+        );
+    }
+
+    #[test]
+    fn fallback_scope_does_not_reach_old_output() {
+        // Без заголовка берутся только FALLBACK_SCAN_LINES строк над меню:
+        // `rm -rf` из прошлого вывода, отделённый от запроса, уже не считается.
+        let pane = "\
+running rm -rf /tmp/old-build
+done
+first
+second
+third
+Do you want to proceed?
+❯ 1. Yes
+  2. No
+";
+        assert_eq!(
+            decide(PromptKind::Permission2, pane, &settings(false, true, &[])),
+            Decision::Press("1")
+        );
+    }
+
+    /// Живой кейс окна `wt:1785950679`: prompt на перезапись файла, а в diff'е
+    /// над ним — `hub.shutdown().await`. Слово из блоклиста внутри КОДА не
+    /// должно блокировать правку: исполняемой команды в таком запросе нет.
+    #[test]
+    fn edit_prompt_ignores_blocklist_words_in_diff() {
+        let pane = "\
+  1490          hub.start(sink.clone(), r).await.unwrap();
+  1492          hub.shutdown().await;
+  1494          let logged = crate::testlog::since(mark);
+ Do you want to overwrite hub.rs?
+ ❯ 1. Yes
+   2. Yes, allow all edits during this session (shift+tab)
+   3. No
+
+ Esc to cancel · Tab to amend
+";
+        assert_eq!(classify_prompt(pane), Some(PromptKind::Permission3));
+        assert_eq!(
+            decide(PromptKind::Permission3, pane, &settings(false, true, &[])),
+            Decision::Press("1")
+        );
+    }
+
+    #[test]
+    fn edit_prompt_forms_are_recognized() {
+        for head in [
+            "Do you want to make this edit to config.rs?",
+            "Do you want to create prompts.rs?",
+            "Do you want to overwrite hub.rs?",
+        ] {
+            let pane = format!("  delete from users\n {head}\n ❯ 1. Yes\n   2. No\n");
+            assert_eq!(
+                decide(PromptKind::Permission2, &pane, &settings(false, true, &[])),
+                Decision::Press("1"),
+                "форма не опознана как правка файла: {head}"
+            );
+        }
+    }
+
+    /// `Do you want to proceed?` начинается так же, но это заголовок
+    /// bash-запроса — область не схлопывается до одной строки, и команда
+    /// над ней в проверку входит.
+    #[test]
+    fn proceed_header_is_not_treated_as_edit() {
+        let pane = "  rm -rf /home/user\nDo you want to proceed?\n❯ 1. Yes\n  2. No\n";
+        let scope = danger_scope(pane).expect("меню есть");
+        assert!(scope.contains("rm -rf"), "scope = {scope:?}");
+    }
+
+    #[test]
+    fn edit_prompt_still_blocks_user_blocklist_hit_on_file_name() {
+        // В область проверки входит строка самого запроса — имя файла в ней
+        // видно, и пользовательская запись блоклиста по нему срабатывает.
+        let pane = "  code\n Do you want to overwrite secrets.rs?\n ❯ 1. Yes\n   2. No\n";
+        assert_eq!(
+            decide(
+                PromptKind::Permission2,
+                pane,
+                &settings(false, true, &["secrets.rs"])
+            ),
             Decision::Blocked("1")
         );
     }
@@ -1154,5 +1407,291 @@ Do you want to proceed?
     fn hash_pane_is_stable_and_distinguishes() {
         assert_eq!(hash_pane(PERMISSION3), hash_pane(PERMISSION3));
         assert_ne!(hash_pane(PERMISSION3), hash_pane(PERMISSION2));
+    }
+
+    /// Живой кейс из окна `wt:1785950679`: запрос пришёл от суб-агента,
+    /// поэтому заголовок подписан «· from the run-phase agent», а выше по
+    /// экрану остался вывод предыдущей команды с `rm -rf`.
+    const SUBAGENT_PROMPT: &str = "\
+⏺ Bash(SP=/private/tmp/claude-501/x/scratchpad; HOMEDIR=$SP/home; rm -rf \"$HOMEDIR\";…)
+  ⎿  running…
+────────────────────────────────────────────
+ Bash command · from the run-phase agent
+   SP=/private/tmp/claude-501/x/scratchpad; cat $SP/ports.env
+   2>/dev/null; pkill -f fakevk.py; echo killed
+   Check ports and kill stray
+ This command requires approval
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and don't ask again for: pkill -f fakevk.py
+   3. No
+ Esc to cancel · Tab to amend · ctrl+e to explain
+";
+
+    /// Регрессия: заголовок с подписью суб-агента должен вычленять блок, а не
+    /// откатывать блоклист на всю панель (там `rm -rf` из прошлой команды).
+    #[test]
+    fn subagent_header_scopes_blocklist_to_its_own_block() {
+        let region = extract_command_region(SUBAGENT_PROMPT).expect("блок должен вычлениться");
+        assert!(region.contains("pkill -f fakevk.py"));
+        assert!(!region.contains("rm -rf"), "region = {region}");
+
+        assert_eq!(classify_prompt(SUBAGENT_PROMPT), Some(PromptKind::Permission3));
+        assert_eq!(
+            decide(PromptKind::Permission3, SUBAGENT_PROMPT, &settings(true, true, &[])),
+            Decision::Press("2")
+        );
+    }
+
+    /// Суть запроса берётся из блока текущего запроса, а не из вывода
+    /// предыдущей команды, оставшегося выше на экране.
+    #[test]
+    fn subagent_header_bounds_subject() {
+        let subject = extract_subject(SUBAGENT_PROMPT);
+        assert!(subject.contains("pkill -f fakevk.py"), "{subject}");
+        assert!(!subject.contains("rm -rf"), "{subject}");
+    }
+
+    /// Панель окна `wt:<ts>`, в котором работает суб-агент: над prompt'ом
+    /// живая строка прогресса. `{}` — место спиннера/таймера, которые в
+    /// живом капче менялись между соседними тиками воркера.
+    fn pane_with_agent_spinner(spinner: &str, elapsed: &str) -> String {
+        format!(
+            "\
+  {spinner} run-phase(Фаза 1: хранилище промптов)
+  ⎿  Read(plugins/vk/src/config.rs)
+     … +19 tool uses
+✶ Gesticulating… ({elapsed} · ↓ 25.8k tokens)
+ Do you want to make this edit to config.rs?
+ ❯ 1. Yes
+   2. Yes, allow all edits during this session (shift+tab)
+   3. No
+ Esc to cancel · Tab to amend
+"
+        )
+    }
+
+    /// Регрессия живого кейса: в окне с суб-агентом хэш ВСЕЙ панели
+    /// отличался каждый тик (спиннер + таймер), поэтому `seen` не доходило
+    /// до 2 и авто-апрув не нажимал НИКОГДА. Хэш блока меню совпадает.
+    #[test]
+    fn stability_region_ignores_agent_spinner_above_prompt() {
+        let a = pane_with_agent_spinner(" ", "1h 16m 12s");
+        let b = pane_with_agent_spinner("⏺", "1h 16m 14s");
+        assert_ne!(hash_pane(&a), hash_pane(&b), "фикстура должна отличаться");
+        assert_eq!(
+            hash_pane(&stability_region(&a)),
+            hash_pane(&stability_region(&b))
+        );
+        // И сам prompt при этом остаётся распознаваемым.
+        assert_eq!(classify_prompt(&a), Some(PromptKind::Permission3));
+    }
+
+    /// Заголовок запроса входит в регион: два prompt'а с одинаковыми
+    /// пунктами, но разными файлами, не должны считаться одним экраном.
+    #[test]
+    fn stability_region_keeps_prompt_header() {
+        let a = pane_with_agent_spinner("⏺", "1m 0s");
+        let b = a.replace("config.rs", "other.rs");
+        assert_ne!(
+            hash_pane(&stability_region(&a)),
+            hash_pane(&stability_region(&b))
+        );
+    }
+
+    /// Без меню `❯ 1.` регион — хвост панели: состояние обновляется, но
+    /// нажимать всё равно нечего (`classify_prompt` вернёт `None`).
+    #[test]
+    fn stability_region_without_menu_uses_tail() {
+        let pane = "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\n";
+        assert_eq!(stability_region(pane), "line3 line4 line5 line6 line7 line8");
+    }
+
+    // ────────────────────────── краевые ситуации ──────────────────────────
+
+    /// Вырожденные панели: пустая, из одних пробелов, из одной строки.
+    /// Ни одна функция не должна паниковать (индексация срезов!) и ни одна
+    /// не должна увидеть prompt.
+    #[test]
+    fn degenerate_panes_are_inert() {
+        for pane in ["", "\n", "   \n\t\n", "hello", "❯"] {
+            assert_eq!(classify_prompt(pane), None, "pane = {pane:?}");
+            assert_eq!(extract_command_region(pane), None, "pane = {pane:?}");
+            // Не паникует и не выдумывает содержимое.
+            let _ = extract_subject(pane);
+            let _ = stability_region(pane);
+            assert!(!is_dangerous(pane, &[]), "pane = {pane:?}");
+        }
+    }
+
+    /// Панель без завершающего перевода строки — `capture-pane` отдаёт
+    /// именно так, если prompt дорисован до последней строки экрана.
+    #[test]
+    fn pane_without_trailing_newline_is_classified() {
+        let pane = PERMISSION3.trim_end();
+        assert_eq!(classify_prompt(pane), Some(PromptKind::Permission3));
+    }
+
+    /// Недорисованный кадр: пункт `❯ 1.` уже есть, а остальных ещё нет.
+    /// Нажимать по такому экрану нельзя — попадём не в тот пункт.
+    #[test]
+    fn partially_drawn_menu_is_not_classified() {
+        let yes_only = "Do you want to proceed?\n❯ 1. Yes\n Esc to cancel\n";
+        let allow_only = "Claude in Chrome wants to navigate\n❯ 1. Allow\n Esc to cancel\n";
+        assert_eq!(classify_prompt(yes_only), None);
+        assert_eq!(classify_prompt(allow_only), None);
+    }
+
+    /// Оба footer'а на экране (перерисовка plan → question): порядок
+    /// проверок отдаёт Plan, а план не подтверждается никогда.
+    #[test]
+    fn plan_footer_wins_over_question_footer() {
+        let pane = "\
+Would you like to proceed?
+❯ 1. Yes
+  2. No
+ Enter to select · ↑/↓ to navigate · Tab/Arrow keys to navigate · Esc to cancel
+";
+        assert_eq!(classify_prompt(pane), Some(PromptKind::Plan));
+        assert_eq!(
+            decide(PromptKind::Plan, pane, &settings(true, true, &[])),
+            Decision::Skip
+        );
+    }
+
+    /// Question-footer сильнее permission-меню: у `AskUserQuestion` пункты
+    /// тоже нумерованные, и без раннего выхода он классифицировался бы как
+    /// permission — то есть подтверждался бы вопреки выключенному тумблеру.
+    #[test]
+    fn question_footer_wins_over_numbered_options() {
+        let pane = "\
+Какой вариант выбрать?
+❯ 1. Yes
+  2. No
+ Enter to select · ↑/↓ to navigate · Esc to cancel
+";
+        assert_eq!(classify_prompt(pane), Some(PromptKind::Question));
+        assert_eq!(
+            decide(PromptKind::Question, pane, &settings(true, false, &[])),
+            Decision::Skip
+        );
+    }
+
+    /// Broad-режим не расширяет вопрос: у `AskUserQuestion` второй пункт —
+    /// это другой ответ, а не «то же, но шире».
+    #[test]
+    fn question_ignores_broad_mode() {
+        let pane = "\
+Какой вариант выбрать?
+❯ 1. Первый
+  2. Второй
+ Enter to select · ↑/↓ to navigate · Esc to cancel
+";
+        assert_eq!(
+            decide(PromptKind::Question, pane, &settings(true, true, &[])),
+            Decision::Press("1")
+        );
+    }
+
+    /// Блоклист из пустых строк не должен блокировать всё подряд:
+    /// `contains("")` истинно для любой панели.
+    #[test]
+    fn blank_blocklist_entries_are_ignored() {
+        let s = settings(true, true, &["", "   ", "\t"]);
+        assert_eq!(decide(PromptKind::Permission3, PERMISSION3, &s), Decision::Press("2"));
+    }
+
+    /// Опасная подстрока ТОЛЬКО в тексте пункта меню («…don't ask again for:
+    /// rm -rf») блока команды не касается: пункты в регион не входят.
+    /// Тест фиксирует границу области — сама команда при этом безобидна.
+    #[test]
+    fn blocklist_does_not_read_menu_options() {
+        let pane = "\
+Bash command
+  ls -la
+Do you want to proceed?
+❯ 1. Yes
+  2. Yes, and don't ask again for: rm -rf commands
+  3. No
+ Esc to cancel · Tab to amend · ctrl+e to explain
+";
+        assert_eq!(decide(PromptKind::Permission3, pane, &settings(true, true, &[])), Decision::Press("2"));
+    }
+
+    /// Панель, где ВЫШЕ настоящего запроса осталось чужое такое же меню
+    /// (`cat` собственных тест-фикстур). Якорем должен быть НИЖНИЙ prompt:
+    /// иначе блоклист проверял бы команду цитаты (`cat …`), а `rm -rf`
+    /// настоящего запроса проскакивал бы как безопасный.
+    const QUOTED_MENU_ABOVE: &str = "\
+ Bash command
+   cat tmux-web/src/auto_approve.rs
+ Do you want to proceed?
+⏺ Bash(cat tmux-web/src/auto_approve.rs)
+  ⎿  const PERMISSION3: &str = \"...
+     ❯ 1. Yes
+       2. Yes, and don't ask again for: ls commands
+       3. No
+ Bash command · from the run-phase agent
+   rm -rf /важное/место
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and don't ask again for: rm commands
+   3. No
+ Esc to cancel · Tab to amend · ctrl+e to explain
+";
+
+    #[test]
+    fn quoted_menu_above_does_not_shadow_real_request() {
+        let region = extract_command_region(QUOTED_MENU_ABOVE).expect("блок вычленяется");
+        assert!(region.contains("rm -rf /важное/место"), "region = {region}");
+        assert!(!region.contains("cat tmux-web"), "region = {region}");
+
+        // И, как следствие, опасная команда действительно блокируется.
+        assert_eq!(
+            decide(PromptKind::Permission3, QUOTED_MENU_ABOVE, &settings(true, true, &[])),
+            Decision::Blocked("2")
+        );
+    }
+
+    #[test]
+    fn subject_and_stability_anchor_to_the_bottom_menu() {
+        let subject = extract_subject(QUOTED_MENU_ABOVE);
+        assert!(subject.contains("rm -rf /важное/место"), "{subject}");
+        assert!(!subject.contains("cat tmux-web"), "{subject}");
+
+        let region = stability_region(QUOTED_MENU_ABOVE);
+        assert!(region.starts_with("Do you want to proceed? ❯ 1. Yes"), "{region}");
+    }
+
+    /// Панель короче окна хвоста (`STABILITY_TAIL_LINES`) — срез не должен
+    /// уходить в минус.
+    #[test]
+    fn stability_region_handles_short_pane() {
+        assert_eq!(stability_region("a\nb\n"), "a b");
+    }
+
+    /// Типографский апостроф в пункте — именно так рисует Claude Code
+    /// («don’t», U+2019). Классификация не должна на него опираться.
+    #[test]
+    fn typographic_apostrophe_does_not_break_classification() {
+        let pane = "\
+Bash command
+  ls -la
+Do you want to proceed?
+❯ 1. Yes
+  2. Yes, and don’t ask again for: ls commands
+  3. No
+ Esc to cancel · Tab to amend · ctrl+e to explain
+";
+        assert_eq!(classify_prompt(pane), Some(PromptKind::Permission3));
+    }
+
+    /// Prompt без меню в панели вообще (`Plan`/`Question` рисуют свои
+    /// пункты иначе): `extract_subject` берёт хвост и не паникует.
+    #[test]
+    fn subject_without_menu_takes_tail() {
+        let pane = "первая строка\nвторая строка\nтретья строка\n";
+        let subject = extract_subject(pane);
+        assert!(subject.contains("третья строка"), "{subject}");
     }
 }

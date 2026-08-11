@@ -575,6 +575,38 @@ Do you want to proceed?
         assert!(detect_claude_prompt(pane));
     }
 
+    /// Вырожденные панели: пустая, из одних пробелов, однострочная. Гейт
+    /// индексирует хвост срезами — паниковать он не должен ни на одной.
+    #[test]
+    fn bottom_gate_handles_degenerate_panes() {
+        for pane in ["", "\n", "   \n\t\n", "just one line"] {
+            assert!(!prompt_at_bottom(pane), "pane = {pane:?}");
+            assert!(!detect_claude_prompt(pane), "pane = {pane:?}");
+        }
+    }
+
+    /// `capture-pane` дорисовывает панель до полной высоты окна, поэтому под
+    /// footer'ом почти всегда идут пустые строки. Гейт обязан их пропускать —
+    /// иначе настоящий prompt не признавался бы «нижним».
+    #[test]
+    fn bottom_gate_ignores_trailing_blank_lines() {
+        let pane = format!("{PROMPT_FIXTURE}\n   \n\t\n\n");
+        assert!(prompt_at_bottom(&pane));
+        assert!(detect_claude_prompt(&pane));
+    }
+
+    /// Строки НИЖЕ prompt'а (виджет фоновых агентов, который Claude Code
+    /// рисует под областью ввода) уводят footer за окно из четырёх хвостовых
+    /// строк — гейт перестаёт признавать prompt нижним. Тест фиксирует
+    /// известную границу: если такая раскладка встретится живьём, авто-апрув
+    /// и свечение по ней не сработают, и лечится это расширением гейта, а не
+    /// правкой классификатора.
+    #[test]
+    fn bottom_gate_stops_at_widgets_below_prompt() {
+        let pane = format!("{PROMPT_FIXTURE}⏺ main\n◯ run-phase Фаза 1\n◯ e2e-writer тесты\n◯ security-audit\n");
+        assert!(!prompt_at_bottom(&pane));
+    }
+
     /// Процитированный prompt (diff/cat с маркерами меню) НАД полем ввода и
     /// статус-баром — не настоящий prompt: footer'а внизу нет, детект молчит.
     /// Живой кейс: воркер авто-апрува принял diff собственных тест-фикстур за

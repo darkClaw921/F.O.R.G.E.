@@ -288,20 +288,23 @@ export function buildHotkeysForm(settings, onSaved, config) {
             });
             line.appendChild(reset);
 
+            // Четвёртая колонка сетки. Ячейка создаётся ВСЕГДА, даже пустая:
+            // строка без примечания иначе теряла бы колонку, и клавиши
+            // соседних строк переставали выравниваться по вертикали.
+            const note = document.createElement('span');
             if (row.conflictWith) {
                 conflicts += 1;
                 line.classList.add('tg-hotkeys-row-conflict');
-                const warn = document.createElement('span');
-                warn.className = 'tg-hotkeys-warn';
+                note.className = 'tg-hotkeys-warn';
                 const other = cfg.actions.find((a) => a.id === row.conflictWith);
-                warn.textContent = `занято: ${other ? other.title : row.conflictWith}`;
-                line.appendChild(warn);
-            } else if (row.hint) {
-                const h = document.createElement('span');
-                h.className = 'tg-hotkeys-hint';
-                h.textContent = row.hint;
-                line.appendChild(h);
+                note.textContent = `занято: ${other ? other.title : row.conflictWith}`;
+            } else {
+                note.className = 'tg-hotkeys-hint';
+                note.textContent = row.hint || '';
             }
+            // Текст обрезается многоточием — полный вид остаётся в подсказке.
+            if (note.textContent) note.title = note.textContent;
+            line.appendChild(note);
 
             table.appendChild(line);
         }
