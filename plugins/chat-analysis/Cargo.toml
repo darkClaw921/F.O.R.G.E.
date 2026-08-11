@@ -1,0 +1,45 @@
+[package]
+name = "forge-chat-analysis"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Общее ядро фичи «Анализ чата» (хранилище заметок и разборов, сборка промпта, реестр run'ов Claude) для плагинов-мессенджеров F.O.R.G.E."
+
+# ЛИСТОВОЙ крейт — ровно по тем же правилам, что и `forge-claude-runner`:
+# ни одной зависимости на forge-vk / forge-telegram / forge-bitrix / devforge.
+# Ядро анализа общее для трёх мессенджеров, а плагины изолированы друг от
+# друга: любая зависимость на плагин вернула бы цикл, из-за которого вынос и
+# затевался.
+#
+# И НИ ОДНОЙ ЗАВИСИМОСТИ НА HTTP: ни axum, ни http. Крейт не знает про коды
+# ответов — он отдаёт `AnalysisError`, а перевод в конверт ошибки плагина
+# (`ApiError`) делает сам плагин. Иначе три мессенджера получили бы общий
+# HTTP-словарь, которого у них нет.
+[dependencies]
+# sync (Mutex, mpsc, broadcast нам не нужен — вещает sink), time (interval,
+# timeout), rt (tokio::spawn). Workspace-версия с features = full, чтобы в
+# дереве был ровно один tokio.
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+
+# CancellationToken: по нему пампер отличает отмену от нормального конца
+# стрима. Версия и features совпадают с plugins/vk, узел в дереве один.
+tokio-util = "0.7"
+
+# UUID v4 — идентификаторы run'ов. Версия совпадает с claude-runner/echo/vk.
+uuid = { version = "1", features = ["v4"] }
+
+# `AnalysisError` — публичный тип ошибки крейта. thiserror 2 уже есть в дереве
+# транзитивно, нового узла не добавляется.
+thiserror = "2"
+
+# Стриминговый раннер `claude -p --output-format stream-json` — тот же общий
+# листовой крейт, которым пользуются Echo и VK.
+forge-claude-runner = { path = "../claude-runner" }
+
+[dev-dependencies]
+# Временные каталоги для mock-CLI (shell-скрипт с NDJSON) и файлов хранилища.
+tempfile = "3"

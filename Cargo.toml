@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "tmux-web",
+    "plugins/chat-analysis",
     "plugins/claude-runner",
     "plugins/echo",
     "plugins/echo-host-api",

@@ -434,8 +434,9 @@ devforge --help                # полный список опций
 
 Проект организован как **Cargo workspace** (root: `/`), members: `tmux-web`
 (бинарь `devforge`), `plugins/echo`, `plugins/echo-host-api`,
-`plugins/claude-runner`, `plugins/telegram`, `plugins/vk`, `plugins/bitrix`. Все
-команды запускаются из корня репозитория и адресуют крейт через `-p`.
+`plugins/claude-runner`, `plugins/chat-analysis`, `plugins/telegram`,
+`plugins/vk`, `plugins/bitrix`. Все команды запускаются из корня репозитория и
+адресуют крейт через `-p`.
 
 ```bash
 git clone https://github.com/darkClaw921/F.O.R.G.E.
@@ -453,6 +454,7 @@ cargo build -p forge-echo         # плагин Echo (чат)
 cargo build -p echo-host-api      # plugin boundary trait
 cargo build -p forge-telegram     # плагин Telegram (MTProto)
 cargo build -p forge-vk           # плагин VK (VK API + LongPoll)
+cargo build -p forge-chat-analysis # общее ядро «Анализа чата» (хранилище, промпт, hub)
 cargo build -p forge-bitrix       # плагин Битрикс24 (REST-вебхук)
 cargo build --workspace           # всё сразу
 

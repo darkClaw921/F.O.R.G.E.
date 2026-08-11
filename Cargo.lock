@@ -612,7 +612,7 @@ dependencies = [
 
 [[package]]
 name = "devforge"
-version = "0.1.56"
+version = "0.1.57"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -878,6 +878,8 @@ dependencies = [
  "axum",
  "base64",
  "chrono",
+ "forge-chat-analysis",
+ "forge-claude-runner",
  "futures-util",
  "mime_guess",
  "reqwest",
@@ -888,6 +890,22 @@ dependencies = [
  "tokio-util",
  "toml",
  "tower",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "forge-chat-analysis"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "forge-claude-runner",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
  "tracing",
  "uuid",
 ]
@@ -938,6 +956,8 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
+ "forge-chat-analysis",
+ "forge-claude-runner",
  "futures-util",
  "grammers-client",
  "grammers-mtsender",
@@ -964,6 +984,8 @@ dependencies = [
  "axum",
  "bytes",
  "chrono",
+ "forge-chat-analysis",
+ "forge-claude-runner",
  "futures-util",
  "mime_guess",
  "reqwest",
