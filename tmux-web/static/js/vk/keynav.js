@@ -178,6 +178,11 @@ export function panelVisible() {
     // пока пользователь набирает код, клавиши принадлежат её полю.
     const captcha = el('vk-captcha');
     if (captcha && captcha.hidden === false) return false;
+    // Попап анализа: в нём два поля ввода (вопрос модели и заметка о беседе), и
+    // без этой ветки vim-навигация забирала бы буквы `j`/`k` себе — вопрос
+    // стало бы физически не набрать (следствие читает static/hotkeys.js:117-131).
+    const analysis = el('vk-analysis');
+    if (analysis && analysis.hidden === false) return false;
     return true;
 }
 

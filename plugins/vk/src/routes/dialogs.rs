@@ -1085,7 +1085,7 @@ pub(crate) async fn resolve_names(state: &Arc<VkState>, client: &VkClient, ids: 
 /// Автор, авторы пересылок и автор цитаты — по тем же границам глубины, что и
 /// проекция ([`crate::dto::MAX_FWD_DEPTH`]): резолвить имена глубже, чем UI
 /// собирается рисовать, значит платить запросами за невидимое.
-fn collect_author_ids(msg: &crate::api::schema::MessageRaw, out: &mut Vec<i64>) {
+pub(crate) fn collect_author_ids(msg: &crate::api::schema::MessageRaw, out: &mut Vec<i64>) {
     out.push(msg.from_id);
     if let Some(r) = msg.reply_message.as_ref() {
         out.push(r.from_id);

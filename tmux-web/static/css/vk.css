@@ -2080,3 +2080,476 @@
 .vk-dir.vk-dir-filtered-out .vk-dir-name {
     opacity: 0.45;
 }
+
+/* ── попап «Анализ чата» (js/vk/analysis.js) ──────────────────────────────
+   СЛОЙ 6, и это не косметика. Логин — 5, captcha/лайтбокс/dropzone — 7.
+   Анализ обязан лежать МЕЖДУ: код 14 у VK прилетает на любой метод, в том
+   числе на выгрузку истории внутри запуска разбора, и оверлей captcha должен
+   перекрывать попап, оставаясь кликабельным. Опустить попап ниже логина тоже
+   нельзя — тогда он оказался бы под невидимым оверлеем входа. */
+#vk-analysis {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    z-index: 6;
+    background: color-mix(in srgb, var(--v-bg) 82%, transparent);
+    backdrop-filter: blur(2px);
+}
+#vk-analysis[hidden] {
+    display: none;
+}
+/* Карточка — по образцу .vk-keys-help-card: одна и та же «коробка поверх
+   панели» не должна выглядеть в двух местах по-разному. */
+.vk-analysis-box {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 680px;
+    max-height: 100%;
+    background: var(--v-panel);
+    border: 1px solid var(--v-acc-dim);
+    border-radius: 4px;
+    padding: 14px 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
+}
+.vk-analysis-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+.vk-analysis-title {
+    color: var(--v-acc);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+}
+/* Имя беседы длинное и приходит извне: сжимается и режется многоточием, а не
+   растягивает карточку по ширине экрана. */
+.vk-analysis-target {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--v-faint-text);
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.vk-analysis-close {
+    flex: 0 0 auto;
+}
+.vk-analysis-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--v-acc-faint);
+}
+.vk-analysis-tab {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--v-acc-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    padding: 5px 8px;
+}
+.vk-analysis-tab:hover {
+    color: var(--v-acc-hi);
+}
+.vk-analysis-tab-active {
+    color: var(--v-acc);
+    border-bottom-color: var(--v-acc);
+}
+.vk-analysis-pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+.vk-analysis-pane[hidden] {
+    display: none;
+}
+.vk-analysis-controls {
+    display: flex;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+/* Поле глубины — .vk-field, но не на всю ширину: рядом с ним живут кнопки. */
+.vk-analysis-depth-field {
+    flex: 0 0 auto;
+    margin-bottom: 0;
+}
+.vk-analysis-depth-field select {
+    background: var(--v-bg);
+    border: 1px solid var(--v-acc-faint);
+    border-radius: 4px;
+    color: var(--v-acc-hi);
+    font-family: inherit;
+    font-size: 12px;
+    padding: 6px 8px;
+    letter-spacing: normal;
+    text-transform: none;
+}
+/* Кнопки в ряду не растягиваются: .vk-login-btn шириной 100% превратил бы
+   каждую в собственную строку.
+
+   `margin-top` гасится намеренно: .vk-login-btn-ghost поднимает его ради
+   вертикальной колонки экрана логина, а в ГОРИЗОНТАЛЬНОМ ряду он ронял бы
+   вторичные кнопки (STOP, CLEAR, CLEAR Q&A) ниже основных. С пятью кнопками
+   и переносом строкой это стало заметно. */
+.vk-analysis-btn {
+    width: auto;
+    flex: 0 0 auto;
+    margin-top: 0;
+}
+/* Метка сохранённого разбора: вторичная строка, читается как подпись, а не
+   как статус run'а. Пустая (разбора нет) — не занимает места вовсе, иначе
+   попап до первого запуска выглядел бы недорисованным. */
+.vk-analysis-updated {
+    color: var(--v-acc-dim);
+    font-size: 11px;
+    margin-bottom: 6px;
+}
+.vk-analysis-updated:empty {
+    display: none;
+}
+.vk-analysis-status,
+.vk-analysis-prompt-status {
+    color: var(--v-faint-text);
+    font-size: 11px;
+    min-height: 14px;
+    margin-bottom: 6px;
+}
+/* Шапка разбора — кнопка сворачивания (АЧ-И2).
+
+   Это <button>, но выглядит строкой-подписью: у неё нет ни рамки, ни фона,
+   иначе над блоком разбора появилась бы шестая кнопка в ряду и без того
+   плотных элементов управления. Видимость нажимаемости даёт каретка ▾/▸ и
+   подсветка на hover/фокусе.
+
+   Каретка поворачивается CSS'ом, а не подменой символа: символ ставит JS
+   (js/vk/analysis.js) один раз — так состояние читается и без стилей. */
+.vk-analysis-out-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    background: none;
+    border: 0;
+    border-radius: 3px;
+    color: var(--v-acc-dim);
+    cursor: pointer;
+    font: inherit;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+    padding: 2px 4px;
+    text-align: left;
+}
+.vk-analysis-out-toggle:hover,
+.vk-analysis-out-toggle:focus-visible {
+    color: var(--v-acc-hi);
+    outline: none;
+}
+.vk-analysis-out-toggle:focus-visible {
+    box-shadow: 0 0 0 1px var(--v-acc-faint);
+}
+.vk-analysis-out-caret {
+    display: inline-block;
+    font-size: 10px;
+}
+/* Свёрнутый разбор: подпись гаснет до вторичной. Это единственное, что от него
+   осталось на экране, и она не должна спорить за внимание с тредом. */
+.vk-analysis-out-toggle-off {
+    color: var(--v-faint-text);
+}
+
+/* Вывод модели: собственная прокрутка. Без max-height длинный разбор
+   растянул бы карточку за пределы панели, унеся поле вопроса за экран. */
+.vk-analysis-out {
+    white-space: pre-wrap;
+    overflow-y: auto;
+    overflow-wrap: anywhere;
+    max-height: 46vh;
+    min-height: 60px;
+    background: var(--v-bg);
+    border: 1px solid var(--v-acc-faint);
+    border-radius: 4px;
+    color: var(--v-acc-hi);
+    font-size: 12px;
+    line-height: 1.5;
+    padding: 8px 10px;
+}
+.vk-analysis-thread {
+    overflow-y: auto;
+    max-height: 24vh;
+    margin-top: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+}
+.vk-analysis-thread:empty {
+    display: none;
+}
+.vk-analysis-qa-q {
+    color: var(--v-amber);
+    white-space: pre-wrap;
+    margin-top: 6px;
+}
+.vk-analysis-qa-a {
+    color: var(--v-acc-hi);
+    white-space: pre-wrap;
+}
+.vk-analysis-ask {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    margin-top: 8px;
+}
+.vk-analysis-question,
+.vk-analysis-prompt {
+    flex: 1 1 auto;
+    width: 100%;
+    resize: vertical;
+    background: var(--v-bg);
+    border: 1px solid var(--v-acc-faint);
+    border-radius: 4px;
+    color: var(--v-acc-hi);
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1.5;
+    padding: 6px 8px;
+}
+.vk-analysis-question:focus,
+.vk-analysis-prompt:focus {
+    outline: none;
+    border-color: var(--v-acc);
+}
+.vk-analysis-hint {
+    color: var(--v-faint-text);
+    font-size: 11px;
+    line-height: 1.5;
+    margin: 0 0 8px;
+}
+.vk-analysis-prompt-count {
+    color: var(--v-faint-text);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-align: right;
+    margin: 4px 0 8px;
+}
+
+/* ==== Отрисованный Markdown ==============================================
+   Разметку строит js/messenger/markdown.js — общий модуль мессенджеров, а не
+   код панели VK, поэтому классы у него НЕЙТРАЛЬНЫЕ (`md-*`): те же узлы
+   когда-нибудь придут в панели Telegram и Битрикс24, и префикс `vk-` там был
+   бы враньём. Красит их ЗДЕСЬ панель VK — стили ограничены её контейнерами
+   `.vk-analysis-out` и `.vk-analysis-thread`, поэтому чужая вкладка от них не
+   меняется. Инвариант файла (никаких `.tg-`/`#tg-`) не задет.
+
+   Цвета — только токены --v-*: панель живёт в собственной палитре и обязана
+   выглядеть корректно в обеих её темах (data-vk-theme).
+
+   ВАЖНО про `white-space`. У `.vk-analysis-out` стоит `pre-wrap` — это нужно
+   стриминга, который до кадра `analysis_done` показывает СЫРОЙ текст. После
+   перерисовки Markdown'ом `pre-wrap` даёт лишние пустые строки между блоками,
+   поэтому у самих блоков он сбрасывается в `normal`; переносы внутри блока
+   кода при этом сохраняются собственным правилом для `pre`. */
+.vk-analysis-out .md-p,
+.vk-analysis-out .md-h,
+.vk-analysis-out .md-ul,
+.vk-analysis-out .md-ol,
+.vk-analysis-out .md-quote,
+.vk-analysis-out .md-table,
+.vk-analysis-thread .md-p,
+.vk-analysis-thread .md-h,
+.vk-analysis-thread .md-ul,
+.vk-analysis-thread .md-ol,
+.vk-analysis-thread .md-quote,
+.vk-analysis-thread .md-table {
+    white-space: normal;
+}
+
+.vk-analysis-out .md-p,
+.vk-analysis-thread .md-p {
+    margin: 0 0 8px;
+}
+.vk-analysis-out .md-p:last-child,
+.vk-analysis-thread .md-p:last-child {
+    margin-bottom: 0;
+}
+
+/* Заголовки. Это попап, а не статья: h1 крупнее текста всего в полтора раза,
+   иначе один заголовок съедает треть видимой области разбора. Ритмика общая
+   для всех шести уровней — различаются только кегль и насыщенность. */
+.vk-analysis-out .md-h,
+.vk-analysis-thread .md-h {
+    color: var(--v-acc);
+    font-weight: 700;
+    line-height: 1.3;
+    margin: 12px 0 6px;
+}
+.vk-analysis-out .md-h:first-child,
+.vk-analysis-thread .md-h:first-child {
+    margin-top: 0;
+}
+.vk-analysis-out h1.md-h,
+.vk-analysis-thread h1.md-h { font-size: 17px; }
+.vk-analysis-out h2.md-h,
+.vk-analysis-thread h2.md-h { font-size: 15px; }
+.vk-analysis-out h3.md-h,
+.vk-analysis-thread h3.md-h { font-size: 14px; }
+.vk-analysis-out h4.md-h,
+.vk-analysis-thread h4.md-h { font-size: 13px; }
+.vk-analysis-out h5.md-h,
+.vk-analysis-out h6.md-h,
+.vk-analysis-thread h5.md-h,
+.vk-analysis-thread h6.md-h {
+    font-size: 12px;
+    color: var(--v-acc-dim);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.vk-analysis-out .md-ul,
+.vk-analysis-out .md-ol,
+.vk-analysis-thread .md-ul,
+.vk-analysis-thread .md-ol {
+    margin: 0 0 8px;
+    padding-left: 20px;
+}
+/* Вложенный список не должен добавлять отбивку: пункт и так уже отступил. */
+.vk-analysis-out .md-li > .md-ul,
+.vk-analysis-out .md-li > .md-ol,
+.vk-analysis-thread .md-li > .md-ul,
+.vk-analysis-thread .md-li > .md-ol {
+    margin: 2px 0 0;
+}
+.vk-analysis-out .md-li,
+.vk-analysis-thread .md-li {
+    margin: 2px 0;
+}
+
+/* Код. Моноширинный уже унаследован (панель целиком на JetBrains Mono), здесь
+   важнее фон-врезка и СВОЙ горизонтальный скролл: длинная строка кода не
+   должна расширять карточку разбора. */
+.vk-analysis-out .md-code,
+.vk-analysis-thread .md-code {
+    background: var(--v-bar);
+    border: 1px solid var(--v-acc-faint);
+    border-radius: 3px;
+    color: var(--v-cyan);
+    padding: 0 3px;
+}
+.vk-analysis-out .md-pre,
+.vk-analysis-thread .md-pre {
+    background: var(--v-bar);
+    border: 1px solid var(--v-acc-faint);
+    border-radius: 4px;
+    margin: 0 0 8px;
+    max-width: 100%;
+    overflow-x: auto;
+    padding: 6px 8px;
+    white-space: pre;
+}
+.vk-analysis-out .md-pre .md-code-block,
+.vk-analysis-thread .md-pre .md-code-block {
+    background: none;
+    border: 0;
+    color: var(--v-acc-hi);
+    padding: 0;
+}
+
+.vk-analysis-out .md-quote,
+.vk-analysis-thread .md-quote {
+    border-left: 2px solid var(--v-acc-faint);
+    color: var(--v-faint-text);
+    margin: 0 0 8px;
+    padding: 0 0 0 8px;
+}
+
+.vk-analysis-out .md-hr,
+.vk-analysis-thread .md-hr {
+    background: var(--v-acc-faint);
+    border: 0;
+    height: 1px;
+    margin: 10px 0;
+}
+
+/* Таблица. ГЛАВНОЕ ПРАВИЛО: широкая таблица скроллится ВНУТРИ своей обёртки, а
+   не растягивает попап. Без `max-width: 100%` на обёртке flex/грид-родитель
+   растёт под содержимое, и карточка разбора уезжает за экран вместе с полем
+   вопроса. `table-layout` намеренно не фиксируется: колонки должны считаться
+   по содержимому, скролл берёт на себя переполнение. */
+.vk-analysis-out .md-table-wrap,
+.vk-analysis-thread .md-table-wrap {
+    margin: 0 0 8px;
+    max-width: 100%;
+    overflow-x: auto;
+}
+.vk-analysis-out .md-table,
+.vk-analysis-thread .md-table {
+    border-collapse: collapse;
+    font-size: 11px;
+}
+.vk-analysis-out .md-table th,
+.vk-analysis-out .md-table td,
+.vk-analysis-thread .md-table th,
+.vk-analysis-thread .md-table td {
+    border: 1px solid var(--v-acc-faint);
+    padding: 3px 6px;
+    text-align: left;
+    vertical-align: top;
+    white-space: nowrap;
+}
+.vk-analysis-out .md-table th,
+.vk-analysis-thread .md-table th {
+    background: var(--v-bar);
+    color: var(--v-acc);
+    font-weight: 700;
+}
+.vk-analysis-out .md-table tbody tr:nth-child(even) td,
+.vk-analysis-thread .md-table tbody tr:nth-child(even) td {
+    background: var(--v-panel);
+}
+
+/* Ссылки. Подчёркивание постоянное, а не по наведению: на тачскрине наведения
+   нет, а отличать кликабельное от текста надо. Запрещённая ссылка (схема не
+   прошла белый список в markdown.js) приходит НЕ ссылкой, а `.md-link-blocked`
+   — её видно как обычный текст, и это правильно: делать её похожей на ссылку
+   значило бы обещать переход, которого не будет. */
+.vk-analysis-out .md-link,
+.vk-analysis-thread .md-link {
+    color: var(--v-acc);
+    text-decoration: underline;
+    overflow-wrap: anywhere;
+}
+.vk-analysis-out .md-link:hover,
+.vk-analysis-thread .md-link:hover {
+    color: var(--v-cyan);
+}
+.vk-analysis-out .md-link-blocked,
+.vk-analysis-thread .md-link-blocked {
+    color: inherit;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 480px) {
+    /* На телефоне карточка занимает экран целиком: 680 px по центру дали бы
+       поля по 4 px и вдвое меньше видимого текста разбора. */
+    .vk-analysis-box {
+        max-width: 100%;
+        padding: 10px 12px;
+    }
+    .vk-analysis-out {
+        max-height: 40vh;
+    }
+    .vk-analysis-btn {
+        flex: 1 1 auto;
+    }
+}

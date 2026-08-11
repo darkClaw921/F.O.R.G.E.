@@ -30,6 +30,11 @@
  *   7. Владение клавиатурой: при открытой панели VK нажатие `j` НЕ уводит
  *      выделение в сайдбар сессий (иначе одно нажатие и листало бы ленту, и
  *      прыгало по сессиям tmux).
+ *   8. Попап «Анализ чата» (АЧ-Ф4/Ф5): ✦ открывает #vk-analysis, вкладка
+ *      «Контекст» дёргает GET .../prompt РОВНО ОДИН раз на беседу, SAVE шлёт
+ *      PUT с ожидаемым телом, Esc закрывает попап, не закрывая панель.
+ *      Стриминг здесь НЕ проверяется — он покрыт node-тестом
+ *      tests/frontend/vk_analysis.test.mjs и живой приёмкой.
  *
  * `.skip()` в файле нет ни одного — по договорённости проекта сценарий либо
  * мокается, либо не пишется.
@@ -284,6 +289,10 @@ test.describe('VK tab UI', () => {
     await expect(page.locator('#vk-logout')).toBeHidden();
     // Captcha — отдельный оверлей, и без кода 14 его быть не должно.
     await expect(page.locator('#vk-captcha')).toBeHidden();
+    // Попап анализа (АЧ-Ф4) — третий оверлей панели: он присутствует в
+    // разметке ВСЕГДА (ref'ы core/dom.js резолвятся один раз при импорте) и
+    // обязан быть закрыт, пока его не открыли кнопкой ✦.
+    await expect(page.locator('#vk-analysis')).toBeHidden();
   });
 
   test('captcha: картинка идёт через прокси, а не с серверов VK', async ({ page }) => {
@@ -470,6 +479,150 @@ test.describe('VK tab UI', () => {
     expect(metrics.height, 'панель не схлопнулась').toBeGreaterThan(200);
     expect(metrics.width).toBeGreaterThan(200);
     expect(metrics.overflowX, 'горизонтального скролла быть не должно').toBeLessThanOrEqual(0);
+  });
+
+  /**
+   * Попап «Анализ чата» (АЧ-Ф4/Ф5) — НАМЕРЕННО УЗКИЙ сценарий.
+   *
+   * Здесь страхуется связка разметки, ref'ов и роутов: кнопка ✦ открывает
+   * реальный `#vk-analysis` из index.html, вкладка «Контекст» действительно
+   * дёргает `GET .../prompt`, а SAVE шлёт `PUT` с ожидаемым телом. Ровно эти
+   * четыре шва не виден ни одному другому тесту: node-тесты работают с
+   * фейковым DOM (`vk_dom_stub.mjs`) и не знают про index.html, а rust-тесты
+   * не знают про кнопки.
+   *
+   * СТРИМИНГ ЗДЕСЬ НЕ ПРОВЕРЯЕТСЯ. Кадры `analysis_*` приходят по /ws/vk;
+   * поднимать фейковый сокет ради того, что уже покрыто 73 ассертами
+   * `tests/frontend/vk_analysis.test.mjs` и живой приёмкой, — плата без
+   * выигрыша.
+   */
+  test('попап анализа: ✦ открывает, «Контекст» читает заметку, SAVE её пишет, Esc закрывает', async ({
+    page,
+  }) => {
+    await mockVkEnabled(page, STATUS_AUTHORIZED);
+
+    // Одна беседа в списке: кнопка ✦ открывает разбор АКТИВНОЙ беседы, без
+    // неё попап отвечает подсказкой «сначала откройте беседу».
+    const DIALOG_ID = '2000000001';
+    await page.route('**/api/vk/dialogs?*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          dialogs: [
+            {
+              id: DIALOG_ID,
+              kind: 'chat',
+              title: 'Проект X',
+              username: null,
+              bot: false,
+              contact: false,
+              unread_count: 0,
+              pinned: false,
+              muted: false,
+              archived: false,
+              folder_id: null,
+              last_message: null,
+              members: 3,
+              important: false,
+              can_write: true,
+              can_write_reason: null,
+            },
+          ],
+          has_more: false,
+        }),
+      });
+    });
+    await page.route(`**/api/vk/dialogs/${DIALOG_ID}/messages*`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ messages: [], has_more: false }),
+      });
+    });
+    await page.route('**/api/vk/dialogs/*/read', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+    });
+
+    // Заметка: GET считается (ленивое чтение обязано быть ОДНИМ на беседу),
+    // тело PUT запоминается целиком.
+    const promptGets: string[] = [];
+    const promptPuts: string[] = [];
+    await page.route('**/api/vk/dialogs/*/prompt', async (route) => {
+      const req = route.request();
+      if (req.method() === 'PUT') {
+        promptPuts.push(req.postData() ?? '');
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            prompt: JSON.parse(req.postData() ?? '{}').prompt,
+            updated_at: 1_800_000_000,
+            max_chars: 4000,
+          }),
+        });
+        return;
+      }
+      promptGets.push(req.url());
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ prompt: 'Анна — заказчик', updated_at: 1_700_000_000, max_chars: 4000 }),
+      });
+    });
+
+    await page.goto('/');
+    await openVkTab(page);
+
+    // Открываем беседу: активной её делает клик по строке списка.
+    const row = page.locator(`#vk-dialog-list li[data-dialog-id="${DIALOG_ID}"]`);
+    await expect(row).toBeVisible({ timeout: 10_000 });
+    await row.click();
+
+    const popup = page.locator('#vk-analysis');
+    await expect(popup, 'до клика по ✦ попап закрыт').toBeHidden();
+    // Пока попап не открыт, заметка не читается: её путь — вкладка «Контекст».
+    expect(promptGets, 'заметка не должна читаться при открытии беседы').toEqual([]);
+
+    await page.locator('#vk-analysis-toggle').click();
+    await expect(popup).toBeVisible({ timeout: 5_000 });
+    // Заголовок называет беседу — иначе неясно, что именно разбирается.
+    await expect(page.locator('#vk-analysis-target')).toContainText('Проект X');
+    // По умолчанию открыта вкладка запуска, вкладка контекста скрыта.
+    await expect(page.locator('#vk-analysis-pane-run')).toBeVisible();
+    await expect(page.locator('#vk-analysis-pane-ctx')).toBeHidden();
+
+    // Вкладка «Контекст» — вот теперь ленивый GET.
+    await page.locator('#vk-analysis-tab-ctx').click();
+    await expect(page.locator('#vk-analysis-pane-ctx')).toBeVisible();
+    await expect(page.locator('#vk-analysis-prompt')).toHaveValue('Анна — заказчик', {
+      timeout: 5_000,
+    });
+    expect(promptGets.length, 'ленивое чтение — ровно один GET на беседу').toBe(1);
+    expect(promptGets[0]).toContain(`/api/vk/dialogs/${DIALOG_ID}/prompt`);
+
+    // Возврат на вкладку запуска и обратно повторного чтения не даёт.
+    await page.locator('#vk-analysis-tab-run').click();
+    await page.locator('#vk-analysis-tab-ctx').click();
+    await expect(page.locator('#vk-analysis-pane-ctx')).toBeVisible();
+    expect(promptGets.length, 'переключение вкладок не перечитывает заметку').toBe(1);
+
+    // SAVE: тело PUT — ровно `{"prompt": "<то, что в поле>"}`.
+    await page.locator('#vk-analysis-prompt').fill('Это чат по проекту X, Анна — заказчик');
+    await page.locator('#vk-analysis-prompt-save').click();
+    await expect
+      .poll(() => promptPuts.length, { message: 'SAVE обязан отправить PUT' })
+      .toBe(1);
+    expect(JSON.parse(promptPuts[0])).toEqual({ prompt: 'Это чат по проекту X, Анна — заказчик' });
+
+    // Esc закрывает попап. Слушатель висит на document — фокус после fill
+    // остался в textarea, и это ровно тот случай, ради которого он там.
+    await page.keyboard.press('Escape');
+    await expect(popup, 'Esc обязан закрывать попап из любого фокуса').toBeHidden({
+      timeout: 5_000,
+    });
+    // Панель при этом остаётся открытой: Esc закрыл окно, а не вкладку.
+    await expect(page.locator('#vk')).toBeVisible();
   });
 
   test('вкладка не ходит во внешние домены', async ({ page }) => {

@@ -62,6 +62,7 @@
 //! белый список бесед (Ф10). Все они подключаются через уже существующие
 //! четыре точки входа — сигнатуры ниже меняться не будут.
 
+pub mod analysis;
 pub mod api;
 pub mod attach;
 pub mod config;
@@ -211,14 +212,21 @@ pub async fn spawn_workers(state: &Arc<VkState>) {
 /// Graceful shutdown плагина.
 ///
 /// 1. `shutdown.cancel()` — будит WS-циклы и воркеров;
-/// 2. `shutdown_workers()` — даёт каждому две секунды выйти самому и только
+/// 2. `analysis.shutdown()` — гасит запущенные процессы `claude`;
+/// 3. `shutdown_workers()` — даёт каждому две секунды выйти самому и только
 ///    потом абортит.
 ///
-/// Идемпотентна: `CancellationToken` можно отменять сколько угодно раз, а
-/// список воркеров после первого прохода пуст.
+/// Шаг 2 обязан идти ДО шага 3 и не имеет права быть забытым: дочерний
+/// `claude` умирает только вместе с tokio-таской раннера (`kill_on_drop`), а
+/// таски эти в списке `workers` не числятся. Без явного вызова процесс анализа
+/// пережил бы остановку devforge и продолжил бы жечь токены в никуда.
+///
+/// Идемпотентна: `CancellationToken` можно отменять сколько угодно раз, список
+/// воркеров после первого прохода пуст, реестр анализов — тем более.
 pub async fn shutdown(state: &Arc<VkState>) {
     tracing::info!(target: "forge_vk", "forge-vk: shutdown initiated");
     state.shutdown.cancel();
+    state.analysis.shutdown().await;
     state.shutdown_workers().await;
     tracing::info!(target: "forge_vk", "forge-vk: shutdown complete");
 }
@@ -231,6 +239,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let cfg = VkConfig {
             cache_dir: dir.path().join("cache"),
+            // Заметки — ЕДИНСТВЕННЫЙ файл плагина, который пишется без
+            // участия пользователя; без подмены пути прогон тестов затирал бы
+            // живой `~/.forge/vk-chat-prompts.json`.
+            prompts_path: dir.path().join("prompts.json"),
             ..VkConfig::default()
         };
         (dir, cfg)
@@ -284,6 +296,30 @@ mod tests {
             started.elapsed()
         );
         assert_eq!(state.login_state_dto().await.state, "disconnected");
+    }
+
+    /// Заметки к чатам читаются ПРЯМО в конструкторе состояния — и сломанный
+    /// файл не имеет права ни уронить `init`, ни оставить вкладку без старта.
+    #[tokio::test]
+    async fn init_loads_chat_prompts_and_survives_a_broken_file() {
+        let (dir, mut cfg) = test_cfg();
+        std::fs::write(
+            &cfg.prompts_path,
+            r#"{"version":1,"chats":{"2000000001":{"prompt":"это заказчик","updated_at":7}}}"#,
+        )
+        .unwrap();
+        let state = init(cfg.clone()).unwrap();
+        assert_eq!(
+            state.chat_prompt("2000000001").await.unwrap().prompt,
+            "это заказчик"
+        );
+
+        // Тот же путь, но мусор внутри: пустое хранилище, без паники и Err.
+        cfg.prompts_path = dir.path().join("broken.json");
+        std::fs::write(&cfg.prompts_path, b"}{ not json at all").unwrap();
+        let state = init(cfg).expect("битый файл заметок не фатален");
+        assert!(state.prompts.lock().await.chats.is_empty());
+        assert!(state.chat_prompt("2000000001").await.is_none());
     }
 
     /// Каталог кэша может быть несоздаваем (родитель — обычный файл, нет

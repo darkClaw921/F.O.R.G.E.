@@ -87,6 +87,19 @@ export function makeEl(tag) {
     });
 
     node.appendChild = (child) => {
+        // DocumentFragment (nodeType 11) РАСТВОРЯЕТСЯ при вставке: в дерево
+        // уходят его дети, а не он сам. Без этого правила отрисованный
+        // Markdown (js/messenger/markdown.js отдаёт именно фрагмент) оказался
+        // бы завёрнут в лишний узел, и тест проверял бы структуру, которой в
+        // браузере нет.
+        if (child && child.nodeType === 11) {
+            child.childNodes.slice().forEach((grand) => {
+                detach(grand);
+                grand.parentNode = node;
+                node.childNodes.push(grand);
+            });
+            return child;
+        }
         detach(child);
         child.parentNode = node;
         node.childNodes.push(child);
@@ -262,6 +275,55 @@ export const $captchaSubmit = el('vk-captcha-submit', 'button');
 export const $captchaCancel = el('vk-captcha-cancel', 'button');
 export const $captchaError = el('vk-captcha-error');
 
+// Попап анализа чата (js/vk/analysis.js). Узлы обязаны быть здесь все до
+// единого: core/dom.js резолвит ref'ы ОДИН раз при импорте, и пропущенный узел
+// дал бы тест, зеленеющий на пустоте.
+//
+// `<select>` и `<textarea>` — те же узлы, что и остальные: `value` у них
+// обычное свойство (см. makeEl), а не вычисляемое из <option>. Модулю панели
+// большего и не нужно — он читает `.value` и пишет в него. Геометрия
+// (`scrollTop`/`scrollHeight`/`clientHeight`) тоже есть у каждого узла: её
+// выставляет вручную тест автоскролла вывода.
+export const $analysisToggle = el('vk-analysis-toggle', 'button');
+export const $analysis = el('vk-analysis');
+export const $analysisTarget = el('vk-analysis-target', 'span');
+export const $analysisClose = el('vk-analysis-close', 'button');
+export const $analysisTabRun = el('vk-analysis-tab-run', 'button');
+export const $analysisTabCtx = el('vk-analysis-tab-ctx', 'button');
+export const $analysisPaneRun = el('vk-analysis-pane-run');
+export const $analysisPaneCtx = el('vk-analysis-pane-ctx');
+export const $analysisDepth = el('vk-analysis-depth', 'select');
+export const $analysisStart = el('vk-analysis-start', 'button');
+export const $analysisRefresh = el('vk-analysis-refresh', 'button');
+export const $analysisCancel = el('vk-analysis-cancel', 'button');
+export const $analysisClear = el('vk-analysis-clear', 'button');
+export const $analysisClearThread = el('vk-analysis-clear-thread', 'button');
+export const $analysisStatus = el('vk-analysis-status');
+export const $analysisUpdated = el('vk-analysis-updated');
+export const $analysisOutToggle = el('vk-analysis-out-toggle', 'button');
+export const $analysisOut = el('vk-analysis-out');
+export const $analysisThread = el('vk-analysis-thread');
+export const $analysisAsk = el('vk-analysis-ask', 'form');
+export const $analysisQuestion = el('vk-analysis-question', 'textarea');
+export const $analysisSend = el('vk-analysis-send', 'button');
+export const $analysisError = el('vk-analysis-error');
+export const $analysisPrompt = el('vk-analysis-prompt', 'textarea');
+export const $analysisPromptCount = el('vk-analysis-prompt-count');
+export const $analysisPromptSave = el('vk-analysis-prompt-save', 'button');
+export const $analysisPromptClear = el('vk-analysis-prompt-clear', 'button');
+export const $analysisPromptStatus = el('vk-analysis-prompt-status');
+// Начальные состояния — те же, что стоят атрибутами в index.html.
+$analysis.hidden = true;
+$analysisPaneCtx.hidden = true;
+$analysisCancel.hidden = true;
+// REFRESH выключен в РАЗМЕТКЕ: сохранённого разбора при первом открытии
+// попапа нет, и кнопка включается только кодом после успешного GET.
+$analysisRefresh.disabled = true;
+$analysisError.hidden = true;
+$analysisDepth.value = '200';
+$analysis.appendChild($analysisPaneRun);
+$analysis.appendChild($analysisPaneCtx);
+
 // Колонка бесед (js/vk/dialogs.js).
 export const $dirList = el('vk-dir-list', 'ul');
 export const $dialogList = el('vk-dialog-list', 'ul');
@@ -326,6 +388,14 @@ export const $document = makeEl('#document');
 $document.getElementById = (id) => els.get(id) || null;
 $document.createElement = (tag) => makeEl(tag);
 $document.createTextNode = (t) => makeText(t);
+// Фрагмент нужен рендереру Markdown (js/messenger/markdown.js): он собирает
+// дерево ОТДЕЛЬНО и вставляет одной операцией. `nodeType: 11` — тот признак,
+// по которому appendChild выше растворяет фрагмент вместо вставки его самого.
+$document.createDocumentFragment = () => {
+    const frag = makeEl('#fragment');
+    frag.nodeType = 11;
+    return frag;
+};
 $document.body = $body;
 $document.documentElement = makeEl('html');
 $document.visibilityState = 'visible';
@@ -336,6 +406,12 @@ globalThis.location = {
     origin: 'http://localhost', pathname: '/', search: '',
 };
 globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
+// Кадр анимации. В Node его нет, а js/vk/analysis.js сливает накопленные дельты
+// именно им — без стаба модуль ушёл бы в резервную ветку с таймером, и тест
+// проверял бы не тот код, что выполняется в браузере. Кадр изображается
+// макрозадачей, поэтому его дожидается тот же `flush()`.
+globalThis.requestAnimationFrame = (cb) => setTimeout(() => cb(Date.now()), 0);
+globalThis.cancelAnimationFrame = (id) => clearTimeout(id);
 globalThis.history = { replaceState() {} };
 globalThis.window = {
     fetch: (...args) => globalThis.fetch(...args),

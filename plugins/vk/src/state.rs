@@ -270,6 +270,34 @@ pub struct VkState {
     /// держать их дольше минуты означало бы кэшировать ссылку, чего плагин не
     /// делает НИКОГДА (см. шапку [`crate::media_cache`]).
     pub message_cache: Mutex<Vec<CachedMessage>>,
+    /// Пер-чатовые заметки пользователя для анализа чата
+    /// ([`crate::analysis::prompts`]).
+    ///
+    /// Загружаются СИНХРОННО в конструкторе: файл локальный, маленький и
+    /// читается один раз, а ленивая инициализация потребовала бы `OnceCell` и
+    /// ветку «ещё не загружено» в каждом читателе. Сети конструктор при этом
+    /// по-прежнему не трогает — инвариант `init_never_touches_the_network`
+    /// (`lib.rs`) остаётся в силе.
+    ///
+    /// Под `Mutex`, а не `RwLock`: запись идёт по одной заметке из
+    /// HTTP-хендлера, чтений тоже единицы (открытие попапа и старт анализа) —
+    /// разделять читателей здесь нечего.
+    ///
+    /// Источник истины — ФАЙЛ: хендлер `PUT` меняет мапу и сразу сохраняет её
+    /// под тем же lock'ом, поэтому «сохранилось в памяти, но не на диске» —
+    /// состояние недостижимое.
+    /// Под `Arc` — потому что ту же мапу держит [`crate::analysis::AnalysisHub`]:
+    /// пампер сохраняет результат разбора из СВОЕЙ таски, которая переживает
+    /// HTTP-запрос и ссылки на `VkState` не имеет.
+    pub prompts: Arc<Mutex<crate::analysis::prompts::PromptStore>>,
+    /// Реестр активных анализов чата ([`crate::analysis::AnalysisHub`]).
+    ///
+    /// Создаётся в конструкторе безусловно, даже когда бинаря Claude CLI на
+    /// машине нет: `ClaudeRunner::new` в этом случае только warn'ит, а отказ
+    /// выносит роут кодом `409 claude_unavailable` — с путём и инструкцией.
+    /// Ронять старт вкладки из-за неустановленного CLI было бы несоразмерно:
+    /// анализ — одна кнопка, а не условие работы мессенджера.
+    pub analysis: crate::analysis::AnalysisHub,
 }
 
 /// Запись короткоживущего кэша сообщений (см. [`VkState::message_cache`]).
@@ -320,6 +348,21 @@ impl VkState {
         let (broadcast, _rx) = broadcast::channel(BROADCAST_CAPACITY);
         let login = LoginFlow::from_config(&config);
         let token = config.access_token.clone();
+        // Никаких `?`: `load` не умеет возвращать ошибку по построению —
+        // сломанный файл заметок не имеет права мешать плагину подняться.
+        let prompts = Arc::new(Mutex::new(crate::analysis::prompts::load(
+            &config.prompts_path,
+        )));
+        // Hub получает ТУ ЖЕ мапу и тот же путь: сохранение разбора по концу
+        // run'а идёт под тем же `Mutex`, что и правка заметки из хендлера.
+        // Ядро анализа общее на три мессенджера, поэтому конфиг ему передаётся
+        // полями, а не типом: `VkConfig` крейту не виден по построению.
+        let analysis = crate::analysis::AnalysisHub::new(
+            config.claude_cli_path.clone(),
+            config.analysis_model.clone(),
+            config.analysis_timeout_secs,
+        )
+        .with_store(prompts.clone(), config.prompts_path.clone());
         Arc::new(Self {
             config,
             token: RwLock::new(token),
@@ -340,6 +383,8 @@ impl VkState {
             media_inflight: Mutex::new(HashMap::new()),
             message_inflight: Mutex::new(HashMap::new()),
             message_cache: Mutex::new(Vec::new()),
+            prompts,
+            analysis,
         })
     }
 
@@ -352,6 +397,21 @@ impl VkState {
     /// Подписка на поток событий для нового WS-соединения.
     pub fn subscribe(&self) -> broadcast::Receiver<VkServerEvent> {
         self.broadcast.subscribe()
+    }
+
+    /// Приёмник кадров анализа для [`crate::analysis::AnalysisHub::start`].
+    ///
+    /// Ядро анализа живёт в общем крейте и про [`VkServerMsg`] не знает: оно
+    /// зовёт четыре метода трейта, а [`crate::ws::protocol::VkAnalysisSink`]
+    /// перекладывает их в наши кадры и шлёт в тот же broadcast. Хелпер здесь
+    /// (а не `Arc::new(...)` в каждом роуте) ради одного: приёмник обязан
+    /// вещать ИМЕННО в канал этого состояния, иначе кадры run'а не увидит ни
+    /// одна открытая вкладка.
+    #[must_use]
+    pub fn analysis_sink(&self) -> Arc<dyn crate::analysis::AnalysisSink> {
+        Arc::new(crate::ws::protocol::VkAnalysisSink::new(
+            self.broadcast.clone(),
+        ))
     }
 
     /// Снимок состояния логина для REST/WS.
@@ -380,6 +440,107 @@ impl VkState {
         if authorized {
             self.authorized_notify.notify_waiters();
         }
+    }
+
+    /// Заметка пользователя к беседе (снимок, не ссылка).
+    ///
+    /// Копия, а не guard: держать `Mutex` на время рендера ответа означало бы
+    /// сериализовать все запросы вкладки на одном локальном файле.
+    pub async fn chat_prompt(&self, dialog_id: &str) -> Option<crate::analysis::prompts::ChatPrompt> {
+        self.prompts.lock().await.get(dialog_id).cloned()
+    }
+
+    /// Записывает заметку к беседе и СРАЗУ сохраняет файл.
+    ///
+    /// Мапа и файл меняются под ОДНИМ lock'ом: иначе два одновременных
+    /// сохранения (две вкладки) могли бы записать файлы в порядке, обратном
+    /// порядку правок, и более старая заметка победила бы. Пустой текст —
+    /// удаление записи (см. [`crate::analysis::prompts::PromptStore::set`]).
+    ///
+    /// Возвращает сохранённую запись либо `None`, если заметка была стёрта.
+    ///
+    /// # Errors
+    ///
+    /// Ошибка записи файла. Память в этом случае УЖЕ изменена — но источник
+    /// истины файл, и следующий успешный `save` его выровняет; откатывать
+    /// правку значило бы показать пользователю старый текст в поле, куда он
+    /// только что напечатал новый.
+    pub async fn set_chat_prompt(
+        &self,
+        dialog_id: &str,
+        raw: &str,
+        now: i64,
+    ) -> anyhow::Result<Option<crate::analysis::prompts::ChatPrompt>> {
+        let mut guard = self.prompts.lock().await;
+        let entry = guard.set(dialog_id, raw, now);
+        crate::analysis::prompts::save(&self.config.prompts_path, &guard)?;
+        Ok(entry)
+    }
+
+    /// Последний сохранённый разбор беседы (снимок, не ссылка).
+    pub async fn chat_analysis(
+        &self,
+        dialog_id: &str,
+    ) -> Option<crate::analysis::prompts::ChatAnalysis> {
+        self.prompts.lock().await.analysis(dialog_id).cloned()
+    }
+
+    /// Записывает разбор беседы и СРАЗУ сохраняет файл.
+    ///
+    /// Та же дисциплина, что у [`Self::set_chat_prompt`]: мапа и файл меняются
+    /// под ОДНИМ lock'ом. Заметка при этом не трогается.
+    ///
+    /// # Errors
+    ///
+    /// Ошибка записи файла.
+    pub async fn set_chat_analysis(
+        &self,
+        dialog_id: &str,
+        text: &str,
+        last_message_id: i32,
+        messages_used: u32,
+        now: i64,
+    ) -> anyhow::Result<Option<crate::analysis::prompts::ChatAnalysis>> {
+        let mut guard = self.prompts.lock().await;
+        let entry = guard.set_analysis(dialog_id, text, last_message_id, messages_used, now);
+        crate::analysis::prompts::save(&self.config.prompts_path, &guard)?;
+        Ok(entry)
+    }
+
+    /// Стирает разбор беседы. Возвращает `true`, если он был.
+    ///
+    /// Ни заметку, ни тред не трогает — см.
+    /// [`crate::analysis::prompts::PromptStore::clear_analysis`].
+    ///
+    /// # Errors
+    ///
+    /// Ошибка записи файла.
+    pub async fn clear_chat_analysis(&self, dialog_id: &str) -> anyhow::Result<bool> {
+        let mut guard = self.prompts.lock().await;
+        let had = guard.clear_analysis(dialog_id);
+        crate::analysis::prompts::save(&self.config.prompts_path, &guard)?;
+        Ok(had)
+    }
+
+    /// Сохранённый тред вопросов беседы (снимок, не ссылка).
+    pub async fn chat_thread(&self, dialog_id: &str) -> Vec<crate::analysis::prompts::QaTurn> {
+        self.prompts.lock().await.thread(dialog_id).to_vec()
+    }
+
+    /// Стирает тред вопросов беседы («CLEAR Q&A»). Возвращает `true`, если он
+    /// был непустым.
+    ///
+    /// Ни заметку, ни разбор не трогает: три половины записи независимы, и это
+    /// главное функциональное требование доработки.
+    ///
+    /// # Errors
+    ///
+    /// Ошибка записи файла.
+    pub async fn clear_chat_thread(&self, dialog_id: &str) -> anyhow::Result<bool> {
+        let mut guard = self.prompts.lock().await;
+        let had = guard.clear_thread(dialog_id);
+        crate::analysis::prompts::save(&self.config.prompts_path, &guard)?;
+        Ok(had)
     }
 
     /// Актуальный токен.

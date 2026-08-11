@@ -421,6 +421,17 @@ setNet(() => Promise.resolve(jsonRes(200, { dialogs: [], has_more: false })));
         ['notify_settings', null],
         ['history_cleared', null],
         ['dialog_changed', null],
+        // Четвёрка кадров анализа чата: они приходят в ТУ ЖЕ карту, и мусор в
+        // них обязан гаснуть так же тихо. Попап при этом закрыт — обработчик,
+        // который делает работу без открытого окна, рисовал бы в никуда.
+        ['analysis_started', null],
+        ['analysis_started', {}],
+        ['analysis_delta', null],
+        ['analysis_delta', { text: null }],
+        ['analysis_done', null],
+        ['analysis_done', {}],
+        ['analysis_error', null],
+        ['analysis_error', { message: null }],
         ['typing', null],
         ['upload_progress', null],
         ['download_progress', null],

@@ -282,6 +282,10 @@ const $login = el('vk-login');
 // CAPTCHA — отличие VK: отдельный оверлей ВНЕ #vk-login, всплывает на любой
 // метод API, а не только на вход.
 const $captcha = el('vk-captcha');
+// Попап анализа чата: тот же класс гейта, что логин и CAPTCHA. Внутри него два
+// поля ввода (вопрос модели и заметка о беседе), и vim-навигация обязана
+// уступать им клавиатуру целиком.
+const $analysis = el('vk-analysis');
 el('vk-session-head');
 el('vk-file-input', 'input');
 el('vk-dropzone');
@@ -317,6 +321,7 @@ el('vk-captcha-error');
 $lightbox.hidden = true;
 $login.hidden = true;
 $captcha.hidden = true;
+$analysis.hidden = true;
 $panel.appendChild($contacts);
 $contacts.appendChild($dirList);
 $contacts.appendChild($dialogList);
@@ -672,6 +677,23 @@ eq(keynav.vkOwnsKeyboard(), false, 'гейт: при открытой CAPTCHA в
     ok(cursorNode() === null, 'CAPTCHA: курсор не появился');
 }
 $captcha.hidden = true;
+
+// Попап анализа: без этого гейта буквы `j` и `k` листали бы список бесед
+// вместо того, чтобы попадать в поле вопроса, — вопрос стало бы физически не
+// набрать.
+$analysis.hidden = false;
+eq(keynav.panelVisible(), false, 'гейт: открытый попап анализа = панель не готова');
+eq(keynav.vkOwnsKeyboard(), false, 'гейт: при открытом попапе анализа владения нет');
+{
+    keynav.clearCursor();
+    const eDown = press('KeyJ', 'j');
+    eq(eDown.defaultPrevented, false, 'анализ: `j` не перехвачен — буква уходит в textarea');
+    const eUp = press('KeyK', 'k');
+    eq(eUp.defaultPrevented, false, 'анализ: `k` не перехвачен');
+    ok(cursorNode() === null, 'анализ: курсор по беседам не появился');
+}
+$analysis.hidden = true;
+eq(keynav.panelVisible(), true, 'гейт: закрытый попап анализа возвращает навигацию');
 
 activeElement = null;
 eq(keynav.vkOwnsKeyboard(), true, 'гейт: фокус нигде — панель владеет');

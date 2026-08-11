@@ -30,6 +30,9 @@
 //   + history_cleared — событие 13 не несёт id удалённых сообщений, только
 //                       границу, поэтому message_deleted тут неприменим;
 //   + dialog_changed  — события 51/52: перечитывается строка списка;
+//   + analysis_*      — четвёрка кадров разбора чата через Claude; к LongPoll
+//                       отношения не имеет вовсе, это поток локального
+//                       процесса, вещаемый тем же сокетом;
 //   − notify_defaults_changed — глобальных категорий mute у VK нет, глушение
 //                       только per-peer, и ветки их пересчёта здесь тоже нет;
 //   − folders_changed — папок нет, их место заняли 4 серверных фильтра.
@@ -46,7 +49,7 @@
 
 import {
     $vkToggle, $vkUnreadBadge, $vkMode, $vkTitlebar, $vkLat, $vkSelfUser,
-    $vkLogout, $vkTyping,
+    $vkLogout, $vkTyping, $vkAnalysisToggle,
 } from '../core/dom.js';
 import { notify } from '../echo/notifications.js';
 
@@ -54,6 +57,10 @@ import { notify } from '../echo/notifications.js';
 // модуля: отсутствующая функция даёт «undefined is not a function» в одном
 // месте, а не роняет весь модуль вместе с панелью.
 import * as vkApi from './api.js';
+import {
+    initAnalysis, openAnalysis, teardownAnalysis, _debugAnalysisState,
+    onAnalysisStarted, onAnalysisDelta, onAnalysisDone, onAnalysisError,
+} from './analysis.js';
 import { closeCaptcha, initCaptcha } from './captcha.js';
 import * as vkChat from './chat.js';
 import * as vkMedia from './media.js';
@@ -823,6 +830,16 @@ export function buildHandlers() {
         // вся панель — подробности и честное ограничение см. в dialogs.js.
         dialog_changed: (evt) => vkDialogs.onDialogChanged(evt),
 
+        // --- анализ чата ---
+        // Кадры разбора через Claude. Здесь только делегирование: попап
+        // (js/vk/analysis.js) сам решает, его ли это run, — сервер вещает
+        // события БЕЗ фильтрации по беседе (ws/mod.rs), и в открытый попап
+        // одинаково прилетают кадры чужого разбора из соседней вкладки.
+        analysis_started: (evt) => onAnalysisStarted(evt),
+        analysis_delta: (evt) => onAnalysisDelta(evt),
+        analysis_done: (evt) => onAnalysisDone(evt),
+        analysis_error: (evt) => onAnalysisError(evt),
+
         // --- прогресс передачи файлов ---
         // Отправка (Ф8). ВАЖНО: у VK эти кадры приходят во время
         // `POST /messages`, а не во время `POST /upload` — конвейер
@@ -955,6 +972,15 @@ export function initVk() {
         onSelect: (id) => openDialogById(id),
     });
     vkChat.initChat({ onRead: scheduleRead, presenceOf: vkDialogs.presenceOf });
+    // Попап анализа — ДО лайтбокса: его слушатель Esc обязан зарегистрироваться
+    // РАНЬШЕ, иначе одно нажатие закрывало бы картинку под попапом, а сам
+    // попап оставался бы на экране.
+    initAnalysis({
+        onNotice: (text) => notify({ level: 'info', title: 'VK', body: text, ttl: 2600 }),
+    });
+    if ($vkAnalysisToggle) {
+        $vkAnalysisToggle.addEventListener('click', () => openAnalysis());
+    }
     // Лайтбокс — ПОСЛЕ ленты: его обработчик Esc обязан регистрироваться
     // позже, чем снятие полосы ответа (см. chat.js::onReplyEscape), иначе одно
     // нажатие закрыло бы и картинку, и цель ответа.
@@ -1041,6 +1067,9 @@ export function teardownVk() {
     // Слушатель клавиш в capture на document переживает выгрузку страницы в
     // bfcache и стрелял бы по мёртвому DOM.
     teardownKeynav();
+    // Попап анализа держит свой слушатель Esc на document и кадр анимации для
+    // склейки дельт — оба обязаны сняться здесь.
+    teardownAnalysis();
     // Таймеры «печатает…» и дебаунса прочтения переживают выгрузку страницы в
     // bfcache и стреляют по мёртвому DOM.
     clearTypingFor(null);
@@ -1063,6 +1092,7 @@ export function _debugState() {
         chat: vkChat._debugChatState(),
         media: vkMedia._debugMediaState(),
         upload: vkUpload._debugUploadState(),
+        analysis: _debugAnalysisState(),
         // Слагаемые бейджа — по ним видно, врёт ли счётчик и с какой стороны.
         serverUnread: local.serverUnread,
         unreadSinceServer: local.unreadSinceServer.size,
