@@ -56,15 +56,50 @@
     // Имена контрактов в window.ForgeApp — по одному на панель:
     //   telegramKeys — js/telegram/keynav.js
     //   vkKeys       — js/vk/keynav.js
+    //   b24Keys      — js/bitrix/keynav.js (регистрируется САМ, см. ниже)
     //
-    // Почему СПИСОК ИМЁН, а не общий реестр `app.keyboardOwners`, в который
-    // панели регистрируются сами: реестр потребовал бы правки работающего
-    // js/telegram/keynav.js — единственной причины трогать её ради нуля
-    // пользовательской выгоды. Независимого деплоя нет (hotkeys.js и обе
-    // панели собираются в один бинарь через rust-embed), а одно имя тут было
-    // захардкожено и до появления второй панели. Реестр вводить, когда
-    // появится третья.
-    const PANEL_KEY_CONTRACTS = ['telegramKeys', 'vkKeys'];
+    // ── РЕЕСТР (введён на третьей панели)
+    //
+    // Здесь стоял захардкоженный список имён и обещание: «реестр вводить,
+    // когда появится третья панель». Битрикс24 — третья, поэтому реестр
+    // введён: `window.ForgeApp.keyboardOwners` — МАССИВ имён контрактов, в
+    // который панель дописывает себя сама. Четвёртая панель этот файл уже не
+    // тронет вовсе.
+    //
+    // Почему массив в `ForgeApp`, а не объект с `register()`, живущий здесь.
+    // Этот файл — классический скрипт: он исполняется РАНЬШЕ модулей, а
+    // `js/public-api.js` затем ЗАМЕНЯЕТ `window.ForgeApp` целиком. Всё, что
+    // hotkeys.js положил бы туда на старте, было бы стёрто. Массив, читаемый
+    // лениво в момент нажатия, от порядка загрузки не зависит: кто первым
+    // дошёл — тот его и создал.
+    //
+    // Почему две панели остались ЗАСЕЯННЫМИ здесь, а не регистрируются сами.
+    // Регистрация требует правки `js/telegram/keynav.js` и `js/vk/keynav.js` —
+    // работающего кода двух панелей, менять который ради нуля пользовательской
+    // выгоды правило проекта запрещает. Поэтому имена панелей, появившихся ДО
+    // реестра, остаются засеянными: реестр их дополняет, а не заменяет.
+    const LEGACY_PANEL_KEY_CONTRACTS = ['telegramKeys', 'vkKeys'];
+
+    // Итоговый перечень имён: засев + то, что панели зарегистрировали сами.
+    //
+    // Считается на каждый опрос, а не кэшируется: регистрация происходит при
+    // входе на вкладку панели, то есть ПОЗЖЕ первых нажатий, и снимок,
+    // взятый однажды, застыл бы без третьей панели навсегда.
+    //
+    // @param {?object} app — window.ForgeApp
+    // @returns {Array<string>}
+    function panelKeyContracts(app) {
+        const extra = app && app.keyboardOwners;
+        if (!Array.isArray(extra) || extra.length === 0) return LEGACY_PANEL_KEY_CONTRACTS;
+        const out = LEGACY_PANEL_KEY_CONTRACTS.slice();
+        for (const name of extra) {
+            if (typeof name !== 'string') continue;
+            const trimmed = name.trim();
+            if (!trimmed || out.indexOf(trimmed) >= 0) continue;
+            out.push(trimmed);
+        }
+        return out;
+    }
 
     // Владеет ли клавиатурой какая-нибудь панель-мессенджер.
     //
@@ -82,7 +117,7 @@
     function panelOwnsKeys() {
         const app = window.ForgeApp;
         if (!app) return false;
-        for (const name of PANEL_KEY_CONTRACTS) {
+        for (const name of panelKeyContracts(app)) {
             const api = app[name];
             if (!api || typeof api.owns !== 'function') continue;
             try {

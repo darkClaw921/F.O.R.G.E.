@@ -990,6 +990,7 @@ mod tests {
         let cfg = TelegramConfig {
             session_path: dir.path().join("telegram.session"),
             cache_dir: dir.path().join("cache"),
+            prompts_path: dir.path().join("cache").join("chat-prompts.json"),
             ..TelegramConfig::default()
         };
         // Каталог нарочно не удаляется до конца процесса: тесты этого модуля

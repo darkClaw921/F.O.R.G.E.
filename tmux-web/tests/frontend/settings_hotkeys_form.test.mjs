@@ -157,6 +157,7 @@ const modUrl = new URL('../../static/js/settings/hotkeys-tab.js', import.meta.ur
 const F = await import(modUrl);
 const TG = await import(new URL('../../static/js/telegram/keys.js', import.meta.url).href);
 const VK = await import(new URL('../../static/js/vk/keys.js', import.meta.url).href);
+const B24 = await import(new URL('../../static/js/bitrix/keys.js', import.meta.url).href);
 
 // ---------------------------------------------------------------------------
 // Мини-фреймворк
@@ -233,17 +234,33 @@ eq(F.VK_HOTKEYS_CONFIG.enabledKey, 'vk_hotkeys_enabled', 'конфиг VK: им�
 eq(F.VK_HOTKEYS_CONFIG.mapKey, 'vk_hotkeys', 'конфиг VK: имя карты');
 ok(F.TELEGRAM_HOTKEYS_CONFIG.actions === TG.TG_ACTIONS, 'конфиг TG: реестр телеграмный');
 ok(F.VK_HOTKEYS_CONFIG.actions === VK.VK_ACTIONS, 'конфиг VK: реестр VK');
-// Поля настроек не пересекаются: одна форма не смеет затирать соседнюю панель.
-ok(F.TELEGRAM_HOTKEYS_CONFIG.enabledKey !== F.VK_HOTKEYS_CONFIG.enabledKey,
-    'конфиги: тумблеры адресуют РАЗНЫЕ поля');
-ok(F.TELEGRAM_HOTKEYS_CONFIG.mapKey !== F.VK_HOTKEYS_CONFIG.mapKey,
-    'конфиги: карты адресуют РАЗНЫЕ поля');
+eq(F.B24_HOTKEYS_CONFIG.enabledKey, 'bitrix_hotkeys_enabled', 'конфиг Б24: имя тумблера');
+eq(F.B24_HOTKEYS_CONFIG.mapKey, 'bitrix_hotkeys', 'конфиг Б24: имя карты');
+ok(F.B24_HOTKEYS_CONFIG.actions === B24.B24_ACTIONS, 'конфиг Б24: реестр Битрикс24');
+// Поля настроек не пересекаются НИ У ОДНОЙ ПАРЫ: одна форма не смеет затирать
+// соседнюю панель. Проверяется попарно по всем трём — с появлением третьей
+// панели «одна пара» перестала быть исчерпывающей проверкой.
+{
+    const cfgs = [F.TELEGRAM_HOTKEYS_CONFIG, F.VK_HOTKEYS_CONFIG, F.B24_HOTKEYS_CONFIG];
+    const enabledKeys = new Set(cfgs.map((c) => c.enabledKey));
+    const mapKeys = new Set(cfgs.map((c) => c.mapKey));
+    eq(enabledKeys.size, cfgs.length, 'конфиги: тумблеры адресуют РАЗНЫЕ поля');
+    eq(mapKeys.size, cfgs.length, 'конфиги: карты адресуют РАЗНЫЕ поля');
+    // И контракты панелей тоже разные — иначе сброс кэша одной панели
+    // инвалидировал бы чужие привязки.
+    eq(new Set(cfgs.map((c) => String(c.legend))).size, cfgs.length,
+        'конфиги: легенды различимы глазом');
+}
 
 // ---------------------------------------------------------------------------
 // 2. ГЕЙТ ДЕФОЛТА: тумблер включён, пока явно не выключили
 // ---------------------------------------------------------------------------
 
-for (const [name, cfg] of [['Telegram', F.TELEGRAM_HOTKEYS_CONFIG], ['VK', F.VK_HOTKEYS_CONFIG]]) {
+for (const [name, cfg] of [
+    ['Telegram', F.TELEGRAM_HOTKEYS_CONFIG],
+    ['VK', F.VK_HOTKEYS_CONFIG],
+    ['Битрикс24', F.B24_HOTKEYS_CONFIG],
+]) {
     eq(toggleOf(F.buildHotkeysForm({}, null, cfg)).checked, true,
         `${name}: пустые настройки — тумблер ВКЛЮЧЁН`);
     eq(toggleOf(F.buildHotkeysForm(null, null, cfg)).checked, true,
@@ -276,6 +293,7 @@ for (const [name, cfg] of [['Telegram', F.TELEGRAM_HOTKEYS_CONFIG], ['VK', F.VK_
 for (const [name, cfg, actions, groups] of [
     ['Telegram', F.TELEGRAM_HOTKEYS_CONFIG, TG.TG_ACTIONS, TG.TG_ACTION_GROUPS],
     ['VK', F.VK_HOTKEYS_CONFIG, VK.VK_ACTIONS, VK.VK_ACTION_GROUPS],
+    ['Битрикс24', F.B24_HOTKEYS_CONFIG, B24.B24_ACTIONS, B24.B24_ACTION_GROUPS],
 ]) {
     const fs = F.buildHotkeysForm({}, null, cfg);
     eq(fs.querySelector('legend').textContent, cfg.legend, `${name}: легенда своя`);
@@ -464,6 +482,38 @@ for (const [name, cfg, actions, groups] of [
         'Telegram: в теле ровно два телеграмных поля');
     eq(sent.body.telegram_hotkeys, { 'msg.copy': 'Ctrl+c' },
         'Telegram: своя карта сохранена, чужая не тронута');
+}
+
+// ---------------------------------------------------------------------------
+// 8. Третья панель (Битрикс24): своя карта, свой invalidate, чужие не задеты
+// ---------------------------------------------------------------------------
+
+{
+    const hits = [];
+    globalThis.window.ForgeApp = {
+        telegramKeys: { invalidate: () => hits.push('telegram') },
+        vkKeys: { invalidate: () => hits.push('vk') },
+        b24Keys: { invalidate: () => hits.push('b24') },
+    };
+    const fs = F.buildHotkeysForm(
+        {
+            telegram_hotkeys: { 'msg.copy': 'Ctrl+c' },
+            vk_hotkeys: { 'msg.copy': 'Ctrl+x' },
+            bitrix_hotkeys: { 'msg.like': 'Ctrl+l' },
+        },
+        null,
+        F.B24_HOTKEYS_CONFIG,
+    );
+    const before = patches.length;
+    dispatch(saveBtn(fs), 'click', {});
+    await flush(); await flush();
+    const sent = patches[patches.length - 1];
+    eq(patches.length, before + 1, 'Битрикс24: ушёл один PATCH');
+    eq(Object.keys(sent.body).sort(), ['bitrix_hotkeys', 'bitrix_hotkeys_enabled'],
+        'Битрикс24: в теле ровно два своих поля');
+    eq(sent.body.bitrix_hotkeys, { 'msg.like': 'Ctrl+l' },
+        'Битрикс24: своя карта сохранена, чужие не тронуты');
+    eq(hits, ['b24'], 'invalidate: форма Битрикс24 сбросила кэш ТОЛЬКО своей панели');
 }
 
 console.log(`${checks - failures}/${checks} ассертов прошло (frontend/settings_hotkeys_form)`);

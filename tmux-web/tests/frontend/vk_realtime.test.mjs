@@ -421,6 +421,17 @@ setNet(() => Promise.resolve(jsonRes(200, { dialogs: [], has_more: false })));
         ['notify_settings', null],
         ['history_cleared', null],
         ['dialog_changed', null],
+        // Четвёрка кадров анализа чата: они приходят в ТУ ЖЕ карту, и мусор в
+        // них обязан гаснуть так же тихо. Попап при этом закрыт — обработчик,
+        // который делает работу без открытого окна, рисовал бы в никуда.
+        ['analysis_started', null],
+        ['analysis_started', {}],
+        ['analysis_delta', null],
+        ['analysis_delta', { text: null }],
+        ['analysis_done', null],
+        ['analysis_done', {}],
+        ['analysis_error', null],
+        ['analysis_error', { message: null }],
         ['typing', null],
         ['upload_progress', null],
         ['download_progress', null],
@@ -468,6 +479,105 @@ setNet(() => Promise.resolve(jsonRes(200, { dialogs: [], has_more: false })));
     await settle(20);
     eq($unread.textContent, '1', 'открытая беседа считается прочитанной');
     eq(S.vkState.activeDialogId, '1', 'беседа стала активной');
+}
+
+// ---------------------------------------------------------------------------
+// 13. ДОГОН ОТКРЫТОЙ ЛЕНТЫ (forge-oy0c).
+//
+// Лента открытой беседы живёт кадрами `new_message`, и кадр, которого не было,
+// ей не восполняется ничем. Такое окно бывает трижды: страница ушла в фон
+// (suspendVk РВЁТ соединение), связь оборвалась, сервер прислал `resync`. До
+// forge-oy0c ни одна из трёх веток историю открытой беседы не перечитывала —
+// сообщение появлялось только после ухода в другую беседу и возврата.
+// ---------------------------------------------------------------------------
+
+{
+    reset();
+    setNet(() => Promise.resolve(jsonRes(200, { messages: [message(10, 1)], has_more: false })));
+    loadPage([dialog(1)]);
+    M.openDialogById('1');
+    await settle(20);
+    eq(S.vkState.messages.get('1').length, 1, 'исходная лента — одна строка');
+
+    // Пока связи не было, в беседе появилось второе сообщение. Кадра о нём не
+    // будет: он ушёл в закрытый сокет.
+    setNet(() => Promise.resolve(jsonRes(200, {
+        messages: [message(10, 1), message(12, 1, { text: 'пропущенное' })],
+        has_more: false,
+    })));
+
+    const added = await C.refreshActive();
+    await settle(10);
+    eq(added, 1, 'догон добавил ровно пропущенную строку');
+    eq(S.vkState.messages.get('1').map((m) => m.id), [10, 12], 'дубля старой строки нет');
+    ok($log.textContent.includes('пропущенное'), 'пропущенное сообщение нарисовано в ленте');
+
+    // Повторный догон без новостей ничего не добавляет и не плодит строк.
+    const again = await C.refreshActive();
+    await settle(10);
+    eq(again, 0, 'догон без новостей ничего не добавляет');
+    eq(S.vkState.messages.get('1').length, 2, 'лента не выросла на дублях');
+}
+
+{
+    // Кадр `resync` перечитывает не только колонку, но и открытую ленту.
+    reset();
+    setNet(() => Promise.resolve(jsonRes(200, { messages: [message(20, 1)], has_more: false })));
+    loadPage([dialog(1)]);
+    M.openDialogById('1');
+    await settle(20);
+
+    const calls = [];
+    setNet((url) => {
+        calls.push(String(url));
+        if (String(url).includes('/messages')) {
+            return Promise.resolve(jsonRes(200, {
+                messages: [message(20, 1), message(22, 1, { text: 'после resync' })],
+                has_more: false,
+            }));
+        }
+        return Promise.resolve(jsonRes(200, { dialogs: [dialog(1)], has_more: false }));
+    });
+
+    H.resync({ type: 'resync' });
+    await settle(40);
+    ok(calls.some((u) => u.includes('/messages')), 'resync перечитал историю открытой беседы');
+    ok($log.textContent.includes('после resync'), 'пропущенная строка появилась в ленте');
+}
+
+{
+    // ПЕРВОЕ подключение историю не перечитывает — её только что прочитал
+    // openDialog. Догон делает лишь РЕКОННЕКТ.
+    reset();
+    setNet(() => Promise.resolve(jsonRes(200, { messages: [message(30, 1)], has_more: false })));
+    loadPage([dialog(1)]);
+    M.openDialogById('1');
+    await settle(20);
+
+    const first = [];
+    setNet((url) => {
+        first.push(String(url));
+        return Promise.resolve(jsonRes(200, { messages: [message(30, 1)], has_more: false }));
+    });
+    H.open();
+    await settle(20);
+    eq(first.length, 0, 'первое подключение не тратит запрос на догон');
+
+    const second = [];
+    setNet((url) => {
+        second.push(String(url));
+        if (String(url).includes('/messages')) {
+            return Promise.resolve(jsonRes(200, {
+                messages: [message(30, 1), message(32, 1, { text: 'после реконнекта' })],
+                has_more: false,
+            }));
+        }
+        return Promise.resolve(jsonRes(200, { dialogs: [dialog(1)], has_more: false }));
+    });
+    H.open();
+    await settle(40);
+    ok(second.some((u) => u.includes('/messages')), 'реконнект догоняет открытую ленту');
+    ok($log.textContent.includes('после реконнекта'), 'пропущенное за обрыв дорисовано');
 }
 
 console.log(`vk_realtime: ${checks} проверок, ${failures} провалов`);

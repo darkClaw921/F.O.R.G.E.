@@ -119,10 +119,7 @@ pub fn parse_line(line: &str) -> Option<ClaudeEvent> {
     // Claude CLI с --include-partial-messages оборачивает каждое API-event
     // в `{"type":"stream_event","event":{...}}`. Разворачиваем обёртку.
     let v: serde_json::Value = if raw.get("type").and_then(|t| t.as_str()) == Some("stream_event") {
-        match raw.get("event") {
-            Some(inner) => inner.clone(),
-            None => return None,
-        }
+        raw.get("event")?.clone()
     } else {
         raw
     };

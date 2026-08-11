@@ -374,4 +374,198 @@ export async function fetchMedia(dialogId, messageId, kind) {
     throw err;
 }
 
+// ---------------------------------------------------------------------------
+// Анализ чата через Claude.
+//
+// Пути и формы тел БАЙТ В БАЙТ повторяют VK-шные (js/vk/api.js): попап один и
+// тот же (js/messenger/analysis-core.js), и расхождение в транспорте означало
+// бы «в VK работает, в Telegram нет».
+//
+//   GET    /api/telegram/dialogs/:id/prompt            getChatPrompt
+//   PUT    /api/telegram/dialogs/:id/prompt            putChatPrompt
+//   GET    /api/telegram/dialogs/:id/analysis          getSavedAnalysis
+//   POST   /api/telegram/dialogs/:id/analysis          startAnalysis
+//   DELETE /api/telegram/dialogs/:id/analysis          clearSavedAnalysis
+//   POST   /api/telegram/dialogs/:id/analysis/cancel   cancelAnalysis
+//   DELETE /api/telegram/dialogs/:id/analysis/thread   clearThread
+//
+// Лимитера у Telegram нет вовсе (в отличие от VK) — вызовы идут прямо через
+// общий `call`, разбирающий тот же конверт ошибок `{"error":{"code":…}}`.
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /api/telegram/dialogs/:id/prompt — заметка пользователя к чату.
+ *
+ * `max_chars` приходит С СЕРВЕРА и не зашивается в JS: счётчик символов в
+ * textarea обязан совпадать с лимитом, по которому сервер реально режет, —
+ * иначе пользователь допишет фразу, которая молча пропадёт.
+ *
+ * Отсутствие заметки — это `{prompt: '', updated_at: null}`, а НЕ 404: «нет
+ * заметки» и «пустая заметка» на этом роуте одно состояние.
+ *
+ * @param {string} dialogId
+ * @returns {Promise<{prompt: string, updated_at: ?number, max_chars: number}>}
+ */
+export async function getChatPrompt(dialogId) {
+    return call(`/api/telegram/dialogs/${encodeURIComponent(dialogId)}/prompt`);
+}
+
+/**
+ * PUT /api/telegram/dialogs/:id/prompt — сохранить заметку.
+ *
+ * Пустая строка СТИРАЕТ заметку, и это единственный способ её стереть:
+ * отдельного DELETE нет. Тело обязано присутствовать всегда — отсутствующий
+ * или битый JSON сервер считает `400 invalid_input`, а не «стереть».
+ *
+ * @param {string} dialogId
+ * @param {string} prompt
+ * @returns {Promise<{prompt: string, updated_at: ?number, max_chars: number}>}
+ */
+export async function putChatPrompt(dialogId, prompt) {
+    return call(
+        `/api/telegram/dialogs/${encodeURIComponent(dialogId)}/prompt`,
+        jsonInit('PUT', { prompt: String(prompt == null ? '' : prompt) }),
+    );
+}
+
+/**
+ * GET /api/telegram/dialogs/:id/analysis — последний СОХРАНЁННЫЙ разбор.
+ *
+ * Лежит в локальном файле, поэтому роут отвечает 200 и при мёртвой связи с
+ * Telegram: попап показывает прошлый разбор даже когда выгрузить новую
+ * историю нечем.
+ *
+ * «Разбора нет» — это `{text: '', updated_at: null, last_message_id: null}`, а
+ * НЕ 404: попап открывают и до первого запуска, и ошибка в этом месте была бы
+ * враньём о нормальном состоянии.
+ *
+ * `thread` ВСЕГДА массив: сервер отдаёт `[]` там, где вопросов не задавали, а
+ * потребитель (ядро попапа) обходит его циклом и не обязан помнить, что поля
+ * может не быть вовсе (старый бэкенд, кэш PWA со старым фронтом).
+ * Нормализация здесь, а не у потребителя: точка входа данных одна.
+ *
+ * @param {string} dialogId
+ * @returns {Promise<{text: string, last_message_id: ?number,
+ *   messages_used: number, updated_at: ?number, max_chars: number,
+ *   thread: Array<{q: string, a: string, at: ?number}>}>}
+ */
+export async function getSavedAnalysis(dialogId) {
+    const dto = await call(`/api/telegram/dialogs/${encodeURIComponent(dialogId)}/analysis`);
+    const raw = dto && Array.isArray(dto.thread) ? dto.thread : [];
+    const thread = raw
+        .filter((t) => t && typeof t === 'object')
+        .map((t) => ({
+            q: String(t.q == null ? '' : t.q),
+            a: String(t.a == null ? '' : t.a),
+            at: Number.isFinite(t.at) ? Number(t.at) : null,
+        }));
+    return Object.assign({}, dto, { thread });
+}
+
+/**
+ * DELETE /api/telegram/dialogs/:id/analysis — стереть сохранённый разбор.
+ *
+ * Заметку чата НЕ трогает: в попапе это две разные кнопки и в хранилище две
+ * разные величины. `{cleared: false}` — не ошибка, а «стирать было нечего»
+ * (две вкладки нажали подряд).
+ *
+ * @param {string} dialogId
+ * @returns {Promise<{cleared: boolean}>}
+ */
+export async function clearSavedAnalysis(dialogId) {
+    return call(
+        `/api/telegram/dialogs/${encodeURIComponent(dialogId)}/analysis`,
+        jsonInit('DELETE', {}),
+    );
+}
+
+/**
+ * DELETE /api/telegram/dialogs/:id/analysis/thread — стереть ТОЛЬКО тред.
+ *
+ * Отдельный путь, а не `?thread=1` у общего DELETE: так разведение кнопок
+ * становится буквальным — CLEAR ✕ и CLEAR Q&A бьют в РАЗНЫЕ адреса и не могут
+ * стереть чужое. Ни разбор, ни заметку чата не трогает. `{cleared: false}` —
+ * не ошибка, а «стирать было нечего».
+ *
+ * @param {string} dialogId
+ * @returns {Promise<{cleared: boolean}>}
+ */
+export async function clearThread(dialogId) {
+    return call(
+        `/api/telegram/dialogs/${encodeURIComponent(dialogId)}/analysis/thread`,
+        jsonInit('DELETE', {}),
+    );
+}
+
+/**
+ * POST /api/telegram/dialogs/:id/analysis — запустить разбор или задать вопрос.
+ *
+ * Ответ приходит СРАЗУ, в момент запуска процесса: текст модели едет кадрами
+ * `analysis_delta` по /ws/telegram, финал — `analysis_done`. Держать HTTP
+ * открытым на всю генерацию нельзя, её оборвёт любой прокси между браузером и
+ * devforge.
+ *
+ * `attached: true` означает, что нового процесса не запускалось — мы
+ * подключились к уже идущему run'у (вторая вкладка, повторный клик).
+ *
+ * ТРИ вида запуска (`kind`):
+ * - `analyze` — полный разбор выгруженной истории;
+ * - `ask` — вопрос по той же истории (сохранённый разбор не трогает);
+ * - `refresh` — дочитать только сообщения новее сохранённого разбора и
+ *   вернуть ОБНОВЛЁННЫЙ ЦЕЛЬНЫЙ разбор, который заменит прошлый.
+ *
+ * ДВА исхода `refresh`, о которых обязан знать вызывающий:
+ * - сохранённого разбора нет ⇒ `400 invalid_input` (сначала полный разбор);
+ * - новых сообщений нет ⇒ `200 {run_id: null, no_new_messages: true}`. Это
+ *   штатный ответ, а не ошибка: модель не запускалась, кадров не будет, и
+ *   ждать их нельзя — попап навсегда остался бы в «идёт разбор».
+ *
+ * Необязательные поля НЕ отправляются вовсе, если их нет: сервер отличает
+ * отсутствующий `depth` (взять значение по умолчанию) от переданного.
+ *
+ * @param {string} dialogId
+ * @param {{kind: 'analyze'|'ask'|'refresh', question?: string, depth?: number,
+ *   history?: Array<{q: string, a: string}>}} opts
+ * @returns {Promise<{run_id: ?string, attached: boolean, messages_used: number,
+ *   truncated: boolean, no_new_messages: boolean}>}
+ */
+export async function startAnalysis(dialogId, opts) {
+    const o = opts || {};
+    const body = { kind: String(o.kind || 'analyze') };
+    if (o.question != null && String(o.question) !== '') body.question = String(o.question);
+    if (Number.isFinite(o.depth) && o.depth > 0) body.depth = Number(o.depth);
+    if (Array.isArray(o.history) && o.history.length) {
+        body.history = o.history.map((t) => ({
+            q: String((t && t.q) || ''),
+            a: String((t && t.a) || ''),
+        }));
+    }
+    return call(
+        `/api/telegram/dialogs/${encodeURIComponent(dialogId)}/analysis`,
+        jsonInit('POST', body),
+    );
+}
+
+/**
+ * POST /api/telegram/dialogs/:id/analysis/cancel — остановить идущий разбор.
+ *
+ * `runId` необязателен: без него сервер гасит тот run, что идёт по этому чату.
+ * Именно так кнопка «стоп» продолжает работать после перезагрузки вкладки,
+ * потерявшей `run_id`.
+ *
+ * `{cancelled: false}` — не ошибка: гасить было нечего (run уже закончился).
+ *
+ * @param {string} dialogId
+ * @param {?string} [runId]
+ * @returns {Promise<{cancelled: boolean}>}
+ */
+export async function cancelAnalysis(dialogId, runId) {
+    const body = {};
+    if (runId) body.run_id = String(runId);
+    return call(
+        `/api/telegram/dialogs/${encodeURIComponent(dialogId)}/analysis/cancel`,
+        jsonInit('POST', body),
+    );
+}
+
 export { call as _call, jsonInit as _jsonInit };

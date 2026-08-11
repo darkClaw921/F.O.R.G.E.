@@ -26,6 +26,18 @@
 //   POST /api/vk/dialogs/:id/typing                  sendTyping            (Ф4)
 //   POST /api/vk/dialogs/:id/messages/:mid/button    pressButton           (Ф9)
 //   GET  /api/vk/media/:peer/:mid/:idx               mediaUrl / fetchMedia (Ф7)
+//   GET  /api/vk/dialogs/:id/prompt                  getChatPrompt         (АЧ-Ф1)
+//   PUT  /api/vk/dialogs/:id/prompt                  putChatPrompt         (АЧ-Ф1)
+//   GET  /api/vk/dialogs/:id/analysis                getSavedAnalysis      (АЧ-И1)
+//   DELETE /api/vk/dialogs/:id/analysis              clearSavedAnalysis    (АЧ-И1)
+//   POST /api/vk/dialogs/:id/analysis                startAnalysis         (АЧ-Ф3)
+//   DELETE /api/vk/dialogs/:id/analysis/thread       clearThread           (АЧ-И2)
+//   POST /api/vk/dialogs/:id/analysis/cancel         cancelAnalysis        (АЧ-Ф3)
+//
+// («АЧ» — фазы фичи «Анализ чата через Claude», нумерация у неё своя; «АЧ-И» —
+// её доработки: «И1» — сохраняемый и инкрементальный анализ, «И2» — тред
+// вопросов на сервере. Ровно те же пометки стоят в шапке
+// plugins/vk/src/routes/mod.rs.)
 //
 // `dialogs`, а НЕ `conversations`: решение Ф1.1, см. js/vk/state.js.
 //
@@ -401,4 +413,192 @@ export function mediaUrl(dialogId, messageId, index, kind) {
  */
 export async function fetchMedia(dialogId, messageId, index, kind) {
     return apiFetch(mediaUrl(dialogId, messageId, index, kind));
+}
+
+// ---------------------------------------------------------------------------
+// Анализ чата через Claude (АЧ-Ф1/Ф3).
+//
+// Место в бюджете 3 rps: очередь js/vk/ratelimit.js берёт ВЫЗЫВАЮЩИЙ
+// (js/vk/analysis.js делает `await vkLimiter.acquire(PRIORITY_USER)` перед
+// каждым из этих вызовов) — ровно как chat.js и dialogs.js. Планировщик не
+// импортируется сюда намеренно: api.js остаётся чистым транспортом, иначе
+// один и тот же запрос занимал бы место в очереди дважды.
+//
+// Все четыре идут через `callC`, а не через голый `call`: код 14 у VK
+// прилетает на ЛЮБОЙ метод, в том числе на выгрузку истории внутри
+// `POST /analysis`, и ошибка обязана донести до captcha.js поле `err.captcha`.
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /api/vk/dialogs/:id/prompt — заметка пользователя к беседе.
+ *
+ * `max_chars` приходит С СЕРВЕРА и не зашивается в JS: счётчик символов в
+ * textarea обязан совпадать с лимитом, по которому сервер реально режет, —
+ * иначе пользователь допишет фразу, которая молча пропадёт.
+ *
+ * Отсутствие заметки — это `{prompt: '', updated_at: null}`, а НЕ 404: «нет
+ * заметки» и «пустая заметка» на этом роуте одно состояние.
+ *
+ * @param {string} dialogId
+ * @returns {Promise<{prompt: string, updated_at: ?number, max_chars: number}>}
+ */
+export async function getChatPrompt(dialogId) {
+    return callC(`/api/vk/dialogs/${seg(dialogId)}/prompt`);
+}
+
+/**
+ * PUT /api/vk/dialogs/:id/prompt — сохранить заметку.
+ *
+ * Пустая строка СТИРАЕТ заметку, и это единственный способ её стереть:
+ * отдельного DELETE нет. Тело обязано присутствовать всегда — отсутствующий
+ * или битый JSON сервер считает `400 invalid_input`, а не «стереть».
+ *
+ * @param {string} dialogId
+ * @param {string} prompt
+ * @returns {Promise<{prompt: string, updated_at: ?number, max_chars: number}>}
+ */
+export async function putChatPrompt(dialogId, prompt) {
+    return callC(
+        `/api/vk/dialogs/${seg(dialogId)}/prompt`,
+        jsonInit('PUT', { prompt: String(prompt == null ? '' : prompt) }),
+    );
+}
+
+/**
+ * GET /api/vk/dialogs/:id/analysis — последний СОХРАНЁННЫЙ разбор беседы.
+ *
+ * Лежит в том же локальном файле, что и заметка, поэтому роут отвечает 200 и
+ * при мёртвой сети VK: попап показывает прошлый разбор даже когда выгрузить
+ * новую историю нечем.
+ *
+ * «Разбора нет» — это `{text: '', updated_at: null, last_message_id: null}`, а
+ * НЕ 404: попап открывают и до первого запуска, и ошибка в этом месте была бы
+ * враньём о нормальном состоянии.
+ *
+ * `last_message_id` — точка отсчёта REFRESH (до какого сообщения разобрано).
+ * Фронту она нужна только как признак «есть от чего считать новые»; сам номер
+ * в запрос не уезжает — его берёт сервер из своего же хранилища.
+ *
+ * `thread` — сохранённый тред вопросов и ответов (АЧ-И2), от старых к новым.
+ * Он ВСЕГДА массив: сервер отдаёт `[]` там, где вопросов не задавали, а
+ * потребитель (js/vk/analysis.js) обходит его циклом и не обязан помнить, что
+ * поля может не быть вовсе (старый бэкенд, кэш PWA со старым фронтом).
+ * Нормализация здесь, а не у потребителя: точка входа данных одна.
+ *
+ * @param {string} dialogId
+ * @returns {Promise<{text: string, last_message_id: ?number,
+ *   messages_used: number, updated_at: ?number, max_chars: number,
+ *   thread: Array<{q: string, a: string, at: ?number}>}>}
+ */
+export async function getSavedAnalysis(dialogId) {
+    const dto = await callC(`/api/vk/dialogs/${seg(dialogId)}/analysis`);
+    const raw = dto && Array.isArray(dto.thread) ? dto.thread : [];
+    const thread = raw
+        .filter((t) => t && typeof t === 'object')
+        .map((t) => ({
+            q: String(t.q == null ? '' : t.q),
+            a: String(t.a == null ? '' : t.a),
+            at: Number.isFinite(t.at) ? Number(t.at) : null,
+        }));
+    return Object.assign({}, dto, { thread });
+}
+
+/**
+ * DELETE /api/vk/dialogs/:id/analysis/thread — стереть ТОЛЬКО тред вопросов.
+ *
+ * Отдельный путь, а не `?thread=1` у общего DELETE: query-параметры в этом
+ * плагине разбираются вручную (`RawQuery`), потому что `Query<T>` ломает
+ * auth-лестницу маршрута. Заодно это делает разведение кнопок буквальным —
+ * CLEAR ✕ и CLEAR Q&A бьют в РАЗНЫЕ адреса и не могут стереть чужое.
+ *
+ * Ни разбор, ни заметку беседы не трогает. `{cleared: false}` — не ошибка, а
+ * «стирать было нечего» (две вкладки нажали подряд).
+ *
+ * @param {string} dialogId
+ * @returns {Promise<{cleared: boolean}>}
+ */
+export async function clearThread(dialogId) {
+    return callC(
+        `/api/vk/dialogs/${seg(dialogId)}/analysis/thread`,
+        jsonInit('DELETE', {}),
+    );
+}
+
+/**
+ * DELETE /api/vk/dialogs/:id/analysis — стереть сохранённый разбор.
+ *
+ * Заметку беседы НЕ трогает: в попапе это две разные кнопки и в хранилище две
+ * разные величины. `{cleared: false}` — не ошибка, а «стирать было нечего»
+ * (две вкладки нажали подряд).
+ *
+ * @param {string} dialogId
+ * @returns {Promise<{cleared: boolean}>}
+ */
+export async function clearSavedAnalysis(dialogId) {
+    return callC(`/api/vk/dialogs/${seg(dialogId)}/analysis`, jsonInit('DELETE', {}));
+}
+
+/**
+ * POST /api/vk/dialogs/:id/analysis — запустить разбор или задать вопрос.
+ *
+ * Ответ приходит СРАЗУ, в момент запуска процесса: текст модели едет кадрами
+ * `analysis_delta` по /ws/vk, финал — `analysis_done`. Держать HTTP открытым
+ * на всю генерацию нельзя, её оборвёт любой прокси между браузером и devforge.
+ *
+ * `attached: true` означает, что нового процесса не запускалось — мы
+ * подключились к уже идущему run'у (вторая вкладка, повторный клик).
+ *
+ * ТРИ вида запуска (`kind`):
+ * - `analyze` — полный разбор выгруженной истории;
+ * - `ask` — вопрос по той же истории (сохранённый разбор не трогает);
+ * - `refresh` — дочитать только сообщения новее сохранённого разбора и
+ *   вернуть ОБНОВЛЁННЫЙ ЦЕЛЬНЫЙ разбор, который заменит прошлый.
+ *
+ * ДВА исхода `refresh`, о которых обязан знать вызывающий:
+ * - сохранённого разбора нет ⇒ `400 invalid_input` (сначала полный разбор);
+ * - новых сообщений нет ⇒ `200 {run_id: null, no_new_messages: true}`. Это
+ *   штатный ответ, а не ошибка: модель не запускалась, кадров по /ws/vk не
+ *   будет, и ждать их нельзя — попап навсегда остался бы в «идёт разбор».
+ *   Именно ради этого случая `run_id` стал nullable.
+ *
+ * Необязательные поля НЕ отправляются вовсе, если их нет: сервер отличает
+ * отсутствующий `depth` (взять значение по умолчанию) от переданного.
+ *
+ * @param {string} dialogId
+ * @param {{kind: 'analyze'|'ask'|'refresh', question?: string, depth?: number,
+ *   history?: Array<{q: string, a: string}>}} opts
+ * @returns {Promise<{run_id: ?string, attached: boolean, messages_used: number,
+ *   truncated: boolean, no_new_messages: boolean}>}
+ */
+export async function startAnalysis(dialogId, opts) {
+    const o = opts || {};
+    const body = { kind: String(o.kind || 'analyze') };
+    if (o.question != null && String(o.question) !== '') body.question = String(o.question);
+    if (Number.isFinite(o.depth) && o.depth > 0) body.depth = Number(o.depth);
+    if (Array.isArray(o.history) && o.history.length) {
+        body.history = o.history.map((t) => ({
+            q: String((t && t.q) || ''),
+            a: String((t && t.a) || ''),
+        }));
+    }
+    return callC(`/api/vk/dialogs/${seg(dialogId)}/analysis`, jsonInit('POST', body));
+}
+
+/**
+ * POST /api/vk/dialogs/:id/analysis/cancel — остановить идущий разбор.
+ *
+ * `runId` необязателен: без него сервер гасит тот run, что идёт по этой
+ * беседе. Именно так кнопка «стоп» продолжает работать после перезагрузки
+ * вкладки, потерявшей `run_id`.
+ *
+ * `{cancelled: false}` — не ошибка: гасить было нечего (run уже закончился).
+ *
+ * @param {string} dialogId
+ * @param {?string} [runId]
+ * @returns {Promise<{cancelled: boolean}>}
+ */
+export async function cancelAnalysis(dialogId, runId) {
+    const body = {};
+    if (runId) body.run_id = String(runId);
+    return callC(`/api/vk/dialogs/${seg(dialogId)}/analysis/cancel`, jsonInit('POST', body));
 }

@@ -15,6 +15,7 @@
 //!    - `FORGE_VK_MAX_CACHE_BYTES`
 //!    - `FORGE_VK_RATE_LIMIT_RPS`
 //!    - `FORGE_VK_LONGPOLL_WAIT_SECS`
+//!    - `FORGE_VK_PROMPTS_PATH`
 //! 4. [`VkConfig::validate`] / [`VkConfig::validate_and_fix`] — проверка
 //!    инвариантов, зажим числовых полей в разумные границы и создание
 //!    `cache_dir`.
@@ -87,6 +88,35 @@ pub const MAX_RATE_LIMIT_RPS: u32 = 20;
 /// `wait + 10`.
 pub const MAX_LONGPOLL_WAIT_SECS: u64 = 90;
 
+/// Таймаут одного анализа чата, секунды. `0` ⇒ таймаут выключен.
+///
+/// Значение совпадает с [`forge_claude_runner::DEFAULT_RUN_TIMEOUT_SECS`] и
+/// продублировано здесь намеренно: это ДЕФОЛТ КОНФИГА плагина, а раннер живёт
+/// в чужом крейте и о `vk.toml` ничего не знает.
+pub const DEFAULT_ANALYSIS_TIMEOUT_SECS: u64 = 300;
+
+/// Потолок транскрипта, отдаваемого модели, в CODE POINTS.
+///
+/// Совпадает с [`crate::analysis::context::MAX_TRANSCRIPT_CHARS`]: константа
+/// задаёт величину, конфиг — возможность её подвинуть на конкретной машине.
+pub const DEFAULT_ANALYSIS_MAX_CHARS: usize = 60_000;
+
+/// Нижняя граница `analysis_max_chars`. Меньше 5 000 символов транскрипт
+/// перестаёт быть перепиской: в него влезает десяток реплик, и любой ответ
+/// модели будет выводом «данных не хватает».
+pub const MIN_ANALYSIS_MAX_CHARS: usize = 5_000;
+
+/// Верхняя граница `analysis_max_chars`. 200 000 code points — это уже около
+/// 50 тысяч токенов на один запрос; выше значение означает опечатку, а не
+/// намерение.
+pub const MAX_ANALYSIS_MAX_CHARS: usize = 200_000;
+
+/// Модель Claude для анализа чата по умолчанию.
+///
+/// `sonnet`, а не `opus`: анализ запускается кнопкой и должен стоить дёшево;
+/// значение — зафиксированное решение, а не подбор.
+pub const DEFAULT_ANALYSIS_MODEL: &str = "sonnet";
+
 /// Дефолтный путь TOML-конфига плагина (`~/.config/forge/vk.toml`).
 pub fn default_config_path() -> PathBuf {
     if let Some(home) = std::env::var_os("HOME") {
@@ -107,6 +137,48 @@ pub fn config_path() -> PathBuf {
     match std::env::var_os("FORGE_VK_CONFIG_PATH") {
         Some(v) if !v.is_empty() => PathBuf::from(v),
         _ => default_config_path(),
+    }
+}
+
+/// Дефолтный путь хранилища пер-чатовых промптов
+/// (`~/.forge/vk-chat-prompts.json`).
+///
+/// Рядом с кэшем медиа, а НЕ рядом с `vk.toml`: это пользовательские данные
+/// вкладки, а не настройки, и переносить их вместе с конфигом (в котором
+/// лежит секрет) незачем.
+pub fn default_prompts_path() -> PathBuf {
+    if let Some(home) = std::env::var_os("HOME") {
+        PathBuf::from(home).join(".forge/vk-chat-prompts.json")
+    } else {
+        PathBuf::from("./vk-chat-prompts.json")
+    }
+}
+
+/// Фактический путь хранилища промптов: непустой `FORGE_VK_PROMPTS_PATH`
+/// побеждает, иначе — [`default_prompts_path`].
+///
+/// Существует по той же причине, что и [`config_path`], и это не
+/// теоретическая аккуратность: [`crate::analysis::prompts::save`] ПИШЕТ по
+/// этому пути, и без override любой `cargo test`, дёрнувший сохранение,
+/// затирал бы живые заметки разработчика в `~/.forge`.
+pub fn prompts_path() -> PathBuf {
+    match std::env::var_os("FORGE_VK_PROMPTS_PATH") {
+        Some(v) if !v.is_empty() => PathBuf::from(v),
+        _ => default_prompts_path(),
+    }
+}
+
+/// Дефолтный путь бинаря Claude CLI (`$HOME/.local/bin/claude`).
+///
+/// Тот же дефолт, что у `forge_echo::config` (`plugins/echo/src/config.rs`):
+/// два плагина запускают ОДИН И ТОТ ЖЕ CLI, и разные умолчания означали бы,
+/// что чат Echo работает, а анализ чата VK — нет, без единого сообщения о
+/// причине.
+pub fn default_claude_cli_path() -> PathBuf {
+    if let Some(home) = std::env::var_os("HOME") {
+        PathBuf::from(home).join(".local/bin/claude")
+    } else {
+        PathBuf::from("claude")
     }
 }
 
@@ -141,6 +213,18 @@ fn default_rate_limit_rps() -> u32 {
 
 fn default_longpoll_wait_secs() -> u64 {
     DEFAULT_LONGPOLL_WAIT_SECS
+}
+
+fn default_analysis_timeout_secs() -> u64 {
+    DEFAULT_ANALYSIS_TIMEOUT_SECS
+}
+
+fn default_analysis_max_chars() -> usize {
+    DEFAULT_ANALYSIS_MAX_CHARS
+}
+
+fn default_analysis_model() -> Option<String> {
+    Some(DEFAULT_ANALYSIS_MODEL.to_string())
 }
 
 /// Пользовательский access-токен VK.
@@ -266,6 +350,43 @@ pub struct VkConfig {
     /// может задеть реальный `~/.config/forge/vk.toml` пользователя.
     #[serde(skip, default = "config_path")]
     pub config_path: PathBuf,
+    /// Файл пер-чатовых заметок для анализа чата
+    /// ([`crate::analysis::prompts`]).
+    ///
+    /// Из TOML НЕ читается по той же причине, что и [`Self::config_path`], и
+    /// хранится ОТДЕЛЬНЫМ полем, а не вызовом [`prompts_path`] в момент
+    /// записи: `std::env` — process-global, и тест, подменивший переменную,
+    /// гонялся бы с соседним, который в этот момент сохраняет заметку. С полем
+    /// каждый тест указывает свой tempdir и физически не может задеть живой
+    /// `~/.forge/vk-chat-prompts.json`.
+    #[serde(skip, default = "prompts_path")]
+    pub prompts_path: PathBuf,
+    /// Путь бинаря Claude CLI для анализа чата (АЧ-Ф3).
+    ///
+    /// В ОТЛИЧИЕ от [`Self::config_path`] и [`Self::prompts_path`] читается из
+    /// TOML: это настройка машины (CLI ставят и в `/opt/homebrew/bin`, и в
+    /// `~/.bun/bin`), а не путь к самому конфигу. Ровно этот путь называет
+    /// ошибка `409 claude_unavailable`, чтобы пользователь знал, что править.
+    #[serde(default = "default_claude_cli_path")]
+    pub claude_cli_path: PathBuf,
+    /// Таймаут одного анализа, секунды. `0` ⇒ выключен.
+    ///
+    /// Уезжает в `ClaudeRunner::with_run_timeout`. Без него зависший CLI
+    /// держал бы слот [`crate::analysis::MAX_PARALLEL_ANALYSIS`] вечно, а
+    /// пользователь смотрел бы в попап без единого кадра.
+    #[serde(default = "default_analysis_timeout_secs")]
+    pub analysis_timeout_secs: u64,
+    /// Потолок транскрипта в CODE POINTS
+    /// ([`MIN_ANALYSIS_MAX_CHARS`]..=[`MAX_ANALYSIS_MAX_CHARS`]).
+    #[serde(default = "default_analysis_max_chars")]
+    pub analysis_max_chars: usize,
+    /// Модель Claude (`--model`). `None` ⇒ дефолт самого CLI.
+    ///
+    /// Значение по умолчанию — [`DEFAULT_ANALYSIS_MODEL`] (`sonnet`), а НЕ
+    /// `None`: полагаться на дефолт CLI означало бы, что стоимость анализа
+    /// меняется от чужих настроек `~/.claude`.
+    #[serde(default = "default_analysis_model")]
+    pub analysis_model: Option<String>,
 }
 
 impl Default for VkConfig {
@@ -280,6 +401,11 @@ impl Default for VkConfig {
             rate_limit_rps: default_rate_limit_rps(),
             longpoll_wait_secs: default_longpoll_wait_secs(),
             config_path: config_path(),
+            prompts_path: prompts_path(),
+            claude_cli_path: default_claude_cli_path(),
+            analysis_timeout_secs: default_analysis_timeout_secs(),
+            analysis_max_chars: default_analysis_max_chars(),
+            analysis_model: default_analysis_model(),
         }
     }
 }
@@ -379,6 +505,32 @@ impl VkConfig {
                 self.cache_dir = PathBuf::from(v);
             }
         }
+        if let Ok(v) = std::env::var("FORGE_VK_PROMPTS_PATH") {
+            if !v.is_empty() {
+                self.prompts_path = PathBuf::from(v);
+            }
+        }
+        if let Ok(v) = std::env::var("FORGE_VK_CLAUDE_CLI_PATH") {
+            if !v.is_empty() {
+                self.claude_cli_path = PathBuf::from(v);
+            }
+        }
+        if let Ok(v) = std::env::var("FORGE_VK_ANALYSIS_MODEL") {
+            // Пустая строка здесь ЗНАЧИМА: `FORGE_VK_ANALYSIS_MODEL=` — это
+            // «не передавать --model вовсе», единственный способ вернуться к
+            // дефолту самого CLI, не редактируя vk.toml.
+            let t = v.trim();
+            self.analysis_model = (!t.is_empty()).then(|| t.to_string());
+        }
+        apply_env_u64(
+            "FORGE_VK_ANALYSIS_TIMEOUT_SECS",
+            &mut self.analysis_timeout_secs,
+        );
+        {
+            let mut chars = self.analysis_max_chars as u64;
+            apply_env_u64("FORGE_VK_ANALYSIS_MAX_CHARS", &mut chars);
+            self.analysis_max_chars = usize::try_from(chars).unwrap_or(usize::MAX);
+        }
         apply_env_u64("FORGE_VK_MAX_UPLOAD_BYTES", &mut self.max_upload_bytes);
         apply_env_u64("FORGE_VK_MAX_CACHE_BYTES", &mut self.max_cache_bytes);
         apply_env_u64("FORGE_VK_LONGPOLL_WAIT_SECS", &mut self.longpoll_wait_secs);
@@ -469,6 +621,61 @@ impl VkConfig {
             self.longpoll_wait_secs = default_longpoll_wait_secs();
         }
         self.cache_dir = expand_tilde(&self.cache_dir);
+        // Пустое значение означало бы запись в «» — то есть тихую потерю всех
+        // заметок; относительное превратилось бы в РАЗНЫЕ файлы при разном
+        // рабочем каталоге процесса (devforge запускают и из репозитория, и
+        // из systemd). Поэтому путь приводится к абсолютному ЗДЕСЬ, один раз.
+        self.prompts_path = expand_tilde(&self.prompts_path);
+        if self.prompts_path.as_os_str().is_empty() {
+            tracing::warn!(
+                target: "forge_vk",
+                "forge-vk: empty prompts_path; falling back to default"
+            );
+            self.prompts_path = default_prompts_path();
+        }
+        if self.prompts_path.is_relative() {
+            if let Ok(cwd) = std::env::current_dir() {
+                self.prompts_path = cwd.join(&self.prompts_path);
+            }
+        }
+        self.claude_cli_path = expand_tilde(&self.claude_cli_path);
+        if self.claude_cli_path.as_os_str().is_empty() {
+            tracing::warn!(
+                target: "forge_vk",
+                "forge-vk: empty claude_cli_path; falling back to default"
+            );
+            self.claude_cli_path = default_claude_cli_path();
+        }
+        // Существование бинаря ЗДЕСЬ не проверяется намеренно: анализ — не
+        // условие работы вкладки, и отсутствие CLI не имеет права ни ронять
+        // старт, ни подменять путь. Отказ выносит роут, кодом
+        // `409 claude_unavailable`, и называет ровно этот путь.
+        if self.analysis_max_chars < MIN_ANALYSIS_MAX_CHARS
+            || self.analysis_max_chars > MAX_ANALYSIS_MAX_CHARS
+        {
+            tracing::warn!(
+                target: "forge_vk",
+                value = self.analysis_max_chars,
+                "forge-vk: analysis_max_chars is out of {MIN_ANALYSIS_MAX_CHARS}..={MAX_ANALYSIS_MAX_CHARS}; clamping"
+            );
+            self.analysis_max_chars = self
+                .analysis_max_chars
+                .clamp(MIN_ANALYSIS_MAX_CHARS, MAX_ANALYSIS_MAX_CHARS);
+        }
+        // `0` — легальное значение («таймаута нет»), поэтому чинится только
+        // пустая/пробельная модель: `--model ""` CLI отвергает целиком.
+        if let Some(model) = &self.analysis_model {
+            let t = model.trim();
+            if t.is_empty() {
+                tracing::warn!(
+                    target: "forge_vk",
+                    "forge-vk: empty analysis_model; falling back to default"
+                );
+                self.analysis_model = default_analysis_model();
+            } else if t.len() != model.len() {
+                self.analysis_model = Some(t.to_string());
+            }
+        }
         if let Err(e) = self.ensure_dirs() {
             tracing::warn!(
                 target: "forge_vk",
@@ -612,88 +819,16 @@ fn read_table(path: &Path) -> anyhow::Result<toml::Table> {
 fn write_table(path: &Path, doc: &toml::Table) -> anyhow::Result<()> {
     let body = toml::to_string_pretty(doc)
         .map_err(|e| anyhow::anyhow!("failed to serialize vk.toml: {e}"))?;
-
-    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| anyhow::anyhow!("failed to create {}: {e}", parent.display()))?;
-    }
-
-    let tmp = tmp_path_for(path);
-    let outcome = write_secret_file(&tmp, body.as_bytes())
-        .and_then(|()| {
-            std::fs::rename(&tmp, path).map_err(|e| {
-                anyhow::anyhow!(
-                    "failed to move {} onto {}: {e}",
-                    tmp.display(),
-                    path.display()
-                )
-            })
-        })
-        .and_then(|()| set_owner_only(path));
-
-    if let Err(e) = outcome {
-        // Никаких частичных состояний: убираем tmp, целевой файл остался
-        // прежним.
-        let _ = std::fs::remove_file(&tmp);
-        return Err(e);
-    }
-    Ok(())
+    write_bytes_atomic(path, body.as_bytes())
 }
 
-/// Путь временного файла рядом с целевым: `.<имя>.<pid>.tmp`.
-///
-/// PID в имени защищает от коллизии двух процессов, пишущих конфиг
-/// одновременно: последний `rename` выигрывает — это ожидаемое поведение, но
-/// обрезанного файла не увидит никто.
-pub(crate) fn tmp_path_for(path: &Path) -> PathBuf {
-    let name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "vk.toml".to_string());
-    let tmp_name = format!(".{name}.{}.tmp", std::process::id());
-    match path.parent() {
-        Some(parent) if !parent.as_os_str().is_empty() => parent.join(tmp_name),
-        _ => PathBuf::from(tmp_name),
-    }
-}
-
-/// Создаёт файл с правами `0600` ДО записи содержимого, пишет и `fsync`'ит.
-pub(crate) fn write_secret_file(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
-    use std::io::Write;
-
-    let mut opts = std::fs::OpenOptions::new();
-    opts.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        opts.mode(0o600);
-    }
-    let mut f = opts
-        .open(path)
-        .map_err(|e| anyhow::anyhow!("failed to create {}: {e}", path.display()))?;
-    // Файл мог остаться с прошлого раза (create, а не create_new) — тогда
-    // mode() не применяется, поэтому права выставляются явно, и всё это ДО
-    // первого write_all.
-    set_owner_only(path)?;
-    f.write_all(bytes)
-        .map_err(|e| anyhow::anyhow!("failed to write {}: {e}", path.display()))?;
-    f.sync_all()
-        .map_err(|e| anyhow::anyhow!("failed to fsync {}: {e}", path.display()))?;
-    Ok(())
-}
-
-/// Выставляет права `0600` (на не-Unix — no-op).
-pub(crate) fn set_owner_only(path: &Path) -> anyhow::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
-            .map_err(|e| anyhow::anyhow!("failed to chmod 600 {}: {e}", path.display()))?;
-    }
-    #[cfg(not(unix))]
-    let _ = path;
-    Ok(())
-}
+// Атомарная запись приватного файла плагина живёт в общем крейте
+// `forge-chat-analysis` (модуль `atomic`), а не здесь: тем же способом пишут
+// свои приватные файлы Telegram и Bitrix, и третья копия `tmp+rename+chmod`
+// рано или поздно разъехалась бы с оригиналом по правам. Имена внутри плагина
+// не меняются — все вызывающие (`write_table`, `longpoll`, хранилище заметок)
+// продолжают звать их без префикса.
+pub(crate) use forge_chat_analysis::atomic::{set_owner_only, write_bytes_atomic, write_secret_file};
 
 /// Чинит права существующего конфига, если они шире `0600`.
 ///
@@ -781,6 +916,10 @@ fn apply_env_u64(key: &str, target: &mut u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Нужен одному тесту (мусорный tmp от упавшего процесса); в самом плагине
+    // имя не используется, поэтому импортируется здесь, а не рядом с тремя
+    // остальными.
+    use forge_chat_analysis::atomic::tmp_path_for;
 
     /// Все env-тесты сериализуются между собой: `std::env` — process-global.
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -795,6 +934,11 @@ mod tests {
         "FORGE_VK_MAX_CACHE_BYTES",
         "FORGE_VK_RATE_LIMIT_RPS",
         "FORGE_VK_LONGPOLL_WAIT_SECS",
+        "FORGE_VK_PROMPTS_PATH",
+        "FORGE_VK_CLAUDE_CLI_PATH",
+        "FORGE_VK_ANALYSIS_TIMEOUT_SECS",
+        "FORGE_VK_ANALYSIS_MAX_CHARS",
+        "FORGE_VK_ANALYSIS_MODEL",
     ];
 
     fn clear_env() {
@@ -910,6 +1054,138 @@ mod tests {
         assert_eq!(cfg.access_token.expose(), "keep");
         assert_eq!(cfg.api_version, "5.100");
         assert_eq!(cfg.max_upload_bytes, 42);
+        clear_env();
+    }
+
+    /// ЗАЩИТА ЖИВЫХ ДАННЫХ: без этого override любой прогон `cargo test`,
+    /// дошедший до сохранения заметки, писал бы в реальный
+    /// `~/.forge/vk-chat-prompts.json` разработчика.
+    #[test]
+    fn prompts_path_env_beats_the_default() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        clear_env();
+        let dir = tempfile::tempdir().unwrap();
+        let custom = dir.path().join("prompts.json");
+
+        // 1. Через конструктор дефолтов (`serde(skip, default)`).
+        std::env::set_var("FORGE_VK_PROMPTS_PATH", &custom);
+        assert_eq!(prompts_path(), custom);
+        assert_eq!(VkConfig::default().prompts_path, custom);
+
+        // 2. И через apply_env поверх уже собранного конфига.
+        let mut cfg = VkConfig {
+            prompts_path: PathBuf::from("/tmp/whatever.json"),
+            ..VkConfig::default()
+        };
+        cfg.apply_env();
+        assert_eq!(cfg.prompts_path, custom);
+
+        // 3. Без переменной — дефолт в `$HOME/.forge`.
+        clear_env();
+        assert_eq!(prompts_path(), default_prompts_path());
+        assert!(default_prompts_path().ends_with(".forge/vk-chat-prompts.json"));
+        clear_env();
+    }
+
+    /// Пустой путь означал бы тихую потерю заметок, относительный — РАЗНЫЕ
+    /// файлы при разном рабочем каталоге процесса.
+    #[test]
+    fn validate_and_fix_normalizes_the_prompts_path() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        clear_env();
+        let dir = tempfile::tempdir().unwrap();
+
+        let mut empty = VkConfig {
+            cache_dir: dir.path().join("cache"),
+            prompts_path: PathBuf::new(),
+            ..VkConfig::default()
+        };
+        empty.validate_and_fix();
+        assert_eq!(empty.prompts_path, default_prompts_path());
+
+        let mut relative = VkConfig {
+            cache_dir: dir.path().join("cache"),
+            prompts_path: PathBuf::from("prompts.json"),
+            ..VkConfig::default()
+        };
+        relative.validate_and_fix();
+        assert!(relative.prompts_path.is_absolute(), "путь стал абсолютным");
+        assert!(relative.prompts_path.ends_with("prompts.json"));
+        clear_env();
+    }
+
+    /// Настройки анализа чата (АЧ-Ф3): отсутствие секции в `vk.toml` не ломает
+    /// загрузку, а нулевые и абсурдные значения зажимаются.
+    #[test]
+    fn analysis_settings_default_and_clamp() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        clear_env();
+        let dir = tempfile::tempdir().unwrap();
+
+        // 1. TOML без единого ключа анализа — все поля берут дефолты.
+        let path = dir.path().join("vk.toml");
+        std::fs::write(&path, "access_token = \"vk1.a.x\"\n").unwrap();
+        let cfg = VkConfig::load_from_file(&path);
+        assert_eq!(cfg.analysis_timeout_secs, DEFAULT_ANALYSIS_TIMEOUT_SECS);
+        assert_eq!(cfg.analysis_max_chars, DEFAULT_ANALYSIS_MAX_CHARS);
+        assert_eq!(cfg.analysis_model.as_deref(), Some(DEFAULT_ANALYSIS_MODEL));
+        assert!(cfg.claude_cli_path.ends_with(".local/bin/claude"));
+
+        // 2. Абсурдные значения зажимаются, а НЕ роняют старт.
+        for (given, want) in [(1_usize, MIN_ANALYSIS_MAX_CHARS), (usize::MAX, MAX_ANALYSIS_MAX_CHARS)] {
+            let mut cfg = VkConfig {
+                cache_dir: dir.path().join("cache"),
+                analysis_max_chars: given,
+                ..VkConfig::default()
+            };
+            cfg.validate_and_fix();
+            assert_eq!(cfg.analysis_max_chars, want, "given={given}");
+        }
+
+        // 3. Пустая модель и пустой путь чинятся дефолтами; `0` у таймаута —
+        //    ЛЕГАЛЬНОЕ значение («без таймаута») и обязано выжить.
+        let mut cfg = VkConfig {
+            cache_dir: dir.path().join("cache"),
+            analysis_model: Some("   ".into()),
+            claude_cli_path: PathBuf::new(),
+            analysis_timeout_secs: 0,
+            ..VkConfig::default()
+        };
+        cfg.validate_and_fix();
+        assert_eq!(cfg.analysis_model.as_deref(), Some(DEFAULT_ANALYSIS_MODEL));
+        assert_eq!(cfg.claude_cli_path, default_claude_cli_path());
+        assert_eq!(cfg.analysis_timeout_secs, 0, "0 = таймаут выключен");
+
+        // 4. Модель из TOML долетает без изменений — она уедет в `--model`.
+        std::fs::write(&path, "analysis_model = \"opus\"\nanalysis_timeout_secs = 42\n").unwrap();
+        let cfg = VkConfig::load_from_file(&path);
+        assert_eq!(cfg.analysis_model.as_deref(), Some("opus"));
+        assert_eq!(cfg.analysis_timeout_secs, 42);
+        clear_env();
+    }
+
+    /// Env-override настроек анализа, включая единственный способ сказать
+    /// «не передавать `--model` вовсе».
+    #[test]
+    fn analysis_env_overrides_apply() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        clear_env();
+        std::env::set_var("FORGE_VK_CLAUDE_CLI_PATH", "/opt/bin/claude");
+        std::env::set_var("FORGE_VK_ANALYSIS_TIMEOUT_SECS", "77");
+        std::env::set_var("FORGE_VK_ANALYSIS_MAX_CHARS", "12345");
+        std::env::set_var("FORGE_VK_ANALYSIS_MODEL", "haiku");
+
+        let mut cfg = VkConfig::default();
+        cfg.apply_env();
+        assert_eq!(cfg.claude_cli_path, PathBuf::from("/opt/bin/claude"));
+        assert_eq!(cfg.analysis_timeout_secs, 77);
+        assert_eq!(cfg.analysis_max_chars, 12_345);
+        assert_eq!(cfg.analysis_model.as_deref(), Some("haiku"));
+
+        std::env::set_var("FORGE_VK_ANALYSIS_MODEL", "");
+        let mut cfg = VkConfig::default();
+        cfg.apply_env();
+        assert!(cfg.analysis_model.is_none(), "пустое значение = дефолт CLI");
         clear_env();
     }
 

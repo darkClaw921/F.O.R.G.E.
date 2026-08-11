@@ -26,7 +26,7 @@ import { test, expect, Page } from '@playwright/test';
 // `vk` добавлен вместе с плагином ВКонтакте (Ф12): панели мессенджеров
 // взаимоисключающи, и открытый Telegram обязан прятать VK так же, как всё
 // остальное. Без этой строки спека Telegram перестала бы отражать реальность.
-const HIDDEN_PANE_IDS = ['tasks', 'echo', 'git', 'docker', 'telescope', 'telegram', 'vk'];
+const HIDDEN_PANE_IDS = ['tasks', 'echo', 'git', 'docker', 'telescope', 'telegram', 'vk', 'bitrix'];
 
 /** Ответ, который отдаёт включённый плагин без привязанного аккаунта. */
 const STATUS_DISCONNECTED = {
@@ -272,12 +272,12 @@ test.describe('Telegram tab UI', () => {
     expect(pageErrors, 'необработанных исключений быть не должно').toEqual([]);
     // Фоновый шум изолированного инстанса (PWA-конфиг, echo-статистика,
     // todos) — не про вкладку Telegram и в приёмку не входит. Сюда же
-    // `api/vk/status`: сервер e2e поднят и без `--vk`, а 404 на этом роуте —
-    // КОНТРАКТ выключенного плагина VK (по нему прячется кнопка Ⓥ). Строку в
-    // консоль пишет браузер на неудачный запрос ресурса, а не приложение:
-    // сам гейт этот случай проглатывает молча.
+    // `api/vk/status` и `api/bitrix/status`: сервер e2e поднят и без `--vk`, и
+    // без `--bitrix`, а 404 на этих роутах — КОНТРАКТ выключенного плагина (по
+    // нему прячутся кнопки Ⓥ и Ⓑ). Строку в консоль пишет браузер на неудачный
+    // запрос ресурса, а не приложение: сам гейт этот случай проглатывает молча.
     const relevant = consoleErrors.filter(
-      (e) => !/pwa\/config|echo\/stats|api\/todos|favicon|api\/vk\/status/.test(e),
+      (e) => !/pwa\/config|echo\/stats|api\/todos|favicon|api\/vk\/status|api\/bitrix\/status/.test(e),
     );
     expect(relevant, `лишние ошибки в консоли: ${relevant.join('; ')}`).toEqual([]);
   });

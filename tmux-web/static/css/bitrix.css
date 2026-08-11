@@ -1,0 +1,2274 @@
+/* tmux-web — вкладка «Битрикс24» (плагин forge-bitrix)
+ *
+ * Терминальная стилистика панелей Telegram и VK СОХРАНЕНА (это идентичность
+ * devforge), но АКЦЕНТ СМЕНЁН на тёплый оранжевый.
+ *
+ * Почему цвет обязан отличаться. Три одинаковые панели опасны не
+ * эстетически, а ФУНКЦИОНАЛЬНО: при нескольких включённых мессенджерах
+ * пользователь отправит сообщение не в тот чат. Цветовой якорь решает это
+ * мгновенно и без единого лишнего элемента интерфейса. Зелёный занят
+ * Telegram, синий — VK; оранжевый — третий однозначно различимый тон,
+ * который к тому же не сливается с ними при дейтеранопии (разведение идёт
+ * по оси «жёлтый ↔ синий», а не «красный ↔ зелёный»).
+ *
+ * ЗАПРЕТ: брендовые цвета Битрикс24 (#2FC7F7 и родственная синева) не
+ * используются вовсе — они лежат ровно в зоне VK-акцента, то есть ломают
+ * именно то различение, ради которого палитра и разводится. Панель
+ * принадлежит devforge, а не порталу.
+ *
+ * Панель живёт в собственной палитре и НЕ наследует токены приложения: все
+ * цвета объявлены на #bitrix, поэтому вкладка выглядит одинаково при любой
+ * теме devforge, а собственный тумблер ◐ переключает её светлую/тёмную
+ * версии через атрибут `data-b24-theme` (js/bitrix/theme.js).
+ *
+ * Разметка — index.html (#bitrix), поведение — js/bitrix/*.
+ *
+ * ИНВАРИАНТ ФАЙЛА: ни одного селектора с префиксом `.tg-`/`#tg-`/`.vk-`/
+ * `#vk-` и ни одного упоминания `#telegram` или `#vk`. Панели не должны
+ * уметь красить друг друга; правило «css/telegram.css и css/vk.css не
+ * редактируются ни в одной фазе» держится именно на этом разделении.
+ *
+ * ВАЖНО про сайзинг: #main это flex-колонка. Панель обязана быть
+ * `flex: 1 1 auto; min-height: 0`, иначе лента с overflow растягивает
+ * контейнер и ломает layout соседних вкладок.
+ */
+
+/* ==== Шрифт ==============================================================
+   Объявления продублированы из css/telegram.css и css/vk.css НАМЕРЕННО:
+   вынести все @font-face в общий файл было бы чище, но это правка чужих
+   панельных стилей, а правило «css/telegram.css и css/vk.css не
+   редактируются» дороже одного дубля. @font-face идемпотентен — браузер
+   грузит файл один раз независимо от числа объявлений.
+
+   JetBrains Mono ЗАВЕНДОРЕН (static/vendor/fonts/jetbrains-mono/, лицензия
+   OFL 1.1). CDN запрещён: devforge обязан работать офлайн, а вкладка ещё и
+   показывает переписку — внешний запрос с Referer'ом здесь неуместен
+   вдвойне. */
+@font-face {
+    font-family: "JetBrains Mono";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: local("JetBrains Mono"), local("JetBrainsMono-Regular"),
+         url("/vendor/fonts/jetbrains-mono/JetBrainsMono-Regular.woff2") format("woff2");
+}
+@font-face {
+    font-family: "JetBrains Mono";
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: local("JetBrains Mono Bold"), local("JetBrainsMono-Bold"),
+         url("/vendor/fonts/jetbrains-mono/JetBrainsMono-Bold.woff2") format("woff2");
+}
+
+/* ---- Кнопка Ⓑ в #settings-bar ---- */
+#bitrix-toggle {
+    position: relative; /* якорь для бейджа непрочитанного */
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--fg-mute);
+    font-size: 1rem;
+    line-height: 1;
+    padding: 2px 6px;
+    transition: background 0.15s ease, transform 0.15s ease;
+}
+#bitrix-toggle:hover {
+    background: var(--bg-input-hover);
+    color: var(--fg);
+    transform: scale(1.08);
+}
+
+#b24-unread-badge {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+    border-radius: 7px;
+    background: #ff9f43;
+    color: #2a1400;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 14px;
+    text-align: center;
+    pointer-events: none;
+}
+
+/* ==== Панель ============================================================ */
+
+#bitrix {
+    /* Обязательный сайзинг: без него лента распирает #main. */
+    flex: 1 1 auto;
+    min-height: 0;
+
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.55;
+    background: var(--b-bg);
+    color: var(--b-acc-dim);
+
+    /* Тёмная палитра — дефолт (в т.ч. при data-b24-theme="dark").
+       Каждое значение прогнано против --b-bg (#08070A), цифры — в
+       комментариях: при 12px целимся в >= 4.5:1 для всего, что является
+       ТЕКСТОМ. Роли «рамка» и «приглушённый текст» разведены НАМЕРЕННО в
+       два токена: один и тот же цвет не может быть и тем, и другим — либо
+       рамка кричит, либо подпись невидима. */
+    --b-bg: #08070A;
+    --b-panel: #0D0B10;
+    --b-bar: #131019;
+    --b-active: #2A1C08;     /* тёплая подсветка активной строки */
+    --b-acc: #FF9F43;        /* 10.5:1 — основной акцент и текст  */
+    --b-acc-dim: #C98A3E;    /* 6.9:1  — второстепенный текст     */
+    --b-acc-faint: #3A2A12;  /* 1.6:1  — РАМКИ, не текст          */
+    --b-faint-text: #9A8F7E; /* 6.3:1  — приглушённый ТЕКСТ       */
+    --b-acc-hi: #FFE9CF;     /* 16.1:1 — основной текст сообщений */
+    --b-red: #FF5D6C;        /* 6.4:1  — ошибки, просрочка        */
+    --b-green: #5FD98A;      /* 10.4:1 — «завершена»              */
+    --b-cyan: #63D2E8;       /* 10.9:1 — ссылки, файлы            */
+    --b-violet: #B58BFF;     /* 6.7:1  — системные строки ленты   */
+}
+
+/* Светлая палитра панели: переопределяет ВСЕ токены целиком, включая
+   собственный --b-faint-text. Контрасты — против --b-bg (#F1ECE4). */
+#bitrix[data-b24-theme="light"] {
+    --b-bg: #F1ECE4;
+    --b-panel: #FFFFFF;
+    --b-bar: #F7F3EC;
+    --b-active: #F3E2CB;
+    --b-acc: #9A4E06;        /* 5.7:1 */
+    --b-acc-dim: #7A5A32;    /* 5.4:1 */
+    --b-acc-faint: #D8C7AE;  /* 1.4:1 — РАМКИ */
+    --b-faint-text: #6E6152; /* 5.9:1 — приглушённый ТЕКСТ */
+    --b-acc-hi: #33240F;     /* 12.4:1 — основной текст сообщений */
+    --b-red: #B3273A;        /* 5.9:1 */
+    --b-green: #1F7A45;      /* 5.0:1 */
+    --b-cyan: #0A6688;       /* 5.3:1 */
+    --b-violet: #5B3BB0;     /* 6.6:1 */
+}
+
+/* Единственный !important в файле: панель обязана исчезать при
+   переключении вкладок, побеждая display:flex выше. */
+#bitrix[hidden] {
+    display: none !important;
+}
+
+/* ---- Titlebar ----
+   z-index выше оверлея подключения (5): пока вебхук не вставлен, панель
+   закрыта #b24-login, но тумблер темы ◐ и ☰ обязаны оставаться доступны —
+   иначе на светлой теме devforge неподключённая вкладка залипает в чужой
+   палитре, и починить это нечем. Лайтбокс и dropzone лежат ВЫШЕ баров
+   (z-index 7), поэтому их собственные кнопки не перекрываются. */
+#b24-titlebar {
+    position: relative;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    background: var(--b-bar);
+    border-bottom: 1px solid var(--b-acc-faint);
+    flex: 0 0 auto;
+}
+
+.b24-dots {
+    display: inline-flex;
+    gap: 5px;
+}
+.b24-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    display: inline-block;
+}
+.b24-dot-red { background: #ff5f57; }
+.b24-dot-amber { background: #febc2e; }
+.b24-dot-green { background: #28c840; }
+
+.b24-title {
+    color: var(--b-acc);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+}
+
+.b24-enc {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--b-faint-text);
+    font-size: 10px;
+    letter-spacing: 0.05em;
+}
+.b24-pulse {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--b-green);
+    animation: b24-pulse 2s ease-in-out infinite;
+}
+@keyframes b24-pulse {
+    0%, 100% { opacity: 0.35; }
+    50% { opacity: 1; }
+}
+
+.b24-self-user {
+    margin-left: auto;
+    color: var(--b-acc-dim);
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 30ch;
+}
+
+.b24-icon-btn {
+    background: transparent;
+    border: 1px solid var(--b-acc-faint);
+    border-radius: 4px;
+    color: var(--b-acc-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1;
+    padding: 3px 6px;
+}
+.b24-icon-btn:hover {
+    color: var(--b-acc);
+    border-color: var(--b-acc-dim);
+}
+.b24-icon-btn[hidden] { display: none; }
+
+/* ☰ показывается только на узких экранах (см. media-query внизу файла). */
+.b24-mobile-only { display: none; }
+
+/* ---- Тело: колонка диалогов + сессия ---- */
+#b24-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    position: relative;
+}
+
+#b24-contacts {
+    flex: 0 0 260px;
+    min-width: 0;
+    overflow-y: auto;
+    background: var(--b-panel);
+    border-right: 1px solid var(--b-acc-faint);
+    padding: 6px 0;
+}
+#b24-contacts:focus { outline: none; }
+
+/* Подложка off-canvas колонки. На десктопе не нужна вовсе. */
+#b24-contacts-scrim { display: none; }
+
+.b24-section-title {
+    color: var(--b-faint-text);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    padding: 6px 10px 4px;
+}
+
+.b24-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.b24-dir,
+.b24-dialog {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 10px;
+    cursor: pointer;
+    color: var(--b-acc-dim);
+}
+.b24-dir:hover,
+.b24-dialog:hover {
+    background: var(--b-bar);
+    color: var(--b-acc);
+}
+.b24-dir.active,
+.b24-dialog.active {
+    background: var(--b-active);
+    color: var(--b-acc-hi);
+}
+.b24-dir-name,
+.b24-dialog-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.b24-dir-count,
+.b24-dialog-unread {
+    margin-left: auto;
+    color: var(--b-faint-text);
+    font-size: 10px;
+}
+.b24-dialog-unread {
+    color: var(--b-acc);
+    font-weight: 700;
+}
+
+/* ---- Строка списка диалогов (Ф4) ----
+   Две строки текста: заголовок и превью последнего сообщения. Высота
+   фиксируется содержимым, а не задаётся числом: при 12px и полуторном
+   интерлиньяже жёсткая высота обрезала бы кириллические выносные элементы. */
+.b24-dialog {
+    align-items: flex-start;
+    padding: 5px 10px;
+    gap: 7px;
+}
+
+.b24-dialog-name {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.b24-dialog-head {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
+}
+
+.b24-dialog-title {
+    flex: 0 1 auto;
+}
+
+/* Превью последнего сообщения: приглушённый ТЕКСТ (не цвет рамок). */
+.b24-dialog-preview {
+    color: var(--b-faint-text);
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Метка чата задачи. Слово, а не иконка: значок пришлось бы объяснять, а
+   директория рядом называется ~/tasks. */
+.b24-dialog-task {
+    flex: 0 0 auto;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    color: var(--b-violet);
+    border: 1px solid var(--b-acc-faint);
+    border-radius: 2px;
+    padding: 0 3px;
+}
+
+.b24-muted-mark {
+    color: var(--b-faint-text);
+}
+.b24-dialog.b24-muted .b24-dialog-title {
+    color: var(--b-faint-text);
+}
+.b24-dialog.b24-pinned .b24-dialog-title::before {
+    content: "^ ";
+    color: var(--b-acc-faint);
+}
+
+/* Возраст последнего сообщения — там же, где счётчик непрочитанного:
+   в 260-пиксельной колонке места на обе метки нет, и непрочитанное важнее. */
+.b24-dialog-age {
+    margin-left: auto;
+    flex: 0 0 auto;
+    color: var(--b-faint-text);
+    font-size: 10px;
+}
+
+/* Кнопки строки (Ф6, Р14): закрепить, «непрочитано», скрыть. Проявляются на
+   наведении и фокусе — постоянно видимый ряд глифов у каждой строки превращает
+   колонку в панель инструментов. */
+.b24-dialog-actions {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.12s linear;
+}
+.b24-dialog:hover .b24-dialog-actions,
+.b24-dialog:focus-within .b24-dialog-actions { opacity: 1; }
+.b24-dialog-btn {
+    background: transparent;
+    border: none;
+    color: var(--b-faint-text);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    padding: 0 2px;
+}
+.b24-dialog-btn:hover { color: var(--b-acc); }
+.b24-dialog-btn[data-b24-act="hide"]:hover { color: var(--b-red); }
+
+/* Аватар: кружок с глифом вида диалога, поверх него — картинка ИЗ ПРОКСИ
+   плагина (Р6). Внешних адресов в DOM нет; пока прокси не реализован (Ф8),
+   картинка отваливается по onerror и остаётся глиф. */
+.b24-avatar {
+    position: relative;
+    flex: 0 0 auto;
+    width: 20px;
+    height: 20px;
+    margin-top: 1px;
+    border: 1px solid var(--b-acc-faint);
+    border-radius: 50%;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--b-bar);
+}
+.b24-avatar-initials {
+    font-size: 10px;
+    color: var(--b-acc-dim);
+}
+.b24-avatar-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.b24-avatar-img[hidden] { display: none; }
+
+/* ---- BB-сегменты (рендерятся узлами, format.js::renderSegments) ----
+   Классы объявлены здесь целиком, хотя лента появляется в Ф5: превью и
+   системные строки используют те же узлы. */
+.b24-segs { white-space: pre-wrap; }
+.b24-seg-b { font-weight: 700; color: var(--b-acc-hi); }
+.b24-seg-i { font-style: italic; }
+.b24-seg-u { text-decoration: underline; }
+.b24-seg-s { text-decoration: line-through; opacity: 0.75; }
+.b24-seg-code {
+    background: var(--b-bar);
+    border: 1px solid var(--b-acc-faint);
+    border-radius: 2px;
+    padding: 0 3px;
+}
+.b24-seg-quote {
+    display: block;
+    border-left: 2px solid var(--b-acc-faint);
+    padding-left: 6px;
+    color: var(--b-faint-text);
+}
+/* Ссылка НЕ является <a href>: адрес пришёл от собеседника, и переход по
+   нему делает обработчик, проверяющий схему (Ф5). */
+.b24-seg-url { color: var(--b-cyan); text-decoration: underline; cursor: pointer; }
+.b24-seg-user,
+.b24-seg-chat { color: var(--b-acc); }
+.b24-seg-disk { color: var(--b-cyan); }
+.b24-seg-time { color: var(--b-faint-text); }
+
+/* ---- Сессия: карточка задачи + лента + строка ввода ---- */
+#b24-session {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+#b24-session-head {
+    flex: 0 0 auto;
+    padding: 4px 10px;
+    color: var(--b-faint-text);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    border-bottom: 1px solid var(--b-acc-faint);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ==== Карточка задачи над лентой (Ф10) ===================================
+   Шапка чата задачи. В обычном чате остаётся hidden. Собственный display у
+   элемента ЕСТЬ, поэтому [hidden] обязан быть объявлен явно — иначе атрибут
+   не сработает.
+
+   Карточка НЕ прокручивается вместе с лентой: она `flex: 0 0 auto` и живёт
+   над `.b24-log`. Статус задачи и ряд кнопок обязаны быть видны всё время —
+   пользователь принимает решение «завершить/отложить», глядя в переписку. */
+.b24-task-card {
+    flex: 0 0 auto;
+    display: block;
+    padding: 6px 10px;
+    background: var(--b-panel);
+    border-bottom: 1px solid var(--b-acc-faint);
+}
+.b24-task-card[hidden] { display: none; }
+
+.b24-task-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+/* Статус-точка. Один и тот же класс красит и шапку, и строку в колонке —
+   иначе два набора цветов разъехались бы, и «выполняется» в списке выглядело
+   бы иначе, чем «выполняется» в карточке. */
+.b24-task-dot {
+    flex: 0 0 auto;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--b-faint-text);
+}
+.b24-task-dot-pending    { background: var(--b-acc); }
+.b24-task-dot-in_progress{ background: var(--b-cyan); }
+.b24-task-dot-review     { background: var(--b-violet); }
+.b24-task-dot-completed  { background: var(--b-green); }
+.b24-task-dot-deferred   { background: var(--b-faint-text); }
+.b24-task-dot-declined   { background: var(--b-red); }
+.b24-task-dot-new,
+.b24-task-dot-unknown    { background: var(--b-faint-text); }
+
+.b24-task-id {
+    flex: 0 0 auto;
+    color: var(--b-faint-text);
+    font-size: 11px;
+}
+.b24-task-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--b-acc-hi);
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Просрочка красным СЛОВОМ, а не цветом строки: цвет один раз уже занят под
+   статус, и красить им же срок значило бы сделать два разных факта
+   неразличимыми. */
+.b24-task-overdue {
+    flex: 0 0 auto;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    color: var(--b-red);
+    border: 1px solid var(--b-red);
+    border-radius: 2px;
+    padding: 0 3px;
+}
+
+.b24-task-link {
+    flex: 0 0 auto;
+    color: var(--b-cyan);
+    font-size: 11px;
+    text-decoration: none;
+}
+.b24-task-link:hover { text-decoration: underline; }
+
+.b24-task-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 12px;
+    margin-top: 3px;
+    font-size: 11px;
+}
+.b24-task-field { display: inline-flex; gap: 4px; }
+.b24-task-field-label { color: var(--b-faint-text); }
+.b24-task-field-value { color: var(--b-acc); }
+.b24-task-late .b24-task-field-value { color: var(--b-red); }
+.b24-task-prio-high .b24-task-field-value { color: var(--b-red); }
+.b24-task-prio-low .b24-task-field-value { color: var(--b-faint-text); }
+.b24-task-new .b24-task-field-value { color: var(--b-violet); }
+
+/* Ряд кнопок. Состав приезжает С СЕРВЕРА (матрица action) и меняется вместе
+   со статусом, поэтому ширина ряда не фиксирована и кнопки переносятся. */
+.b24-task-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 5px;
+}
+.b24-task-btn {
+    background: transparent;
+    border: 1px solid var(--b-acc-faint);
+    border-radius: 3px;
+    color: var(--b-acc);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 1.4;
+    padding: 1px 8px;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+.b24-task-btn:hover:not(:disabled) {
+    background: var(--b-active);
+    color: var(--b-acc-hi);
+}
+.b24-task-btn:disabled {
+    color: var(--b-faint-text);
+    cursor: default;
+    opacity: 0.6;
+}
+
+/* Р20: задача без чата. Подпись обязана быть внятной — пустая лента без
+   объяснения читается как поломка панели, а не как «обсуждение не начато». */
+.b24-task-note {
+    margin-top: 5px;
+    color: var(--b-faint-text);
+    font-size: 11px;
+}
+.b24-task-error {
+    margin-top: 5px;
+    color: var(--b-red);
+    font-size: 11px;
+}
+
+/* Заблокированное поле ввода (задача без чата): писать физически некуда. */
+#b24-prompt.b24-prompt-locked { opacity: 0.55; }
+#b24-prompt.b24-prompt-locked #b24-input { cursor: not-allowed; }
+
+/* Метки задачи в СТРОКЕ КОЛОНКИ. */
+.b24-dialog-overdue {
+    flex: 0 0 auto;
+    color: var(--b-red);
+    font-weight: 700;
+}
+.b24-dialog-task-new {
+    flex: 0 0 auto;
+    font-size: 9px;
+    color: var(--b-violet);
+    border: 1px solid var(--b-violet);
+    border-radius: 2px;
+    padding: 0 3px;
+}
+
+.b24-log {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    list-style: none;
+    margin: 0;
+    padding: 0 10px 6px;
+    display: flex;
+    flex-direction: column;
+}
+/* Первый потомок ленты всегда распорка: она прижимает короткую историю к
+   низу, чтобы лента не «висела» в верхней трети экрана. */
+.b24-log-spacer {
+    flex: 1 0 auto;
+    min-height: 0;
+    list-style: none;
+}
+
+/* ---- Строка ленты ----
+   Терминальная раскладка вместо «пузырей»: время, ник и текст в одну строку с
+   переносом. Своё сообщение отличается ТОЛЬКО цветом ника
+   (`.b24-line-nick-own`), а не подложкой и не выравниванием по правому краю:
+   в моноширинной ленте правый край ломает колоночность, а сплошная подложка
+   на каждой своей строке превращает ленту в шахматку и мешает читать историю
+   подряд. Тот же принцип — у Telegram-плагина (класс `tg-line-own` там тоже
+   не красит фон, forge-zw3d). */
+.b24-line {
+    flex: 0 0 auto;
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px;
+    padding: 1px 4px;
+    border-radius: 3px;
+    line-height: 1.45;
+}
+.b24-line-time {
+    flex: 0 0 auto;
+    color: var(--b-faint-text);
+    font-size: 10px;
+}
+.b24-line-nick {
+    flex: 0 0 auto;
+    color: var(--b-acc-dim);
+}
+.b24-line-nick::after {
+    content: ':';
+    color: var(--b-faint-text);
+}
+.b24-line-nick-own { color: var(--b-acc); }
+.b24-line-body {
+    flex: 1 1 240px;
+    min-width: 0;
+}
+.b24-line-text {
+    color: var(--b-acc-hi);
+    overflow-wrap: anywhere;
+}
+/* ---- Цитата ответа и подсветка оригинала (forge-92x6) ----
+   У Битрикс24 ответ доживает до чтения ТОЛЬКО текстовой цитатой (Р10: портал
+   не отражает REPLY_ID), поэтому строка «> Автор: текст» вынимается из текста
+   и рисуется отдельным узлом — иначе ответ неотличим от реплики, начатой со
+   стрелочки. Узел кликабелен: он ведёт к оригиналу. */
+.b24-line-quote {
+    display: block;
+    box-sizing: border-box;
+    max-width: 100%;
+    width: 100%;
+    margin: 0 0 2px;
+    padding: 0 0 0 6px;
+    border: 0;
+    border-left: 2px solid var(--b-acc-faint);
+    border-radius: 0;
+    background: transparent;
+    font: inherit;
+    font-size: 11px;
+    line-height: 1.4;
+    text-align: left;
+    color: var(--b-faint-text);
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.b24-line-quote:hover,
+.b24-line-quote:focus-visible {
+    border-left-color: var(--b-acc);
+    background: var(--b-active);
+    outline: none;
+}
+/* Автор ярче превью: при обрезке по ellipsis именно он остаётся видимым, и
+   «кому отвечают» читается раньше, чем «на что». */
+.b24-line-quote-name {
+    color: var(--b-acc-dim);
+    margin-right: 4px;
+}
+.b24-line-quote-name::after { content: ':'; }
+
+/* Подсветка строки, к которой перенёс переход по цитате. Она отвечает на
+   вопрос «куда меня перенесло», поэтому держится ровно столько, сколько на
+   строке висит класс (2 с, chat.js::REPLY_FLASH_MS), а вспышка ЗАКАНЧИВАЕТСЯ
+   тем же цветом, что держит статическое правило, — иначе на исходе анимации
+   строка дёргала бы цветом на ровном месте. */
+.b24-line-flash {
+    background-color: color-mix(in srgb, var(--b-acc) 18%, transparent);
+    box-shadow: inset 2px 0 0 0 var(--b-acc);
+    border-radius: 2px;
+    animation: b24-line-flash-in 0.9s ease-out 1;
+}
+@keyframes b24-line-flash-in {
+    from { background-color: color-mix(in srgb, var(--b-acc) 45%, transparent); }
+    to { background-color: color-mix(in srgb, var(--b-acc) 18%, transparent); }
+}
+
+.b24-line-suffix {
+    margin-left: 6px;
+    font-size: 10px;
+    color: var(--b-faint-text);
+    white-space: nowrap;
+}
+.b24-line-edited { font-style: italic; }
+.b24-line-likes { color: var(--b-red); margin-left: 6px; }
+
+/* ---- Цикл переписки (Ф6): состояния строки и её кнопки ---- */
+
+/* Отправляется: строка уже в ленте, но её ещё нет у собеседника. Полупрозрачность
+   — единственная честная метафора «летит»; спиннер обещал бы прогресс, которого
+   у одношагового вызова нет. */
+.b24-line-pending { opacity: 0.55; }
+/* Не отправилось. Автоповтора нет и не будет (Р9: дубль сообщения дороже
+   потерянной попытки), поэтому строка обязана бросаться в глаза — решение
+   принимает человек. */
+.b24-line-failed {
+    background: color-mix(in srgb, var(--b-red) 12%, transparent);
+    border-left: 2px solid var(--b-red);
+}
+.b24-line-failed .b24-line-text { color: var(--b-red); }
+/* УДАЛЁННОЕ сообщение (Ф7). Портал удаление не стирает: строка остаётся в
+   истории с подменённым текстом и `IS_DELETED`, поэтому прятать её нельзя —
+   она вернулась бы при первой же догрузке. Вместо этого она гасится и теряет
+   кнопки действий: перечёркнутая реплика читается как «было и удалили», а
+   исчезнувшая — как «сломалось». */
+.b24-line-deleted .b24-line-text {
+    color: var(--b-faint-text);
+    text-decoration: line-through;
+}
+.b24-line-deleted { opacity: 0.7; }
+
+/* Кнопки строки проявляются на наведении и фокусе: постоянно видимый ряд из
+   четырёх глифов у каждой реплики превращает ленту в панель инструментов. */
+.b24-line-actions {
+    margin-left: 8px;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.12s linear;
+}
+.b24-line:hover .b24-line-actions,
+.b24-line:focus-within .b24-line-actions,
+.b24-line-failed .b24-line-actions { opacity: 1; }
+.b24-line-btn {
+    background: transparent;
+    border: none;
+    color: var(--b-faint-text);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    padding: 0 3px;
+}
+.b24-line-btn:hover { color: var(--b-acc); }
+.b24-line-btn[data-action="delete"]:hover,
+.b24-line-btn[data-action="discard"]:hover { color: var(--b-red); }
+.b24-line-btn[data-action="like"]:hover { color: var(--b-red); }
+.b24-line-btn[data-action="retry"] { color: var(--b-red); }
+
+/* Системная строка — ОТДЕЛЬНЫЙ визуальный ряд: по центру, приглушённая, без
+   ника, времени и подложки. «Игорь создал чат» — это событие ленты, а не
+   реплика, и оформление обязано различать их с одного взгляда. */
+.b24-line-system {
+    justify-content: center;
+    text-align: center;
+    color: var(--b-violet);
+    font-size: 11px;
+    padding: 3px 10px;
+    background: none;
+}
+.b24-line-system .b24-line-text {
+    color: var(--b-violet);
+}
+.b24-line-notice,
+.b24-line-notice .b24-line-text {
+    color: var(--b-faint-text);
+}
+
+/* Разделитель дня. */
+.b24-date-sep {
+    flex: 0 0 auto;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 6px 0 2px;
+    color: var(--b-faint-text);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+}
+.b24-date-sep::before,
+.b24-date-sep::after {
+    content: '';
+    flex: 1 1 auto;
+    height: 1px;
+    background: var(--b-acc-faint);
+}
+
+/* ---- Вложения: карточка с превью, полосой и кнопками (Ф8) ----
+
+   Байты идут ТОЛЬКО через прокси плагина и попадают в `src` уже
+   `blob:`-адресом: внешних адресов портала в разметке панели не бывает (Р6).
+   Разметку строит attachments.js, поведение — media.js. */
+.b24-line-media {
+    flex: 1 1 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 2px 0;
+}
+.b24-media-card {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    width: min(320px, 100%);
+    padding: 4px 8px 5px;
+    border: 1px solid var(--b-acc-faint);
+    border-radius: 4px;
+    background: var(--b-panel);
+    font-size: 11px;
+}
+.b24-media-head {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
+}
+.b24-media-glyph { color: var(--b-cyan); flex: 0 0 auto; }
+.b24-media-name {
+    color: var(--b-acc-hi);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* Тело держится на min-height, пока превью не декодировано: без него карточка
+   схлопывалась бы в ноль, и лента прыгала бы на каждой догруженной картинке. */
+.b24-media-body {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 22px;
+    max-height: 184px;
+    overflow: hidden;
+}
+.b24-media-card.b24-media-playing .b24-media-body { max-height: none; }
+.b24-media-thumb {
+    max-width: 100%;
+    max-height: 184px;
+    object-fit: contain;
+    cursor: zoom-in;
+}
+.b24-media-icon {
+    color: var(--b-acc-dim);
+    font-size: 16px;
+}
+/* [hidden] задаётся ЯВНО: у элементов со своим `display` атрибут сам по себе не
+   работает — правило браузера `[hidden]{display:none}` проигрывает по
+   специфичности собственному `display` этих классов. */
+.b24-media-thumb[hidden],
+.b24-media-icon[hidden],
+.b24-media-player[hidden],
+.b24-media-progress[hidden] { display: none; }
+.b24-media-player {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.b24-media-player audio,
+.b24-media-player video {
+    width: 100%;
+    max-height: 240px;
+}
+.b24-media-foot {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.b24-media-meta {
+    color: var(--b-faint-text);
+    font-size: 10px;
+}
+.b24-media-progress {
+    flex: 1 1 60px;
+    min-width: 40px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--b-acc-faint);
+    display: block;
+    overflow: hidden;
+}
+.b24-media-progress-bar {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: var(--b-acc);
+}
+/* Индетерминированная полоса: размера сервер не объявил, процентов не
+   существует — бежим, а не врём числом. */
+.b24-media-progress-indeterminate .b24-media-progress-bar {
+    animation: b24-media-sweep 1.1s linear infinite;
+}
+@keyframes b24-media-sweep {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+.b24-media-status {
+    color: var(--b-faint-text);
+    font-size: 10px;
+}
+.b24-media-status.b24-media-done { color: var(--b-acc); }
+.b24-media-status.b24-media-failed { color: var(--b-red); }
+.b24-media-btn {
+    padding: 0 6px;
+    border: 1px solid var(--b-acc-faint);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--b-acc-dim);
+    font: inherit;
+    font-size: 10px;
+    cursor: pointer;
+}
+.b24-media-btn:hover:not(:disabled) { color: var(--b-acc-hi); border-color: var(--b-acc); }
+.b24-media-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* Маленький аватар автора рядом с ником ленты (Р6). */
+.b24-line-avatar {
+    width: 12px;
+    height: 12px;
+    margin-left: 4px;
+    border-radius: 50%;
+    object-fit: cover;
+    vertical-align: -2px;
+}
+.b24-line-avatar[hidden] { display: none; }
+
+/* ---- Карточки ATTACH: три раскладки блоков ---- */
+.b24-cards {
+    flex: 1 1 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 3px 0;
+}
+.b24-card {
+    border: 1px solid var(--b-acc-faint);
+    border-left: 3px solid var(--b-acc-dim);
+    border-radius: 4px;
+    background: var(--b-panel);
+    padding: 5px 8px;
+    font-size: 11px;
+}
+.b24-card-desc {
+    color: var(--b-faint-text);
+    margin-bottom: 4px;
+}
+.b24-card-message {
+    color: var(--b-acc-hi);
+    overflow-wrap: anywhere;
+}
+.b24-card-links {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 4px;
+}
+.b24-card-link {
+    display: flex;
+    flex-direction: column;
+}
+.b24-card-link-name { color: var(--b-acc); }
+/* Адрес — ТЕКСТ, а не <a href>: его прислал собеседник (см. шапку
+   js/bitrix/attachments.js). */
+.b24-card-link-url {
+    color: var(--b-cyan);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.b24-card-link-desc { color: var(--b-faint-text); }
+
+.b24-card-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 4px;
+}
+.b24-card-grid-row {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+}
+/* COLUMN и BLOCK — раскладки самого портала: поле над значением. */
+.b24-card-grid-column,
+.b24-card-grid-block {
+    flex-direction: column;
+    gap: 0;
+}
+.b24-card-grid-name {
+    flex: 0 0 auto;
+    min-width: 88px;
+    color: var(--b-faint-text);
+}
+.b24-card-grid-value {
+    color: var(--b-acc-hi);
+    overflow-wrap: anywhere;
+}
+
+/* ---- Inline-клавиатура сообщения ----
+   Декоративные скобки рисует CSS: в текстовом узле кнопки обязана лежать
+   ровно подпись от бота и ничего больше (XSS-инвариант панели). */
+.b24-kb {
+    flex: 1 1 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 4px 0 2px;
+}
+.b24-kb-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.b24-kb-btn {
+    background: transparent;
+    border: 1px solid var(--b-acc-dim);
+    border-radius: 4px;
+    color: var(--b-acc);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    padding: 2px 8px;
+}
+.b24-kb-btn::before { content: '[ '; color: var(--b-faint-text); }
+.b24-kb-btn::after { content: ' ]'; color: var(--b-faint-text); }
+.b24-kb-btn:hover { background: var(--b-active); }
+/* Выключенная кнопка ОБЯЗАНА выглядеть выключенной: `CALL` и `DIALOG`
+   требуют прав чат-бота, которых у входящего вебхука нет, и причина написана
+   в `title` (§6 плана). */
+.b24-kb-btn-off,
+.b24-kb-btn:disabled {
+    border-color: var(--b-acc-faint);
+    color: var(--b-faint-text);
+    cursor: not-allowed;
+}
+.b24-kb-btn-off:hover,
+.b24-kb-btn:disabled:hover { background: transparent; }
+/* COMMAND в полёте (forge-zw3d): не «выключена совсем» — просто «ждём
+   портал», кнопка вернётся, если запрос не удался. Отдельный класс от
+   `-off`, чтобы не путать временное ожидание с постоянной блокировкой
+   (`BLOCK: Y` после успеха рисуется уже как `-off`). */
+.b24-kb-btn-pending {
+    opacity: 0.55;
+    cursor: wait;
+}
+
+.b24-typing {
+    flex: 0 0 auto;
+    padding: 2px 10px;
+    color: var(--b-faint-text);
+    font-size: 11px;
+}
+.b24-typing[hidden] { display: none; }
+
+/* Строка режима ввода: цитата ответа (Р10) либо метка правки. Тот же узел
+   показывает ошибку действия — она относится к вводу, а не к ленте. */
+.b24-prompt-note {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    background: var(--b-bar);
+    border-top: 1px solid var(--b-acc-faint);
+    font-size: 11px;
+    color: var(--b-faint-text);
+}
+.b24-prompt-note[hidden] { display: none; }
+.b24-prompt-note-tag {
+    flex: 0 0 auto;
+    color: var(--b-acc);
+}
+.b24-prompt-note-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.b24-prompt-note-cancel {
+    flex: 0 0 auto;
+    background: transparent;
+    border: none;
+    color: var(--b-faint-text);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+}
+.b24-prompt-note-cancel:hover { color: var(--b-red); }
+.b24-prompt-note-error { color: var(--b-red); }
+
+/* ---- Очередь отправляемых файлов (Ф9) ----
+   Живёт НАД строкой ввода, а не в ленте: `chat.renderHistory()` пересобирает
+   `#b24-log` целиком, и карточка отправки исчезала бы вместе с прогрессом от
+   любого приехавшего сообщения. Высота ограничена: десять файлов не должны
+   выдавить ленту с экрана — очередь скроллится сама. */
+.b24-uploads {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 30vh;
+    overflow-y: auto;
+    padding: 4px 10px;
+    background: var(--b-bar);
+    border-top: 1px solid var(--b-acc-faint);
+}
+/* [hidden] задаётся ЯВНО по той же причине, что у карточек медиа: собственный
+   `display` элемента побеждает правило браузера `[hidden]{display:none}`. */
+.b24-uploads[hidden] { display: none; }
+.b24-upload {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 4px 8px 5px;
+    border: 1px solid var(--b-acc-faint);
+    border-radius: 4px;
+    background: var(--b-panel);
+    font-size: 11px;
+}
+.b24-upload-failed { border-color: var(--b-red); }
+.b24-upload-notice {
+    color: var(--b-faint-text);
+    cursor: pointer;
+}
+.b24-upload-head {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
+}
+.b24-upload-glyph {
+    flex: 0 0 auto;
+    color: var(--b-acc-dim);
+}
+.b24-upload-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--b-acc-hi);
+}
+.b24-upload-kind,
+.b24-upload-meta {
+    flex: 0 0 auto;
+    color: var(--b-faint-text);
+    font-size: 10px;
+}
+/* Миниатюра строится из ЛОКАЛЬНОГО blob'а выбранного файла: сеть здесь не
+   нужна вовсе, файл уже в браузере. */
+.b24-upload-thumb {
+    max-width: 100%;
+    max-height: 96px;
+    object-fit: contain;
+    align-self: flex-start;
+}
+.b24-upload-foot {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.b24-upload-progress {
+    flex: 1 1 60px;
+    min-width: 40px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--b-acc-faint);
+    display: block;
+    overflow: hidden;
+}
+.b24-upload-progress[hidden] { display: none; }
+.b24-upload-bar {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: var(--b-acc);
+}
+/* Фаза `portal`: процентов у одношаговой base64-заливки НЕ СУЩЕСТВУЕТ (Р8) —
+   полоса бежит, а не показывает выдуманное число. */
+.b24-upload-indeterminate .b24-upload-bar {
+    animation: b24-upload-sweep 1.1s linear infinite;
+}
+@keyframes b24-upload-sweep {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+.b24-upload-status {
+    flex: 0 0 auto;
+    color: var(--b-faint-text);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+}
+.b24-upload-status.b24-upload-done { color: var(--b-acc); }
+.b24-upload-status.b24-upload-failed { color: var(--b-red); }
+.b24-upload-error {
+    color: var(--b-red);
+    font-size: 10px;
+    overflow-wrap: anywhere;
+}
+.b24-upload-btn {
+    flex: 0 0 auto;
+    padding: 0 6px;
+    border: 1px solid var(--b-acc-faint);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--b-acc-dim);
+    font: inherit;
+    font-size: 10px;
+    cursor: pointer;
+}
+.b24-upload-btn:hover { color: var(--b-acc-hi); border-color: var(--b-acc); }
+.b24-upload-btn[hidden] { display: none; }
+
+#b24-prompt {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: var(--b-bar);
+    border-top: 1px solid var(--b-acc-faint);
+}
+.b24-prompt-sign {
+    color: var(--b-acc);
+    font-weight: 700;
+}
+.b24-input-wrap {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+#b24-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--b-acc-hi);
+    font-family: inherit;
+    font-size: 12px;
+}
+#b24-input::placeholder { color: var(--b-faint-text); }
+/* Каретка мигает только когда поле пустое: при наборе текста своя каретка
+   браузера и наша псевдо-каретка выглядели бы как две. `:placeholder-shown`
+   требует НЕПУСТОГО placeholder у input — он задан в разметке. */
+.b24-caret {
+    width: 7px;
+    height: 14px;
+    background: var(--b-acc);
+    display: none;
+}
+#b24-input:placeholder-shown + .b24-caret {
+    display: inline-block;
+    animation: b24-blink 1s steps(1) infinite;
+}
+@keyframes b24-blink {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+}
+
+/* Счётчик символов (Р12): появляется только на подходе к лимиту, краснеет за
+   ним. Постоянно висящее число ничего не сообщает — сообщает ровно этот
+   последний километр. */
+.b24-charcount {
+    flex: 0 0 auto;
+    font-size: 10px;
+    color: var(--b-faint-text);
+    white-space: nowrap;
+}
+.b24-charcount[hidden] { display: none; }
+.b24-charcount-over { color: var(--b-red); }
+
+.b24-send-btn {
+    background: transparent;
+    border: 1px solid var(--b-acc-dim);
+    border-radius: 4px;
+    color: var(--b-acc);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    padding: 3px 10px;
+}
+.b24-send-btn:hover {
+    background: var(--b-active);
+}
+/* Перебор по длине блокирует отправку ДО запроса: сервер ответил бы 400, а
+   пользователь потерял бы круг до портала и обратно. */
+.b24-send-btn:disabled {
+    border-color: var(--b-faint-text);
+    color: var(--b-faint-text);
+    cursor: not-allowed;
+}
+.b24-send-btn:disabled:hover { background: transparent; }
+
+/* ---- Статусбар ---- */
+#b24-statusbar {
+    flex: 0 0 auto;
+    position: relative;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 3px 10px;
+    background: var(--b-bar);
+    border-top: 1px solid var(--b-acc-faint);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: var(--b-faint-text);
+}
+.b24-mode { font-weight: 700; }
+.b24-mode-connected { color: var(--b-green); }
+.b24-mode-reconnecting { color: var(--b-acc); }
+.b24-mode-offline { color: var(--b-faint-text); }
+/* Портал душит интенсивность — отдельная метка (Р16): «медленно» и
+   «оборвалось» это разные состояния, и лечатся они по-разному. */
+.b24-mode-throttled { color: var(--b-red); }
+.b24-status-center { margin-left: auto; }
+
+/* ---- Оверлеи ---- */
+#b24-login,
+#b24-dropzone,
+#b24-lightbox {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+#b24-login { z-index: 5; background: rgba(8, 7, 10, 0.94); }
+#b24-dropzone { z-index: 7; background: rgba(8, 7, 10, 0.8); pointer-events: none; }
+#b24-lightbox { z-index: 7; background: rgba(8, 7, 10, 0.96); flex-direction: column; gap: 8px; }
+#b24-login[hidden],
+#b24-dropzone[hidden],
+#b24-lightbox[hidden] { display: none; }
+
+.b24-login-box {
+    width: min(440px, 90%);
+    background: var(--b-panel);
+    border: 1px solid var(--b-acc-faint);
+    border-radius: 6px;
+    padding: 16px;
+}
+.b24-login-title {
+    color: var(--b-acc);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    margin-bottom: 10px;
+}
+.b24-login-hint {
+    color: var(--b-faint-text);
+    font-size: 11px;
+    line-height: 1.5;
+    margin-bottom: 10px;
+}
+/* Инструкция «как создать вебхук»: три шага и ссылка на документацию.
+   Нумерация своя (счётчиком), чтобы список внутри панели не зависел ни от
+   маркеров браузера, ни от reset'а приложения — у панели своя палитра и свои
+   отступы. */
+.b24-login-steps {
+    color: var(--b-faint-text);
+    counter-reset: b24-step;
+    font-size: 11px;
+    line-height: 1.6;
+    list-style: none;
+    margin: 0 0 8px;
+    padding: 0;
+}
+.b24-login-steps li {
+    counter-increment: b24-step;
+    padding-left: 18px;
+    position: relative;
+}
+.b24-login-steps li::before {
+    color: var(--b-acc-dim);
+    content: counter(b24-step) ".";
+    left: 0;
+    position: absolute;
+}
+.b24-login-steps b {
+    color: var(--b-acc);
+    font-weight: 600;
+}
+.b24-login-doc {
+    color: var(--b-acc-dim);
+    display: inline-block;
+    font-size: 11px;
+    margin-bottom: 10px;
+    text-decoration: none;
+}
+.b24-login-doc:hover {
+    color: var(--b-acc);
+    text-decoration: underline;
+}
+
+/* Честность про выход: отозвать входящий вебхук через REST невозможно, и
+   пользователь обязан увидеть это ДО того, как нажмёт ⏻. */
+.b24-logout-note {
+    border-top: 1px solid var(--b-acc-faint);
+    color: var(--b-faint-text);
+    font-size: 10px;
+    line-height: 1.5;
+    margin-top: 12px;
+    padding-top: 8px;
+}
+
+.b24-field {
+    display: block;
+    margin-bottom: 10px;
+}
+.b24-field-label {
+    display: block;
+    color: var(--b-faint-text);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+}
+.b24-field input {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--b-bg);
+    border: 1px solid var(--b-acc-faint);
+    border-radius: 4px;
+    color: var(--b-acc-hi);
+    font-family: inherit;
+    font-size: 12px;
+    padding: 6px 8px;
+}
+.b24-field input:focus {
+    outline: none;
+    border-color: var(--b-acc-dim);
+}
+.b24-login-btn {
+    background: transparent;
+    border: 1px solid var(--b-acc-dim);
+    border-radius: 4px;
+    color: var(--b-acc);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    padding: 5px 14px;
+}
+.b24-login-btn:hover { background: var(--b-active); }
+/* Второстепенное действие: тот же размер, но приглушённым контуром. Нужен ряду
+   кнопок попапа анализа (STOP, CLEAR, CLEAR Q&A): без этой разницы пять
+   одинаковых кнопок читались бы как пять равнозначных, и «стереть разбор»
+   стояло бы вровень с «разобрать». */
+.b24-login-btn-ghost {
+    border-color: var(--b-acc-faint);
+    color: var(--b-acc-dim);
+}
+/* Погашенная кнопка обязана ВЫГЛЯДЕТЬ погашенной: REFRESH и CLEAR блокируются
+   ядром попапа, пока сохранённого разбора нет, а кнопка, не отличимая от
+   рабочей, читается как «нажал — ничего не произошло». */
+.b24-login-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+.b24-login-status {
+    color: var(--b-faint-text);
+    font-size: 11px;
+    margin-top: 8px;
+    min-height: 1.4em;
+}
+.b24-login-error {
+    color: var(--b-red);
+    font-size: 11px;
+    margin-top: 4px;
+}
+.b24-login-error[hidden],
+.b24-login-countdown[hidden] { display: none; }
+.b24-login-countdown {
+    color: var(--b-acc);
+    font-size: 11px;
+    margin-top: 4px;
+}
+
+.b24-dropzone-box {
+    border: 2px dashed var(--b-acc);
+    border-radius: 8px;
+    color: var(--b-acc);
+    letter-spacing: 0.1em;
+    padding: 24px 32px;
+}
+
+#b24-lightbox img {
+    max-width: 92%;
+    max-height: 80%;
+    object-fit: contain;
+}
+.b24-lightbox-caption {
+    color: var(--b-faint-text);
+    font-size: 11px;
+}
+/* Стрелки и крестик лайтбокса: позиционируются внутри оверлея, а не в потоке
+   — иначе картинка съезжала бы вбок ровно на их ширину. Границы галереи не
+   зациклены, поэтому крайняя кнопка гасится, а не прыгает в начало. */
+#b24-lightbox-close,
+#b24-lightbox-prev,
+#b24-lightbox-next {
+    position: absolute;
+    z-index: 1;
+}
+#b24-lightbox-close { top: 8px; right: 10px; }
+#b24-lightbox-prev { left: 10px; top: 50%; transform: translateY(-50%); }
+#b24-lightbox-next { right: 10px; top: 50%; transform: translateY(-50%); }
+#b24-lightbox-close[hidden],
+#b24-lightbox-prev[hidden],
+#b24-lightbox-next[hidden] { display: none; }
+#b24-lightbox-prev:disabled,
+#b24-lightbox-next:disabled { opacity: 0.3; cursor: default; }
+
+/* ---- Клавиатурная навигация (Ф11) ----
+   Курсор клавиатуры — НЕ фокус браузера: фокус ходит по кнопкам, а курсор
+   стоит на строке диалога или сообщения, у которых своей рамки фокуса быть не
+   должно. Отсюда `outline: none` и собственная полоска. */
+.b24-kb-cursor {
+    position: relative;
+    background: var(--b-active);
+    outline: none;
+}
+/* Полоска слева, а не рамка вокруг: рамка сдвигала бы содержимое строки на
+   пиксель, и лента «дёргалась» бы при каждом шаге курсора. */
+.b24-kb-cursor::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--b-acc);
+}
+/* Строка ленты — единственное место, где слева уже стоит время: полоску
+   отодвигаем за границу padding'а, чтобы она не села поверх цифр. */
+#b24-log .b24-line.b24-kb-cursor::before {
+    left: -6px;
+}
+.b24-kb-cursor:focus-visible {
+    outline: none;
+}
+
+/* ---- Шпаргалка клавиш (строится в js/bitrix/keynav.js::showHelp) ---- */
+.b24-keys-help {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: color-mix(in srgb, var(--b-bg) 82%, transparent);
+    backdrop-filter: blur(2px);
+}
+.b24-keys-help-card {
+    max-width: 640px;
+    width: 100%;
+    max-height: 100%;
+    overflow-y: auto;
+    background: var(--b-panel);
+    border: 1px solid var(--b-acc-dim);
+    border-radius: 4px;
+    padding: 14px 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+.b24-keys-help-title {
+    color: var(--b-acc);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    margin-bottom: 10px;
+}
+.b24-keys-help-group {
+    margin-bottom: 12px;
+}
+.b24-keys-help-group-title {
+    color: var(--b-cyan);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+}
+.b24-keys-help-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 2px 0;
+    font-size: 12px;
+    line-height: 1.5;
+}
+.b24-keys-help-key {
+    flex: 0 0 auto;
+    min-width: 58px;
+    text-align: center;
+    border: 1px solid var(--b-acc-faint);
+    border-radius: 3px;
+    padding: 1px 6px;
+    color: var(--b-acc);
+    font-family: inherit;
+    font-size: 11px;
+}
+/* Действие, потерявшее клавишу из-за конфликта переназначений, обязано
+   выглядеть отключённым — иначе пользователь ждал бы от него реакции.
+   Рамочный токен здесь законен: текст «—» несмысловой, а пунктирная рамка и
+   означает «пусто». */
+.b24-keys-help-key-none {
+    color: var(--b-acc-faint);
+    border-style: dashed;
+}
+.b24-keys-help-label {
+    color: var(--b-acc-dim);
+}
+.b24-keys-help-hint {
+    color: var(--b-faint-text);
+    font-size: 11px;
+}
+.b24-keys-help-foot {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--b-acc-faint);
+    color: var(--b-faint-text);
+    font-size: 11px;
+}
+
+/* ── попап «Анализ чата» (js/bitrix/analysis.js) ──────────────────────────
+   СЛОЙ 6, и это не косметика. Оверлей подключения — 5, dropzone и лайтбокс —
+   7. Анализ обязан лежать МЕЖДУ: под попапом не должно оказаться невидимого
+   экрана вставки вебхука, а модальные лайтбокс и dropzone со своими кнопками
+   обязаны перекрывать попап.
+
+   ЦВЕТА — ТОЛЬКО ТОКЕНЫ --b-*, ни одного литерала. Панель живёт в собственной
+   палитре с двумя темами (`data-b24-theme`), и захардкоженный цвет читался бы
+   ровно в одной из них — тот самый дефект, ради которого существует
+   tests/frontend/bitrix_theme_contrast.test.mjs.
+
+   Ни одно правило ниже не адресует чужие панели (#tg-*, #vk-*): их стили
+   правится нельзя, а взаимное подкрашивание — это сообщение, ушедшее не в тот
+   чат. */
+#b24-analysis {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    z-index: 6;
+    /* color-mix по токену, а не полупрозрачный литерал: подложка обязана
+       темнеть в тёмной теме и светлеть в светлой вместе с самой панелью. */
+    background: color-mix(in srgb, var(--b-bg) 82%, transparent);
+    backdrop-filter: blur(2px);
+}
+#b24-analysis[hidden] {
+    display: none;
+}
+/* Карточка — по образцу .b24-login-box: одна и та же «коробка поверх панели»
+   не должна выглядеть в двух местах по-разному. */
+.b24-analysis-box {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 680px;
+    max-height: 100%;
+    background: var(--b-panel);
+    border: 1px solid var(--b-acc-dim);
+    border-radius: 6px;
+    padding: 14px 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
+}
+.b24-analysis-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+.b24-analysis-title {
+    color: var(--b-acc);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+}
+/* Имя чата длинное и приходит извне (название задачи портала — почти всегда
+   предложение): сжимается и режется многоточием, а не растягивает карточку по
+   ширине экрана. */
+.b24-analysis-target {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--b-faint-text);
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.b24-analysis-close {
+    flex: 0 0 auto;
+}
+.b24-analysis-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--b-acc-faint);
+}
+.b24-analysis-tab {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--b-acc-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    padding: 5px 8px;
+}
+.b24-analysis-tab:hover {
+    color: var(--b-acc-hi);
+}
+.b24-analysis-tab-active {
+    color: var(--b-acc);
+    border-bottom-color: var(--b-acc);
+}
+.b24-analysis-pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+.b24-analysis-pane[hidden] {
+    display: none;
+}
+.b24-analysis-controls {
+    display: flex;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+/* Поле глубины — .b24-field, но не на всю ширину: рядом с ним живут кнопки. */
+.b24-analysis-depth-field {
+    flex: 0 0 auto;
+    margin-bottom: 0;
+}
+/* Подпись поля здесь — просто <span>, а не .b24-field-label: у экрана
+   подключения метки стоят колонкой над широкими полями, а тут одна короткая
+   строка в ряду кнопок, и класс с letter-spacing растянул бы её вдвое. */
+.b24-analysis-depth-field > span {
+    display: block;
+    color: var(--b-faint-text);
+    font-size: 10px;
+    margin-bottom: 4px;
+}
+.b24-analysis-depth-field select {
+    background: var(--b-bg);
+    border: 1px solid var(--b-acc-faint);
+    border-radius: 4px;
+    color: var(--b-acc-hi);
+    font-family: inherit;
+    font-size: 12px;
+    padding: 6px 8px;
+    letter-spacing: normal;
+    text-transform: none;
+}
+/* Кнопки в ряду не растягиваются и не съезжают вниз: .b24-login-btn задуман
+   для вертикальной колонки экрана подключения, а здесь их пять в строку. */
+.b24-analysis-btn {
+    width: auto;
+    flex: 0 0 auto;
+    margin-top: 0;
+}
+/* Метка сохранённого разбора: вторичная строка, читается как подпись, а не как
+   статус run'а. Пустая (разбора нет) — не занимает места вовсе, иначе попап до
+   первого запуска выглядел бы недорисованным. */
+.b24-analysis-updated {
+    color: var(--b-acc-dim);
+    font-size: 11px;
+    margin-bottom: 6px;
+}
+.b24-analysis-updated:empty {
+    display: none;
+}
+.b24-analysis-status,
+.b24-analysis-prompt-status {
+    color: var(--b-faint-text);
+    font-size: 11px;
+    min-height: 14px;
+    margin-bottom: 6px;
+}
+/* Шапка разбора — кнопка сворачивания.
+
+   Это <button>, но выглядит строкой-подписью: у неё нет ни рамки, ни фона,
+   иначе над блоком разбора появилась бы шестая кнопка в ряду и без того
+   плотных элементов управления. Видимость нажимаемости даёт каретка ▾/▸ и
+   подсветка на hover/фокусе.
+
+   Символ каретки ставит ядро попапа (js/messenger/analysis-core.js), а не
+   CSS-псевдоэлемент: состояние обязано читаться и с отключёнными стилями, и в
+   тексте страницы, который снимает e2e. */
+.b24-analysis-out-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    background: none;
+    border: 0;
+    border-radius: 3px;
+    color: var(--b-acc-dim);
+    cursor: pointer;
+    font: inherit;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+    padding: 2px 4px;
+    text-align: left;
+}
+.b24-analysis-out-toggle:hover,
+.b24-analysis-out-toggle:focus-visible {
+    color: var(--b-acc-hi);
+    outline: none;
+}
+.b24-analysis-out-toggle:focus-visible {
+    box-shadow: 0 0 0 1px var(--b-acc-faint);
+}
+.b24-analysis-out-caret {
+    display: inline-block;
+    font-size: 10px;
+}
+/* Свёрнутый разбор: подпись гаснет до вторичной. Это единственное, что от него
+   осталось на экране, и она не должна спорить за внимание с тредом. */
+.b24-analysis-out-toggle-off {
+    color: var(--b-faint-text);
+}
+
+/* Вывод модели: собственная прокрутка. Без max-height длинный разбор растянул
+   бы карточку за пределы панели, унеся поле вопроса за экран. */
+.b24-analysis-out {
+    white-space: pre-wrap;
+    overflow-y: auto;
+    overflow-wrap: anywhere;
+    max-height: 46vh;
+    min-height: 60px;
+    background: var(--b-bg);
+    border: 1px solid var(--b-acc-faint);
+    border-radius: 4px;
+    color: var(--b-acc-hi);
+    font-size: 12px;
+    line-height: 1.5;
+    padding: 8px 10px;
+}
+.b24-analysis-thread {
+    overflow-y: auto;
+    max-height: 24vh;
+    margin-top: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+}
+.b24-analysis-thread:empty {
+    display: none;
+}
+/* Вопрос пользователя — голубым, ответ модели — основным текстом ленты.
+   Разведены цветом, а не отступом: в длинном треде глазу нужна зацепка, с
+   какой строки начинается очередная пара. Оранжевый акцент здесь занят
+   заголовками карточки, поэтому вопрос берёт вторую «говорящую» роль
+   палитры. */
+.b24-analysis-qa-q {
+    color: var(--b-cyan);
+    white-space: pre-wrap;
+    margin-top: 6px;
+}
+.b24-analysis-qa-a {
+    color: var(--b-acc-hi);
+    white-space: pre-wrap;
+}
+.b24-analysis-ask {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    margin-top: 8px;
+}
+.b24-analysis-question,
+.b24-analysis-prompt {
+    flex: 1 1 auto;
+    width: 100%;
+    box-sizing: border-box;
+    resize: vertical;
+    background: var(--b-bg);
+    border: 1px solid var(--b-acc-faint);
+    border-radius: 4px;
+    color: var(--b-acc-hi);
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1.5;
+    padding: 6px 8px;
+}
+.b24-analysis-question:focus,
+.b24-analysis-prompt:focus {
+    outline: none;
+    border-color: var(--b-acc);
+}
+.b24-analysis-hint {
+    color: var(--b-faint-text);
+    font-size: 11px;
+    line-height: 1.5;
+    margin: 0 0 8px;
+}
+.b24-analysis-prompt-count {
+    color: var(--b-faint-text);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-align: right;
+    margin: 4px 0 8px;
+}
+
+/* ==== Отрисованный Markdown ==============================================
+   Разметку строит js/messenger/markdown.js — общий модуль мессенджеров, а не
+   код панели Битрикс24, поэтому классы у него НЕЙТРАЛЬНЫЕ (`md-*`). Красит их
+   ЗДЕСЬ панель — стили ограничены её контейнерами `.b24-analysis-out` и
+   `.b24-analysis-thread`, поэтому чужие вкладки от них не меняются.
+
+   ВАЖНО про `white-space`. У `.b24-analysis-out` стоит `pre-wrap` — это нужно
+   стримингу, который до кадра `analysis_done` показывает СЫРОЙ текст. После
+   перерисовки Markdown'ом `pre-wrap` даёт лишние пустые строки между блоками,
+   поэтому у самих блоков он сбрасывается в `normal`; переносы внутри блока
+   кода при этом сохраняются собственным правилом для `pre`. */
+.b24-analysis-out .md-p,
+.b24-analysis-out .md-h,
+.b24-analysis-out .md-ul,
+.b24-analysis-out .md-ol,
+.b24-analysis-out .md-quote,
+.b24-analysis-out .md-table,
+.b24-analysis-thread .md-p,
+.b24-analysis-thread .md-h,
+.b24-analysis-thread .md-ul,
+.b24-analysis-thread .md-ol,
+.b24-analysis-thread .md-quote,
+.b24-analysis-thread .md-table {
+    white-space: normal;
+}
+
+.b24-analysis-out .md-p,
+.b24-analysis-thread .md-p {
+    margin: 0 0 8px;
+}
+.b24-analysis-out .md-p:last-child,
+.b24-analysis-thread .md-p:last-child {
+    margin-bottom: 0;
+}
+
+/* Заголовки. Это попап, а не статья: h1 крупнее текста всего в полтора раза,
+   иначе один заголовок съедает треть видимой области разбора. */
+.b24-analysis-out .md-h,
+.b24-analysis-thread .md-h {
+    color: var(--b-acc);
+    font-weight: 700;
+    line-height: 1.3;
+    margin: 12px 0 6px;
+}
+.b24-analysis-out .md-h:first-child,
+.b24-analysis-thread .md-h:first-child {
+    margin-top: 0;
+}
+.b24-analysis-out h1.md-h,
+.b24-analysis-thread h1.md-h { font-size: 17px; }
+.b24-analysis-out h2.md-h,
+.b24-analysis-thread h2.md-h { font-size: 15px; }
+.b24-analysis-out h3.md-h,
+.b24-analysis-thread h3.md-h { font-size: 14px; }
+.b24-analysis-out h4.md-h,
+.b24-analysis-thread h4.md-h { font-size: 13px; }
+.b24-analysis-out h5.md-h,
+.b24-analysis-out h6.md-h,
+.b24-analysis-thread h5.md-h,
+.b24-analysis-thread h6.md-h {
+    font-size: 12px;
+    color: var(--b-acc-dim);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.b24-analysis-out .md-ul,
+.b24-analysis-out .md-ol,
+.b24-analysis-thread .md-ul,
+.b24-analysis-thread .md-ol {
+    margin: 0 0 8px;
+    padding-left: 20px;
+}
+/* Вложенный список не должен добавлять отбивку: пункт и так уже отступил. */
+.b24-analysis-out .md-li > .md-ul,
+.b24-analysis-out .md-li > .md-ol,
+.b24-analysis-thread .md-li > .md-ul,
+.b24-analysis-thread .md-li > .md-ol {
+    margin: 2px 0 0;
+}
+.b24-analysis-out .md-li,
+.b24-analysis-thread .md-li {
+    margin: 2px 0;
+}
+
+/* Код. Моноширинный уже унаследован (панель целиком на JetBrains Mono), здесь
+   важнее фон-врезка и СВОЙ горизонтальный скролл: длинная строка кода не
+   должна расширять карточку разбора. */
+.b24-analysis-out .md-code,
+.b24-analysis-thread .md-code {
+    background: var(--b-bar);
+    border: 1px solid var(--b-acc-faint);
+    border-radius: 3px;
+    color: var(--b-cyan);
+    padding: 0 3px;
+}
+.b24-analysis-out .md-pre,
+.b24-analysis-thread .md-pre {
+    background: var(--b-bar);
+    border: 1px solid var(--b-acc-faint);
+    border-radius: 4px;
+    margin: 0 0 8px;
+    max-width: 100%;
+    overflow-x: auto;
+    padding: 6px 8px;
+    white-space: pre;
+}
+.b24-analysis-out .md-pre .md-code-block,
+.b24-analysis-thread .md-pre .md-code-block {
+    background: none;
+    border: 0;
+    color: var(--b-acc-hi);
+    padding: 0;
+}
+
+.b24-analysis-out .md-quote,
+.b24-analysis-thread .md-quote {
+    border-left: 2px solid var(--b-acc-faint);
+    color: var(--b-faint-text);
+    margin: 0 0 8px;
+    padding: 0 0 0 8px;
+}
+
+.b24-analysis-out .md-hr,
+.b24-analysis-thread .md-hr {
+    background: var(--b-acc-faint);
+    border: 0;
+    height: 1px;
+    margin: 10px 0;
+}
+
+/* Таблица. ГЛАВНОЕ ПРАВИЛО: широкая таблица скроллится ВНУТРИ своей обёртки, а
+   не растягивает попап. Без `max-width: 100%` на обёртке flex-родитель растёт
+   под содержимое, и карточка разбора уезжает за экран вместе с полем вопроса.
+   `table-layout` намеренно не фиксируется: колонки должны считаться по
+   содержимому, скролл берёт на себя переполнение. */
+.b24-analysis-out .md-table-wrap,
+.b24-analysis-thread .md-table-wrap {
+    margin: 0 0 8px;
+    max-width: 100%;
+    overflow-x: auto;
+}
+.b24-analysis-out .md-table,
+.b24-analysis-thread .md-table {
+    border-collapse: collapse;
+    font-size: 11px;
+}
+.b24-analysis-out .md-table th,
+.b24-analysis-out .md-table td,
+.b24-analysis-thread .md-table th,
+.b24-analysis-thread .md-table td {
+    border: 1px solid var(--b-acc-faint);
+    padding: 3px 6px;
+    text-align: left;
+    vertical-align: top;
+    white-space: nowrap;
+}
+.b24-analysis-out .md-table th,
+.b24-analysis-thread .md-table th {
+    background: var(--b-bar);
+    color: var(--b-acc);
+    font-weight: 700;
+}
+.b24-analysis-out .md-table tbody tr:nth-child(even) td,
+.b24-analysis-thread .md-table tbody tr:nth-child(even) td {
+    background: var(--b-panel);
+}
+
+@media (max-width: 480px) {
+    /* На телефоне подсказки к действиям съедают половину экрана, а сама
+       шпаргалка нужна и там: прячем пояснения, оставляя клавиши. */
+    .b24-keys-help-hint { display: none; }
+    .b24-keys-help-card { padding: 10px 12px; }
+    /* Карточка анализа на телефоне занимает всю ширину: 680px «максимума» там
+       всё равно нет, а внутренние отступы съедают строку вопроса. */
+    .b24-analysis-box {
+        max-width: 100%;
+        padding: 10px 12px;
+    }
+}
+
+/* ---- Пользователь просил меньше движения ---- */
+@media (prefers-reduced-motion: reduce) {
+    .b24-pulse,
+    #b24-input:placeholder-shown + .b24-caret {
+        animation: none;
+    }
+    #bitrix-toggle { transition: none; }
+    #bitrix-toggle:hover { transform: none; }
+    /* Подсветка оригинала НЕ гасится совсем — без неё переход по цитате
+       теряет смысл. Убирается только вспышка: заливка держится ровно
+       столько, сколько на строке висит класс. */
+    .b24-line-flash { animation: none; }
+}
+
+/* ---- Узкие экраны ----
+   Порог 768px продублирован во фронтовом js/bitrix/mobile.js (Ф11): CSS и JS
+   обязаны переключаться на одной и той же ширине, иначе колонка «открыта» по
+   мнению JS и невидима по мнению CSS. Media-queries живут ЗДЕСЬ, а не в
+   mobile.css — файл панели самодостаточен. */
+@media (max-width: 768px) {
+    .b24-mobile-only { display: inline-block; }
+
+    #b24-contacts {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: min(280px, 82%);
+        z-index: 4;
+        transform: translateX(-102%);
+        transition: transform 0.18s ease;
+    }
+    /* Класс ставится на #bitrix — общий предок колонки, подложки и кнопки
+       ☰, поэтому одно переключение синхронизирует все три. */
+    #bitrix.b24-contacts-open #b24-contacts {
+        transform: translateX(0);
+    }
+    /* `:not([hidden])` обязателен: селектор с id+классом+id иначе побеждает
+       любое правило `[hidden] { display: none }` и подложка проступала бы
+       поверх ленты, пока JS не снял класс. */
+    #bitrix.b24-contacts-open #b24-contacts-scrim:not([hidden]) {
+        display: block;
+        position: absolute;
+        inset: 0;
+        z-index: 3;
+        background: rgba(8, 7, 10, 0.6);
+    }
+
+    /* Лента и поле ввода занимают ВСЮ ширину: колонка ушла из потока
+       (`position: absolute`), и распорку под неё держать больше нечем. */
+    #b24-session {
+        flex: 1 1 100%;
+        min-width: 0;
+    }
+
+    /* Безопасные зоны телефона. `env(safe-area-inset-*)` в браузере без
+       выреза равен нулю, поэтому `max()` оставляет обычный отступ на
+       десктопе и добавляет полосу под «домашним индикатором» там, где он
+       есть. Без этого кнопка отправки оказывается ПОД жестовой полосой и
+       нажимается через раз. */
+    #b24-prompt {
+        padding-left: max(10px, env(safe-area-inset-left));
+        padding-right: max(10px, env(safe-area-inset-right));
+        padding-bottom: max(6px, env(safe-area-inset-bottom));
+    }
+    #b24-statusbar {
+        padding-bottom: max(2px, env(safe-area-inset-bottom));
+    }
+
+    /* ЭКРАННАЯ КЛАВИАТУРА. iOS не уменьшает `100vh` при её появлении, и
+       нижняя часть панели (поле ввода) уезжает под клавиатуру. `dvh`
+       (dynamic viewport height) учитывает её и поддержан всеми целевыми
+       браузерами; для остальных остаётся прежний `height: 100%` от `#main`,
+       поэтому правило и стоит ОТДЕЛЬНО, а не заменяет базовое. */
+    @supports (height: 100dvh) {
+        #bitrix { max-height: 100dvh; }
+    }
+
+    /* КАРТОЧКА ЗАДАЧИ СХЛОПЫВАЕТСЯ. На узком экране она съедала бы треть
+       экрана над лентой; в свёрнутом виде остаётся строка-шапка (точка
+       статуса, номер, название), а описание, поля и кнопки раскрываются по
+       тапу — класс `b24-task-card-open` ставит js/bitrix/mobile.js.
+
+       `max-height`, а не `display: none` для внутренностей: сворачивание
+       обязано быть плавным и не ломать вычисление высоты ленты. */
+    .b24-task-card {
+        max-height: 2.6em;
+        overflow: hidden;
+        cursor: pointer;
+        transition: max-height 0.18s ease;
+    }
+    .b24-task-card.b24-task-card-open {
+        max-height: 60vh;
+        overflow-y: auto;
+    }
+    /* Подсказка «тут можно раскрыть»: стрелка в свёрнутом виде. Рисуется
+       ПОСЛЕ шапки, а не внутри неё, — чтобы tasks.js не знал о мобильной
+       раскладке вовсе. */
+    .b24-task-card::after {
+        content: "▾";
+        position: absolute;
+        right: 10px;
+        color: var(--b-faint-text);
+        font-size: 10px;
+    }
+    .b24-task-card.b24-task-card-open::after { content: "▴"; }
+    .b24-task-card { position: relative; }
+}

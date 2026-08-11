@@ -33,6 +33,23 @@
 //! | POST | `/api/vk/dialogs/:id/messages/:mid/button`    | Ф9 | нажать кнопку бота по координатам `{row, col}` |
 //! | GET  | `/api/vk/media/:peer_id/:message_id/:index`   | Ф7 | байты вложения (`?kind=thumb\|full`) |
 //! | POST | `/api/vk/upload`                              | Ф8 | приём файла (raw body + `X-Forge-File-Name`) |
+//! | GET  | `/api/vk/dialogs/:id/prompt`                  | **АЧ-Ф1** | заметка пользователя к беседе (анализ чата) |
+//! | PUT  | `/api/vk/dialogs/:id/prompt`                  | **АЧ-Ф1** | сохранить заметку (пустая строка — стереть) |
+//! | GET  | `/api/vk/dialogs/:id/analysis`                | **АЧ-И2** | последний разбор беседы + `thread` (тред вопросов) |
+//! | DELETE | `/api/vk/dialogs/:id/analysis`              | **АЧ-И1** | стереть разбор (заметку и тред не трогает) |
+//! | POST | `/api/vk/dialogs/:id/analysis`                | **АЧ-Ф3** | запустить анализ (`analyze`/`refresh`) или вопрос |
+//! | DELETE | `/api/vk/dialogs/:id/analysis/thread`       | **АЧ-И2** | стереть тред вопросов (разбор и заметку не трогает) |
+//! | POST | `/api/vk/dialogs/:id/analysis/cancel`         | **АЧ-Ф3** | остановить идущий анализ |
+//!
+//! («АЧ» — фазы фичи «Анализ чата через Claude», нумерация у неё своя;
+//! «АЧ-И» — её доработки: И1 «сохраняемый и инкрементальный анализ»,
+//! И2 «сохраняемый тред вопросов».)
+//!
+//! Тред вопросов и разбор чистятся РАЗНЫМИ путями, а не одним с
+//! `?thread=1`: query-параметры здесь разбираются вручную из `RawQuery`
+//! (экстрактор `Query<T>` отработал бы ДО проверки авторизации и сломал бы
+//! лестницу), и отдельный маршрут проще — он попадает в сторожевые тесты
+//! перебором, наравне с остальными.
 //!
 //! ## Три решения, зафиксированные здесь навсегда (задача Ф1.1)
 //!
@@ -63,7 +80,14 @@
 //! - [`login`] — вставка токена, повторная проверка, logout и captcha;
 //! - [`dialogs`] — беседы, история, отдельное сообщение, фильтры и отправка;
 //! - [`media`] — байты вложений из файлового кэша (Ф7);
-//! - [`upload`] — staging файла и трёхшаговый конвейер заливки в VK (Ф8).
+//! - [`upload`] — staging файла и трёхшаговый конвейер заливки в VK (Ф8);
+//! - [`analysis`] — пер-чатовый пользовательский контекст, сохранённый разбор,
+//!   тред вопросов и запуск нового разбора через Claude. Группа с ДВУМЯ
+//!   лестницами: `/prompt`, `GET|DELETE /analysis` и
+//!   `DELETE /analysis/thread` работают без ступени «соединение» (локальный
+//!   файл — единственное такое место наравне со статичным `/filters`), а
+//!   `POST /analysis` требует `require_ready` целиком, потому что начинается с
+//!   выгрузки истории из VK.
 //!
 //! ## Почему `POST /api/vk/upload` не ходит в VK
 //!
@@ -73,6 +97,7 @@
 //! `messages.send`) целиком живёт внутри `POST /api/vk/dialogs/:id/messages`.
 //! Подробности и следствия для фронта — в шапке [`upload`].
 
+pub mod analysis;
 pub mod dialogs;
 pub mod error;
 pub mod login;
@@ -151,6 +176,7 @@ pub fn build_router(state: Arc<VkState>) -> Router {
         .route("/ws/vk", get(crate::ws::vk_ws))
         .merge(login::router())
         .merge(dialogs::router())
+        .merge(analysis::router())
         .merge(media::router())
         .merge(upload::router(max_upload_bytes))
         .with_state(state)
@@ -191,6 +217,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut c = VkConfig {
             cache_dir: dir.path().join("cache"),
+            prompts_path: dir.path().join("prompts.json"),
             ..VkConfig::default()
         };
         cfg(&mut c);
@@ -212,6 +239,7 @@ mod tests {
             base_url: "http://127.0.0.1:1/method".into(),
             cache_dir: dir.path().join("cache"),
             config_path: dir.path().join("vk.toml"),
+            prompts_path: dir.path().join("prompts.json"),
             ..VkConfig::default()
         });
         state
@@ -446,9 +474,59 @@ mod tests {
             "/api/vk/dialogs",
             "/api/vk/dialogs/1234/messages",
             "/api/vk/dialogs/1234/messages/7001",
+            // Локальный файл заметок сети не требует, но авторизации —
+            // требует: это записи пользователя о конкретных людях.
+            "/api/vk/dialogs/1234/prompt",
+            // Сохранённый разбор лежит в том же файле и по той же причине
+            // закрыт авторизацией: это пересказ чужой переписки.
+            "/api/vk/dialogs/1234/analysis",
         ] {
             let (_dir, app) = app();
             let resp = get(app, uri).await;
+            assert_eq!(resp.status(), StatusCode::CONFLICT, "{uri}");
+            assert_eq!(body_json(resp).await["error"]["code"], "not_authorized", "{uri}");
+        }
+
+        // POST-роуты анализа (АЧ-Ф3) — той же проверкой, но своим методом: GET
+        // по ним дал бы 405, что доказывает лишь монтирование, а не лестницу.
+        for uri in [
+            "/api/vk/dialogs/1234/analysis",
+            "/api/vk/dialogs/1234/analysis/cancel",
+        ] {
+            let (_dir, app) = app();
+            let resp = app
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri(uri)
+                        .header("content-type", "application/json")
+                        .body(Body::from(r#"{"kind":"analyze"}"#))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(resp.status(), StatusCode::CONFLICT, "{uri}");
+            assert_eq!(body_json(resp).await["error"]["code"], "not_authorized", "{uri}");
+        }
+
+        // DELETE сохранённого разбора и треда вопросов — тем же правилом и
+        // СВОИМ методом: стирание чужих данных без логина недопустимо тем
+        // более. Тред тут отдельным путём, а не `?thread=1`, — см. шапку.
+        for uri in [
+            "/api/vk/dialogs/1234/analysis",
+            "/api/vk/dialogs/1234/analysis/thread",
+        ] {
+            let (_dir, app) = app();
+            let resp = app
+                .oneshot(
+                    Request::builder()
+                        .method("DELETE")
+                        .uri(uri)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
             assert_eq!(resp.status(), StatusCode::CONFLICT, "{uri}");
             assert_eq!(body_json(resp).await["error"]["code"], "not_authorized", "{uri}");
         }
@@ -489,6 +567,12 @@ mod tests {
                 // auth обязана сработать раньше обоих разборов.
                 "messages/7001",
                 "messages/not-a-number",
+                // Заметка к чату: ключ хранилища выводится из `:id`, поэтому
+                // враждебный id обязан упереться в авторизацию, а не в резолв.
+                "prompt",
+                // И сохранённый разбор — он лежит в том же файле, под тем же
+                // ключом.
+                "analysis",
             ] {
                 let (_dir, app) = app();
                 let uri = format!("/api/vk/dialogs/{id}/{tail}");
@@ -510,6 +594,12 @@ mod tests {
                 ("messages", "{ битый json"),
                 ("read", "{}"),
                 ("typing", r#"{"action":"typing"}"#),
+                // Анализ чата (АЧ-Ф3): и честное тело, и битое, и гигантский
+                // вопрос — всё обязано упереться в авторизацию раньше разбора.
+                ("analysis", r#"{"kind":"analyze"}"#),
+                ("analysis", "{ битый json"),
+                ("analysis/cancel", r#"{"run_id":"whatever"}"#),
+                ("analysis/cancel", "{ битый json"),
             ] {
                 let (_dir, app) = app();
                 let uri = format!("/api/vk/dialogs/{id}/{tail}");
@@ -532,6 +622,60 @@ mod tests {
                 assert_eq!(body_json(resp).await["error"]["code"], "not_authorized");
             }
         }
+
+        // Стирающие методы — тем же правилом: `DELETE` с враждебным `:id` не
+        // имеет права дойти до файла заметок раньше авторизации. Перебором по
+        // ОБОИМ путям очистки, а не точечно: новый путь обязан попадать в этот
+        // список автоматически, иначе он проскочит мимо лестницы.
+        for id in ids {
+            for tail in ["analysis", "analysis/thread"] {
+                let (dir, app) = app();
+                let uri = format!("/api/vk/dialogs/{id}/{tail}");
+                let resp = app
+                    .oneshot(
+                        Request::builder()
+                            .method("DELETE")
+                            .uri(&uri)
+                            .body(Body::empty())
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    resp.status(),
+                    StatusCode::CONFLICT,
+                    "DELETE {uri}: авторизация обязана идти первой"
+                );
+                assert_eq!(body_json(resp).await["error"]["code"], "not_authorized");
+                assert!(
+                    !dir.path().join("prompts.json").exists(),
+                    "DELETE {uri}: файл заметок даже не создавался"
+                );
+            }
+        }
+
+        // Гигантский вопрос — отдельно: он проверяет, что тело не читается
+        // целиком раньше авторизации (иначе неавторизованный клиент заставлял
+        // бы сервер разбирать мегабайт JSON на каждый запрос).
+        let huge = serde_json::json!({
+            "kind": "ask",
+            "question": "я".repeat(300_000),
+        })
+        .to_string();
+        let (_dir_huge, huge_app) = app();
+        let resp = huge_app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/vk/dialogs/..%2F..%2Fetc%2Fpasswd/analysis")
+                    .header("content-type", "application/json")
+                    .body(Body::from(huge))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
+        assert_eq!(body_json(resp).await["error"]["code"], "not_authorized");
 
         // И то же для списка бесед с мусорными параметрами страницы.
         for uri in [

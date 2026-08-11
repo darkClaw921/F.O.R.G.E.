@@ -21,9 +21,11 @@
 //! | 409 | `send_forbidden`      | VK 900/901/902 — адресат запретил сообщения |
 //! | 409 | `validation_required` | VK 17 — тело несёт `redirect_uri` |
 //! | 409 | `unsupported_button`  | кнопку этого типа нельзя нажать под user-токеном |
+//! | 409 | `claude_unavailable`  | бинаря Claude CLI нет по `claude_cli_path` — анализ чата запустить нечем |
 //! | 411 | `length_required`     | `POST /upload` без `Content-Length` |
 //! | 413 | `too_large`           | файл больше `max_upload_bytes` |
 //! | 429 | `flood_wait`          | VK 6/9/29 — просит подождать `retry_after_secs` |
+//! | 500 | `storage_failed`      | не удалось записать локальный файл плагина (заметки к чатам) |
 //! | 502 | `vk_error`            | VK ответил ошибкой, которую не исправит ни ввод, ни повтор |
 //! | 503 | `not_connected`       | транспортный отказ, см. `ConnHealth` |
 //!
@@ -38,7 +40,8 @@
 //!   публичном API нет вовсе, поэтому нажатие либо превращается в обычную
 //!   отправку (`text`), либо отвергается сразу как `unsupported_button`;
 //! - **добавляются** `captcha_required`, `no_messages_scope`,
-//!   `send_forbidden`, `validation_required`, `unsupported_button`.
+//!   `send_forbidden`, `validation_required`, `unsupported_button`,
+//!   `claude_unavailable` (АЧ-Ф3).
 //!
 //! Три необязательных поля (`captcha_sid`, `captcha_img`, `redirect_uri`) —
 //! это НАДМНОЖЕСТВО телеграмного контракта: старый фронт-разбор
@@ -218,6 +221,32 @@ impl ApiError {
         Self::new(StatusCode::CONFLICT, "unsupported_button", message)
     }
 
+    /// 409 — запускать анализ нечем: бинаря Claude CLI нет по настроенному
+    /// пути (АЧ-Ф3).
+    ///
+    /// Отдельный код, а не `invalid_state`, потому что действие пользователя
+    /// конкретное и НЕ угадывается по общему «операция невозможна»: поставить
+    /// CLI или прописать `claude_cli_path` в `~/.config/forge/vk.toml`. Ровно
+    /// это и говорит сообщение, вместе с путём, по которому мы искали.
+    ///
+    /// Проверка живёт в РОУТЕ, до любой работы, потому что
+    /// `ClaudeRunner::new` отсутствие бинаря только warn'ит (иначе плагин без
+    /// установленного CLI не поднимался бы вовсе), а `spawn` упал бы уже после
+    /// полутора секунд выгрузки истории — и пользователь увидел бы `spawn
+    /// failed: No such file` кадром `analysis_error` вместо инструкции.
+    ///
+    /// В сообщение уезжает ТОЛЬКО проверенный путь: ни `$PATH`, ни `$HOME`, ни
+    /// чего-либо ещё из окружения процесса.
+    pub fn claude_unavailable(path: impl std::fmt::Display) -> Self {
+        Self::new(
+            StatusCode::CONFLICT,
+            "claude_unavailable",
+            format!(
+                "Claude CLI не найден: {path}; установите CLI или укажите claude_cli_path в ~/.config/forge/vk.toml"
+            ),
+        )
+    }
+
     /// 411 — загрузка файла пришла без `Content-Length`.
     ///
     /// Отдельный код (а не `invalid_input`), потому что клиент по нему
@@ -245,6 +274,20 @@ impl ApiError {
     /// 503 — транспортный отказ (см. `crate::state::ConnHealth`).
     pub fn not_connected(message: impl Into<String>) -> Self {
         Self::new(StatusCode::SERVICE_UNAVAILABLE, "not_connected", message)
+    }
+
+    /// 500 — не удалось записать ЛОКАЛЬНЫЙ файл плагина.
+    ///
+    /// Единственный код контракта, не связанный ни с вводом, ни с VK: диск
+    /// заполнен, каталог недоступен, права сняты. Отдельно от `vk_error`,
+    /// потому что действия пользователя противоположны — повтор здесь
+    /// бессмыслен, пока не починен диск.
+    pub fn storage_failed(message: impl Into<String>) -> Self {
+        Self::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "storage_failed",
+            message,
+        )
     }
 }
 
@@ -343,6 +386,12 @@ mod tests {
                 0,
             ),
             (
+                ApiError::claude_unavailable("/nope/claude"),
+                StatusCode::CONFLICT,
+                "claude_unavailable",
+                0,
+            ),
+            (
                 ApiError::length_required("x"),
                 StatusCode::LENGTH_REQUIRED,
                 "length_required",
@@ -359,6 +408,12 @@ mod tests {
                 StatusCode::TOO_MANY_REQUESTS,
                 "flood_wait",
                 1,
+            ),
+            (
+                ApiError::storage_failed("x"),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "storage_failed",
+                0,
             ),
             (ApiError::vk_error("x"), StatusCode::BAD_GATEWAY, "vk_error", 0),
             (
@@ -409,6 +464,7 @@ mod tests {
             seen,
             vec![
                 "captcha_required",
+                "claude_unavailable",
                 "flood_wait",
                 "invalid_input",
                 "invalid_state",
@@ -418,6 +474,7 @@ mod tests {
                 "not_authorized",
                 "not_connected",
                 "send_forbidden",
+                "storage_failed",
                 "too_large",
                 "unknown_dialog",
                 "unknown_message",

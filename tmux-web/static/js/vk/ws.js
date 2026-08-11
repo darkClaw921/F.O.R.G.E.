@@ -14,7 +14,8 @@
 //   server → client: login_state, new_message, message_edited,
 //     message_deleted, typing, online, read, upload_progress,
 //     download_progress, notify_settings, unread_total, history_cleared,
-//     dialog_changed, resync, ping;
+//     dialog_changed, analysis_started, analysis_delta, analysis_done,
+//     analysis_error, resync, ping;
 //   client → server: pong (единственный — вся мутация идёт по REST).
 //
 // Инвариант «снять обработчики ДО close()» живёт в ядре и покрыт тестом там
@@ -40,11 +41,16 @@ export const PING_INTERVAL_MS = 15000;
  * диагностики: неизвестный тип не ошибка (сервер может начать присылать новое
  * событие раньше, чем обновится закешированный фронт), но в консоли о нём
  * стоит сказать.
+ *
+ * ПОРЯДОК ЗДЕСЬ — ЧАСТЬ КОНТРАКТА: список сверяется с вариантами `VkServerMsg`
+ * (plugins/vk/src/ws/protocol.rs) построчно контрактным тестом. Четвёрка
+ * `analysis_*` стоит РОВНО между `dialog_changed` и `resync`, как в enum'е.
  */
 export const SERVER_FRAMES = [
     'login_state', 'new_message', 'message_edited', 'message_deleted',
     'typing', 'online', 'read', 'upload_progress', 'download_progress',
     'notify_settings', 'unread_total', 'history_cleared', 'dialog_changed',
+    'analysis_started', 'analysis_delta', 'analysis_done', 'analysis_error',
     'resync', 'ping',
 ];
 

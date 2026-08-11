@@ -221,6 +221,47 @@ export const $tgLoginPasswordSubmit = document.getElementById('tg-login-password
 export const $tgLoginPasswordBack = document.getElementById('tg-login-password-back');
 export const $tgLoginPhone = document.getElementById('tg-login-phone');
 export const $tgLoginHintText = document.getElementById('tg-login-hint-text');
+// АНАЛИЗ ЧАТА ЧЕРЕЗ CLAUDE (js/telegram/analysis.js).
+//
+// Ref'ы объявлены здесь, а не резолвятся в самом модуле: разметка попапа
+// статична (index.html, блок #tg-analysis), и querySelector внутри модуля
+// был бы единственным исключением из конвенции панели. Имена зеркалят
+// VK-шные ($vkAnalysis*) — панель одна и та же, ядро тоже общее
+// (js/messenger/analysis-core.js).
+export const $tgAnalysisToggle = document.getElementById('tg-analysis-toggle');
+export const $tgAnalysis = document.getElementById('tg-analysis');
+export const $tgAnalysisTarget = document.getElementById('tg-analysis-target');
+export const $tgAnalysisClose = document.getElementById('tg-analysis-close');
+export const $tgAnalysisTabRun = document.getElementById('tg-analysis-tab-run');
+export const $tgAnalysisTabCtx = document.getElementById('tg-analysis-tab-ctx');
+export const $tgAnalysisPaneRun = document.getElementById('tg-analysis-pane-run');
+export const $tgAnalysisPaneCtx = document.getElementById('tg-analysis-pane-ctx');
+export const $tgAnalysisDepth = document.getElementById('tg-analysis-depth');
+export const $tgAnalysisStart = document.getElementById('tg-analysis-start');
+export const $tgAnalysisRefresh = document.getElementById('tg-analysis-refresh');
+export const $tgAnalysisCancel = document.getElementById('tg-analysis-cancel');
+export const $tgAnalysisClear = document.getElementById('tg-analysis-clear');
+export const $tgAnalysisClearThread = document.getElementById('tg-analysis-clear-thread');
+export const $tgAnalysisStatus = document.getElementById('tg-analysis-status');
+// «разобрано до <дата>, N сообщений» — метка СОХРАНЁННОГО разбора, а не
+// текущего run'а: она переживает перезагрузку и объясняет, от чего REFRESH
+// будет считать «новые сообщения».
+export const $tgAnalysisUpdated = document.getElementById('tg-analysis-updated');
+// Кнопка-шапка разбора: сворачивает ТОЛЬКО #tg-analysis-out. Метка, статус и
+// тред остаются на экране — они лежат снаружи сворачиваемого узла.
+export const $tgAnalysisOutToggle = document.getElementById('tg-analysis-out-toggle');
+export const $tgAnalysisOut = document.getElementById('tg-analysis-out');
+export const $tgAnalysisThread = document.getElementById('tg-analysis-thread');
+export const $tgAnalysisAsk = document.getElementById('tg-analysis-ask');
+export const $tgAnalysisQuestion = document.getElementById('tg-analysis-question');
+export const $tgAnalysisSend = document.getElementById('tg-analysis-send');
+export const $tgAnalysisError = document.getElementById('tg-analysis-error');
+// Вкладка «Контекст чата»: пер-чатовая заметка пользователя.
+export const $tgAnalysisPrompt = document.getElementById('tg-analysis-prompt');
+export const $tgAnalysisPromptCount = document.getElementById('tg-analysis-prompt-count');
+export const $tgAnalysisPromptSave = document.getElementById('tg-analysis-prompt-save');
+export const $tgAnalysisPromptClear = document.getElementById('tg-analysis-prompt-clear');
+export const $tgAnalysisPromptStatus = document.getElementById('tg-analysis-prompt-status');
 export const $tgDropzone = document.getElementById('tg-dropzone');
 export const $tgLightbox = document.getElementById('tg-lightbox');
 export const $tgLightboxImg = document.getElementById('tg-lightbox-img');
@@ -290,6 +331,46 @@ export const $vkCaptchaKey = document.getElementById('vk-captcha-key');
 export const $vkCaptchaSubmit = document.getElementById('vk-captcha-submit');
 export const $vkCaptchaCancel = document.getElementById('vk-captcha-cancel');
 export const $vkCaptchaError = document.getElementById('vk-captcha-error');
+// АНАЛИЗ ЧАТА ЧЕРЕЗ CLAUDE (js/vk/analysis.js).
+//
+// Ref'ы объявлены здесь, а не резолвятся в самом модуле: разметка попапа
+// статична (index.html, блок #vk-analysis), и querySelector внутри модуля
+// был бы единственным исключением из конвенции панели. Контракт «ref в
+// dom.js ⇔ id в index.html» проверяется тестом vk_contract.test.mjs.
+export const $vkAnalysisToggle = document.getElementById('vk-analysis-toggle');
+export const $vkAnalysis = document.getElementById('vk-analysis');
+export const $vkAnalysisTarget = document.getElementById('vk-analysis-target');
+export const $vkAnalysisClose = document.getElementById('vk-analysis-close');
+export const $vkAnalysisTabRun = document.getElementById('vk-analysis-tab-run');
+export const $vkAnalysisTabCtx = document.getElementById('vk-analysis-tab-ctx');
+export const $vkAnalysisPaneRun = document.getElementById('vk-analysis-pane-run');
+export const $vkAnalysisPaneCtx = document.getElementById('vk-analysis-pane-ctx');
+export const $vkAnalysisDepth = document.getElementById('vk-analysis-depth');
+export const $vkAnalysisStart = document.getElementById('vk-analysis-start');
+export const $vkAnalysisRefresh = document.getElementById('vk-analysis-refresh');
+export const $vkAnalysisCancel = document.getElementById('vk-analysis-cancel');
+export const $vkAnalysisClear = document.getElementById('vk-analysis-clear');
+export const $vkAnalysisClearThread = document.getElementById('vk-analysis-clear-thread');
+export const $vkAnalysisStatus = document.getElementById('vk-analysis-status');
+// «разобрано до <дата>, N сообщений» — метка СОХРАНЁННОГО разбора, а не
+// текущего run'а: она переживает перезагрузку и объясняет, от чего REFRESH
+// будет считать «новые сообщения».
+export const $vkAnalysisUpdated = document.getElementById('vk-analysis-updated');
+// Кнопка-шапка разбора (АЧ-И2): сворачивает ТОЛЬКО #vk-analysis-out. Метка,
+// статус и тред остаются на экране — они лежат снаружи сворачиваемого узла.
+export const $vkAnalysisOutToggle = document.getElementById('vk-analysis-out-toggle');
+export const $vkAnalysisOut = document.getElementById('vk-analysis-out');
+export const $vkAnalysisThread = document.getElementById('vk-analysis-thread');
+export const $vkAnalysisAsk = document.getElementById('vk-analysis-ask');
+export const $vkAnalysisQuestion = document.getElementById('vk-analysis-question');
+export const $vkAnalysisSend = document.getElementById('vk-analysis-send');
+export const $vkAnalysisError = document.getElementById('vk-analysis-error');
+// Вкладка «Контекст чата»: пер-чатовая заметка пользователя.
+export const $vkAnalysisPrompt = document.getElementById('vk-analysis-prompt');
+export const $vkAnalysisPromptCount = document.getElementById('vk-analysis-prompt-count');
+export const $vkAnalysisPromptSave = document.getElementById('vk-analysis-prompt-save');
+export const $vkAnalysisPromptClear = document.getElementById('vk-analysis-prompt-clear');
+export const $vkAnalysisPromptStatus = document.getElementById('vk-analysis-prompt-status');
 export const $vkDropzone = document.getElementById('vk-dropzone');
 export const $vkLightbox = document.getElementById('vk-lightbox');
 export const $vkLightboxImg = document.getElementById('vk-lightbox-img');
@@ -299,3 +380,134 @@ export const $vkLightboxNext = document.getElementById('vk-lightbox-next');
 export const $vkLightboxClose = document.getElementById('vk-lightbox-close');
 // Подпись под полноразмерным вложением: `имя · 1280×720 · 1.2 MB`.
 export const $vkLightboxCaption = document.getElementById('vk-lightbox-caption');
+
+// ---- Bitrix24 plugin ----
+//
+// Ref'ы вкладки «Битрикс24» (плагин forge-bitrix, opt-in `--bitrix`).
+// Устройство ровно то же, что у телеграмной и VK-секций выше: значения
+// вычисляются ОДИН РАЗ при импорте модуля, поэтому узлы обязаны быть в
+// разметке к этому моменту (панель #bitrix присутствует в index.html всегда,
+// даже при выключенном плагине — скрыт только `hidden`).
+//
+// СЛЕДСТВИЕ ДЛЯ ТЕСТОВ: стаб `document` обязан стоять ДО первого импорта
+// любого модуля js/bitrix/*, иначе все ref'ы окажутся null и тест будет
+// проверять пустоту. Код панели всё равно проверяет truthy у каждого узла:
+// index.html может приехать из старого кэша PWA, где секции #bitrix ещё нет.
+//
+// Имена: id кнопки — `bitrix-toggle` (по имени плагина), всё внутри панели —
+// с префиксом `b24-`. Разнесение имени модуля и DOM-префикса не новое:
+// telegram/`tg-` устроен так же.
+export const $bitrixToggle = document.getElementById('bitrix-toggle');
+export const $b24UnreadBadge = document.getElementById('b24-unread-badge');
+export const $b24 = document.getElementById('bitrix');
+export const $b24Titlebar = document.getElementById('b24-titlebar');
+export const $b24SelfUser = document.getElementById('b24-self-user');
+export const $b24ThemeToggle = document.getElementById('b24-theme-toggle');
+export const $b24Logout = document.getElementById('b24-logout');
+// АНАЛИЗ ЧАТА ЧЕРЕЗ CLAUDE (js/bitrix/analysis.js).
+//
+// Ref'ы объявлены здесь, а не резолвятся в самом модуле: разметка попапа
+// статична (index.html, блок #b24-analysis), и querySelector внутри модуля
+// был бы единственным исключением из конвенции панели. Имена зеркалят
+// Telegram-ские ($tgAnalysis*) и VK-шные ($vkAnalysis*) — панель одна и та же,
+// ядро тоже общее (js/messenger/analysis-core.js), и разные имена в трёх
+// портах одной фичи мешали бы читать три main.js рядом.
+export const $b24AnalysisToggle = document.getElementById('b24-analysis-toggle');
+export const $b24Analysis = document.getElementById('b24-analysis');
+export const $b24AnalysisTarget = document.getElementById('b24-analysis-target');
+export const $b24AnalysisClose = document.getElementById('b24-analysis-close');
+export const $b24AnalysisTabRun = document.getElementById('b24-analysis-tab-run');
+export const $b24AnalysisTabCtx = document.getElementById('b24-analysis-tab-ctx');
+export const $b24AnalysisPaneRun = document.getElementById('b24-analysis-pane-run');
+export const $b24AnalysisPaneCtx = document.getElementById('b24-analysis-pane-ctx');
+// Глубина выгрузки у Битрикс24 СВОЯ (50 / 100 / 200, по умолчанию 100):
+// портал отдаёт историю страницами по 50 сообщений при бюджете 2 rps, и
+// привычные 500 означали бы десять запросов перед первым словом модели.
+export const $b24AnalysisDepth = document.getElementById('b24-analysis-depth');
+export const $b24AnalysisStart = document.getElementById('b24-analysis-start');
+export const $b24AnalysisRefresh = document.getElementById('b24-analysis-refresh');
+export const $b24AnalysisCancel = document.getElementById('b24-analysis-cancel');
+export const $b24AnalysisClear = document.getElementById('b24-analysis-clear');
+export const $b24AnalysisClearThread = document.getElementById('b24-analysis-clear-thread');
+export const $b24AnalysisStatus = document.getElementById('b24-analysis-status');
+// «разобрано до <дата>, N сообщений» — метка СОХРАНЁННОГО разбора, а не
+// текущего run'а: она переживает перезагрузку и объясняет, от чего REFRESH
+// будет считать «новые сообщения».
+export const $b24AnalysisUpdated = document.getElementById('b24-analysis-updated');
+// Кнопка-шапка разбора: сворачивает ТОЛЬКО #b24-analysis-out. Метка, статус и
+// тред остаются на экране — они лежат снаружи сворачиваемого узла.
+export const $b24AnalysisOutToggle = document.getElementById('b24-analysis-out-toggle');
+export const $b24AnalysisOut = document.getElementById('b24-analysis-out');
+export const $b24AnalysisThread = document.getElementById('b24-analysis-thread');
+export const $b24AnalysisAsk = document.getElementById('b24-analysis-ask');
+export const $b24AnalysisQuestion = document.getElementById('b24-analysis-question');
+export const $b24AnalysisSend = document.getElementById('b24-analysis-send');
+export const $b24AnalysisError = document.getElementById('b24-analysis-error');
+// Вкладка «Контекст чата»: пер-чатовая заметка пользователя.
+export const $b24AnalysisPrompt = document.getElementById('b24-analysis-prompt');
+export const $b24AnalysisPromptCount = document.getElementById('b24-analysis-prompt-count');
+export const $b24AnalysisPromptSave = document.getElementById('b24-analysis-prompt-save');
+export const $b24AnalysisPromptClear = document.getElementById('b24-analysis-prompt-clear');
+export const $b24AnalysisPromptStatus = document.getElementById('b24-analysis-prompt-status');
+// Колонка диалогов: сама колонка, кнопка ☰ и подложка (js/bitrix/mobile.js).
+export const $b24Contacts = document.getElementById('b24-contacts');
+export const $b24ContactsToggle = document.getElementById('b24-contacts-toggle');
+export const $b24ContactsScrim = document.getElementById('b24-contacts-scrim');
+// Четыре ЛОКАЛЬНЫЕ директории одного списка (Р2). В отличие от VK это не
+// серверные фильтры: портал отдаёт один `im.recent.get`, а разделение
+// чаты/задачи/непрочитанные делается по полям строки.
+export const $b24DirList = document.getElementById('b24-dir-list');
+export const $b24DirAllCount = document.getElementById('b24-dir-all-count');
+export const $b24DirChatsCount = document.getElementById('b24-dir-chats-count');
+export const $b24DirTasksCount = document.getElementById('b24-dir-tasks-count');
+export const $b24DirUnreadCount = document.getElementById('b24-dir-unread-count');
+export const $b24NodesTitle = document.getElementById('b24-nodes-title');
+export const $b24DialogList = document.getElementById('b24-dialog-list');
+export const $b24SessionHead = document.getElementById('b24-session-head');
+// Шапка-карточка задачи над лентой — то, чего нет ни у Telegram, ни у VK:
+// чат задачи это обычный IM-чат с entity_type="TASKS_TASK", и карточка
+// показывает статус, срок и матрицу действий (Ф10).
+export const $b24TaskCard = document.getElementById('b24-task-card');
+export const $b24Log = document.getElementById('b24-log');
+export const $b24Typing = document.getElementById('b24-typing');
+// Очередь отправляемых файлов (Ф9). НАД полем ввода, а не в ленте:
+// `chat.renderHistory()` пересобирает `#b24-log` целиком, и карточка отправки
+// исчезала бы вместе с прогрессом от любого приехавшего сообщения.
+export const $b24Uploads = document.getElementById('b24-uploads');
+// Строка режима ввода (Ф6): цитата ответа либо правка. Режимы
+// взаимоисключающие, поэтому узел один.
+export const $b24PromptNote = document.getElementById('b24-prompt-note');
+export const $b24Prompt = document.getElementById('b24-prompt');
+export const $b24Input = document.getElementById('b24-input');
+// Счётчик символов (Р12): портал режет текст на 20 006 символах МОЛЧА, поэтому
+// предупреждать обязан фронт — до отправки.
+export const $b24CharCount = document.getElementById('b24-charcount');
+export const $b24Attach = document.getElementById('b24-attach');
+export const $b24FileInput = document.getElementById('b24-file-input');
+export const $b24Send = document.getElementById('b24-send');
+export const $b24Mode = document.getElementById('b24-mode');
+export const $b24StatusRight = document.getElementById('b24-status-right');
+export const $b24Lat = document.getElementById('b24-lat');
+// Оверлей подключения: один шаг — вставка URL входящего вебхука. Разбор
+// трёх форм ввода живёт ТОЛЬКО на бэкенде (Ф3).
+export const $b24Login = document.getElementById('b24-login');
+export const $b24LoginStepWebhook = document.getElementById('b24-login-step-webhook');
+// Текст подсказки приходит с бэкенда (`hint` в /api/bitrix/status):
+// интерфейс портала меняется, а разметку браузер держит в кэше PWA неделями.
+export const $b24LoginHint = document.getElementById('b24-login-hint');
+export const $b24Webhook = document.getElementById('b24-webhook');
+export const $b24LoginWebhookSubmit = document.getElementById('b24-login-webhook-submit');
+export const $b24LoginStatus = document.getElementById('b24-login-status');
+export const $b24LoginError = document.getElementById('b24-login-error');
+export const $b24LoginCountdown = document.getElementById('b24-login-countdown');
+// Предупреждение про выход (`logout_hint` в /api/bitrix/status): отозвать
+// входящий вебхук через REST невозможно, и на портале он остаётся
+// действующим — иначе «вышел» будет прочитано как «отозвал».
+export const $b24LogoutNote = document.getElementById('b24-logout-note');
+export const $b24Dropzone = document.getElementById('b24-dropzone');
+export const $b24Lightbox = document.getElementById('b24-lightbox');
+export const $b24LightboxImg = document.getElementById('b24-lightbox-img');
+export const $b24LightboxPrev = document.getElementById('b24-lightbox-prev');
+export const $b24LightboxNext = document.getElementById('b24-lightbox-next');
+export const $b24LightboxClose = document.getElementById('b24-lightbox-close');
+export const $b24LightboxCaption = document.getElementById('b24-lightbox-caption');

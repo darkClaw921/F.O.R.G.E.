@@ -1,3 +1,6 @@
 # openSettingsModal
 
 Диспетчер табов settings-модалки (tmux-web/static/js/settings/modal.js). openSettingsModal(initialTab) строит overlay+card, панели создаются в card.innerHTML (HTML-в-JS, не в index.html). Вкладки: Notifications (дефолт, рендерится сразу), Themes, TODO behavior, Echo, «Сводка дня» (daily-summary) и опциональный Remote servers (в remote-mode). Каждая вкладка имеет ленивый рендер с флагом loaded в собственном state-объекте; showTab(name) переключает active-класс кнопок и hidden панелей и при первом показе вызывает соответствующий renderXxxPanel. «Сводка дня» рендерится через renderDailySummaryTab(, { onClose: close }); close определён заранее (overlay.remove), т.к. кнопка «Открыть страницу» использует его как onClose. initialTab допускает 'daily-summary'.
+
+Ф11 (Битрикс24). Вкладок стало ДЕВЯТЬ: добавлена «Битрикс24» (data-tab="bitrix", панель #ps-panel-bitrix, ленивый renderBitrixPanel). Правки те же шесть механических мест, что у соседей, — кнопка, панель, реф контента, объект состояния, ветка showTab, whitelist initialTab; реестра табов по-прежнему нет намеренно. Внутри — два раздела в порядке «видимость, затем клавиши»: buildBitrixVisibilityForm (свой файл: список строится из ВИДОВ диалога портала) и общая buildHotkeysForm с B24_HOTKEYS_CONFIG.
+

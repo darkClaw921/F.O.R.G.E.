@@ -1,24 +1,3 @@
 # ApiError
 
-plugins/telegram/src/routes/error.rs — единый тип ошибки HTTP-слоя плагина Telegram.
-
-Формат наружу (ApiErrorEnvelope + IntoResponse): {"error":{"code","message","retry_after_secs"?}}.
-Таблица кодов живёт в шапке модуля, а сторожевой тест full_error_contract_table фиксирует ПОЛНЫЙ
-отсортированный список кодов — переименование кода валит тест, а не ломает вкладку молча.
-
-КОДЫ: 409 not_authorized / invalid_state; 404 unknown_dialog / no_media / unknown_message;
-429 flood_wait (+ стандартный заголовок Retry-After; авто-ретрай ЗАПРЕЩЁН — FLOOD_WAIT на логине
-измеряется часами, UI показывает countdown); 503 not_connected; 400 invalid_input;
-502 telegram_error; 504 bot_timeout.
-
-ДОБАВЛЕНЫ ПОД D2 (кнопки ботов):
-- unknown_message(message) -> 404 — сообщения нет (удалено / чужой msg_id / :mid не разбирается);
-- telegram_error(message) -> 502 — Telegram отказал, и это НЕ лечится ни вводом пользователя, ни
-  реконнектом (в отличие от 503 not_connected);
-- bot_timeout(message) -> 504 — бот не ответил на нажатие кнопки; message содержит «бот не
-  ответил», фронт показывает его как есть.
-
-Разница 502 vs 503 сделана намеренно: она подсказывает фронту, стоит ли предлагать повтор.
-
-impl From<LoginError> for ApiError — единственный маппинг ошибок логина в HTTP, чтобы контракт
-нельзя было разъехать между четырьмя роутами.
+Единый контракт ошибок REST-поверхности плагина VK (plugins/vk/src/routes/error.rs). Тело всегда {"error":{code,message,…}} плюс необязательные retry_after_secs / captcha_sid / captcha_img / redirect_uri (не сериализуются, когда пусты). Полный список кодов и их HTTP-статусов — в таблице шапки модуля и в тесте full_error_contract_table, который единственный держит список целиком: фронт принимает решения по code, а не по статусу (409 бывает семи разных смыслов). АЧ-Ф3 добавил код claude_unavailable (409): бинаря Claude CLI нет по настроенному claude_cli_path, запускать анализ нечем. Отдельный код, а не invalid_state, потому что действие пользователя конкретное — поставить CLI либо прописать claude_cli_path в ~/.config/forge/vk.toml; ровно это и говорит сообщение вместе с проверенным путём (и ничем больше из окружения). Проверка живёт в РОУТЕ до любой работы: ClaudeRunner::new отсутствие бинаря только warn'ит, иначе плагин без CLI не поднимался бы вовсе, а spawn упал бы уже после выгрузки истории.

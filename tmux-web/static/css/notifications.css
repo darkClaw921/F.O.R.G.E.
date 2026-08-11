@@ -122,3 +122,82 @@
     opacity: 0.5;
     cursor: not-allowed;
 }
+
+/* --- Авто-апрув: строка с кнопкой «История» + журнал ---------------------- */
+
+/* Кнопка стоит СЛЕВА от чекбокса «Авто-апрув запросов Claude Code», поэтому
+   строка — flex, а не блочный label, как у остальных тумблеров. */
+.auto-approve-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 4px 0 8px;
+}
+
+.auto-approve-row .notify-check {
+    margin: 0;
+}
+
+.auto-approve-history-btn {
+    flex: 0 0 auto;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-family: inherit;
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: border-color 100ms ease, color 100ms ease;
+}
+
+.auto-approve-history-btn:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+/* Журнал: скроллится внутри себя — записей до 200, а модалка настроек
+   не должна растягиваться. */
+.auto-approve-history {
+    max-height: 220px;
+    overflow: auto;
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 6px 8px;
+    margin-bottom: 10px;
+    background: var(--bg);
+}
+
+.auto-approve-history-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.7rem;
+    color: var(--fg);
+}
+
+.auto-approve-history-table th {
+    text-align: left;
+    font-weight: 600;
+    color: var(--fg-tab-inactive);
+    padding: 2px 6px 4px 0;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+}
+
+.auto-approve-history-table td {
+    padding: 2px 6px 2px 0;
+    vertical-align: top;
+    border-top: 1px solid var(--border-input);
+}
+
+/* Колонка команды — единственная растяжимая; длинное содержимое режется
+   многоточием, полный текст доступен в tooltip. */
+.auto-approve-history-table td:last-child {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

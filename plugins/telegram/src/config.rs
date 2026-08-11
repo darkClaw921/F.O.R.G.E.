@@ -16,6 +16,11 @@
 //!    - `FORGE_TELEGRAM_MAX_CACHE_BYTES`
 //!    - `FORGE_TELEGRAM_CATCH_UP`
 //!    - `FORGE_TELEGRAM_UPDATE_QUEUE_LIMIT`
+//!    - `FORGE_TELEGRAM_PROMPTS_PATH`
+//!    - `FORGE_TELEGRAM_CLAUDE_CLI_PATH`
+//!    - `FORGE_TELEGRAM_ANALYSIS_TIMEOUT_SECS`
+//!    - `FORGE_TELEGRAM_ANALYSIS_MAX_CHARS`
+//!    - `FORGE_TELEGRAM_ANALYSIS_MODEL`
 //! 4. [`TelegramConfig::validate`] / [`TelegramConfig::validate_and_fix`] —
 //!    проверка инвариантов и создание родительских каталогов.
 //!
@@ -91,6 +96,97 @@ pub const DEFAULT_UPDATE_QUEUE_LIMIT: usize = 1024;
 /// Догонять ли пропущенные апдейты после реконнекта (grammers `catch_up`).
 pub const DEFAULT_CATCH_UP: bool = true;
 
+// ---------------------------------------------------------------------------
+// «Анализ чата через Claude».
+//
+// Значения совпадают с VK (`plugins/vk/src/config.rs`) намеренно: это ОДНА
+// фича на три мессенджера, и разные умолчания означали бы, что в одной
+// вкладке разбор укладывается в бюджет, а в соседней — нет, без единого
+// сообщения о причине.
+// ---------------------------------------------------------------------------
+
+/// Таймаут одного анализа чата, секунды. `0` ⇒ таймаут выключен.
+///
+/// Значение совпадает с [`forge_claude_runner::DEFAULT_RUN_TIMEOUT_SECS`] и
+/// продублировано здесь намеренно: это ДЕФОЛТ КОНФИГА плагина, а раннер живёт
+/// в чужом крейте и о `telegram.toml` ничего не знает.
+pub const DEFAULT_ANALYSIS_TIMEOUT_SECS: u64 = 300;
+
+/// Потолок транскрипта, отдаваемого модели, в CODE POINTS.
+///
+/// Совпадает с [`crate::analysis::context::MAX_TRANSCRIPT_CHARS`]: константа
+/// задаёт величину, конфиг — возможность её подвинуть на конкретной машине.
+pub const DEFAULT_ANALYSIS_MAX_CHARS: usize = 60_000;
+
+/// Нижняя граница `analysis_max_chars`. Меньше 5 000 символов транскрипт
+/// перестаёт быть перепиской: в него влезает десяток реплик, и любой ответ
+/// модели будет выводом «данных не хватает».
+pub const MIN_ANALYSIS_MAX_CHARS: usize = 5_000;
+
+/// Верхняя граница `analysis_max_chars`. 200 000 code points — это уже около
+/// 50 тысяч токенов на один запрос; выше значение означает опечатку, а не
+/// намерение.
+pub const MAX_ANALYSIS_MAX_CHARS: usize = 200_000;
+
+/// Модель Claude для анализа чата по умолчанию.
+///
+/// `sonnet`, а не `opus`: анализ запускается кнопкой и должен стоить дёшево;
+/// значение — зафиксированное решение, а не подбор.
+pub const DEFAULT_ANALYSIS_MODEL: &str = "sonnet";
+
+/// Дефолтный путь хранилища пер-чатовых промптов
+/// (`~/.forge/telegram-chat-prompts.json`).
+///
+/// Рядом с кэшем медиа, а НЕ рядом с `telegram.toml`: это пользовательские
+/// данные вкладки, а не настройки, и переносить их вместе с конфигом (в
+/// котором лежат креды приложения) незачем.
+pub fn default_prompts_path() -> PathBuf {
+    if let Some(home) = std::env::var_os("HOME") {
+        PathBuf::from(home).join(".forge/telegram-chat-prompts.json")
+    } else {
+        PathBuf::from("./telegram-chat-prompts.json")
+    }
+}
+
+/// Фактический путь хранилища промптов: непустой `FORGE_TELEGRAM_PROMPTS_PATH`
+/// побеждает, иначе — [`default_prompts_path`].
+///
+/// Существует по той же причине, что и [`config_path`], и это не
+/// теоретическая аккуратность: `forge_chat_analysis::prompts::save` ПИШЕТ по
+/// этому пути, и без override любой `cargo test`, дёрнувший сохранение,
+/// затирал бы живые заметки разработчика в `~/.forge`.
+pub fn prompts_path() -> PathBuf {
+    match std::env::var_os("FORGE_TELEGRAM_PROMPTS_PATH") {
+        Some(v) if !v.is_empty() => PathBuf::from(v),
+        _ => default_prompts_path(),
+    }
+}
+
+/// Дефолтный путь бинаря Claude CLI (`$HOME/.local/bin/claude`).
+///
+/// Тот же дефолт, что у `forge_echo::config` и `forge_vk::config`: все они
+/// запускают ОДИН И ТОТ ЖЕ CLI, и разные умолчания означали бы, что чат Echo
+/// работает, а анализ чата Telegram — нет, без единого сообщения о причине.
+pub fn default_claude_cli_path() -> PathBuf {
+    if let Some(home) = std::env::var_os("HOME") {
+        PathBuf::from(home).join(".local/bin/claude")
+    } else {
+        PathBuf::from("claude")
+    }
+}
+
+fn default_analysis_timeout_secs() -> u64 {
+    DEFAULT_ANALYSIS_TIMEOUT_SECS
+}
+
+fn default_analysis_max_chars() -> usize {
+    DEFAULT_ANALYSIS_MAX_CHARS
+}
+
+fn default_analysis_model() -> Option<String> {
+    Some(DEFAULT_ANALYSIS_MODEL.to_string())
+}
+
 fn default_max_upload_bytes() -> u64 {
     DEFAULT_MAX_UPLOAD_BYTES
 }
@@ -140,6 +236,42 @@ pub struct TelegramConfig {
     /// Глубина очереди апдейтов. Должна быть > 0.
     #[serde(default = "default_update_queue_limit")]
     pub update_queue_limit: usize,
+
+    // --- «Анализ чата через Claude» ---------------------------------------
+    /// Файл пер-чатовых заметок, сохранённых разборов и тредов Q&A
+    /// (`forge_chat_analysis::prompts`).
+    ///
+    /// `#[serde(skip)]`: путь НЕ читается из `telegram.toml` и не пишется в
+    /// него. Хранится ОТДЕЛЬНЫМ полем, а не вызовом [`prompts_path`] в момент
+    /// записи, чтобы `load()` и все последующие сохранения работали с одним и
+    /// тем же файлом даже если env поменяли на лету.
+    #[serde(skip, default = "prompts_path")]
+    pub prompts_path: PathBuf,
+
+    /// Путь бинаря Claude CLI, которым запускается анализ.
+    ///
+    /// В ОТЛИЧИЕ от [`Self::prompts_path`] читается из TOML: это настройка
+    /// машины. Существование НЕ проверяется здесь — отсутствие бинаря даёт
+    /// ошибку `409 claude_unavailable` на роуте, чтобы пользователь знал, что
+    /// править.
+    #[serde(default = "default_claude_cli_path")]
+    pub claude_cli_path: PathBuf,
+
+    /// Таймаут одного анализа, секунды; `0` ⇒ без таймаута. Зависший процесс
+    /// держал бы слот `forge_chat_analysis::MAX_PARALLEL_ANALYSIS` вечно.
+    #[serde(default = "default_analysis_timeout_secs")]
+    pub analysis_timeout_secs: u64,
+
+    /// Потолок транскрипта в CODE POINTS (клампится в
+    /// [`MIN_ANALYSIS_MAX_CHARS`]..=[`MAX_ANALYSIS_MAX_CHARS`]).
+    #[serde(default = "default_analysis_max_chars")]
+    pub analysis_max_chars: usize,
+
+    /// Модель для `--model`; `None` ⇒ флаг не передаётся вовсе и решает сам
+    /// CLI. Явное значение по умолчанию, чтобы стоимость разбора не менялась
+    /// от чужих настроек `~/.claude`.
+    #[serde(default = "default_analysis_model")]
+    pub analysis_model: Option<String>,
 }
 
 impl Default for TelegramConfig {
@@ -153,6 +285,11 @@ impl Default for TelegramConfig {
             max_cache_bytes: default_max_cache_bytes(),
             catch_up: default_catch_up(),
             update_queue_limit: default_update_queue_limit(),
+            prompts_path: prompts_path(),
+            claude_cli_path: default_claude_cli_path(),
+            analysis_timeout_secs: default_analysis_timeout_secs(),
+            analysis_max_chars: default_analysis_max_chars(),
+            analysis_model: default_analysis_model(),
         }
     }
 }
@@ -270,6 +407,32 @@ impl TelegramConfig {
                 }
             }
         }
+        if let Ok(v) = std::env::var("FORGE_TELEGRAM_PROMPTS_PATH") {
+            if !v.is_empty() {
+                self.prompts_path = PathBuf::from(v);
+            }
+        }
+        if let Ok(v) = std::env::var("FORGE_TELEGRAM_CLAUDE_CLI_PATH") {
+            if !v.is_empty() {
+                self.claude_cli_path = PathBuf::from(v);
+            }
+        }
+        if let Ok(v) = std::env::var("FORGE_TELEGRAM_ANALYSIS_MODEL") {
+            // Пустая строка здесь ЗНАЧИМА: `FORGE_TELEGRAM_ANALYSIS_MODEL=` —
+            // это «не передавать --model вовсе», единственный способ вернуться
+            // к дефолту самого CLI, не редактируя telegram.toml.
+            let t = v.trim();
+            self.analysis_model = (!t.is_empty()).then(|| t.to_string());
+        }
+        apply_env_u64(
+            "FORGE_TELEGRAM_ANALYSIS_TIMEOUT_SECS",
+            &mut self.analysis_timeout_secs,
+        );
+        {
+            let mut chars = self.analysis_max_chars as u64;
+            apply_env_u64("FORGE_TELEGRAM_ANALYSIS_MAX_CHARS", &mut chars);
+            self.analysis_max_chars = usize::try_from(chars).unwrap_or(usize::MAX);
+        }
     }
 
     /// Проверяет инварианты конфига, НЕ меняя его.
@@ -320,6 +483,61 @@ impl TelegramConfig {
                 "forge-telegram: update_queue_limit must be > 0; falling back to default"
             );
             self.update_queue_limit = default_update_queue_limit();
+        }
+        // Пустое значение означало бы запись в «» — то есть тихую потерю всех
+        // заметок; относительное превратилось бы в РАЗНЫЕ файлы при разном
+        // рабочем каталоге процесса (devforge запускают и из репозитория, и
+        // из systemd). Поэтому путь приводится к абсолютному ЗДЕСЬ, один раз.
+        self.prompts_path = expand_tilde(&self.prompts_path);
+        if self.prompts_path.as_os_str().is_empty() {
+            tracing::warn!(
+                target: "forge_telegram",
+                "forge-telegram: empty prompts_path; falling back to default"
+            );
+            self.prompts_path = default_prompts_path();
+        }
+        if self.prompts_path.is_relative() {
+            if let Ok(cwd) = std::env::current_dir() {
+                self.prompts_path = cwd.join(&self.prompts_path);
+            }
+        }
+        self.claude_cli_path = expand_tilde(&self.claude_cli_path);
+        if self.claude_cli_path.as_os_str().is_empty() {
+            tracing::warn!(
+                target: "forge_telegram",
+                "forge-telegram: empty claude_cli_path; falling back to default"
+            );
+            self.claude_cli_path = default_claude_cli_path();
+        }
+        // Существование бинаря ЗДЕСЬ не проверяется намеренно: анализ — не
+        // условие работы вкладки, и отсутствие CLI не имеет права ни ронять
+        // старт, ни подменять путь. Отказ выносит роут, кодом
+        // `409 claude_unavailable`, и называет ровно этот путь.
+        if self.analysis_max_chars < MIN_ANALYSIS_MAX_CHARS
+            || self.analysis_max_chars > MAX_ANALYSIS_MAX_CHARS
+        {
+            tracing::warn!(
+                target: "forge_telegram",
+                value = self.analysis_max_chars,
+                "forge-telegram: analysis_max_chars is out of range; clamping"
+            );
+            self.analysis_max_chars = self
+                .analysis_max_chars
+                .clamp(MIN_ANALYSIS_MAX_CHARS, MAX_ANALYSIS_MAX_CHARS);
+        }
+        // `0` — легальное значение («таймаута нет»), поэтому чинится только
+        // пустая/пробельная модель: `--model ""` CLI отвергает целиком.
+        if let Some(model) = &self.analysis_model {
+            let t = model.trim();
+            if t.is_empty() {
+                tracing::warn!(
+                    target: "forge_telegram",
+                    "forge-telegram: empty analysis_model; falling back to default"
+                );
+                self.analysis_model = default_analysis_model();
+            } else if t.len() != model.len() {
+                self.analysis_model = Some(t.to_string());
+            }
         }
         if let Err(e) = self.ensure_dirs() {
             tracing::warn!(
@@ -520,6 +738,23 @@ pub(crate) fn set_owner_only(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Разворачивает ведущий `~` в `$HOME`.
+///
+/// Нужен потому, что `prompts_path` и `claude_cli_path` пользователь пишет
+/// руками в `telegram.toml`, а TOML — не shell: без разворота
+/// `~/.local/bin/claude` искался бы в каталоге с именем `~` относительно
+/// текущей директории процесса.
+fn expand_tilde(path: &Path) -> PathBuf {
+    let s = path.to_string_lossy();
+    if s == "~" || s.starts_with("~/") {
+        if let Some(home) = std::env::var_os("HOME") {
+            let rest = s.strip_prefix("~/").unwrap_or("");
+            return PathBuf::from(home).join(rest);
+        }
+    }
+    path.to_path_buf()
+}
+
 /// Парсит u64 из env в `target`; мусор — warn + пропуск.
 fn apply_env_u64(key: &str, target: &mut u64) {
     if let Ok(v) = std::env::var(key) {
@@ -566,6 +801,13 @@ mod tests {
         "FORGE_TELEGRAM_MAX_CACHE_BYTES",
         "FORGE_TELEGRAM_CATCH_UP",
         "FORGE_TELEGRAM_UPDATE_QUEUE_LIMIT",
+        // Без этих ключей `cargo test` писал бы в живой
+        // `~/.forge/telegram-chat-prompts.json` пользователя.
+        "FORGE_TELEGRAM_PROMPTS_PATH",
+        "FORGE_TELEGRAM_CLAUDE_CLI_PATH",
+        "FORGE_TELEGRAM_ANALYSIS_TIMEOUT_SECS",
+        "FORGE_TELEGRAM_ANALYSIS_MAX_CHARS",
+        "FORGE_TELEGRAM_ANALYSIS_MODEL",
     ];
 
     fn clear_env() {
@@ -955,6 +1197,122 @@ mod tests {
 
         let cfg = TelegramConfig::load_from_file(&path);
         assert_eq!(cfg, TelegramConfig::default(), "битый файл ⇒ только дефолты");
+    }
+
+    // -----------------------------------------------------------------------
+    // «Анализ чата через Claude».
+    // -----------------------------------------------------------------------
+
+    /// Дефолты полей анализа: они же — контракт с фронтом (потолок
+    /// транскрипта) и с CLI (модель).
+    #[test]
+    fn analysis_defaults_are_the_frozen_values() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        clear_env();
+        let cfg = TelegramConfig::default();
+
+        assert_eq!(cfg.analysis_timeout_secs, DEFAULT_ANALYSIS_TIMEOUT_SECS);
+        assert_eq!(cfg.analysis_max_chars, DEFAULT_ANALYSIS_MAX_CHARS);
+        assert_eq!(cfg.analysis_model.as_deref(), Some(DEFAULT_ANALYSIS_MODEL));
+        assert!(
+            cfg.prompts_path.ends_with("telegram-chat-prompts.json"),
+            "{}",
+            cfg.prompts_path.display()
+        );
+        assert!(cfg.claude_cli_path.ends_with("claude"), "{}", cfg.claude_cli_path.display());
+        // Ключ хранилища НЕ должен пересекаться с VK и Bitrix: три вкладки
+        // держат три независимых набора заметок.
+        assert!(!cfg.prompts_path.to_string_lossy().contains("vk-chat"));
+    }
+
+    /// Env переопределяет каждое поле анализа; пустой
+    /// `FORGE_TELEGRAM_ANALYSIS_MODEL` ЗНАЧИМ — «не передавать --model».
+    #[test]
+    fn analysis_env_overrides_every_field() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        clear_env();
+        let dir = tempfile::tempdir().unwrap();
+        let prompts = dir.path().join("prompts.json");
+        let cli = dir.path().join("bin/claude");
+
+        std::env::set_var("FORGE_TELEGRAM_PROMPTS_PATH", &prompts);
+        std::env::set_var("FORGE_TELEGRAM_CLAUDE_CLI_PATH", &cli);
+        std::env::set_var("FORGE_TELEGRAM_ANALYSIS_TIMEOUT_SECS", "0");
+        std::env::set_var("FORGE_TELEGRAM_ANALYSIS_MAX_CHARS", "12345");
+        std::env::set_var("FORGE_TELEGRAM_ANALYSIS_MODEL", "  opus  ");
+
+        let mut cfg = TelegramConfig::default();
+        cfg.apply_env();
+        assert_eq!(cfg.prompts_path, prompts);
+        assert_eq!(cfg.claude_cli_path, cli);
+        assert_eq!(cfg.analysis_timeout_secs, 0, "0 — легальное «без таймаута»");
+        assert_eq!(cfg.analysis_max_chars, 12_345);
+        assert_eq!(cfg.analysis_model.as_deref(), Some("opus"), "trim обязателен");
+
+        std::env::set_var("FORGE_TELEGRAM_ANALYSIS_MODEL", "");
+        let mut cfg = TelegramConfig::default();
+        cfg.apply_env();
+        assert!(
+            cfg.analysis_model.is_none(),
+            "пустая строка = «решает сам CLI», а не «дефолт плагина»"
+        );
+        clear_env();
+    }
+
+    /// `validate_and_fix` чинит вырожденные значения анализа и делает пути
+    /// абсолютными.
+    #[test]
+    fn validate_and_fix_repairs_analysis_values() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        clear_env();
+        let dir = tempfile::tempdir().unwrap();
+
+        let mut cfg = TelegramConfig {
+            session_path: dir.path().join("s.session"),
+            cache_dir: dir.path().join("cache"),
+            prompts_path: PathBuf::new(),
+            claude_cli_path: PathBuf::new(),
+            analysis_max_chars: 10,
+            analysis_model: Some("   ".into()),
+            ..TelegramConfig::default()
+        };
+        cfg.validate_and_fix();
+        assert_eq!(cfg.prompts_path, default_prompts_path(), "пустой путь ⇒ дефолт");
+        assert_eq!(cfg.claude_cli_path, default_claude_cli_path());
+        assert_eq!(cfg.analysis_max_chars, MIN_ANALYSIS_MAX_CHARS, "клампится снизу");
+        assert_eq!(cfg.analysis_model.as_deref(), Some(DEFAULT_ANALYSIS_MODEL));
+
+        let mut cfg = TelegramConfig {
+            session_path: dir.path().join("s.session"),
+            cache_dir: dir.path().join("cache"),
+            prompts_path: PathBuf::from("relative/prompts.json"),
+            analysis_max_chars: MAX_ANALYSIS_MAX_CHARS + 1,
+            ..TelegramConfig::default()
+        };
+        cfg.validate_and_fix();
+        assert!(cfg.prompts_path.is_absolute(), "относительный путь развёрнут");
+        assert_eq!(cfg.analysis_max_chars, MAX_ANALYSIS_MAX_CHARS, "клампится сверху");
+        clear_env();
+    }
+
+    /// `prompts_path` НЕ ездит через TOML: это пользовательские данные, а не
+    /// настройка машины (в отличие от `claude_cli_path`).
+    #[test]
+    fn prompts_path_is_not_read_from_toml_but_cli_path_is() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        clear_env();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("telegram.toml");
+        std::fs::write(
+            &path,
+            "prompts_path = \"/tmp/hijacked.json\"\nclaude_cli_path = \"/opt/claude\"\n",
+        )
+        .unwrap();
+
+        let cfg = TelegramConfig::load_from_file(&path);
+        assert_eq!(cfg.prompts_path, prompts_path(), "TOML не управляет заметками");
+        assert_eq!(cfg.claude_cli_path, PathBuf::from("/opt/claude"));
+        clear_env();
     }
 
     /// Обрыв записи на полпути (диск кончился, kill -9): незакрытая

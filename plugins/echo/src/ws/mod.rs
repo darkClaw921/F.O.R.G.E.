@@ -432,6 +432,8 @@ async fn run_user_message(
         model,
         system: None,
         run_id: run_id.clone(),
+        // Поведение чата Echo не меняем: prompt по-прежнему positional-аргумент.
+        prompt_via_stdin: false,
     };
     let mut rx = state.runner.stream(req).await;
 

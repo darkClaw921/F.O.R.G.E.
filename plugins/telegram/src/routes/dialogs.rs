@@ -265,7 +265,7 @@ pub(crate) async fn require_client(state: &Arc<TelegramState>) -> Result<Client,
 }
 
 /// Авторизация + подключение одной проверкой (порядок из шапки модуля).
-async fn require_ready(state: &Arc<TelegramState>) -> Result<Client, ApiError> {
+pub(crate) async fn require_ready(state: &Arc<TelegramState>) -> Result<Client, ApiError> {
     require_authorized(state).await?;
     require_client(state).await
 }
@@ -1554,6 +1554,7 @@ mod tests {
         let cfg = TelegramConfig {
             session_path: dir.path().join("telegram.session"),
             cache_dir: dir.path().join("cache"),
+            prompts_path: dir.path().join("cache").join("chat-prompts.json"),
             ..TelegramConfig::default()
         };
         std::mem::forget(dir);

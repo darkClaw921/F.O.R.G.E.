@@ -71,6 +71,13 @@ pub struct RunOptions {
     /// роутов нет, кнопка Ⓥ во фронте остаётся скрытой. Источник истины
     /// для гейтинга — [`crate::server_config::EffectiveConfig::vk_enabled`].
     pub vk: bool,
+    /// `--bitrix` (bool flag). True ⇒ включает opt-in плагин Bitrix24
+    /// (вкладка мессенджера портала — чаты и чаты задач через входящий
+    /// вебхук: роуты `/api/bitrix/*` и `/ws/bitrix`). False (default) ⇒
+    /// поведение байт-в-байт как раньше: роутов нет, кнопка вкладки во
+    /// фронте остаётся скрытой. Источник истины для гейтинга —
+    /// [`crate::server_config::EffectiveConfig::bitrix_enabled`].
+    pub bitrix: bool,
 }
 
 impl Default for RunOptions {
@@ -83,6 +90,7 @@ impl Default for RunOptions {
             pwa: false,
             telegram: false,
             vk: false,
+            bitrix: false,
         }
     }
 }
@@ -171,6 +179,7 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
     let mut pwa = false;
     let mut telegram = false;
     let mut vk = false;
+    let mut bitrix = false;
 
     while let Some(a) = iter.next() {
         match a.as_str() {
@@ -194,6 +203,9 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
             }
             "--vk" => {
                 vk = true;
+            }
+            "--bitrix" => {
+                bitrix = true;
             }
             "--bind" => {
                 let v = iter
@@ -239,7 +251,8 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
     }
 
     let port = port.unwrap_or(DEFAULT_PORT);
-    let has_run_only_flags = remote || bind.is_some() || token.is_some() || pwa || telegram || vk;
+    let has_run_only_flags =
+        remote || bind.is_some() || token.is_some() || pwa || telegram || vk || bitrix;
     let run_opts = RunOptions {
         port,
         remote,
@@ -248,6 +261,7 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
         pwa,
         telegram,
         vk,
+        bitrix,
     };
 
     let mode = match subcmd.as_deref() {
@@ -258,7 +272,7 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
                 bail!("`--port` is not valid for `stop` (PID is read from pid-file)");
             }
             if has_run_only_flags {
-                bail!("`--remote`/`--bind`/`--token`/`--pwa`/`--telegram`/`--vk` are not valid for `stop`");
+                bail!("`--remote`/`--bind`/`--token`/`--pwa`/`--telegram`/`--vk`/`--bitrix` are not valid for `stop`");
             }
             Mode::Stop
         }
@@ -267,7 +281,7 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
                 bail!("`--port` is not valid for `status`");
             }
             if has_run_only_flags {
-                bail!("`--remote`/`--bind`/`--token`/`--pwa`/`--telegram`/`--vk` are not valid for `status`");
+                bail!("`--remote`/`--bind`/`--token`/`--pwa`/`--telegram`/`--vk`/`--bitrix` are not valid for `status`");
             }
             Mode::Status
         }
@@ -601,6 +615,7 @@ pub fn help_text() -> String {
                  --pwa         Enable PWA mode (installable web app + Web Push). Opt-in; off by default.\n    \
                  --telegram    Enable Telegram plugin (personal account messenger tab). Opt-in; off by default.\n    \
                  --vk          Enable VK plugin (personal account messenger tab). Opt-in; off by default.\n    \
+                 --bitrix      Enable Bitrix24 plugin (portal chats and task chats tab). Opt-in; off by default.\n    \
              -h, --help        Show this help message\n\
          \n\
          EXAMPLES:\n    \
@@ -799,6 +814,68 @@ mod tests {
         let err = parse_from(args(&["stop", "--vk"])).unwrap_err().to_string();
         assert!(err.contains("--vk"), "ошибка обязана называть флаг: {err}");
         assert!(parse_from(args(&["status", "--vk"])).is_err());
+    }
+
+    #[test]
+    fn parse_bitrix_flag_default_false() {
+        // Без флага --bitrix поле остаётся false (opt-in инвариант).
+        let m = parse_from(args(&[])).unwrap();
+        assert!(!expect_run(m).bitrix);
+        let m = parse_from(args(&["run"])).unwrap();
+        assert!(!expect_run(m).bitrix);
+    }
+
+    #[test]
+    fn parse_bitrix_flag_sets_true() {
+        let m = parse_from(args(&["run", "--bitrix"])).unwrap();
+        assert!(expect_run(m).bitrix);
+        // Комбинируется с остальными флагами run и не влияет на них — три
+        // мессенджера включаются независимо друг от друга.
+        let m = parse_from(args(&[
+            "run",
+            "--remote",
+            "--pwa",
+            "--telegram",
+            "--vk",
+            "--bitrix",
+        ]))
+        .unwrap();
+        let o = expect_run(m);
+        assert!(o.bitrix);
+        assert!(o.vk);
+        assert!(o.telegram);
+        assert!(o.pwa);
+        assert!(o.remote);
+
+        // И наоборот: соседние флаги Bitrix24 не включают.
+        let only_vk = expect_run(parse_from(args(&["run", "--vk"])).unwrap());
+        assert!(!only_vk.bitrix);
+        let only_b24 = expect_run(parse_from(args(&["run", "--bitrix"])).unwrap());
+        assert!(!only_b24.vk);
+        assert!(!only_b24.telegram);
+    }
+
+    #[test]
+    fn parse_bitrix_carried_by_start() {
+        let m = parse_from(args(&["start", "--bitrix"])).unwrap();
+        match m {
+            Mode::Start(o) => assert!(o.bitrix),
+            _ => panic!("expected Start"),
+        }
+    }
+
+    #[test]
+    fn parse_bitrix_rejected_for_stop_status() {
+        let err = parse_from(args(&["stop", "--bitrix"]))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("--bitrix"), "ошибка обязана называть флаг: {err}");
+        assert!(parse_from(args(&["status", "--bitrix"])).is_err());
+    }
+
+    #[test]
+    fn help_text_mentions_bitrix() {
+        assert!(help_text().contains("--bitrix"));
     }
 
     #[test]
@@ -1153,6 +1230,7 @@ mod tests {
             pwa_enabled: false,
             telegram_enabled: false,
             vk_enabled: false,
+            bitrix_enabled: false,
         };
         let got = crate::server_config::finalize_token_at(&eff, &path).unwrap();
         assert_eq!(

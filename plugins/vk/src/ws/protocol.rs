@@ -30,6 +30,30 @@
 //! | `unread_total` | **НОВЫЙ** | событие LongPoll 80 отдаёт общий счётчик готовым, и бейдж перестаёт быть суммой по загруженной странице |
 //! | `history_cleared` | **НОВЫЙ** | событие 13: VK не присылает id удалённых сообщений, только границу — `message_deleted` тут неприменим |
 //! | `dialog_changed` | **НОВЫЙ** | события 51/52: фронт перечитывает ОДНУ строку списка, а не весь список |
+//! | `analysis_started`, `analysis_delta`, `analysis_done`, `analysis_error` | **НОВЫЕ** | стриминг анализа чата через Claude (АЧ-Ф3) |
+//!
+//! ## Кадры анализа уходят ВСЕМ подписчикам — это осознанное следствие
+//!
+//! Broadcast плагина работает без фильтрации по вкладке и по диалогу
+//! ([`crate::ws`], `ws/mod.rs:34-38`): один канал, все подписчики. Для
+//! `new_message` это ТРЕБОВАНИЕ (бейдж непрочитанного и тосты обязаны работать
+//! с любой вкладки), и кадры анализа наследуют то же свойство.
+//!
+//! Следствие названо прямо, потому что оно не тривиально: **текст анализа
+//! переписки виден во ВСЕХ открытых вкладках пользователя, включая remote-
+//! сессию**. Это не недосмотр и не дыра в авторизации — за `/ws/vk` стоит
+//! Bearer-auth хоста, и подписчиками могут быть только вкладки самого
+//! пользователя. Но пересказ личной переписки, который «сам собой» появился в
+//! соседнем окне на общем экране, — сюрприз, и знать о нём надо заранее.
+//!
+//! Фильтрация — ОБЯЗАННОСТЬ ФРОНТА, по паре (`dialog_id`, `run_id`): попап
+//! рисует только те кадры, чей `run_id` он сам получил из ответа
+//! `POST /api/vk/dialogs/:id/analysis`. Серверная фильтрация здесь была бы
+//! ложным чувством приватности: она потребовала бы адресации подписчиков,
+//! которой в модели broadcast нет вовсе.
+//!
+//! `Thinking`-события Claude в WS НЕ вещаются ни в каком виде (АЧ-Ф3):
+//! удвоенный трафик ради текста, который в попапе не показывается.
 //!
 //! ## `muted`/`archived` лежат на уровне КАДРА
 //!
@@ -178,6 +202,67 @@ pub enum VkServerMsg {
         /// Беседа (строкой).
         dialog_id: String,
     },
+    /// Анализ чата начался (АЧ-Ф3).
+    ///
+    /// Эмитится ПОСЛЕ сборки транскрипта, поэтому уже несёт его размеры:
+    /// отдельного кадра «читаю историю» нет — эту фазу фронт рисует сам,
+    /// сразу после успешного `POST /api/vk/dialogs/:id/analysis`.
+    AnalysisStarted {
+        /// Идентификатор run'а; им же отменяют.
+        run_id: String,
+        /// Беседа (строкой), по которой идёт анализ.
+        dialog_id: String,
+        /// `analyze` | `ask`.
+        kind: String,
+        /// Сколько сообщений попало в транскрипт.
+        messages_used: u32,
+        /// Часть истории отброшена потолком символов.
+        truncated: bool,
+    },
+    /// Кусок ответа модели.
+    ///
+    /// КОАЛЕСЦИРОВАН на сервере (не чаще одного кадра в
+    /// [`crate::analysis::DELTA_FLUSH_MS`] мс либо по накоплению
+    /// [`crate::analysis::DELTA_FLUSH_CHARS`] символов). Сырые дельты Claude
+    /// идут сотнями в секунду и переполнили бы broadcast
+    /// ([`crate::state::BROADCAST_CAPACITY`]), а переполнение — это `Lagged`,
+    /// то есть [`VkServerMsg::Resync`] и перечитывание всего списка бесед.
+    AnalysisDelta {
+        /// Идентификатор run'а.
+        run_id: String,
+        /// Беседа (строкой).
+        dialog_id: String,
+        /// Приращение текста; склеивается конкатенацией в порядке получения.
+        text: String,
+    },
+    /// Анализ завершён (успехом, ошибкой, отменой или таймаутом).
+    AnalysisDone {
+        /// Идентификатор run'а.
+        run_id: String,
+        /// Беседа (строкой).
+        dialog_id: String,
+        /// Завершился ли run штатно.
+        ok: bool,
+        /// Причина неуспеха: `cancelled` | `timeout` | `error`.
+        reason: Option<String>,
+        /// Токенов на входе (из финального `result` Claude).
+        input_tokens: u64,
+        /// Токенов на выходе.
+        output_tokens: u64,
+    },
+    /// Ошибка run'а — текст от раннера ЦЕЛИКОМ.
+    ///
+    /// Сообщение не урезается намеренно: к нему уже приклеен хвост stderr
+    /// Claude CLI, и это единственный способ увидеть «CLI не залогинен» или
+    /// «model overloaded», не заглядывая в логи сервера.
+    AnalysisError {
+        /// Идентификатор run'а.
+        run_id: String,
+        /// Беседа (строкой).
+        dialog_id: String,
+        /// Текст ошибки как есть.
+        message: String,
+    },
     /// Клиент отстал/пропустил события — перечитать состояние по REST.
     Resync,
     /// Heartbeat. Клиент обязан ответить [`VkClientMsg::Pong`].
@@ -193,6 +278,88 @@ pub enum VkServerMsg {
 pub enum VkClientMsg {
     /// Ответ на [`VkServerMsg::Ping`]; сбрасывает idle-таймер соединения.
     Pong,
+}
+
+/// Приёмник кадров анализа для общего ядра
+/// ([`forge_chat_analysis::AnalysisSink`]).
+///
+/// Вся развязка плагина с крейтом — вот эти четыре метода. Ядро не знает ни
+/// про [`VkServerMsg`], ни про broadcast: оно зовёт `started`/`delta`/`done`/
+/// `error`, а перевод в НАШ кадр и рассылка живут здесь, рядом с самим
+/// enum'ом — там же, где придётся править, если состав полей кадра изменится.
+///
+/// Теги и ПОРЯДОК вариантов [`VkServerMsg`] при этом заморожены contract-
+/// тестом (`vk_contract.test.mjs` сверяет их с `SERVER_FRAMES` в
+/// `js/vk/ws.js`), поэтому сюда переезжает именно конструирование, а не форма
+/// кадров.
+///
+/// `SendError` глотается: отсутствие подписчиков — норма (никто не открыл
+/// вкладку), и это не повод ронять run, который уже идёт.
+#[derive(Debug, Clone)]
+pub struct VkAnalysisSink {
+    tx: tokio::sync::broadcast::Sender<VkServerEvent>,
+}
+
+impl VkAnalysisSink {
+    /// Оборачивает broadcast-канал состояния.
+    #[must_use]
+    pub fn new(tx: tokio::sync::broadcast::Sender<VkServerEvent>) -> Self {
+        Self { tx }
+    }
+}
+
+impl forge_chat_analysis::AnalysisSink for VkAnalysisSink {
+    fn started(
+        &self,
+        run_id: &str,
+        dialog_id: &str,
+        kind: &str,
+        messages_used: u32,
+        truncated: bool,
+    ) {
+        let _ = self.tx.send(VkServerMsg::AnalysisStarted {
+            run_id: run_id.to_string(),
+            dialog_id: dialog_id.to_string(),
+            kind: kind.to_string(),
+            messages_used,
+            truncated,
+        });
+    }
+
+    fn delta(&self, run_id: &str, dialog_id: &str, text: &str) {
+        let _ = self.tx.send(VkServerMsg::AnalysisDelta {
+            run_id: run_id.to_string(),
+            dialog_id: dialog_id.to_string(),
+            text: text.to_string(),
+        });
+    }
+
+    fn done(
+        &self,
+        run_id: &str,
+        dialog_id: &str,
+        ok: bool,
+        reason: Option<&str>,
+        input_tokens: u64,
+        output_tokens: u64,
+    ) {
+        let _ = self.tx.send(VkServerMsg::AnalysisDone {
+            run_id: run_id.to_string(),
+            dialog_id: dialog_id.to_string(),
+            ok,
+            reason: reason.map(str::to_string),
+            input_tokens,
+            output_tokens,
+        });
+    }
+
+    fn error(&self, run_id: &str, dialog_id: &str, message: &str) {
+        let _ = self.tx.send(VkServerMsg::AnalysisError {
+            run_id: run_id.to_string(),
+            dialog_id: dialog_id.to_string(),
+            message: message.to_string(),
+        });
+    }
 }
 
 #[cfg(test)]
@@ -271,6 +438,31 @@ mod tests {
             },
             VkServerMsg::DialogChanged {
                 dialog_id: "2000000001".into(),
+            },
+            VkServerMsg::AnalysisStarted {
+                run_id: "run-1".into(),
+                dialog_id: "2000000001".into(),
+                kind: "analyze".into(),
+                messages_used: 200,
+                truncated: true,
+            },
+            VkServerMsg::AnalysisDelta {
+                run_id: "run-1".into(),
+                dialog_id: "2000000001".into(),
+                text: "часть ответа".into(),
+            },
+            VkServerMsg::AnalysisDone {
+                run_id: "run-1".into(),
+                dialog_id: "2000000001".into(),
+                ok: false,
+                reason: Some("cancelled".into()),
+                input_tokens: 12_345,
+                output_tokens: 678,
+            },
+            VkServerMsg::AnalysisError {
+                run_id: "run-1".into(),
+                dialog_id: "2000000001".into(),
+                message: "claude run produced no output; stderr: not logged in".into(),
             },
             VkServerMsg::Resync,
             VkServerMsg::Ping,
@@ -375,6 +567,149 @@ mod tests {
             })
             .unwrap(),
             r#"{"type":"dialog_changed","dialog_id":"-1234"}"#
+        );
+    }
+
+    /// Точная форма кадров анализа (АЧ-Ф3).
+    ///
+    /// `analysis_delta` — самый горячий кадр фичи: он приходит десятками за
+    /// один run и разбирается во фронте по именам полей. Проверка байт-в-байт
+    /// ловит переименование раньше, чем оно превратится в молча пустой попап.
+    #[test]
+    fn analysis_frames_have_the_documented_shape() {
+        assert_eq!(
+            serde_json::to_string(&VkServerMsg::AnalysisDelta {
+                run_id: "r1".into(),
+                dialog_id: "2000000001".into(),
+                text: "привет".into(),
+            })
+            .unwrap(),
+            r#"{"type":"analysis_delta","run_id":"r1","dialog_id":"2000000001","text":"привет"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&VkServerMsg::AnalysisStarted {
+                run_id: "r1".into(),
+                dialog_id: "-1234".into(),
+                kind: "ask".into(),
+                messages_used: 50,
+                truncated: false,
+            })
+            .unwrap(),
+            r#"{"type":"analysis_started","run_id":"r1","dialog_id":"-1234","kind":"ask","messages_used":50,"truncated":false}"#
+        );
+        // `reason: None` обязан ехать как `null`, а не исчезать: фронт
+        // отличает штатное завершение от отмены именно по этому полю.
+        assert_eq!(
+            serde_json::to_string(&VkServerMsg::AnalysisDone {
+                run_id: "r1".into(),
+                dialog_id: "1".into(),
+                ok: true,
+                reason: None,
+                input_tokens: 10,
+                output_tokens: 2,
+            })
+            .unwrap(),
+            r#"{"type":"analysis_done","run_id":"r1","dialog_id":"1","ok":true,"reason":null,"input_tokens":10,"output_tokens":2}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&VkServerMsg::AnalysisError {
+                run_id: "r1".into(),
+                dialog_id: "1".into(),
+                message: "spawn failed".into(),
+            })
+            .unwrap(),
+            r#"{"type":"analysis_error","run_id":"r1","dialog_id":"1","message":"spawn failed"}"#
+        );
+    }
+
+    /// РАЗВЯЗКА С ЯДРОМ: четыре метода трейта дают ровно четыре наших кадра, с
+    /// теми же полями и без потерь по дороге. Ядро (`forge-chat-analysis`) про
+    /// `VkServerMsg` не знает, поэтому расхождение здесь молча выключило бы
+    /// весь стриминг анализа во вкладке, не сломав ни одного теста ядра.
+    #[tokio::test]
+    async fn the_sink_maps_core_calls_onto_our_four_frames() {
+        use forge_chat_analysis::AnalysisSink as _;
+
+        let (tx, mut rx) = tokio::sync::broadcast::channel(16);
+        let sink = VkAnalysisSink::new(tx);
+
+        sink.started("r1", "2000000001", "analyze", 200, true);
+        sink.delta("r1", "2000000001", "кусок");
+        sink.error("r1", "2000000001", "stderr: not logged in");
+        sink.done("r1", "2000000001", false, Some("error"), 11, 3);
+
+        assert_eq!(
+            rx.recv().await.unwrap(),
+            VkServerMsg::AnalysisStarted {
+                run_id: "r1".into(),
+                dialog_id: "2000000001".into(),
+                kind: "analyze".into(),
+                messages_used: 200,
+                truncated: true,
+            }
+        );
+        assert_eq!(
+            rx.recv().await.unwrap(),
+            VkServerMsg::AnalysisDelta {
+                run_id: "r1".into(),
+                dialog_id: "2000000001".into(),
+                text: "кусок".into(),
+            }
+        );
+        assert_eq!(
+            rx.recv().await.unwrap(),
+            VkServerMsg::AnalysisError {
+                run_id: "r1".into(),
+                dialog_id: "2000000001".into(),
+                message: "stderr: not logged in".into(),
+            }
+        );
+        assert_eq!(
+            rx.recv().await.unwrap(),
+            VkServerMsg::AnalysisDone {
+                run_id: "r1".into(),
+                dialog_id: "2000000001".into(),
+                ok: false,
+                reason: Some("error".into()),
+                input_tokens: 11,
+                output_tokens: 3,
+            }
+        );
+    }
+
+    /// Отсутствие подписчиков — норма (никто не открыл вкладку) и не повод
+    /// ронять идущий run: `SendError` глотается.
+    #[test]
+    fn the_sink_survives_having_no_subscribers() {
+        use forge_chat_analysis::AnalysisSink as _;
+
+        let (tx, rx) = tokio::sync::broadcast::channel(4);
+        drop(rx);
+        let sink = VkAnalysisSink::new(tx);
+        sink.started("r", "1", "analyze", 1, false);
+        sink.delta("r", "1", "текст");
+        sink.error("r", "1", "ошибка");
+        sink.done("r", "1", true, None, 0, 0);
+    }
+
+    /// ПОРЯДОК ВАРИАНТОВ ЗАМОРОЖЕН: кадры анализа стоят между `dialog_changed`
+    /// и `resync`, потому что `js/vk/ws.js` пишется таблицей по этому enum'у, и
+    /// перестановка превращает осмысленный diff двух панелей в шум.
+    #[test]
+    fn analysis_frames_sit_between_dialog_changed_and_resync() {
+        let tags: Vec<String> = all_server_msgs()
+            .iter()
+            .map(|m| serde_json::to_value(m).unwrap()["type"].as_str().unwrap().to_string())
+            .collect();
+        let at = |t: &str| tags.iter().position(|x| x == t).unwrap_or_else(|| panic!("нет кадра {t}"));
+        assert_eq!(
+            &tags[at("dialog_changed") + 1..at("resync")],
+            [
+                "analysis_started",
+                "analysis_delta",
+                "analysis_done",
+                "analysis_error"
+            ]
         );
     }
 

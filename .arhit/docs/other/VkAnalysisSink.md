@@ -1,0 +1,3 @@
+# VkAnalysisSink
+
+plugins/vk/src/ws/protocol.rs. Реализация трейта forge_chat_analysis::AnalysisSink для VK — вся развязка плагина с общим ядром анализа. Держит broadcast::Sender<VkServerEvent> и в четырёх методах (started/delta/done/error) строит соответствующий вариант VkServerMsg::Analysis* и шлёт его подписчикам; SendError глотается (отсутствие подписчиков — норма и не повод ронять идущий run). Создаётся через VkState::analysis_sink(), который передаётся в AnalysisHub::start. Теги и ПОРЯДОК вариантов VkServerMsg при этом заморожены contract-тестом (vk_contract.test.mjs сверяет с SERVER_FRAMES в js/vk/ws.js) — сюда переехало конструирование кадров, а не их форма. Тесты: the_sink_maps_core_calls_onto_our_four_frames, the_sink_survives_having_no_subscribers.

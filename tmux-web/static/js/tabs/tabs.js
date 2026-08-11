@@ -11,6 +11,7 @@ import {
     $tabEcho, $echoEl,
     $telegramToggle, $telegram,
     $vkToggle, $vk,
+    $bitrixToggle, $b24,
 } from '../core/dom.js';
 import { scheduleResizeFromTerm } from '../terminal/xterm.js';
 import { connectTasksWs, fetchTasks, stopTasksPolling } from '../ws/tasks-ws.js';
@@ -25,11 +26,13 @@ import { initTelegram } from '../telegram/main.js';
 import { applyTgTheme } from '../telegram/theme.js';
 import { initVk } from '../vk/main.js';
 import { applyVkTheme } from '../vk/theme.js';
+import { initB24 } from '../bitrix/main.js';
+import { applyB24Theme } from '../bitrix/theme.js';
 
 export function switchTab(name) {
     if (name !== 'terminal' && name !== 'tasks' && name !== 'git'
         && name !== 'docker' && name !== 'telescope' && name !== 'echo'
-        && name !== 'telegram' && name !== 'vk') return;
+        && name !== 'telegram' && name !== 'vk' && name !== 'bitrix') return;
     if (state.activeTab === name) return;
     // Заставка лежит поверх области терминала — при переключении вкладок гасим её.
     hideScreensaver();
@@ -44,6 +47,7 @@ export function switchTab(name) {
     const onEcho = name === 'echo';
     const onTelegram = name === 'telegram';
     const onVk = name === 'vk';
+    const onBitrix = name === 'bitrix';
     $terminalEl.hidden = !onTerminal;
     if ($placeholder) $placeholder.hidden = !onTerminal;
     if ($windowBar) $windowBar.hidden = !onTerminal || !state.currentSession;
@@ -54,6 +58,7 @@ export function switchTab(name) {
     if ($echoEl) $echoEl.hidden = !onEcho;
     if ($telegram) $telegram.hidden = !onTelegram;
     if ($vk) $vk.hidden = !onVk;
+    if ($b24) $b24.hidden = !onBitrix;
 
     $tabTerminal.classList.toggle('active', onTerminal);
     $tabTasks.classList.toggle('active', onTasks);
@@ -65,6 +70,7 @@ export function switchTab(name) {
     // активной вкладки получает по тому же правилу.
     if ($telegramToggle) $telegramToggle.classList.toggle('active', onTelegram);
     if ($vkToggle) $vkToggle.classList.toggle('active', onVk);
+    if ($bitrixToggle) $bitrixToggle.classList.toggle('active', onBitrix);
 
     if (prev === 'git' && !onGit) {
         closeGitWs('tab switched away');
@@ -128,5 +134,13 @@ export function switchTab(name) {
         // только после первого захода на вкладку.
         applyVkTheme();
         initVk();
+    } else if (onBitrix) {
+        // Ровно те же два правила, что у телеграмной и VK-веток: тема
+        // пересчитывается на КАЖДОМ входе (в режиме auto пользователь мог
+        // сменить тему devforge, пока вкладка была закрыта), а teardown при
+        // уходе НЕ делается — WS постоянный, иначе бейдж и тосты появлялись
+        // бы только после первого захода на вкладку.
+        applyB24Theme();
+        initB24();
     }
 }

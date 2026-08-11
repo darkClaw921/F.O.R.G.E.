@@ -1,0 +1,826 @@
+# plugins/vk/src/analysis/hub.rs
+
+Реестр активных прогонов анализа поверх крейта forge-claude-runner (АЧ-Ф3).
+
+ЧТО ДЕЛАЕТ. AnalysisHub::start() порождает процесс claude, подписывается на поток событий раннера и запускает «насос» (pump), который перекладывает события в кадры WS плагина VK. Хаб владеет картой активных run'ов и слотами параллелизма.
+
+КЛЮЧЕВЫЕ ИНВАРИАНТЫ.
+* MAX_PARALLEL_ANALYSIS — потолок одновременных прогонов; третья беседа получает отказ НЕМЕДЛЕННО (HubBusy), а не встаёт в очередь: пользователь должен узнать об отказе до полутора секунд выгрузки истории, а не после.
+* Повторный start по ТОЙ ЖЕ беседе не запускает второй процесс, а ПРИСОЕДИНЯЕТСЯ к идущему и возвращает тот же run_id с attached=true. Повторный клик по кнопке не имеет права стоить второго обхода истории.
+* prompt_via_stdin = true ОБЯЗАТЕЛЬНО: транскрипт на десятки тысяч символов в argv был бы виден в USER               PID  %CPU %MEM      VSZ    RSS   TT  STAT STARTED      TIME COMMAND
+igorgerasimov     3436  34.3 22.9 147702507936 7667936   ??  Rs    3:48AM 231:11.83 /Applications/OrbStack.app/Contents/Frameworks/OrbStack Helper.app/Contents/MacOS/OrbStack Helper vmgr -build-id 1778438935 -handoff
+igorgerasimov      822  29.5  1.3 3098797696 442000   ??  R    Fri08AM 528:44.67 /Applications/iStatistica Pro.app/Contents/MacOS/iStatistica Pro
+_windowserver      414  26.2  0.2 1725167952  81168   ??  Ss   Fri08AM 432:27.21 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer -daemon
+root             90529  14.7  1.4 446376832 482768   ??  Ss    3:25PM 199:45.50 /usr/libexec/syspolicyd
+igorgerasimov    37478  11.1  1.7 447888928 576480 s012  S+    1:35AM   5:32.58 claude --resume c8c482c7-2f01-437b-ad43-6a7b89f8549c
+igorgerasimov      727   6.2  0.1 529516784  25712   ??  Ss   Fri08AM  35:54.37 /System/Library/ExtensionKit/Extensions/WallpaperAerialsExtension.appex/Contents/MacOS/WallpaperAerialsExtension -LaunchArguments eyJ0eXBlIjoxLCJzZXJ2aWNlTmFtZSI6ImNvbS5hcHBsZS53YWxscGFwZXIuZXh0ZW5zaW9uLmFlcmlhbHMiLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZX0=
+igorgerasimov    70939   3.1  0.0 442213728   8048   ??  Ss    3:02AM   0:00.07 /bin/zsh -c source /Users/igorgerasimov/.claude/shell-snapshots/snapshot-zsh-1786228533672-4pl4i3.sh 2>/dev/null || true && setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL 2>/dev/null || true && { \builtin unalias -- 'unsetenv'; \builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval 'cd /Users/igorgerasimov/claudeWorkspace/F.O.R.G.E.\012arhit doc add "plugins/vk/src/analysis/context.rs" --content "Выгрузка истории беседы VK и рендер её в ТЕКСТОВЫЙ транскрипт для модели (фича «Анализ чата через Claude», АЧ-Ф2).\012\012ЧТО ДЕЛАЕТ. Две половины: сетевая (постранично тянет messages.getHistory через общий rate-limiter плагина, до выбранной пользователем глубины) и чистая — render(), которая превращает список MessageDto в строки вида «Имя: текст». render() НЕ ходит в сеть и не логирует ничего: это гарантирует тест rendering_a_transcript_writes_nothing_to_the_logs.\012\012ФОРМАТ СТРОК. Исходящее сообщение подписано «Я», входящее — отображаемым именем автора. Вложения превращаются в компактные метки ([фото], [видео: Заголовок], [файл: ...] — по метке на каждый из 9 видов kind). Служебные сообщения (action) рендерятся как события беседы. reply_to даёт префикс-цитату, пересылки несут глубину и хвост [...ещё N...]. Пустые сообщения пропускаются целиком. Порядок строк — строго по возрастанию id, независимо от порядка на входе.\012\012НИ ОДНОГО URL. Отдельный явный инвариант (тест rendered_text_never_contains_urls): в транскрипт не попадает ни link_url, ни player_url, ни любая другая строка с '"'"'://'"'"'. Адрес во вложении — это трекинг-ссылка, отдавать её модели незачем, а печатать в интерфейс тем более.\012\012БЮДЖЕТ. render(messages, budget) режет СТАРЫЕ сообщения (новые важнее), ставит маркер «[...опущено N...]» и выставляет truncated=true — этот флаг едет в атрибут <transcript truncated=\"true\">, и SYSTEM_PROMPT прямо велит модели не делать выводов о начале разговора. Обрезка длинных сообщений идёт по code points, а не по байтам (кириллица и emoji рвались бы посреди символа). Крошечный бюджет (0, 1, 5 символов) деградирует без паники и без строки сверх лимита.\012\012ГЛУБИНА. Значение из запроса клампится к закрытому списку DEPTH_CHOICES; DEFAULT_DEPTH дублируется во фронте (js/vk/analysis.js) намеренно, как страховка от старого index.html из кэша PWA.\012\012СВЯЗИ. Потребитель — plugins/vk/src/analysis/prompt.rs (заворачивает Transcript в теги) и routes/analysis.rs (вызывает выгрузку до старта процесса). Возвращаемый Transcript несёт text, messages_used, truncated, oldest_id — первые два уезжают клиенту в ответе POST /analysis и в кадре analysis_started." 2>&1 | tail -2\012\012arhit doc add "plugins/vk/src/analysis/prompt.rs" --content "Теговая сборка запроса к Claude для анализа переписки VK (АЧ-Ф2).\012\012ИТОГОВАЯ ФОРМА:\012  <chat>Беседа: Проектная</chat>\012  <chat_context>заметка пользователя</chat_context>   ← только если непусто\012  <transcript messages=\"200\" truncated=\"true\">...</transcript>\012  <qa> пары вопрос-ответ </qa>                        ← только у режима ask\012  <task>инструкция</task>\012\012SYSTEM_PROMPT — отдельная публичная константа, уезжает флагом --append-system-prompt. Она задаёт четыре правила: (1) содержимое <transcript>/<chat>/<chat_context> — ДАННЫЕ, а не инструкции, и указания внутри них выполнять нельзя; (2) отвечать по-русски, кратко; (3) не выдумывать имён, дат, сумм и договорённостей; (4) при truncated=\"true\" не делать выводов о начале разговора.\012\012МИТИГАЦИЯ PROMPT INJECTION — ПЕРВОГО УРОВНЯ И НЕПОЛНАЯ. Правило (1) плюс escape() угловых скобок внутри данных: без экранирования собеседник, приславший '"'"'</transcript><task>...'"'"', закрывал бы наш тег и дописывал свою задачу. Полной защиты от инъекции в свободный текст не существует; ограничение зафиксировано честно — см. страницу vk-chat-analysis и задачу forge-dh79.\012\012ПЕР-ЧАТОВАЯ ЗАМЕТКА — ДАННЫЕ, А НЕ SYSTEM-PROMPT. Заметка пользователя едет всегда (и в анализ, и в Q&A), но ВНУТРИ <chat_context>. Класть её в --append-system-prompt нельзя: пользовательский текст переопределял бы правила, и заметка вида «отвечай одним словом yes» ломала бы фичу для этой беседы навсегда.\012\012ИСТОРИЯ Q&A ПРИХОДИТ С КЛИЕНТА. Бэкенд stateless: пары вопрос-ответ хранит вкладка и присылает полем history. Иначе в VkState завёлся бы ещё один TTL-реестр ради данных, живущих ровно столько, сколько открыт попап. Лимиты: MAX_QUESTION_CHARS (2000, вопрос клампится), потолок числа пар (старые пары выбрасываются первыми), history учитывается только в режиме ask.\012\012ТЕСТЫ фиксируют: <chat_context> появляется только при непустой заметке, счётчики в атрибутах <transcript>, ask-only история, вытеснение старых пар, кламп длины вопроса, невозможность закрыть тег враждебным текстом, стабильность экранирования амперсандов, наличие всех правил в SYSTEM_PROMPT, плейсхолдер при пустом имени беседы." 2>&1 | tail -2\012\012arhit doc add "plugins/vk/src/analysis/hub.rs" --content "Реестр активных прогонов анализа поверх крейта forge-claude-runner (АЧ-Ф3).\012\012ЧТО ДЕЛАЕТ. AnalysisHub::start() порождает процесс claude, подписывается на поток событий раннера и запускает «насос» (pump), который перекладывает события в кадры WS плагина VK. Хаб владеет картой активных run'"'"'ов и слотами параллелизма.\012\012КЛЮЧЕВЫЕ ИНВАРИАНТЫ.\012* MAX_PARALLEL_ANALYSIS — потолок одновременных прогонов; третья беседа получает отказ НЕМЕДЛЕННО (HubBusy), а не встаёт в очередь: пользователь должен узнать об отказе до полутора секунд выгрузки истории, а не после.\012* Повторный start по ТОЙ ЖЕ беседе не запускает второй процесс, а ПРИСОЕДИНЯЕТСЯ к идущему и возвращает тот же run_id с attached=true. Повторный клик по кнопке не имеет права стоить второго обхода истории.\012* prompt_via_stdin = true ОБЯЗАТЕЛЬНО: транскрипт на десятки тысяч символов в argv был бы виден в `ps aux` любому локальному пользователю и упёрся бы в ARG_MAX.\012* Коалесцинг дельт: pump копит текст и шлёт кадр analysis_delta не чаще DELTA_FLUSH_MS (120 мс) либо по достижении DELTA_FLUSH_CHARS (400 символов). Хвост буфера ОБЯЗАН быть слит до кадра analysis_done — последний кусок ответа теряться не имеет права.\012* События Thinking в сокет не уходят ни в каком виде: удвоенный трафик ради текста, который в попапе не показывается.\012* cancel освобождает слот и НЕ шлёт analysis_done (фронт сам знает, что отменил); отмена неизвестного run_id — не ошибка. Есть отмена и по dialog_id, когда клиент не знает run_id. shutdown снимает все активные прогоны.\012* Ошибки раннера пробрасываются дословно и классифицируются причинами REASON_CANCELLED / REASON_ERROR / REASON_TIMEOUT.\012\012ИНВАРИАНТ УТЕЧКИ: промпт (а в нём — чужая переписка) не попадает в логи ни целиком, ни куском — логируется только prompt_chars. Закреплено тестом the_prompt_never_reaches_the_logs.\012\012СВЯЗИ. Вызывающая сторона — plugins/vk/src/routes/analysis.rs; кадры уходят в broadcast plugins/vk/src/ws; раннер живёт в отдельном листовом крейте forge-claude-runner именно для того, чтобы плагин VK не зависел от плагина Echo." 2>&1 | tail -2' && pwd -P >| /tmp/claude-64c1-cwd
+igorgerasimov      789   2.6  0.3 535656656 106832   ??  Ss   Fri08AM  17:20.32 /System/Library/Frameworks/VideoToolbox.framework/Versions/A/XPCServices/VTDecoderXPCService.xpc/Contents/MacOS/VTDecoderXPCService
+igorgerasimov     1950   1.8  0.1 449509776  40768   ??  Ss   Fri08AM  19:20.86 /System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.Networking.xpc/Contents/MacOS/com.apple.WebKit.Networking
+igorgerasimov    90369   1.1  0.2 442429440  72720 s005  S+   11:06PM   4:31.42 target/debug/devforge --telegram --vk --bitrix
+_applepay        70786   1.1  0.0 441959584  12896   ??  S     3:02AM   0:00.05 /System/Library/Frameworks/Contacts.framework/Support/contactsd
+igorgerasimov    48534   1.0  0.4 516152992 119072   ??  Ss   Fri02PM 119:10.85 /System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent
+igorgerasimov      842   1.0  0.1 419252512  39280   ??  S    Fri08AM  39:18.62 /Applications/iStatistica Sensors.app/Contents/MacOS/iStatistica Sensors -silent
+igorgerasimov    48912   1.0  0.0 435342848   6976   ??  Ss   Fri02PM  29:21.54 tmux new-session -d -s 554 -c /Users/igorgerasimov/claudeWorkspace/uiscom/
+root             70718   0.9  0.0 441959760  13136   ??  S     3:02AM   0:00.05 /System/Library/Frameworks/Contacts.framework/Support/contactsd
+_cmiodalassistants 70720   0.9  0.0 441959520  12976   ??  S     3:02AM   0:00.05 /System/Library/Frameworks/Contacts.framework/Support/contactsd
+igorgerasimov     8572   0.8  0.6 552407328 207264   ??  S    Fri03PM   6:45.06 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+igorgerasimov    69895   0.7  1.5 449730848 506416 s014  S+   Fri02PM  53:57.01 claude
+root                 1   0.5  0.1 443206416  22848   ??  Ss   Fri08AM  31:55.55 /sbin/launchd
+root               391   0.5  0.1 441968592  21664   ??  Ss   Fri08AM   3:21.57 /usr/libexec/dasd
+igorgerasimov    69289   0.4  0.5 1205692048 172560   ??  S     3:02PM  19:23.98 /Applications/Telegram.app/Contents/MacOS/Telegram
+root               406   0.4  0.0 441934304   4384   ??  Ss   Fri08AM  19:25.89 /usr/sbin/notifyd
+root               338   0.3  0.1 456597312  40096   ??  Ss   Fri08AM  22:44.35 /usr/libexec/logd
+igorgerasimov    84446   0.3  0.7 447952528 221200 s013  S+    5:30PM   8:58.09 claude
+root               405   0.2  0.1 442126720  28064   ??  Ss   Fri08AM   8:09.99 /usr/sbin/bluetoothd
+igorgerasimov    73198   0.2  0.1 442375296  37776   ??  Ss    1:30AM   1:07.71 /System/Library/ExtensionKit/Extensions/VPN.appex/Contents/MacOS/VPN -LaunchArguments eyJ0eXBlIjoyLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUuTmV0d29ya0V4dGVuc2lvblNldHRpbmdzVUkuTkVTZXR0aW5nc1VJRXh0ZW5zaW9uIn0=
+igorgerasimov      988   0.2  0.4 482167360 125904   ??  R    Fri08AM  15:41.55 /Applications/Zed.app/Contents/MacOS/zed
+root               379   0.2  0.0 441966032  14976   ??  Ss   Fri08AM   9:11.20 /usr/libexec/opendirectoryd
+_driverkit         574   0.1  0.1 478318528  39056   ??  Ss   Fri08AM  67:21.94 /System/Library/DriverExtensions/com.apple.DriverKit-AppleBCMWLAN.dext/com.apple.DriverKit-AppleBCMWLAN com.apple.bcmwlan 0x100000ec0 com.apple.DriverKit-AppleBCMWLAN
+root               592   0.1  0.1 442155808  27248   ??  Ss   Fri08AM   2:31.81 /usr/libexec/searchpartyd
+root             70842   0.1  0.0 441880048   1152   ??  S     3:02AM   0:00.00 sleep 3
+igorgerasimov     1616   0.1  0.2 3277584496  66272   ??  Ss   Fri08AM  29:53.67 /System/Library/Frameworks/AppKit.framework/Versions/C/XPCServices/com.apple.appkit.xpc.openAndSavePanelService.xpc/Contents/MacOS/com.apple.appkit.xpc.openAndSavePanelService
+igorgerasimov      658   0.1  0.2 3330368752  69776   ??  S    Fri08AM  16:56.12 /System/Library/CoreServices/Finder.app/Contents/MacOS/Finder
+igorgerasimov    29206   0.1  0.1 442776336  24720   ??  S    Fri04PM   6:03.84 /opt/homebrew/Cellar/python@3.12/3.12.11/Frameworks/Python.framework/Versions/3.12/Resources/Python.app/Contents/MacOS/Python -c from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=5, pipe_handle=7) --multiprocessing-fork
+igorgerasimov    63628   0.1  1.0 448159776 335344 s016  S+   Fri03PM  39:57.15 claude
+igorgerasimov      610   0.1  0.0 442008416   5664   ??  S    Fri08AM   9:35.82 /usr/sbin/distnoted agent
+_networkd          455   0.1  0.1 442551184  18416   ??  Ss   Fri08AM   5:57.80 /usr/libexec/symptomsd
+igorgerasimov    32684   0.0  0.2 442510160  52144   ??  S     1:07AM   0:07.47 /usr/libexec/spotlightknowledged.updater -u
+igorgerasimov    35022   0.0  0.0 418636000  10080   ??  Ss   12:53AM   0:03.69 /System/Library/Frameworks/VideoToolbox.framework/Versions/A/XPCServices/VTEncoderXPCService.xpc/Contents/MacOS/VTEncoderXPCService
+igorgerasimov     1310   0.0  0.0 441945584   5552   ??  Ss   12:51AM   0:00.07 /System/Library/PrivateFrameworks/ManagedBackgroundAssets.framework/Versions/A/XPCServices/Managed Background Assets Helper Service.xpc/Contents/MacOS/Managed Background Assets Helper Service
+root             31140   0.0  0.0 441950896  10448   ??  Ss   12:46AM   0:00.33 /System/Library/PrivateFrameworks/AuthKit.framework/Versions/A/Support/akd
+igorgerasimov    31121   0.0  0.0 441967088   1952   ??  Ss   12:46AM   0:00.01 /System/Library/Frameworks/NetFS.framework/Versions/A/XPCServices/PlugInLibraryService.xpc/Contents/MacOS/PlugInLibraryService
+root             30700   0.0  0.0 441890048   2592   ??  Ss   12:46AM   0:00.03 /System/Library/PrivateFrameworks/FindMyDevice.framework/XPCServices/FindMyDeviceSharedConfigurationXPCService.xpc/Contents/MacOS/FindMyDeviceSharedConfigurationXPCService
+igorgerasimov    33501   0.0  0.1 441952240  21824   ??  S    12:19AM   0:00.54 /System/iOSSupport/System/Library/PrivateFrameworks/HomeEnergyDaemon.framework/Support/homeenergyd
+root             54842   0.0  0.0 441909776    544   ??  Ss   12:00AM   0:00.04 aslmanager
+igorgerasimov    68942   0.0  0.1 442842240  50272   ??  Ss   11:54PM   0:01.78 /System/Applications/Weather.app/Contents/PlugIns/WeatherWidget.appex/Contents/MacOS/WeatherWidget -LaunchArguments eyJ0eXBlIjoxLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUud2VhdGhlci53aWRnZXQifQ==
+igorgerasimov    77369   0.0  0.1 442246736  25488   ??  Ss   11:13PM   0:00.43 /System/Library/Frameworks/AuthenticationServices.framework/Versions/A/XPCServices/com.apple.AuthenticationServices.Helper.xpc/Contents/MacOS/com.apple.AuthenticationServices.Helper
+igorgerasimov    77368   0.0  0.0 441971568   3776   ??  Ss   11:13PM   0:00.02 /System/Library/PrivateFrameworks/SafariFoundation.framework/Versions/A/XPCServices/CredentialProviderExtensionHelper.xpc/Contents/MacOS/CredentialProviderExtensionHelper
+igorgerasimov    68671   0.0  0.0 441946208   6448   ??  Ss   11:12PM   0:00.08 /System/Library/Frameworks/Speech.framework/Versions/A/XPCServices/localspeechrecognition.xpc/Contents/MacOS/localspeechrecognition
+root             53776   0.0  0.0 441901872    496   ??  Ss   11:11PM   0:00.01 /usr/libexec/dirhelper
+igorgerasimov    46081   0.0  0.0 442149968  14496   ??  Ss   11:11PM   0:00.14 /System/Library/Frameworks/AppKit.framework/Versions/C/XPCServices/ThemeWidgetControlViewService.xpc/Contents/MacOS/ThemeWidgetControlViewService
+igorgerasimov    31881   0.0  0.2 444935200  82208   ??  S    11:10PM   0:21.44 /Applications/FoXray.app/Contents/MacOS/FoXray
+igorgerasimov    24268   0.0  0.0 441939904   4592   ??  Ss   11:09PM   0:00.02 /System/Library/Frameworks/Intents.framework/XPCServices/intents_helper.xpc/Contents/MacOS/intents_helper
+igorgerasimov    20901   0.0  0.2 515034352  79632   ??  Ss   11:09PM   0:13.15 /System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent
+igorgerasimov    12344   0.0  0.1 514274000  27840   ??  Ss   11:08PM   0:03.36 /System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent
+root             81321   0.0  0.0 441959088  10496   ??  Ss   11:05PM   0:00.08 /usr/libexec/wifivelocityd
+igorgerasimov    54268   0.0  0.0 442324656   8896   ??  Ss   11:03PM   0:00.72 /System/Library/Frameworks/VideoToolbox.framework/Versions/A/XPCServices/VTDecoderXPCService.xpc/Contents/MacOS/VTDecoderXPCService
+igorgerasimov    50079   0.0  0.0 441901776   2352   ??  Ss   11:03PM   0:00.01 /System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/SpeechSynthesis.framework/Versions/A/XPCServices/SpeechSynthesisServerXPC.xpc/Contents/MacOS/SpeechSynthesisServerXPC
+igorgerasimov     6149   0.0  0.0 441905344   3168   ??  S     8:55PM   0:00.05 /System/Library/PrivateFrameworks/IntelligenceTasksEngine.framework/Support/intelligencetasksd
+_accessoryupdater 72936   0.0  0.0 441944576   4288   ??  Ss    8:39PM   0:00.08 /System/Library/PrivateFrameworks/MobileAccessoryUpdater.framework/XPCServices/EAUpdaterService.xpc/Contents/MacOS/EAUpdaterService
+_neuralengine    72702   0.0  0.0 441902080   2288   ??  Ss    8:39PM   0:00.02 /System/Library/PrivateFrameworks/AppleNeuralEngine.framework/XPCServices/ANEStorageMaintainer.xpc/Contents/MacOS/ANEStorageMaintainer
+root             72701   0.0  0.0 441942144   3472   ??  Ss    8:39PM   0:00.07 /System/Library/PrivateFrameworks/AppleNeuralEngine.framework/XPCServices/ANEStorageMaintainer.xpc/Contents/MacOS/ANEStorageMaintainer
+igorgerasimov    72700   0.0  0.0 441947760   5168   ??  S     8:39PM   0:00.09 /System/Library/PrivateFrameworks/IntelligencePlatformCore.framework/Versions/A/knowledgeconstructiond
+igorgerasimov    72699   0.0  0.0 441945024   7008   ??  S     8:39PM   0:00.10 /System/Library/PrivateFrameworks/ContinuousDialogManagerService.framework/assistant_cdmd
+root             25112   0.0  0.0 441902064   3920   ??  Ss    8:36PM   0:00.03 /usr/libexec/griddatad
+_accessoryupdater 25123   0.0  0.0 441892976   2976   ??  Ss    8:36PM   0:00.06 /System/Library/PrivateFrameworks/UARPAssetManager.framework/XPCServices/UARPAssetManagerServiceMobileAsset.xpc/Contents/MacOS/UARPAssetManagerServiceMobileAsset
+igorgerasimov    25111   0.0  0.0 441944624   4912   ??  S     8:36PM   0:00.08 /usr/libexec/mobilerepaird
+_accessoryupdater 25110   0.0  0.0 441909488   2752   ??  Ss    8:36PM   0:00.05 /usr/libexec/uarpassetmanagerd
+igorgerasimov    25908   0.0  0.0 442865376  11872   ??  Ss    8:29PM   0:03.45 /System/Library/Frameworks/VideoToolbox.framework/Versions/A/XPCServices/VTDecoderXPCService.xpc/Contents/MacOS/VTDecoderXPCService
+_accessoryupdater 30655   0.0  0.0 441959616   4464   ??  Ss    8:08PM   0:00.12 /System/Library/PrivateFrameworks/MobileAccessoryUpdater.framework/XPCServices/UARPUpdaterServiceDisplay.xpc/Contents/MacOS/UARPUpdaterServiceDisplay
+igorgerasimov    16176   0.0  0.0 450579088   6752   ??  S     8:07PM   0:03.00 /System/Library/PrivateFrameworks/Categories.framework/Versions/A/XPCServices/CategoriesService.xpc/Contents/MacOS/CategoriesService
+root             15551   0.0  0.0 441941968   4096   ??  Ss    8:07PM   0:00.03 /usr/libexec/sysdiagnosed
+root             15170   0.0  0.0 441901008   3040   ??  Ss    8:07PM   0:00.03 /usr/libexec/tzd
+root             13369   0.0  0.0 441941872   6880   ??  Ss    8:07PM   0:00.07 /System/Library/PrivateFrameworks/XprotectFramework.framework/Versions/A/XPCServices/XProtectUpdateService.xpc/Contents/MacOS/XProtectUpdateService
+_captiveagent    77578   0.0  0.0 441978656   6464   ??  Ss    7:22PM   0:01.02 /usr/libexec/captiveagent
+igorgerasimov    10296   0.0  0.0 441905456   4240   ??  S     7:03PM   0:00.06 /System/Library/PrivateFrameworks/GeoServices.framework/geodMachServiceBridge
+nobody           54767   0.0  0.0 441940240   3520   ??  Ss    6:59PM   0:00.12 /usr/libexec/dhcp6d
+root             54660   0.0  0.0 441944848   3136   ??  Ss    6:59PM   0:00.16 /usr/libexec/InternetSharing
+igorgerasimov    26932   0.0  0.0 418695488  10336   ??  SN    6:50PM   0:03.59 /Library/Frameworks/Python.framework/Versions/3.12/Resources/Python.app/Contents/MacOS/Python serve.py
+root             71686   0.0  0.0 441909936   1904   ??  Ss    6:03PM   0:00.12 /usr/libexec/taskgated
+_accessoryupdater 34990   0.0  0.0 441940944   5248   ??  Ss    6:01PM   0:00.08 /System/Library/PrivateFrameworks/CoreSpeech.framework/Versions/A/XPCServices/CoreSpeechXPC.xpc/Contents/MacOS/CoreSpeechXPC
+_accessoryupdater 34892   0.0  0.0 441944288  12944   ??  Ss    6:01PM   0:00.18 /System/Library/PrivateFrameworks/MobileAccessoryUpdater.framework/XPCServices/UARPUpdaterServiceLegacyAudio.xpc/Contents/MacOS/UARPUpdaterServiceLegacyAudio
+root             34891   0.0  0.0 441948368   6720   ??  Ss    6:01PM   0:00.10 /System/Library/PrivateFrameworks/CoreAccessories.framework/Support/accessoryd
+igorgerasimov    85921   0.0  0.1 443518832  29792 s013  S+    5:30PM   0:00.49 node /Users/igorgerasimov/.npm/_npx/eea2bd7412d4593b/node_modules/.bin/context7-mcp --api-key ctx7sk-17a3f876-b997-49fa-b2f4-57d32a44a7df
+igorgerasimov    85013   0.0  0.1 443632704  36640 s013  S+    5:30PM   0:02.87 npm exec @upstash/context7-mcp --api-key ctx7sk-***     
+igorgerasimov    85014   0.0  0.0 418751840   6896 s013  S+    5:30PM   0:00.04 /Applications/Pen.app/Contents/Resources/app.asar.unpacked/out/mcp-server-darwin-arm64 --app desktop --agent claudeCodeCLI
+igorgerasimov    83544   0.0  0.0 442223168   1040 s013  Ss    5:30PM   0:00.23 -zsh
+igorgerasimov    80310   0.0  0.0 442191296   8256   ??  Ss    5:07PM   0:00.30 /System/Library/PrivateFrameworks/SafariShared.framework/Versions/A/XPCServices/com.apple.Safari.SearchHelper.xpc/Contents/MacOS/com.apple.Safari.SearchHelper
+igorgerasimov    80307   0.0  0.0 441947104   8144   ??  S     5:07PM   0:00.24 /System/Cryptexes/App/usr/libexec/PasswordBreachAgent
+root             30386   0.0  0.0 441943984   7504   ??  Ss    3:56PM   0:00.08 /System/Library/PrivateFrameworks/CascadeSets.framework/Versions/A/XPCServices/SetStoreUpdateService.xpc/Contents/MacOS/SetStoreUpdateService
+igorgerasimov    28972   0.0  0.0 441947376   7664   ??  Ss    3:56PM   0:00.22 /System/Library/Frameworks/Speech.framework/Versions/A/XPCServices/localspeechrecognition.xpc/Contents/MacOS/localspeechrecognition
+igorgerasimov    28904   0.0  0.0 441977200   7488   ??  S     3:56PM   0:00.10 /System/Library/PrivateFrameworks/CallIntelligence.framework/callintelligenced
+igorgerasimov    28417   0.0  0.0 441901648   2624   ??  S     3:56PM   0:00.02 /System/Library/PrivateFrameworks/ToneLibrary.framework/Versions/A/XPCServices/com.apple.tonelibraryd.xpc/Contents/MacOS/com.apple.tonelibraryd
+root             14192   0.0  0.0 441906672   3104   ??  Ss    3:47PM   0:00.04 /System/Library/PrivateFrameworks/PowerLog.framework/Versions/A/XPCServices/PerfPowerTelemetryClientRegistrationService.xpc/Contents/MacOS/PerfPowerTelemetryClientRegistrationService
+igorgerasimov     8743   0.0  0.0 441991360  15024   ??  Ss    3:47PM   0:12.79 /System/Library/PrivateFrameworks/IntelligencePlatformCompute.framework/Versions/A/XPCServices/IntelligencePlatformComputeService.xpc/Contents/MacOS/IntelligencePlatformComputeService
+igorgerasimov    89847   0.0  0.0 442006352   5680   ??  S     3:46PM   0:00.25 /System/Cryptexes/App/usr/libexec/SafariNotificationAgent
+root             28838   0.0  0.0 441945552   3184   ??  Ss    3:27PM   0:00.08 /usr/libexec/trustdFileHelper
+_spotlight       28758   0.0  0.0 441948784  10624   ??  S     3:27PM   0:00.47 /usr/libexec/trustd --agent
+igorgerasimov    27960   0.0  0.0 442017424  12800   ??  S     3:27PM   0:00.53 /System/Library/PrivateFrameworks/CommerceKit.framework/Versions/A/Resources/commerce
+root             25780   0.0  0.1 441985680  37696   ??  Ss    3:27PM   0:30.10 /System/Library/PrivateFrameworks/XprotectFramework.framework/Versions/A/XPCServices/XprotectService.xpc/Contents/MacOS/XprotectService
+root             91009   0.0  0.0 441935296  11808   ??  Ss    3:25PM   0:00.55 /System/Library/PrivateFrameworks/XprotectFramework.framework/Versions/A/XPCServices/XProtectBridgeService.xpc/Contents/MacOS/XProtectBridgeService
+root             91007   0.0  0.0 441934432   7264   ??  Ss    3:25PM   0:00.55 /System/Library/PrivateFrameworks/CloudTelemetry.framework/Versions/A/XPCServices/CloudTelemetryService.xpc/Contents/MacOS/CloudTelemetryService
+igorgerasimov    96741   0.0  0.0 441911744   6240   ??  S     3:18PM   0:01.67 /usr/libexec/gamecontrolleragentd
+_gamecontrollerd 96740   0.0  0.0 441946160   7840   ??  Ss    3:18PM   0:01.70 /usr/libexec/gamecontrollerd
+igorgerasimov    48815   0.0  0.2 1956360128  78272   ??  S     3:15PM   0:01.12 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/151.0.7922.75/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer) --type=renderer --origin-trial-disabled-features=CanvasTextNg|WebAssemblyCustomDescriptors --lang=ru --num-raster-threads=4 --enable-zero-copy --enable-gpu-memory-buffer-compositor-resources --enable-main-frame-before-activation --renderer-client-id=1458 --time-ticks-at-unix-epoch=-1786080930012426 --launch-time-ticks=110390725028 --shared-files --metrics-shmem-handle=1752395122,r,2785996369127337806,4903986513705860514,2097152 --field-trial-handle=1718379636,r,15464423502408290219,14156836040256229550,262144 --variations-seed-version=20260806-090051.590000-production --pseudonymization-salt-handle=1935764596,r,13499245411572732428,9961731290484599906,4 --trace-process-track-uuid=3190710352518887336 --seatbelt-client=181
+igorgerasimov    43851   0.0  0.3 1959949488 102112   ??  S     3:15PM   0:29.50 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/151.0.7922.75/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer) --type=renderer --extension-process --origin-trial-disabled-features=CanvasTextNg|WebAssemblyCustomDescriptors --lang=ru --num-raster-threads=4 --enable-zero-copy --enable-gpu-memory-buffer-compositor-resources --enable-main-frame-before-activation --renderer-client-id=1457 --time-ticks-at-unix-epoch=-1786080930012426 --launch-time-ticks=110370224877 --shared-files --metrics-shmem-handle=1752395122,r,10952470703619878987,865076321944049157,2097152 --field-trial-handle=1718379636,r,15464423502408290219,14156836040256229550,262144 --variations-seed-version=20260806-090051.590000-production --pseudonymization-salt-handle=1935764596,r,13499245411572732428,9961731290484599906,4 --trace-process-track-uuid=3190710351581845487 --seatbelt-client=194
+igorgerasimov    88413   0.0  0.0 442174528   5472   ??  S     3:04PM   0:00.22 /System/Cryptexes/App/usr/libexec/webpushd --machServiceName com.apple.webkit.webpushd.service
+igorgerasimov    80963   0.0  0.0 442009008  13168   ??  S     3:03PM   0:00.91 /usr/libexec/naturallanguaged
+igorgerasimov    70428   0.0  0.1 442232512  19744   ??  Ss    3:02PM   0:00.46 /System/Library/PrivateFrameworks/SafariPlatformSupport.framework/Versions/A/XPCServices/com.apple.SafariPlatformSupport.Helper.xpc/Contents/MacOS/com.apple.SafariPlatformSupport.Helper
+igorgerasimov    69793   0.0  0.0 442460976  11744   ??  Ss    3:02PM   0:00.99 /System/Library/Frameworks/VideoToolbox.framework/Versions/A/XPCServices/VTDecoderXPCService.xpc/Contents/MacOS/VTDecoderXPCService
+root             69455   0.0  0.0 441993600  16672   ??  Ss    3:02PM   0:00.83 /usr/libexec/findmydeviced
+root             61499   0.0  0.0 442303776   7744   ??  Ss    3:02PM   0:00.04 /System/Library/Frameworks/AudioToolbox.framework/XPCServices/com.apple.audio.SandboxHelper.xpc/Contents/MacOS/com.apple.audio.SandboxHelper
+igorgerasimov    60180   0.0  0.0 441902144   2192   ??  Ss    3:01PM   0:00.01 /System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/SpeechSynthesis.framework/Versions/A/XPCServices/SpeechSynthesisServerXPC.xpc/Contents/MacOS/SpeechSynthesisServerXPC
+igorgerasimov    43233   0.0  0.0 442125376   4864   ??  Ss    1:48PM   0:00.04 /System/Library/Frameworks/Intents.framework/XPCServices/intents_helper.xpc/Contents/MacOS/intents_helper
+root             85854   0.0  0.0 441909888   3008   ??  Ss   11:37AM   0:00.13 /System/Library/Frameworks/AudioToolbox.framework/AudioComponentRegistrar -daemon
+igorgerasimov    68228   0.0  0.0 442281392    720   ??  Ss   10:51AM   0:00.16 /System/Library/PrivateFrameworks/IDSBlastDoorSupport.framework/Versions/A/XPCServices/IDSBlastDoorService.xpc/Contents/MacOS/IDSBlastDoorService
+igorgerasimov    91638   0.0  0.0 441945904   5584   ??  S     9:07AM   0:00.10 /usr/libexec/frauddefensed
+root              4356   0.0  0.1 442023360  30128   ??  Ss    8:45AM   1:29.27 /usr/libexec/PerfPowerServices
+igorgerasimov    53542   0.0  0.0 441950272  15200   ??  S     8:37AM   0:00.43 /System/Library/PrivateFrameworks/AvatarPersistence.framework/Support/avatarsd
+igorgerasimov    50051   0.0  0.1 442318352  18128   ??  S     8:36AM   0:16.33 /System/Library/PrivateFrameworks/ContactsDonation.framework/Versions/A/Support/contactsdonationagent
+root             96913   0.0  0.0 441911504   3312   ??  Ss    8:28AM   0:00.06 /usr/libexec/ASPCarryLog
+root              3224   0.0  0.0 441962240   7104   ??  Ss    8:23AM   0:00.56 /usr/sbin/systemsoundserverd
+root             38888   0.0  0.0 441906112   3024   ??  Ss    8:13AM   0:00.03 /usr/libexec/microstackshot
+_assetcache      15752   0.0  0.0 441946096   7488   ??  Ss    8:12AM   0:01.69 /System/Library/PrivateFrameworks/AssetCacheServices.framework/Versions/A/XPCServices/AssetCacheLocatorService.xpc/Contents/MacOS/AssetCacheLocatorService -d
+root             15716   0.0  0.0 441910304   2528   ??  Ss    8:12AM   0:00.04 /usr/libexec/betaenrollmentd
+igorgerasimov    15686   0.0  0.0 442006224   3760   ??  S     8:12AM   0:00.04 /usr/libexec/betaenrollmentagent
+igorgerasimov    39576   0.0  0.2 1958317968  69728   ??  S     8:08AM   0:27.38 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/151.0.7922.75/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer) --type=renderer --extension-process --origin-trial-disabled-features=CanvasTextNg|WebAssemblyCustomDescriptors --lang=ru --num-raster-threads=4 --enable-zero-copy --enable-gpu-memory-buffer-compositor-resources --enable-main-frame-before-activation --renderer-client-id=1032 --time-ticks-at-unix-epoch=-1786080930012426 --launch-time-ticks=84770580575 --shared-files --metrics-shmem-handle=1752395122,r,4375200096945356970,3395629122062629626,2097152 --field-trial-handle=1718379636,r,15464423502408290219,14156836040256229550,262144 --variations-seed-version=20260806-090051.590000-production --pseudonymization-salt-handle=1935764596,r,13499245411572732428,9961731290484599906,4 --trace-process-track-uuid=3190709953339059662 --seatbelt-client=135
+igorgerasimov    21841   0.0  0.0 441950784   8384   ??  S     8:07AM   0:00.54 /System/Library/PrivateFrameworks/Stickers.framework/Support/stickersd
+_accessoryupdater 91613   0.0  0.0 441945632   6096   ??  Ss    7:54AM   0:00.15 /System/Library/PrivateFrameworks/MobileAccessoryUpdater.framework/XPCServices/StandaloneHIDAudService.xpc/Contents/MacOS/StandaloneHIDAudService
+root             78024   0.0  0.0 441909712   1824   ??  Ss    7:20AM   0:00.05 /System/Library/PrivateFrameworks/Noticeboard.framework/Versions/A/Resources/nbstated
+igorgerasimov    31171   0.0  0.0 442007296   5904   ??  S     5:04AM   0:05.55 /usr/libexec/MTLAssetUpgraderD
+igorgerasimov    89032   0.0  0.0 442098544   4480   ??  S     5:01AM   0:04.98 /System/Library/Frameworks/MediaExtension.framework/Versions/A/Helpers/MENotificationAgent
+igorgerasimov    19188   0.0  0.0 441923776    256   ??  Ss    4:42AM   0:00.16 /System/Library/PrivateFrameworks/MessagesBlastDoorSupport.framework/Versions/A/XPCServices/MessagesBlastDoorService.xpc/Contents/MacOS/MessagesBlastDoorService
+igorgerasimov    19117   0.0  0.0 441961424   6464   ??  S     4:42AM   0:00.09 /System/Library/PrivateFrameworks/BusinessChatService.framework/businessservicesd
+igorgerasimov    18455   0.0  0.0 442022656   5904   ??  Ss    4:22AM   0:07.66 /System/Library/PrivateFrameworks/FileProviderDaemon.framework/XPCServices/FPCKService.xpc/Contents/MacOS/FPCKService
+igorgerasimov    86130   0.0  0.0 441910640   4128   ??  S     4:19AM   0:00.06 /usr/libexec/assessmentagent
+_securityagent   70676   0.0  0.0 441909552   1776   ??  S     4:04AM   0:00.21 /usr/sbin/cfprefsd agent
+igorgerasimov     2293   0.0  0.0 442063584   7328   ??  Ss    4:00AM   0:00.04 /System/Library/ExtensionKit/Extensions/GMSSELFIngestor.appex/Contents/MacOS/GMSSELFIngestor -LaunchArguments eyJzZXJ2aWNlTmFtZSI6ImNvbS5hcHBsZS5zaXJpLkdNU1NFTEZJbmdlc3RvciIsImVuaGFuY2VkU2VjdXJpdHkiOmZhbHNlLCJ0eXBlIjoxfQ==
+igorgerasimov     2203   0.0  0.0 442063872   6480   ??  Ss    4:00AM   0:00.03 /System/Library/ExtensionKit/Extensions/IFTelemetrySELFIngestor.appex/Contents/MacOS/IFTelemetrySELFIngestor -LaunchArguments eyJzZXJ2aWNlTmFtZSI6ImNvbS5hcHBsZS5saWdodGhvdXNlLklGVGVsZW1ldHJ5U0VMRkluZ2VzdG9yIiwiZW5oYW5jZWRTZWN1cml0eSI6ZmFsc2UsInR5cGUiOjF9
+igorgerasimov     2148   0.0  0.0 442063920   6688   ??  Ss    4:00AM   0:00.08 /System/Library/ExtensionKit/Extensions/IFTranscriptSELFIngestor.appex/Contents/MacOS/IFTranscriptSELFIngestor -LaunchArguments eyJzZXJ2aWNlTmFtZSI6ImNvbS5hcHBsZS5saWdodGhvdXNlLklGVHJhbnNjcmlwdFNFTEZJbmdlc3RvciIsImVuaGFuY2VkU2VjdXJpdHkiOmZhbHNlLCJ0eXBlIjoxfQ==
+igorgerasimov     2146   0.0  0.0 442063776   6752   ??  Ss    4:00AM   0:00.08 /System/Library/ExtensionKit/Extensions/BiomeSELFIngestor.appex/Contents/MacOS/BiomeSELFIngestor -LaunchArguments eyJzZXJ2aWNlTmFtZSI6ImNvbS5hcHBsZS5saWdodGhvdXNlLkJpb21lU0VMRkluZ2VzdG9yIiwiZW5oYW5jZWRTZWN1cml0eSI6ZmFsc2UsInR5cGUiOjF9
+igorgerasimov     2048   0.0  0.0 442124608   6496   ??  Ss    4:00AM   0:00.48 /System/Library/Frameworks/ExtensionFoundation.framework/Versions/A/XPCServices/extensionkitservice.xpc/Contents/MacOS/extensionkitservice
+igorgerasimov     2040   0.0  0.0 442173280   8304   ??  Ss    4:00AM   0:00.19 /System/Library/PrivateFrameworks/SiriAnalytics.framework/Versions/A/XPCServices/SAExtensionOrchestrator.xpc/Contents/MacOS/SAExtensionOrchestrator
+igorgerasimov    11803   0.0  0.0 441947344   7072   ??  S     3:55AM   0:00.15 /System/Library/PrivateFrameworks/HomeKitEvents.framework/Support/homeeventsd
+igorgerasimov     5154   0.0  0.0 441947232   6368   ??  Ss    3:54AM   0:00.40 /System/Library/PrivateFrameworks/AppleIntelligenceReportingProcessing.framework/Versions/A/XPCServices/AppleIntelligenceReportingProcessingService.xpc/Contents/MacOS/AppleIntelligenceReportingProcessingService
+igorgerasimov     1575   0.0  0.0 441995328   6816   ??  Ss    3:54AM   0:01.44 /System/Library/PrivateFrameworks/CoreEmbeddedSpeechRecognition.framework/Versions/A/XPCServices/com.apple.siri.embeddedspeech.xpc/Contents/MacOS/com.apple.siri.embeddedspeech
+igorgerasimov    27643   0.0  0.0 441955024  10720   ??  S     3:50AM   0:03.48 /System/Library/Frameworks/FinanceKit.framework/financed
+_diagnosticservicesd 11122   0.0  0.0 441910800   6736   ??  Ss    3:49AM   0:00.06 /System/Library/CoreServices/diagnosticservicesd
+root              7986   0.0  0.0 441970624   8016   ??  Ss    3:49AM   0:00.34 /usr/libexec/wifianalyticsd
+igorgerasimov     3940   0.0  0.0 441967312   1664   ??  Ss    3:48AM   0:00.02 /System/Library/Frameworks/NetFS.framework/Versions/A/XPCServices/PlugInLibraryService.xpc/Contents/MacOS/PlugInLibraryService
+root              3939   0.0  0.0 441975152   1664   ??  Ss    3:48AM   0:00.02 /System/Library/Frameworks/NetFS.framework/Versions/A/XPCServices/PlugInLibraryService.xpc/Contents/MacOS/PlugInLibraryService
+igorgerasimov     3213   0.0  0.2 443534064  58592   ??  S     3:48AM   0:44.47 /Applications/OrbStack.app/Contents/MacOS/OrbStack
+igorgerasimov     1030   0.0  0.0 441906656   6000   ??  S     3:48AM   0:00.06 /System/Library/PrivateFrameworks/KerberosHelper/Helpers/DiskUnmountWatcher
+igorgerasimov     1021   0.0  0.0 441983408   1680   ??  Ss    3:48AM   0:00.01 /System/Library/Frameworks/NetFS.framework/Versions/A/XPCServices/PlugInLibraryService.xpc/Contents/MacOS/PlugInLibraryService
+_rmd             77156   0.0  0.0 441898768   3200   ??  Ss    3:40AM   0:00.09 /System/Library/PrivateFrameworks/RemoteManagement.framework/XPCServices/ManagedConfigurationFilesSubscriber.xpc/Contents/MacOS/ManagedConfigurationFilesSubscriber
+igorgerasimov    77155   0.0  0.0 441898768   3312   ??  Ss    3:40AM   0:00.10 /System/Library/PrivateFrameworks/RemoteManagement.framework/XPCServices/ManagedSettingsSubscriber.xpc/Contents/MacOS/ManagedSettingsSubscriber
+_rmd             77154   0.0  0.0 441893840   2832   ??  Ss    3:40AM   0:00.08 /System/Library/PrivateFrameworks/RemoteManagement.framework/XPCServices/ManagementTestSubscriber.xpc/Contents/MacOS/ManagementTestSubscriber
+_rmd             77088   0.0  0.0 441893968   3360   ??  Ss    3:40AM   0:00.06 /System/Library/PrivateFrameworks/RemoteManagement.framework/XPCServices/ManagedAppsSubscriber.xpc/Contents/MacOS/ManagedAppsSubscriber
+root             77020   0.0  0.0 441945488   3552   ??  Ss    3:40AM   0:00.04 /System/Library/CoreServices/iconservicesagent runAsRoot
+igorgerasimov    77019   0.0  0.0 441993392   4624   ??  Ss    3:40AM   0:00.09 /System/Library/PrivateFrameworks/RemoteManagement.framework/XPCServices/ASConfigurationSubscriber.xpc/Contents/MacOS/ASConfigurationSubscriber
+root             77018   0.0  0.0 441972400   9696   ??  Ss    3:40AM   0:00.08 /System/Library/PrivateFrameworks/SystemMigration.framework/Resources/systemmigrationd
+igorgerasimov    77017   0.0  0.0 441893808   2944   ??  Ss    3:40AM   0:00.07 /System/Library/PrivateFrameworks/RemoteManagement.framework/XPCServices/ManagementTestSubscriber.xpc/Contents/MacOS/ManagementTestSubscriber
+_rmd             77016   0.0  0.0 441898832   4608   ??  Ss    3:40AM   0:00.10 /System/Library/PrivateFrameworks/RemoteManagement.framework/XPCServices/MigrationSubscriber.xpc/Contents/MacOS/MigrationSubscriber
+igorgerasimov    77015   0.0  0.0 441893216   3440   ??  Ss    3:40AM   0:00.08 /System/Library/PrivateFrameworks/RemoteManagement.framework/XPCServices/ManagedAppsSubscriber.xpc/Contents/MacOS/ManagedAppsSubscriber
+_rmd             77014   0.0  0.0 441898208   4032   ??  Ss    3:40AM   0:00.07 /System/Library/PrivateFrameworks/RemoteManagement.framework/XPCServices/SoftwareUpdateSubscriber.xpc/Contents/MacOS/SoftwareUpdateSubscriber
+_rmd             77012   0.0  0.0 441898400   3216   ??  Ss    3:40AM   0:00.06 /System/Library/PrivateFrameworks/RemoteManagement.framework/XPCServices/ManagedPreferencesSubscriber.xpc/Contents/MacOS/ManagedPreferencesSubscriber
+igorgerasimov    77011   0.0  0.0 441905904   5488   ??  Ss    3:40AM   0:00.09 /System/Library/PrivateFrameworks/RemoteManagement.framework/XPCServices/AccountSubscriber.xpc/Contents/MacOS/AccountSubscriber
+_rmd             77004   0.0  0.0 441893904   2928   ??  Ss    3:40AM   0:00.06 /System/Library/PrivateFrameworks/RemoteManagement.framework/XPCServices/DiskManagementSubscriber.xpc/Contents/MacOS/DiskManagementSubscriber
+igorgerasimov    77003   0.0  0.0 441893296   2928   ??  Ss    3:40AM   0:00.06 /System/Library/PrivateFrameworks/RemoteManagement.framework/XPCServices/PasscodeSettingsSubscriber.xpc/Contents/MacOS/PasscodeSettingsSubscriber
+_rmd             77002   0.0  0.0 441894016   2928   ??  Ss    3:40AM   0:00.06 /System/Library/PrivateFrameworks/RemoteManagement.framework/XPCServices/PasscodeSettingsSubscriber.xpc/Contents/MacOS/PasscodeSettingsSubscriber
+igorgerasimov    77001   0.0  0.0 441893808   2944   ??  Ss    3:40AM   0:00.06 /System/Library/PrivateFrameworks/RemoteManagement.framework/XPCServices/LegacyProfilesSubscriber.xpc/Contents/MacOS/LegacyProfilesSubscriber
+_rmd             76999   0.0  0.0 441893168   2944   ??  Ss    3:40AM   0:00.06 /System/Library/PrivateFrameworks/RemoteManagement.framework/XPCServices/LegacyProfilesSubscriber.xpc/Contents/MacOS/LegacyProfilesSubscriber
+igorgerasimov    76793   0.0  0.0 441894768   4320   ??  Ss    3:40AM   0:00.08 /System/Library/PrivateFrameworks/RemoteManagement.framework/XPCServices/ScreenSharingSubscriber.xpc/Contents/MacOS/ScreenSharingSubscriber
+igorgerasimov    76602   0.0  0.0 441893344   2944   ??  Ss    3:40AM   0:00.06 /System/Library/PrivateFrameworks/RemoteManagement.framework/XPCServices/InteractiveLegacyProfilesSubscriber.xpc/Contents/MacOS/InteractiveLegacyProfilesSubscriber
+_rmd             76567   0.0  0.0 441894560   4320   ??  Ss    3:40AM   0:00.08 /System/Library/PrivateFrameworks/RemoteManagement.framework/XPCServices/ScreenSharingSubscriber.xpc/Contents/MacOS/ScreenSharingSubscriber
+igorgerasimov    76430   0.0  0.0 441894176   3024   ??  Ss    3:40AM   0:00.07 /System/Library/PrivateFrameworks/RemoteManagement.framework/XPCServices/SecuritySubscriber.xpc/Contents/MacOS/SecuritySubscriber
+_rmd             76414   0.0  0.0 441893728   2944   ??  Ss    3:40AM   0:00.06 /System/Library/PrivateFrameworks/RemoteManagement.framework/XPCServices/InteractiveLegacyProfilesSubscriber.xpc/Contents/MacOS/InteractiveLegacyProfilesSubscriber
+igorgerasimov    76373   0.0  0.0 442017856   4384   ??  Ss    3:40AM   0:00.04 /System/Library/PrivateFrameworks/SafariFoundation.framework/Versions/A/XPCServices/SafariConfigurationSubscriber.xpc/Contents/MacOS/SafariConfigurationSubscriber
+_rmd             76372   0.0  0.0 441909984   2960   ??  Ss    3:40AM   0:00.04 /System/Library/PrivateFrameworks/RemoteManagement.framework/XPCServices/SecuritySubscriber.xpc/Contents/MacOS/SecuritySubscriber
+igorgerasimov    76355   0.0  0.0 441946816   5584   ??  S     3:40AM   0:00.12 /System/Library/PrivateFrameworks/RemoteManagement.framework/RemoteManagementAgent
+_rmd             76354   0.0  0.0 441946192   5616   ??  Ss    3:40AM   0:00.13 /System/Library/PrivateFrameworks/RemoteManagement.framework/remotemanagementd
+_datadetectors   61087   0.0  0.0 441909552   2080   ??  Ss    3:15AM   0:00.07 /usr/libexec/DataDetectorsSourceAccess
+igorgerasimov    53258   0.0  0.0 441907408   3808   ??  S     3:15AM   0:00.04 /System/Library/CoreServices/Setup Assistant.app/Contents/Resources/mbuseragent
+root             48243   0.0  0.0 442054320  10928   ??  S    Sat02AM   0:00.10 /System/Library/PrivateFrameworks/ContextKit.framework/Versions/A/XPCServices/ContextService.xpc/Contents/MacOS/ContextService
+root             48238   0.0  0.0 441975568  14864   ??  S    Sat02AM   0:00.29 /System/Library/PrivateFrameworks/Categories.framework/Versions/A/XPCServices/CategoriesService.xpc/Contents/MacOS/CategoriesService
+root             98563   0.0  0.0 441970848  12288   ??  Ss   Sat12AM   0:03.84 /System/Library/Frameworks/ManagedAppDistribution.framework/Support/managedappdistributiond
+igorgerasimov    21775   0.0  0.0 442007616   5472   ??  S    Fri09PM   0:00.09 /usr/libexec/metrickitd
+root             80722   0.0  0.0 441908928   2240   ??  Ss   Fri08PM   0:00.05 /System/Library/PrivateFrameworks/CoreKDL.framework/Support/corekdld
+igorgerasimov     6239   0.0  0.0 441907168   2784   ??  Ss   Fri08PM   0:00.62 /System/Library/PrivateFrameworks/StreamingZip.framework/Versions/A/XPCServices/com.apple.StreamingUnzipService.xpc/Contents/MacOS/com.apple.StreamingUnzipService
+igorgerasimov     5188   0.0  0.0 443647536   6496   ??  S    Fri08PM   0:03.39 /System/Library/CoreServices/appplaceholdersyncd
+igorgerasimov    57695   0.0  0.0 441945008   6912   ??  S    Fri08PM   0:00.12 /System/Library/CoreServices/EscrowSecurityAlert.app/Contents/MacOS/EscrowSecurityAlert
+igorgerasimov    24721   0.0  0.0 444459856  11104   ??  Ss   Fri08PM   0:04.19 /System/Library/PrivateFrameworks/AppPredictionFoundation.framework/Versions/A/XPCServices/AppPredictionIntentsHelperService.xpc/Contents/MacOS/AppPredictionIntentsHelperService
+igorgerasimov    24634   0.0  0.1 487779584  30208   ??  S    Fri08PM   9:40.70 /usr/libexec/duetexpertd
+igorgerasimov    84771   0.0  0.0 442031952  10160   ??  S    Fri08PM   0:07.80 /System/Library/PrivateFrameworks/BookKit.framework/Versions/A/XPCServices/com.apple.BKAgentService.xpc/Contents/MacOS/com.apple.BKAgentService
+igorgerasimov    84319   0.0  0.1 442087040  19216   ??  S    Fri08PM   0:07.14 /System/Library/PrivateFrameworks/AMPLibrary.framework/Versions/A/Support/AMPLibraryAgent --launchd
+igorgerasimov    84289   0.0  0.0 442028656   9200   ??  Ss   Fri08PM   0:00.13 /System/Library/PrivateFrameworks/AssistantServices.framework/Versions/A/XPCServices/media-indexer.xpc/Contents/MacOS/media-indexer
+igorgerasimov    80341   0.0  0.0 442037008   9200   ??  S    Fri08PM   0:00.56 /System/Library/PrivateFrameworks/SiriTTSService.framework/sirittsd
+igorgerasimov    71421   0.0  0.0 441943024   8640   ??  Ss   Fri08PM   0:02.20 /System/Library/PrivateFrameworks/CloudTelemetry.framework/Versions/A/XPCServices/CloudTelemetryService.xpc/Contents/MacOS/CloudTelemetryService
+root             71329   0.0  0.0 441947680   8608   ??  Ss   Fri08PM   0:02.37 /System/Library/PrivateFrameworks/CloudTelemetry.framework/Versions/A/XPCServices/CloudTelemetryService.xpc/Contents/MacOS/CloudTelemetryService
+root             70719   0.0  0.0 441947424   8848   ??  Ss   Fri08PM   0:04.72 /usr/libexec/assetsubscriptiond
+igorgerasimov    93316   0.0  0.0 442009360  11712   ??  S    Fri07PM   0:01.21 /System/Library/PrivateFrameworks/NewDeviceOutreach.framework/ndoagent
+igorgerasimov    26021   0.0  0.1 446656640  22992   ??  S    Fri07PM   0:00.98 /System/Library/PrivateFrameworks/Noticeboard.framework/Versions/A/Resources/nbagent.app/Contents/MacOS/nbagent
+igorgerasimov    84954   0.0  0.0 441910496   5232   ??  S    Fri07PM   0:00.19 /usr/libexec/feedbackd
+igorgerasimov    41750   0.0  0.1 442518144  28528   ??  Ss   Fri06PM   0:04.44 /System/Library/CoreServices/Dock.app/Contents/XPCServices/DockHelper.xpc/Contents/MacOS/DockHelper
+igorgerasimov    47254   0.0  0.0 442007808   8720   ??  S    Fri05PM   0:04.36 /System/Library/PrivateFrameworks/JetCore.framework/Support/jetpackassetd
+igorgerasimov    42209   0.0  0.0 442306816  11472   ??  Ss   Fri05PM   0:00.20 /System/Library/CoreServices/ControlCenter.app/Contents/PlugIns/DisplayControls.appex/Contents/MacOS/DisplayControls -LaunchArguments eyJ0eXBlIjoxLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUuY29udHJvbHMuZGlzcGxheSJ9
+igorgerasimov    25135   0.0  0.1 443522736  16880 s011  S+   Fri04PM   0:00.52 node /Users/igorgerasimov/.npm/_npx/eea2bd7412d4593b/node_modules/.bin/context7-mcp --api-key ctx7sk-17a3f876-b997-49fa-b2f4-57d32a44a7df
+igorgerasimov    23438   0.0  0.1 443628720  21920 s011  S+   Fri04PM   0:02.87 npm exec @upstash/context7-mcp --api-key ctx7sk-***     
+igorgerasimov    23439   0.0  0.0 418712368   4912 s011  S+   Fri04PM   0:00.13 /Applications/Pen.app/Contents/Resources/app.asar.unpacked/out/mcp-server-darwin-arm64 --app desktop --agent claudeCodeCLI
+igorgerasimov    23418   0.0  1.0 448577664 332192 s011  S+   Fri04PM  28:19.15 claude
+igorgerasimov    22918   0.0  0.0 442223632    688 s022  Ss+  Fri04PM   0:00.21 -zsh
+igorgerasimov    79813   0.0  0.0 442227024    688 s020  Ss+  Fri04PM   0:00.49 -zsh
+igorgerasimov    51812   0.0  0.1 443514240  16880 s009  S+   Fri03PM   0:00.46 node /Users/igorgerasimov/.npm/_npx/eea2bd7412d4593b/node_modules/.bin/context7-mcp --api-key ctx7sk-17a3f876-b997-49fa-b2f4-57d32a44a7df
+igorgerasimov    50991   0.0  0.1 443627904  21920 s009  S+   Fri03PM   0:02.79 npm exec @upstash/context7-mcp --api-key ctx7sk-***     
+igorgerasimov    50992   0.0  0.0 418713136   4832 s009  S+   Fri03PM   0:00.14 /Applications/Pen.app/Contents/Resources/app.asar.unpacked/out/mcp-server-darwin-arm64 --app desktop --agent claudeCodeCLI
+igorgerasimov    50879   0.0  0.6 448075344 187504 s009  S+   Fri03PM  11:44.62 claude
+igorgerasimov    74826   0.0  0.1 442418672  28320   ??  S    Fri03PM   0:00.95 /System/Library/CoreServices/UserNotificationCenter.app/Contents/MacOS/UserNotificationCenter
+igorgerasimov    78186   0.0  0.1 444190480  18544   ??  S    Fri03PM   0:02.19 node /Users/igorgerasimov/claudeWorkspace/S.A.G.E./apps/web/.next/dev/build/postcss.js 54516
+igorgerasimov    77278   0.0  0.2 473801152  74976   ??  S    Fri03PM   1:37.31 next-server (v16.2.2) 
+igorgerasimov    77069   0.0  0.1 451919296  16832   ??  S    Fri03PM   0:00.32 node /Users/igorgerasimov/claudeWorkspace/S.A.G.E./apps/web/node_modules/.bin/../next/dist/bin/next dev --turbopack --port 3000
+igorgerasimov    76952   0.0  0.1 443565328  16944   ??  S    Fri03PM   0:00.51 node /opt/homebrew/bin/pnpm dev --port 3000
+igorgerasimov    70814   0.0  0.0 442187712   4288   ??  S    Fri03PM   0:00.04 /opt/homebrew/Cellar/python@3.12/3.12.11/Frameworks/Python.framework/Versions/3.12/Resources/Python.app/Contents/MacOS/Python -c from multiprocessing.resource_tracker import main;main(4)
+igorgerasimov    70644   0.0  0.0 442231408   7584   ??  S    Fri03PM   1:16.48 /opt/homebrew/Cellar/python@3.12/3.12.11/Frameworks/Python.framework/Versions/3.12/Resources/Python.app/Contents/MacOS/Python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --app-dir /Users/igorgerasimov/claudeWorkspace/S.A.G.E./backend
+igorgerasimov    49032   0.0  0.1 493238032  42160   ??  S    Fri03PM   0:09.96 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/151.0.7922.75/Helpers/Google Chrome Helper.app/Contents/MacOS/Google Chrome Helper --type=utility --utility-sub-type=audio.mojom.AudioService --lang=ru --service-sandbox-type=audio --message-loop-type-ui --shared-files --metrics-shmem-handle=1752395122,r,15528041266122262787,2260433559423571519,524288 --field-trial-handle=1718379636,r,15464423502408290219,14156836040256229550,262144 --variations-seed-version=20260806-090051.590000-production --pseudonymization-salt-handle=1935764596,r,13499245411572732428,9961731290484599906,4 --trace-process-track-uuid=3190709022856503605 --seatbelt-client=192
+igorgerasimov    11011   0.0  0.0 442224064   4256   ??  S    Fri03PM   0:00.01 /Applications/Claude.app/Contents/Helpers/chrome-native-host chrome-extension://fcoeoabgfenejglbffodgkkbkcdhcgfn/
+igorgerasimov    10255   0.0  0.2 1958320816  69568   ??  S    Fri03PM   0:22.05 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/151.0.7922.75/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer) --type=renderer --extension-process --origin-trial-disabled-features=CanvasTextNg|WebAssemblyCustomDescriptors --lang=ru --num-raster-threads=4 --enable-zero-copy --enable-gpu-memory-buffer-compositor-resources --enable-main-frame-before-activation --renderer-client-id=12 --time-ticks-at-unix-epoch=-1786080930012426 --launch-time-ticks=23358147475 --shared-files --metrics-shmem-handle=1752395122,r,11652564989142561777,13703606698262927292,2097152 --field-trial-handle=1718379636,r,15464423502408290219,14156836040256229550,262144 --variations-seed-version=20260806-090051.590000-production --pseudonymization-salt-handle=1935764596,r,13499245411572732428,9961731290484599906,4 --trace-process-track-uuid=3190708997556373682 --seatbelt-client=85
+igorgerasimov    10253   0.0  0.6 1960106112 211520   ??  S    Fri03PM   2:32.26 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/151.0.7922.75/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer) --type=renderer --extension-process --origin-trial-disabled-features=CanvasTextNg|WebAssemblyCustomDescriptors --lang=ru --num-raster-threads=4 --enable-zero-copy --enable-gpu-memory-buffer-compositor-resources --enable-main-frame-before-activation --renderer-client-id=10 --time-ticks-at-unix-epoch=-1786080930012426 --launch-time-ticks=23358145932 --shared-files --metrics-shmem-handle=1752395122,r,18278072564828209065,12127738498493036406,2097152 --field-trial-handle=1718379636,r,15464423502408290219,14156836040256229550,262144 --variations-seed-version=20260806-090051.590000-production --pseudonymization-salt-handle=1935764596,r,13499245411572732428,9961731290484599906,4 --trace-process-track-uuid=3190708995682289984 --seatbelt-client=78
+igorgerasimov    10219   0.0  0.0 442241776  16384   ??  Ss   Fri03PM   0:00.77 /System/Library/PrivateFrameworks/SafariPlatformSupport.framework/Versions/A/XPCServices/com.apple.SafariPlatformSupport.Helper.xpc/Contents/MacOS/com.apple.SafariPlatformSupport.Helper
+igorgerasimov     9805   0.0  0.2 1956355456  53776   ??  S    Fri03PM   0:03.54 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/151.0.7922.75/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer) --type=renderer --top-chrome-webui --origin-trial-disabled-features=CanvasTextNg|WebAssemblyCustomDescriptors --lang=ru --num-raster-threads=4 --enable-zero-copy --enable-gpu-memory-buffer-compositor-resources --enable-main-frame-before-activation --renderer-client-id=6 --time-ticks-at-unix-epoch=-1786080930012426 --launch-time-ticks=23356926140 --shared-files --metrics-shmem-handle=1752395122,r,13006741177159668990,13626364484967630880,2097152 --field-trial-handle=1718379636,r,15464423502408290219,14156836040256229550,262144 --variations-seed-version=20260806-090051.590000-production --pseudonymization-salt-handle=1935764596,r,13499245411572732428,9961731290484599906,4 --trace-process-track-uuid=3190708991934122588 --seatbelt-client=69
+igorgerasimov     9801   0.0  0.1 493263424  36000   ??  S    Fri03PM   0:05.39 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/151.0.7922.75/Helpers/Google Chrome Helper.app/Contents/MacOS/Google Chrome Helper --type=utility --utility-sub-type=storage.mojom.StorageService --lang=ru --service-sandbox-type=service --shared-files --metrics-shmem-handle=1752395122,r,4987473178322761049,12760625737180435713,524288 --field-trial-handle=1718379636,r,15464423502408290219,14156836040256229550,262144 --variations-seed-version=20260806-090051.590000-production --pseudonymization-salt-handle=1935764596,r,13499245411572732428,9961731290484599906,4 --trace-process-track-uuid=3190708990060038890 --seatbelt-client=32
+igorgerasimov     9799   0.0  0.2 493298448  67392   ??  S    Fri03PM   1:59.55 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/151.0.7922.75/Helpers/Google Chrome Helper.app/Contents/MacOS/Google Chrome Helper --type=utility --utility-sub-type=network.mojom.NetworkService --lang=ru --service-sandbox-type=network --shared-files --metrics-shmem-handle=1752395122,r,7113708669662522645,16035497094034978963,524288 --field-trial-handle=1718379636,r,15464423502408290219,14156836040256229550,262144 --variations-seed-version=20260806-090051.590000-production --pseudonymization-salt-handle=1935764596,r,13499245411572732428,9961731290484599906,4 --trace-process-track-uuid=3190708989122997041 --seatbelt-client=16
+igorgerasimov     9798   0.0  0.2 525870960  75472   ??  S    Fri03PM  10:42.11 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/151.0.7922.75/Helpers/Google Chrome Helper.app/Contents/MacOS/Google Chrome Helper --type=gpu-process --gpu-preferences=WAAAAAAAAAAgAQAEAAAAAAAAAAAAAGAAQAAAAAAAAAADAAAAAAAAADgAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAKAAAAAAAAAAoAAAAAAAAAAgAAAAAAAAADAAAAAEAAAAAAAAAAAAAAAgAAAAAAAAACAAAAAAAAAA= --shared-files --metrics-shmem-handle=1752395122,r,11627157560634979944,7135471272660788530,262144 --field-trial-handle=1718379636,r,15464423502408290219,14156836040256229550,262144 --variations-seed-version=20260806-090051.590000-production --pseudonymization-salt-handle=1935764596,r,13499245411572732428,9961731290484599906,4 --trace-process-track-uuid=3190708988185955192 --seatbelt-client=28
+igorgerasimov     9787   0.0  0.0 492610720   8448   ??  S    Fri03PM   0:00.14 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/151.0.7922.75/Helpers/chrome_crashpad_handler --monitor-self-annotation=ptype=crashpad-handler --database=/Users/igorgerasimov/Library/Application Support/Google/Chrome/Crashpad --url=https://clients2.google.com/cr/report --annotation=channel= --annotation=plat=OS X --annotation=prod=Chrome_Mac --annotation=ver=151.0.7922.75 --handshake-fd=5
+igorgerasimov     7961   0.0  0.0 441983408   1664   ??  Ss   Fri03PM   0:00.02 /System/Library/Frameworks/NetFS.framework/Versions/A/XPCServices/PlugInLibraryService.xpc/Contents/MacOS/PlugInLibraryService
+igorgerasimov     7947   0.0  0.0 442118096   4720   ??  Ss   Fri03PM   0:00.22 /System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app/Contents/XPCServices/com.apple.Safari.BrowserDataImportingService.xpc/Contents/MacOS/com.apple.Safari.BrowserDataImportingService
+igorgerasimov    64677   0.0  0.1 443506416  16864 s016  S+   Fri03PM   0:00.45 node /Users/igorgerasimov/.npm/_npx/eea2bd7412d4593b/node_modules/.bin/context7-mcp --api-key ctx7sk-17a3f876-b997-49fa-b2f4-57d32a44a7df
+igorgerasimov    63854   0.0  0.1 443648128  21504 s016  S+   Fri03PM   0:03.41 npm exec @upstash/context7-mcp --api-key ctx7sk-***     
+igorgerasimov    63855   0.0  0.0 418711552   4816 s016  S+   Fri03PM   0:00.13 /Applications/Pen.app/Contents/Resources/app.asar.unpacked/out/mcp-server-darwin-arm64 --app desktop --agent claudeCodeCLI
+igorgerasimov    63064   0.0  0.0 442223792    688 s016  Ss   Fri03PM   0:00.21 -zsh
+igorgerasimov    23255   0.0  0.0 441906352   2576   ??  S    Fri02PM   0:00.04 /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/Metadata.framework/Versions/A/Support/mdwrite
+igorgerasimov    22312   0.0  0.0 442227872    688 s017  Ss+  Fri02PM   0:00.43 -zsh
+igorgerasimov    36421   0.0  0.1 514748592  31104   ??  Ss   Fri02PM   0:16.82 /System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent
+igorgerasimov    96864   0.0  0.0 441818496   1472   ??  S    Fri02PM   0:00.13 /usr/bin/ssh-agent -l
+igorgerasimov    80410   0.0  0.0 441902544   2144   ??  Ss   Fri02PM   0:00.03 /System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/SpeechSynthesis.framework/Versions/A/XPCServices/SpeechSynthesisServerXPC.xpc/Contents/MacOS/SpeechSynthesisServerXPC
+igorgerasimov    71284   0.0  0.1 443510768  16864 s010  S+   Fri02PM   0:00.41 node /Users/igorgerasimov/.npm/_npx/eea2bd7412d4593b/node_modules/.bin/context7-mcp --api-key ctx7sk-17a3f876-b997-49fa-b2f4-57d32a44a7df
+igorgerasimov    71230   0.0  0.1 443502176  16864 s014  S+   Fri02PM   0:00.44 node /Users/igorgerasimov/.npm/_npx/eea2bd7412d4593b/node_modules/.bin/context7-mcp --api-key ctx7sk-17a3f876-b997-49fa-b2f4-57d32a44a7df
+igorgerasimov    70636   0.0  0.1 443627664  21504 s010  S+   Fri02PM   0:02.52 npm exec @upstash/context7-mcp --api-key ctx7sk-***     
+igorgerasimov    70637   0.0  0.0 418712368   4848 s010  S+   Fri02PM   0:00.13 /Applications/Pen.app/Contents/Resources/app.asar.unpacked/out/mcp-server-darwin-arm64 --app desktop --agent claudeCodeCLI
+igorgerasimov    70593   0.0  0.1 443624656  21504 s014  S+   Fri02PM   0:02.74 npm exec @upstash/context7-mcp --api-key ctx7sk-***     
+igorgerasimov    70594   0.0  0.0 418711552   4896 s014  S+   Fri02PM   0:00.13 /Applications/Pen.app/Contents/Resources/app.asar.unpacked/out/mcp-server-darwin-arm64 --app desktop --agent claudeCodeCLI
+igorgerasimov    70278   0.0  0.9 448195312 313456 s010  S+   Fri02PM  20:19.20 claude
+igorgerasimov    56679   0.0  0.1 442275936  22704   ??  S    Fri02PM   0:01.03 /System/Library/PrivateFrameworks/AccessibilitySupport.framework/Versions/A/Resources/AccessibilityVisualsAgent.app/Contents/MacOS/AccessibilityVisualsAgent
+igorgerasimov    55244   0.0  0.0 446576080   8432   ??  Ss   Fri02PM   0:00.08 /System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.GPU.xpc/Contents/MacOS/com.apple.WebKit.GPU
+igorgerasimov    55165   0.0  0.0 446595952  14224   ??  Ss   Fri02PM   0:00.18 /System/Library/ExtensionKit/Extensions/WebThumbnailExtension.appex/Contents/MacOS/WebThumbnailExtension -LaunchArguments eyJ0eXBlIjoxLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUucXVpY2tsb29rLnRodW1ibmFpbC5XZWJFeHRlbnNpb24ifQ==
+igorgerasimov    55164   0.0  0.1 2532167008  35440   ??  Ss   Fri02PM  25:51.13 /System/Library/Frameworks/VideoToolbox.framework/Versions/A/XPCServices/VTDecoderXPCService.xpc/Contents/MacOS/VTDecoderXPCService
+igorgerasimov    55163   0.0  0.0 442081696   4752   ??  Ss   Fri02PM   0:00.09 /System/Library/ExtensionKit/Extensions/OfficeThumbnailExtension.appex/Contents/MacOS/OfficeThumbnailExtension -LaunchArguments eyJ0eXBlIjoxLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUucXVpY2tsb29rLnRodW1ibmFpbC5PZmZpY2VFeHRlbnNpb24ifQ==
+igorgerasimov    51894   0.0  0.1 443502144  16864 s008  S+   Fri02PM   0:00.42 node /Users/igorgerasimov/.npm/_npx/eea2bd7412d4593b/node_modules/.bin/context7-mcp --api-key ctx7sk-17a3f876-b997-49fa-b2f4-57d32a44a7df
+igorgerasimov    50838   0.0  0.1 443652784  21504 s008  S+   Fri02PM   0:04.36 npm exec @upstash/context7-mcp --api-key ctx7sk-***     
+igorgerasimov    50840   0.0  0.0 418721120   4912 s008  S+   Fri02PM   0:00.14 /Applications/Pen.app/Contents/Resources/app.asar.unpacked/out/mcp-server-darwin-arm64 --app desktop --agent claudeCodeCLI
+igorgerasimov    50596   0.0  0.8 448131040 273824 s008  S+   Fri02PM   5:49.99 claude
+igorgerasimov    48925   0.0  0.0 442215360   6240   ??  S    Fri02PM  15:56.21 bash /Users/igorgerasimov/.claude/tmux-plugin/claude-tmux-plugin/scripts/claude-monitor.sh start
+igorgerasimov    49103   0.0  0.0 442236032    688 s014  Ss   Fri02PM   0:00.50 -zsh
+igorgerasimov    49039   0.0  0.0 442235952    896 s012  Ss   Fri02PM   0:00.50 -zsh
+igorgerasimov    49016   0.0  0.0 442231792    688 s011  Ss   Fri02PM   0:00.50 -zsh
+igorgerasimov    48985   0.0  0.0 442231440    688 s010  Ss   Fri02PM   0:00.50 -zsh
+igorgerasimov    48955   0.0  0.0 442231360    688 s009  Ss   Fri02PM   0:00.51 -zsh
+igorgerasimov    48927   0.0  0.0 442231392    688 s008  Ss   Fri02PM   0:00.52 -zsh
+igorgerasimov    47711   0.0  0.1 442558816  21136   ??  Ss   Fri02PM   0:02.88 /System/Applications/Shortcuts.app/Contents/PlugIns/ShortcutLiveActivityWidgetExtension.appex/Contents/MacOS/ShortcutLiveActivityWidgetExtension -LaunchArguments eyJ0eXBlIjoxLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUuc2hvcnRjdXRzLlNob3J0Y3V0TGl2ZUFjdGl2aXR5V2lkZ2V0In0=
+igorgerasimov    47117   0.0  0.0 442231392    896 s005  S    Fri02PM   0:00.47 -zsh
+igorgerasimov    47118   0.0  0.0 442231568    688 s006  S+   Fri02PM   0:00.45 -zsh
+root             47116   0.0  0.0 442213648   7008 s006  Ss   Fri02PM   0:00.01 /usr/bin/login -flp igorgerasimov /bin/zsh -fc exec -a -zsh /bin/zsh
+root             47115   0.0  0.0 442214560   7008 s005  Ss   Fri02PM   0:00.01 /usr/bin/login -flp igorgerasimov /bin/zsh -fc exec -a -zsh /bin/zsh
+igorgerasimov    46204   0.0  0.0 441959456   7008   ??  S    Fri02PM   0:00.27 /usr/libexec/seserviced
+_lp              20224   0.0  0.0 442003968   4784   ??  S    Fri10AM   0:00.17 HP_Ink_Tank_Wireless_410_series 348 igorgerasimov кп 3 вариант_с_вставкой_updated.pdf 1 AP_ColorMatchingMode=AP_VendorColorMatching AP_D_InputSlot= collate com.apple.print.DocumentTicket.PMSpoolFormat=application/pdf com.apple.print.JobInfo.PMApplicationName=Просмотр com.apple.print.JobInfo.PMJobName=кп\ 3\ вариант_с_вставкой_updated.pdf com.apple.print.JobInfo.PMJobOwner=igorgerasimov com.apple.print.PrinterInfo.PMColorDeviceID..n.=48036 com.apple.print.PrintSettings.PMColorSpaceModel..n.=2 com.apple.print.PrintSettings.PMCopies..n.=1 com.apple.print.PrintSettings.PMCopyCollate..b. com.apple.print.PrintSettings.PMFirstPage..n.=1 com.apple.print.PrintSettings.PMLastPage..n.=2147483647 com.apple.print.PrintSettings.PMPageRange..a.0..n.=1 com.apple.print.PrintSettings.PMPageRange..a.1..n.=2147483647 DestinationPrinterID=HP_Ink_Tank_Wireless_410_series media=A4 noPDFIsProtected..b. pserrorhandler-requested=standard job-uuid=urn:uuid:03b2145b-b2e6-3a42-4788-5856fba5a0b2 job-originating-host-name=localhost date-time-at-creation= date-time-at-processing= time-at-creation=1756933914 time-at-processing=1786089386 document-name-supplied=кп\ 3\ вариант_с_вставкой_updated.pdf job-impressions=15 com.apple.print.PrintSettings.PMTotalSidesImaged..n.=15 com.apple.print.PrintSettings.PMTotalBeginPages..n.=15 PageSize=A4 /private/var/spool/cups/d00348-001
+root             20225   0.0  0.0 441936192   4064   ??  S    Fri10AM   0:06.96 dnssd://HP%20Ink%20Tank%20Wireless%20410%20series%20%5B91327F%5D._ipp._tcp.local./?uuid=1c852a4d-b800-1f08-abcd-e4e74991327f 348 igorgerasimov кп 3 вариант_с_вставкой_updated.pdf 1 AP_ColorMatchingMode=AP_VendorColorMatching AP_D_InputSlot= collate com.apple.print.DocumentTicket.PMSpoolFormat=application/pdf com.apple.print.JobInfo.PMApplicationName=Просмотр com.apple.print.JobInfo.PMJobName=кп\ 3\ вариант_с_вставкой_updated.pdf com.apple.print.JobInfo.PMJobOwner=igorgerasimov com.apple.print.PrinterInfo.PMColorDeviceID..n.=48036 com.apple.print.PrintSettings.PMColorSpaceModel..n.=2 com.apple.print.PrintSettings.PMCopies..n.=1 com.apple.print.PrintSettings.PMCopyCollate..b. com.apple.print.PrintSettings.PMFirstPage..n.=1 com.apple.print.PrintSettings.PMLastPage..n.=2147483647 com.apple.print.PrintSettings.PMPageRange..a.0..n.=1 com.apple.print.PrintSettings.PMPageRange..a.1..n.=2147483647 DestinationPrinterID=HP_Ink_Tank_Wireless_410_series media=A4 noPDFIsProtected..b. pserrorhandler-requested=standard job-uuid=urn:uuid:03b2145b-b2e6-3a42-4788-5856fba5a0b2 job-originating-host-name=localhost date-time-at-creation= date-time-at-processing= time-at-creation=1756933914 time-at-processing=1786089386 document-name-supplied=кп\ 3\ вариант_с_вставкой_updated.pdf job-impressions=15 com.apple.print.PrintSettings.PMTotalSidesImaged..n.=15 com.apple.print.PrintSettings.PMTotalBeginPages..n.=15 PageSize=A4
+igorgerasimov    16109   0.0  0.0 442052624  15520   ??  S    Fri10AM   0:08.03 /System/Library/PrivateFrameworks/FaceTimeMessageStore.framework/facetimemessagestored
+igorgerasimov    16107   0.0  0.1 442038336  19664   ??  S    Fri10AM   0:10.36 /System/Library/PrivateFrameworks/CallHistory.framework/Support/CallHistorySyncHelper
+igorgerasimov    16106   0.0  0.0 441964272  12752   ??  S    Fri10AM   0:05.93 /System/Library/PrivateFrameworks/CallHistory.framework/Support/CallHistoryPluginHelper
+root             10262   0.0  0.0 441974464  12448   ??  S    Fri09AM   0:10.23 /System/Library/PrivateFrameworks/GeoServices.framework/Versions/A/XPCServices/com.apple.geod.xpc/Contents/MacOS/com.apple.geod
+igorgerasimov     7844   0.0  0.0 442105760  14736   ??  S    Fri09AM   0:02.00 /System/Library/Frameworks/LocalAuthentication.framework/Support/coreautha.bundle/Contents/MacOS/coreautha
+igorgerasimov     7107   0.0  0.0 441990528  11488   ??  Ss   Fri09AM   0:04.69 /System/Library/PrivateFrameworks/MediaAnalysisAccess.framework/Versions/A/XPCServices/mediaanalysisd-access.xpc/Contents/MacOS/mediaanalysisd-access
+igorgerasimov     4553   0.0  0.0 441947232   7776   ??  S    Fri08AM   0:00.25 /System/Library/PrivateFrameworks/IMDPersistence.framework/IMAutomaticHistoryDeletionAgent.app/Contents/MacOS/IMAutomaticHistoryDeletionAgent
+_neuralengine     4567   0.0  0.0 441909968   3360   ??  S    Fri08AM   0:00.59 /usr/sbin/cfprefsd agent
+_neuralengine     4564   0.0  0.0 441909792   2656   ??  S    Fri08AM   0:34.51 /usr/sbin/distnoted agent
+root              4554   0.0  0.0 441949952   6464   ??  Ss   Fri08AM   0:00.25 /usr/libexec/dprivacyd
+igorgerasimov     4548   0.0  0.0 441951440   6800   ??  S    Fri08AM   0:00.31 /usr/libexec/dprivacyd
+_installcoordinationd  4545   0.0  0.0 441909760   1728   ??  S    Fri08AM   0:00.55 /usr/sbin/cfprefsd agent
+_rmd              4544   0.0  0.0 441909808   1744   ??  S    Fri08AM   0:00.44 /usr/sbin/cfprefsd agent
+_nsurlsessiond    4541   0.0  0.0 441909936   1712   ??  S    Fri08AM   0:00.53 /usr/sbin/cfprefsd agent
+_applepay         4542   0.0  0.0 441910240   3376   ??  S    Fri08AM   0:00.50 /usr/sbin/cfprefsd agent
+_audiomxd         4524   0.0  0.0 441909536   1696   ??  S    Fri08AM   0:00.44 /usr/sbin/cfprefsd agent
+igorgerasimov     4519   0.0  0.0 441956384  10528   ??  S    Fri08AM   0:02.82 /usr/libexec/ciphermld
+igorgerasimov     4509   0.0  0.0 441888912   2288   ??  S    Fri08AM   0:00.29 /Library/Apple/System/Library/CoreServices/XProtect.app/Contents/MacOS/XProtect
+root              4510   0.0  0.0 441888752   2288   ??  Ss   Fri08AM   0:00.18 /Library/Apple/System/Library/CoreServices/XProtect.app/Contents/MacOS/XProtect
+igorgerasimov     4512   0.0  0.0 442972208   8928   ??  S    Fri08AM   0:00.50 /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/Metadata.framework/Versions/A/Support/managedcorespotlightd
+_lp               4508   0.0  0.0 441909776   1664   ??  S    Fri08AM   0:00.52 /usr/sbin/cfprefsd agent
+igorgerasimov     3995   0.0  0.0 442212032  14304   ??  S    Fri08AM   0:01.77 /System/Library/PrivateFrameworks/SkyLight.framework//Versions/A/Resources/AquaAppearanceHelper.app/Contents/MacOS/AquaAppearanceHelper
+igorgerasimov     3987   0.0  0.0 442092608  10544   ??  Ss   Fri08AM   0:00.78 /System/Library/Frameworks/QuickLookUI.framework/Versions/A/XPCServices/QuickLookUIService.xpc/Contents/MacOS/QuickLookUIService
+igorgerasimov     3985   0.0  0.2 2848724208  51200   ??  Ss   Fri08AM  29:18.62 /System/Library/Frameworks/AppKit.framework/Versions/C/XPCServices/com.apple.appkit.xpc.openAndSavePanelService.xpc/Contents/MacOS/com.apple.appkit.xpc.openAndSavePanelService
+igorgerasimov     3635   0.0  0.0 441949216   8688   ??  S    Fri08AM   0:00.42 /System/Library/PrivateFrameworks/IntelligencePlatformCore.framework/Versions/A/intelligenceplatformd
+igorgerasimov     3004   0.0  0.1 443801136  22512   ??  S    Fri08AM   0:44.79 /opt/homebrew/bin/node /Users/igorgerasimov/Library/Application Support/Zed/languages/basedpyright/node_modules/basedpyright/langserver.index.js --stdio
+igorgerasimov     2979   0.0  0.0 442161696   5024   ??  S    Fri08AM   0:00.19 /System/Library/Frameworks/CoreSpotlight.framework/spotlightknowledged -x
+igorgerasimov     2963   0.0  0.0 442306288  12320   ??  S    Fri08AM   0:00.31 /Library/Frameworks/Python.framework/Versions/3.12/bin/ruff server
+igorgerasimov     2921   0.0  0.0 441946720   7184   ??  S    Fri08AM   0:00.44 /usr/libexec/proactiveeventtrackerd
+igorgerasimov     2784   0.0  0.0 441946944   7968   ??  S    Fri08AM   0:00.31 /System/Library/PrivateFrameworks/CloudPhotoServices.framework/Versions/A/XPCServices/com.apple.CloudPhotosConfiguration.xpc/Contents/MacOS/com.apple.CloudPhotosConfiguration
+igorgerasimov     2781   0.0  0.0 446532064  14016   ??  S    Fri08AM   0:01.44 /System/Cryptexes/App/usr/libexec/AuthenticationServicesAgent
+igorgerasimov     2769   0.0  0.0 441949440   7520   ??  S    Fri08AM   0:01.37 /usr/libexec/filevaultd
+igorgerasimov     2717   0.0  0.1 448968656  23296   ??  Ss   Fri08AM   0:02.63 /System/Library/PrivateFrameworks/UIFoundation.framework/Versions/A/XPCServices/nsattributedstringagent.xpc/Contents/MacOS/nsattributedstringagent
+igorgerasimov     2718   0.0  0.1 448775568  23216   ??  Ss   Fri08AM   0:01.82 /System/Library/PrivateFrameworks/UIFoundation.framework/Versions/A/XPCServices/nsattributedstringagent.xpc/Contents/MacOS/nsattributedstringagent
+_softwareupdate   2716   0.0  0.0 441910256   2032   ??  S    Fri08AM   0:00.04 /System/Library/Frameworks/MediaAccessibility.framework/Versions/A/XPCServices/com.apple.accessibility.mediaaccessibilityd.xpc/Contents/MacOS/com.apple.accessibility.mediaaccessibilityd
+_softwareupdate   2712   0.0  0.0 441910128   1728   ??  S    Fri08AM   0:00.42 /usr/sbin/cfprefsd agent
+_softwareupdate   2710   0.0  0.1 446658528  23008   ??  Ss   Fri08AM   0:00.68 /System/Library/PrivateFrameworks/UIFoundation.framework/Versions/A/XPCServices/nsattributedstringagent.xpc/Contents/MacOS/nsattributedstringagent
+root              2668   0.0  0.0 441951936   4112   ??  Ss   Fri08AM   0:00.37 /System/Library/AssetsV2/com_apple_MobileAsset_RecoveryOSUpdateBrain/7a84bd1c89069f2e742ece792e84523266f36fdf.asset/AssetData/com.apple.NRD.UpdateBrainService.xpc/Contents/MacOS/com.apple.NRD.UpdateBrainService
+_softwareupdate   2667   0.0  0.0 441948096   6704   ??  Ss   Fri08AM   0:00.50 /usr/libexec/NRDUpdated
+igorgerasimov     2666   0.0  0.0 441904832   2448   ??  S    Fri08AM   0:00.05 /System/Library/PrivateFrameworks/IASUtilities.framework/Versions/A/Resources/installerauthagent
+root              2566   0.0  0.0 441945632   4912   ??  Ss   Fri08AM   0:00.09 /usr/libexec/mmaintenanced
+_nsurlsessiond    2520   0.0  0.0 441910144   2224   ??  S    Fri08AM   0:31.82 /usr/sbin/distnoted agent
+igorgerasimov     2483   0.0  0.0 457326192   9360   ??  Ss   Fri08AM   0:10.10 /System/Library/Frameworks/ExtensionFoundation.framework/Versions/A/XPCServices/extensionkitservice.xpc/Contents/MacOS/extensionkitservice
+root              2481   0.0  0.0 441889936   2384   ??  Ss   Fri08AM   0:00.12 /usr/libexec/seputil --daemonize-reseed
+igorgerasimov     2457   0.0  0.0 441947792   8656   ??  S    Fri08AM   0:00.39 /System/Library/PrivateFrameworks/GeoAnalytics.framework/geoanalyticsd
+igorgerasimov     2449   0.0  0.0 456844304  14048   ??  S    Fri08AM   0:07.46 /usr/libexec/mlhostd
+_accessoryupdater  2434   0.0  0.0 441949888  10928   ??  S    Fri08AM   0:00.48 /usr/libexec/trustd --agent
+_accessoryupdater  2433   0.0  0.0 441909488   3440   ??  S    Fri08AM   0:00.55 /usr/sbin/cfprefsd agent
+_accessoryupdater  2431   0.0  0.0 441959152  13312   ??  S    Fri08AM   0:06.53 /System/Library/PrivateFrameworks/GeoServices.framework/Versions/A/XPCServices/com.apple.geod.xpc/Contents/MacOS/com.apple.geod
+igorgerasimov     2402   0.0  0.0 441952080   8768   ??  S    Fri08AM   0:01.44 /System/Library/PrivateFrameworks/MapsSync.framework/mapssyncd
+igorgerasimov     2369   0.0  0.1 443123088  18016   ??  S    Fri08AM   0:05.11 /System/Library/PrivateFrameworks/WorkflowKit.framework/XPCServices/ShortcutsViewService.xpc/Contents/MacOS/ShortcutsViewService
+igorgerasimov     2368   0.0  0.0 441947584   7856   ??  S    Fri08AM   0:00.63 /System/Library/PrivateFrameworks/PrivateCloudCompute.framework/privatecloudcomputed.app/Contents/MacOS/privatecloudcomputed
+igorgerasimov     2286   0.0  0.0 441950800   7808   ??  S    Fri08AM   0:00.83 /usr/libexec/textunderstandingd
+igorgerasimov     2284   0.0  0.1 441975744  17872   ??  S    Fri08AM   0:09.04 /System/Library/PrivateFrameworks/People.framework/peopled
+igorgerasimov     2285   0.0  0.0 456314032   8992   ??  S    Fri08AM   0:02.82 /usr/libexec/proactived
+_rmd              2255   0.0  0.0 441910800   2224   ??  S    Fri08AM   0:31.56 /usr/sbin/distnoted agent
+igorgerasimov     2243   0.0  0.1 442102464  32992   ??  S    Fri08AM   0:52.30 /System/Library/PrivateFrameworks/DataAccess.framework/Support/dataaccessd
+igorgerasimov     2088   0.0  0.0 446274944   5440   ??  S    Fri08AM   0:00.27 /System/Library/PrivateFrameworks/CoreSuggestions.framework/Versions/A/Support/reversetemplated
+root              2087   0.0  0.0 441905680   2416   ??  Ss   Fri08AM   0:00.05 /System/Library/CoreServices/CrashReporterSupportHelper server-init
+root              2085   0.0  0.0 441902352   3248   ??  Ss   Fri08AM   0:33.35 /System/Library/CoreServices/ReportCrash daemon
+root              2077   0.0  0.0 442850624   6560   ??  Ss   Fri08AM   2:05.59 /System/Library/PrivateFrameworks/AppleNeuralEngine.framework/XPCServices/ANECompilerService.xpc/Contents/MacOS/ANECompilerService
+igorgerasimov     2076   0.0  0.0 442124592   5456   ??  S    Fri08AM   0:00.88 /System/Library/PrivateFrameworks/DeviceCheckInternal.framework/devicecheckd
+igorgerasimov     2068   0.0  0.0 441975056   2736   ??  Ss   Fri08AM   0:13.90 /System/Library/Frameworks/NetFS.framework/Versions/A/XPCServices/PlugInLibraryService.xpc/Contents/MacOS/PlugInLibraryService
+igorgerasimov     2067   0.0  0.2 7517136480  57104   ??  S    Fri08AM 147:13.39 /usr/libexec/GamePolicyAgent
+igorgerasimov     2047   0.0  0.0 442947376  12224   ??  S    Fri08AM   0:01.17 /Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/XPCServices/SimulatorTrampoline.xpc/Contents/MacOS/SimulatorTrampoline
+igorgerasimov     2039   0.0  0.0 441904464   2208   ??  S    Fri08AM   0:00.04 /Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/XPCServices/SimLaunchHost.arm64.xpc/Contents/MacOS/SimLaunchHost.arm64
+_diskimagesiod    2034   0.0  0.0 441988528   2944   ??  Ss   Fri08AM   0:00.13 /usr/libexec/diskimagesiod
+_diskimagesiod    2027   0.0  0.0 441987968   2928   ??  Ss   Fri08AM   0:00.06 /usr/libexec/diskimagesiod
+_diskimagesiod    2020   0.0  0.0 441988736   2928   ??  Ss   Fri08AM   0:00.12 /usr/libexec/diskimagesiod
+_diskimagesiod    2015   0.0  0.0 441987856   2912   ??  Ss   Fri08AM   0:00.07 /usr/libexec/diskimagesiod
+igorgerasimov     2009   0.0  0.0 441905472   4480   ??  Ss   Fri08AM   0:43.23 /Library/Apple/System/Library/PrivateFrameworks/MobileDevice.framework/Versions/A/XPCServices/MDRemoteServiceSupport.xpc/Contents/MacOS/MDRemoteServiceSupport
+_diskimagesiod    2008   0.0  0.0 441988224   2944   ??  Ss   Fri08AM   0:00.08 /usr/libexec/diskimagesiod
+root              2002   0.0  0.0 441967264   5328   ??  Ss   Fri08AM   0:00.15 /Library/Developer/PrivateFrameworks/CoreSimulator.framework/Resources/bin/simdiskimaged
+igorgerasimov     1979   0.0  0.0 442013968   7952   ??  S    Fri08AM   0:28.46 /System/Library/PrivateFrameworks/SafariSafeBrowsing.framework/com.apple.Safari.SafeBrowsing.Service
+igorgerasimov     1977   0.0  0.0 441952992   5984   ??  S    Fri08AM   0:00.67 /System/Cryptexes/App/usr/libexec/webinspectord
+igorgerasimov     1976   0.0  0.0 442992000  13584   ??  S    Fri08AM   0:01.65 /Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/XPCServices/com.apple.CoreSimulator.CoreSimulatorService.xpc/Contents/MacOS/com.apple.CoreSimulator.CoreSimulatorService
+igorgerasimov     1975   0.0  0.1 690159872  18560   ??  S    Fri08AM  19:03.81 /Library/Apple/System/Library/PrivateFrameworks/RemotePairing.framework/Versions/A/XPCServices/remotepairingd.xpc/Contents/MacOS/remotepairingd
+igorgerasimov     1968   0.0  0.0 441922848   3856   ??  S    Fri08AM   0:00.15 /usr/libexec/keychainsharingmessagingd
+igorgerasimov     1967   0.0  0.0 442115600  14384   ??  Ss   Fri08AM   0:00.90 /System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app/Contents/XPCServices/com.apple.Safari.SandboxBroker.xpc/Contents/MacOS/com.apple.Safari.SandboxBroker
+igorgerasimov     1966   0.0  0.0 441946144   7696   ??  S    Fri08AM   0:01.80 /System/Library/PrivateFrameworks/Synapse.framework/Support/contentlinkingd
+igorgerasimov     1963   0.0  0.0 441982576  14928   ??  S    Fri08AM   0:03.15 /System/Library/Frameworks/Translation.framework/translationd
+igorgerasimov     1962   0.0  0.2 585422848  54688   ??  Ss   Fri08AM  87:52.48 /System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.GPU.xpc/Contents/MacOS/com.apple.WebKit.GPU
+igorgerasimov     1951   0.0  0.1 442465984  25008   ??  Ss   Fri08AM   0:01.44 /Applications/Accelerate.app/Contents/PlugIns/Accelerate Extension.appex/Contents/MacOS/Accelerate Extension -AppleLanguages ("ru-RU", "en-RU", "en-GB")
+igorgerasimov     1948   0.0  0.0 441909904   2256   ??  S    Fri08AM   0:00.09 /System/Library/Frameworks/MediaAccessibility.framework/Versions/A/XPCServices/com.apple.accessibility.mediaaccessibilityd.xpc/Contents/MacOS/com.apple.accessibility.mediaaccessibilityd
+root              1947   0.0  0.0 441918608   1488   ??  Ss   Fri08AM   0:00.05 /System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/CVMServer
+igorgerasimov     1944   0.0  0.0 441955088   7984   ??  S    Fri08AM   0:00.82 /System/Library/PrivateFrameworks/WebPrivacy.framework/webprivacyd
+igorgerasimov     1945   0.0  0.0 513944880   9072   ??  Ss   Fri08AM   0:01.29 /System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent
+igorgerasimov     1943   0.0  0.1 444309232  20896   ??  S    Fri08AM   0:02.60 /System/Library/PrivateFrameworks/IntelligenceFlowContextRuntime.framework/Versions/A/intelligencecontextd
+igorgerasimov     1942   0.0  0.1 442000864  17328   ??  S    Fri08AM   0:04.70 /System/Library/PrivateFrameworks/PassKitCore.framework/passd
+igorgerasimov     1940   0.0  0.0 442523984   1296   ??  Ss   Fri08AM   0:00.52 /System/Library/Frameworks/ImageIO.framework/Versions/A/XPCServices/ImageIOXPCService.xpc/Contents/MacOS/ImageIOXPCService
+igorgerasimov     1939   0.0  0.4 3225698784 139152   ??  S    Fri08AM  85:58.11 /System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app/Contents/MacOS/Safari
+igorgerasimov     1935   0.0  0.0 442261744  12960   ??  S    Fri08AM   0:04.09 /usr/libexec/tipsd
+igorgerasimov     1927   0.0  0.0 441970720  11760   ??  S    Fri08AM   0:04.60 /System/Library/Frameworks/ManagedAppDistribution.framework/Support/managedappdistributionagent
+_reportsystemmemory  1909   0.0  0.0 441944800   5440   ??  Ss   Fri08AM   0:07.06 /System/Library/CoreServices/ReportSystemMemory
+igorgerasimov     1910   0.0  0.0 441945408   6480   ??  S    Fri08AM   0:00.13 /System/Library/PrivateFrameworks/CoreAnalytics.framework/Support/analyticsagent
+igorgerasimov     1907   0.0  0.0 442006704   6976   ??  S    Fri08AM   0:00.36 /System/Library/Frameworks/ClassKit.framework/Versions/A/progressd
+igorgerasimov     1904   0.0  0.0 442039888  12000   ??  S    Fri08AM   0:01.01 /System/Library/CoreServices/Keychain Circle Notification.app/Contents/MacOS/Keychain Circle Notification
+igorgerasimov     1906   0.0  0.0 441909776   6528   ??  S    Fri08AM   0:00.15 /System/Library/Frameworks/Security.framework/Versions/A/Resources/CloudKeychainProxy.bundle/Contents/MacOS/CloudKeychainProxy
+igorgerasimov     1896   0.0  0.0 441953952   6320   ??  Ss   Fri08AM   0:00.22 /System/Library/PrivateFrameworks/SiriSuggestionsSupport.framework/Versions/A/XPCServices/SiriSuggestionsBookkeepingService.xpc/Contents/MacOS/SiriSuggestionsBookkeepingService
+igorgerasimov     1775   0.0  0.0 441945824   4784   ??  S    Fri08AM   0:11.27 /Library/Apple/System/Library/CoreServices/XProtect.app/Contents/XPCServices/XProtectPluginService.xpc/Contents/MacOS/XProtectPluginService
+igorgerasimov     1755   0.0  0.0 441949328  10528   ??  S    Fri08AM   0:01.58 /usr/libexec/keyboardservicesd
+igorgerasimov     1753   0.0  0.2 443663776  56128   ??  S    Fri08AM   1:30.44 /System/Library/Services/AppleSpell.service/Contents/MacOS/AppleSpell
+igorgerasimov     1738   0.0  0.0 442194608   5632   ??  Ss   Fri08AM   0:00.15 /System/Library/ExtensionKit/Extensions/ImageThumbnailExtension.appex/Contents/MacOS/ImageThumbnailExtension -LaunchArguments eyJ0eXBlIjoxLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUucXVpY2tsb29rLnRodW1ibmFpbC5JbWFnZUV4dGVuc2lvbiJ9
+igorgerasimov     1737   0.0  0.1 2740404672  47328   ??  S    Fri08AM  10:15.23 /System/Library/Frameworks/Contacts.framework/Support/contactsd
+igorgerasimov     1714   0.0  0.0 442064192  10912   ??  Ss   Fri08AM   0:00.06 /System/Applications/Messages.app/Contents/Extensions/MessagesActionExtension.appex/Contents/MacOS/MessagesActionExtension -LaunchArguments eyJ0eXBlIjoxLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUuTW9iaWxlU01TLk1lc3NhZ2VzQWN0aW9uRXh0ZW5zaW9uIn0=
+igorgerasimov      777   0.0  0.0 442009184   9760   ??  S    Fri08AM   0:02.37 /System/Library/CoreServices/diagnostics_agent
+igorgerasimov     1713   0.0  0.0 442063920   6112   ??  Ss   Fri08AM   0:00.07 /System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app/Contents/Extensions/SafariLinkExtension.appex/Contents/MacOS/SafariLinkExtension -LaunchArguments eyJ0eXBlIjoxLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUuU2FmYXJpLlNhZmFyaUxpbmtFeHRlbnNpb24ifQ==
+igorgerasimov     1712   0.0  0.0 442063712   6144   ??  Ss   Fri08AM   0:00.03 /System/Applications/Calendar.app/Contents/Extensions/CalendarIntentsExtension.appex/Contents/MacOS/CalendarIntentsExtension -LaunchArguments eyJ0eXBlIjoxLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUuY2FsZW5kYXIuQ2FsZW5kYXJJbnRlbnRzRXh0ZW5zaW9uIn0=
+root              1710   0.0  0.0 441946448   4800   ??  Ss   Fri08AM   0:09.57 /Library/Apple/System/Library/CoreServices/XProtect.app/Contents/XPCServices/XProtectPluginService.xpc/Contents/MacOS/XProtectPluginService
+igorgerasimov     1687   0.0  0.0 442012480   7344   ??  Ss   Fri08AM   0:00.20 /System/Library/PrivateFrameworks/StocksKit.framework/XPCServices/StocksKitService.xpc/Contents/MacOS/StocksKitService
+root              1701   0.0  0.0 441943168   4096   ??  S    Fri08AM   0:00.58 /usr/sbin/systemstats --logger-helper /private/var/db/systemstats
+root               423   0.0  0.0 441910432   7088   ??  Ss   Fri08AM   0:03.67 /System/Library/CoreServices/TimeMachine/backupd-helper -launchd
+root               544   0.0  0.0 441946336  10224   ??  Ss   Fri08AM   0:14.10 /System/Library/PrivateFrameworks/EcosystemAnalytics.framework/Support/ecosystemanalyticsd
+root              1679   0.0  0.0 441909728   4016   ??  Ss   Fri08AM   0:46.02 /usr/libexec/sysmond
+root               871   0.0  0.0 441956688   8672   ??  Ss   Fri08AM   0:03.68 /System/Library/CoreServices/SubmitDiagInfo server-init
+igorgerasimov     1671   0.0  0.0 441956128  15584   ??  S    Fri08AM   0:03.71 /usr/libexec/promotedcontentd
+_installcoordinationd  1669   0.0  0.0 441910240   2224   ??  S    Fri08AM   0:31.30 /usr/sbin/distnoted agent
+igorgerasimov     1656   0.0  0.1 443261616  20784   ??  S    Fri08AM   0:12.30 /System/Library/PrivateFrameworks/AppStoreDaemon.framework/Support/appstoreagent
+root              1655   0.0  0.0 441945408   7152   ??  Ss   Fri08AM   0:01.26 /System/Library/PrivateFrameworks/PackageKit.framework/Resources/system_installd
+root              1653   0.0  0.0 441940480   6096   ??  Ss   Fri08AM   0:01.18 /System/Library/PrivateFrameworks/PackageKit.framework/Resources/installd
+igorgerasimov     1652   0.0  0.0 441948656   8256   ??  S    Fri08AM   0:05.62 /System/Library/PrivateFrameworks/OnDeviceStorage.framework/Support/amsondevicestoraged
+igorgerasimov     1651   0.0  0.0 442065216   5456   ??  S    Fri08AM   0:00.24 /usr/libexec/diagnosticextensionsd
+igorgerasimov     1638   0.0  0.0 441945840   7104   ??  S    Fri08AM   0:00.64 /usr/libexec/inputanalyticsd
+root              1641   0.0  0.0 441949280   7776   ??  Ss   Fri08AM   0:01.05 /usr/libexec/symptomsd-diag
+igorgerasimov     1626   0.0  0.0 441957568  13024   ??  S    Fri08AM   0:02.21 /System/Library/PrivateFrameworks/iCloudNotification.framework/iCloudNotificationAgent
+igorgerasimov     1619   0.0  0.0 442092368  10528   ??  Ss   Fri08AM   0:00.84 /System/Library/Frameworks/QuickLookUI.framework/Versions/A/XPCServices/QuickLookUIService.xpc/Contents/MacOS/QuickLookUIService
+igorgerasimov     1617   0.0  0.0 441945200   7936   ??  S    Fri08AM   0:03.98 /System/Library/PrivateFrameworks/ModelCatalogRuntime.framework/Versions/A/ModelCatalogAgent
+_applepay         1615   0.0  0.0 441909520   2672   ??  S    Fri08AM   0:31.49 /usr/sbin/distnoted agent
+_fpsd             1613   0.0  0.0 441921376   7408   ??  Ss   Fri08AM   0:00.85 /System/Library/PrivateFrameworks/CoreFP.framework/Versions/A/fairplayd
+_applepay         1611   0.0  0.0 441963552   8080   ??  Ss   Fri08AM   0:05.14 /usr/libexec/nfcd
+igorgerasimov     1608   0.0  0.0 461902848  15376   ??  SN   Fri08AM   1:54.72 /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/Metadata.framework/Versions/A/Support/mdbulkimport -s mdworker-bundle -c MDSImporterBundleFinder -m com.apple.metadata.mdbulkimport
+igorgerasimov     1578   0.0  0.0 443726512   9088   ??  Ss   Fri08AM  11:32.29 /System/Library/PrivateFrameworks/CascadeSets.framework/Versions/A/XPCServices/SetStoreUpdateService.xpc/Contents/MacOS/SetStoreUpdateService
+igorgerasimov     1576   0.0  0.0 442408064  12240   ??  S    Fri08AM   0:22.10 /System/Library/PrivateFrameworks/SiriInference.framework/Versions/A/siriinferenced
+igorgerasimov     1574   0.0  0.0 441945968   8624   ??  S    Fri08AM   0:00.97 /System/Library/PrivateFrameworks/ProtectedCloudStorage.framework/Helpers/ProtectedCloudKeySyncing
+igorgerasimov     1527   0.0  0.1 443558768  22672   ??  S    Fri08AM   0:09.40 /opt/homebrew/bin/node /Users/igorgerasimov/Library/Application Support/Zed/extensions/work/html/node_modules/@zed-industries/vscode-langservers-extracted/bin/vscode-html-language-server --stdio
+igorgerasimov     1525   0.0  0.1 443583152  22736   ??  S    Fri08AM   0:17.10 /opt/homebrew/bin/node /Users/igorgerasimov/Library/Application Support/Zed/languages/tailwindcss-language-server/node_modules/.bin/tailwindcss-language-server --stdio
+igorgerasimov     1524   0.0  0.1 460383552  23664   ??  S    Fri08AM   0:11.99 /opt/homebrew/bin/node /Users/igorgerasimov/Library/Application Support/Zed/languages/bash-language-server/node_modules/bash-language-server/out/cli.js start
+_assetcache       1519   0.0  0.0 441947376   6512   ??  Ss   Fri08AM   0:00.18 /usr/libexec/AssetCache/AssetCache
+igorgerasimov     1515   0.0  0.0 441947568   8848   ??  S    Fri08AM   0:03.19 /System/Library/PrivateFrameworks/AssetCacheServices.framework/Versions/A/XPCServices/AssetCacheLocatorService.xpc/Contents/MacOS/AssetCacheLocatorService -a
+igorgerasimov     1513   0.0  0.0 441949248   8624   ??  S    Fri08AM   0:00.38 /System/Library/PrivateFrameworks/CoreRecents.framework/Versions/A/Support/recentsd
+_accessoryupdater  1401   0.0  0.0 441964272   6080   ??  Ss   Fri08AM   0:00.64 /System/Library/PrivateFrameworks/MobileAccessoryUpdater.framework/XPCServices/UARPUpdaterServiceUSBPD.xpc/Contents/MacOS/UARPUpdaterServiceUSBPD
+igorgerasimov     1407   0.0  0.0 442083952   5872   ??  Ss   Fri08AM   0:00.04 /System/iOSSupport/System/Library/ExtensionKit/Extensions/MauiAUSP.appex/Contents/MacOS/MauiAUSP -AppleLanguages ("ru-RU", "en-RU", "en-GB")
+igorgerasimov     1412   0.0  0.0 441952288   9632   ??  S    Fri08AM   0:00.32 /System/Library/PrivateFrameworks/TextToSpeechVoiceBankingSupport.framework/Support/voicebankingd
+igorgerasimov     1411   0.0  0.0 442223792    688 s004  S+   Fri08AM   0:00.22 -zsh
+igorgerasimov     1409   0.0  0.0 442223296    688 s003  S+   Fri08AM   0:00.22 -zsh
+igorgerasimov     1329   0.0  0.0 442403776  14688   ??  Ss   Fri08AM   0:00.05 /System/Library/PrivateFrameworks/MacinTalk.framework/PlugIns/WardaSynthesizer.appex/Contents/MacOS/WardaSynthesizer -AppleLanguages ("ru-RU", "en-RU", "en-GB")
+root              1356   0.0  0.0 442213952   6976 s004  Ss   Fri08AM   0:00.01 /usr/bin/login -flp igorgerasimov /bin/zsh -fc exec -a -zsh /bin/zsh
+root              1354   0.0  0.0 442214432   6976 s003  Ss   Fri08AM   0:00.01 /usr/bin/login -flp igorgerasimov /bin/zsh -fc exec -a -zsh /bin/zsh
+igorgerasimov     1240   0.0  0.0 442223440    688 s002  S+   Fri08AM   0:00.45 -zsh
+igorgerasimov     1241   0.0  0.0 442223856    688 s001  S+   Fri08AM   0:00.44 -zsh
+igorgerasimov     1217   0.0  0.0 442227408    688 s000  S+   Fri08AM   0:00.46 -zsh
+root              1203   0.0  0.0 442210528   6976 s002  Ss   Fri08AM   0:00.01 /usr/bin/login -flp igorgerasimov /bin/zsh -fc exec -a -zsh /bin/zsh
+root              1201   0.0  0.0 442209920   6976 s001  Ss   Fri08AM   0:00.01 /usr/bin/login -flp igorgerasimov /bin/zsh -fc exec -a -zsh /bin/zsh
+root              1180   0.0  0.0 442213936   6976 s000  Ss   Fri08AM   0:00.02 /usr/bin/login -flp igorgerasimov /bin/zsh -fc exec -a -zsh /bin/zsh
+igorgerasimov     1125   0.0  0.0 441980416  11968   ??  Ss   Fri08AM   0:16.55 /System/Library/PrivateFrameworks/CloudTelemetry.framework/Versions/A/XPCServices/CloudTelemetryService.xpc/Contents/MacOS/CloudTelemetryService
+igorgerasimov     1163   0.0  0.0 1015460016   8880   ??  Ss   Fri08AM  10:53.60 /System/Library/PrivateFrameworks/iCloudDriveService.framework/XPCServices/ContainerMetadataExtractor.xpc/Contents/MacOS/ContainerMetadataExtractor
+igorgerasimov     1142   0.0  0.0 441947712  10480   ??  S    Fri08AM   0:00.69 /System/Library/PrivateFrameworks/CoreCDP.framework/Versions/A/Resources/cdpd
+igorgerasimov     1092   0.0  0.0 442244144  16016   ??  Ss   Fri08AM   0:01.28 /System/Library/PrivateFrameworks/SafariPlatformSupport.framework/Versions/A/XPCServices/com.apple.SafariPlatformSupport.Helper.xpc/Contents/MacOS/com.apple.SafariPlatformSupport.Helper
+igorgerasimov     1002   0.0  0.0 442605440   7968   ??  S    Fri08AM   4:34.91 /Applications/Zed.app/Contents/MacOS/zed --crash-handler /Users/igorgerasimov/Library/Caches/Zed/zed-crash-handler-988
+_gamecontrollerd  1000   0.0  0.0 441909920   2656   ??  S    Fri08AM   0:31.61 /usr/sbin/distnoted agent
+igorgerasimov      993   0.0  0.0 441947248   9168   ??  S    Fri08AM   0:00.23 /System/Library/PrivateFrameworks/WeatherDaemon.framework/weatherd
+igorgerasimov      992   0.0  0.0 442371104  16176   ??  S    Fri08AM   0:01.04 /usr/libexec/adprivacyd
+igorgerasimov      989   0.0  0.1 2604834928  38640   ??  S    Fri08AM 146:25.75 /usr/libexec/swcd
+igorgerasimov      960   0.0  0.0 441975328  12352   ??  S    Fri08AM   0:00.44 /System/Library/PrivateFrameworks/CloudServices.framework/Helpers/com.apple.sbd
+igorgerasimov      979   0.0  0.0 442324288  13328   ??  S    Fri08AM   0:03.59 /System/Cryptexes/App/usr/libexec/com.apple.Safari.History
+igorgerasimov      978   0.0  0.0 442004224   4432   ??  S    Fri08AM   0:00.15 /System/Cryptexes/App/usr/libexec/SafariLaunchAgent
+igorgerasimov      753   0.0  0.0 457167216  14112   ??  S    Fri08AM   0:23.04 /System/Library/PrivateFrameworks/CoreDuetContext.framework/Resources/ContextStoreAgent
+_accessoryupdater   975   0.0  0.0 441910048   2672   ??  S    Fri08AM   0:31.25 /usr/sbin/distnoted agent
+igorgerasimov      768   0.0  0.0 441947232   8256   ??  S    Fri08AM   0:03.94 /System/Library/PrivateFrameworks/AskPermission.framework/Versions/A/Resources/askpermissiond
+igorgerasimov      973   0.0  0.0 442615648  13024   ??  S    Fri08AM   2:05.67 /System/Cryptexes/App/usr/libexec/SafariBookmarksSyncAgent
+_securityagent     958   0.0  0.0 441910816   2224   ??  S    Fri08AM   0:31.85 /usr/sbin/distnoted agent
+igorgerasimov      957   0.0  0.0 441949824  10640   ??  S    Fri08AM   0:03.36 /usr/libexec/swtransparencyd
+igorgerasimov      955   0.0  0.0 441979392  11600   ??  S    Fri08AM   0:00.70 /System/Library/PrivateFrameworks/EmailDaemon.framework/Versions/A/maild
+_www               954   0.0  0.0 435302992    528   ??  S    Fri08AM   0:00.00 /usr/sbin/httpd -D FOREGROUND
+igorgerasimov      952   0.0  0.1 442246112  23520   ??  S    Fri08AM   0:33.81 /System/Library/PrivateFrameworks/PhotoAnalysis.framework/Versions/A/Support/photoanalysisd
+root               381   0.0  0.0 442216368   4672   ??  Ss   Fri08AM   0:06.03 /usr/sbin/httpd -D FOREGROUND
+igorgerasimov      950   0.0  0.0 441951152  11088   ??  S    Fri08AM   0:03.38 cloudphotod
+igorgerasimov      949   0.0  0.0 435496272   2064   ??  Ss   Fri08AM   0:00.11 postgres: logical replication launcher   
+igorgerasimov      948   0.0  0.0 435350864   1664   ??  Ss   Fri08AM   0:25.09 postgres: stats collector   
+igorgerasimov      947   0.0  0.0 435496272   2704   ??  Ss   Fri08AM   0:05.14 postgres: autovacuum launcher   
+igorgerasimov      946   0.0  0.0 435496272    976   ??  Ss   Fri08AM   0:00.80 postgres: walwriter   
+igorgerasimov      945   0.0  0.0 435496272   1136   ??  Ss   Fri08AM   0:00.87 postgres: background writer   
+igorgerasimov      944   0.0  0.0 435492176   1216   ??  Ss   Fri08AM   0:00.08 postgres: checkpointer   
+_driverkit         940   0.0  0.0 441541440   2208   ??  Ss   Fri08AM   0:00.01 /System/Library/DriverExtensions/IOUserBluetoothSerialDriver.dext/IOUserBluetoothSerialDriver com.apple.IOUserBluetoothSerialDriver 0x1000012d0 com.apple.IOUserBluetoothSerialDriver
+_driverkit         939   0.0  0.0 441541120   2208   ??  Ss   Fri08AM   0:00.02 /System/Library/DriverExtensions/IOUserBluetoothSerialDriver.dext/IOUserBluetoothSerialDriver com.apple.IOUserBluetoothSerialDriver 0x1000012ce com.apple.IOUserBluetoothSerialDriver
+igorgerasimov      937   0.0  0.0 442089168  13568   ??  Ss   Fri08AM   0:00.11 /System/Applications/Podcasts.app/Contents/PlugIns/PodcastsWidget.appex/Contents/MacOS/PodcastsWidget -LaunchArguments eyJ0eXBlIjoxLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUucG9kY2FzdHMud2lkZ2V0In0=
+igorgerasimov      936   0.0  0.0 442067760  11136   ??  Ss   Fri08AM   0:00.06 /System/Library/CoreServices/Screen Time.app/Contents/PlugIns/ScreenTimeWidgetIntentsExtension.appex/Contents/MacOS/ScreenTimeWidgetIntentsExtension -AppleLanguages ("ru-RU", "en-RU", "en-GB")
+igorgerasimov      935   0.0  0.0 441949440   7616   ??  Ss   Fri08AM   0:00.78 /System/Library/PrivateFrameworks/TrialServer.framework/Versions/A/XPCServices/TrialArchivingService.xpc/Contents/MacOS/TrialArchivingService
+igorgerasimov      934   0.0  0.0 442075440  13632   ??  Ss   Fri08AM   0:00.19 /System/Applications/FindMy.app/Contents/PlugIns/FindMyWidgetPeople.appex/Contents/MacOS/FindMyWidgetPeople -LaunchArguments eyJ0eXBlIjoxLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUuZmluZG15LkZpbmRNeVdpZGdldFBlb3BsZSJ9
+igorgerasimov      931   0.0  0.0 442065152  11328   ??  Ss   Fri08AM   0:00.06 /System/Library/CoreServices/Screen Time.app/Contents/PlugIns/ScreenTimeWidgetExtension.appex/Contents/MacOS/ScreenTimeWidgetExtension -LaunchArguments eyJ0eXBlIjoxLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUuU2NyZWVuVGltZVdpZGdldEFwcGxpY2F0aW9uLlNjcmVlblRpbWVXaWRnZXRFeHRlbnNpb24ifQ==
+igorgerasimov      930   0.0  0.0 442071216  14784   ??  Ss   Fri08AM   0:00.11 /System/Applications/Home.app/Contents/PlugIns/HomeWidget.appex/Contents/MacOS/HomeWidget -LaunchArguments eyJ0eXBlIjoxLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUuSG9tZS5Ib21lV2lkZ2V0LkludGVyYWN0aXZlIn0=
+igorgerasimov      929   0.0  0.0 442070960  12032   ??  Ss   Fri08AM   0:00.05 /System/Applications/Journal.app/Contents/PlugIns/JournalWidgetsSecure.appex/Contents/MacOS/JournalWidgetsSecure -LaunchArguments eyJ0eXBlIjoxLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUuam91cm5hbC53aWRnZXRzLnNlY3VyZSJ9
+igorgerasimov      928   0.0  0.0 442061200  10576   ??  Ss   Fri08AM   0:00.04 /System/Applications/VoiceMemos.app/Contents/PlugIns/VoiceMemosSettingsWidgetExtension.appex/Contents/MacOS/VoiceMemosSettingsWidgetExtension -LaunchArguments eyJ0eXBlIjoxLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUuVm9pY2VNZW1vcy5Wb2ljZU1lbW9zU2V0dGluZ3NXaWRnZXQifQ==
+igorgerasimov      927   0.0  0.0 442061008  10480   ??  Ss   Fri08AM   0:00.04 /System/Applications/Weather.app/Contents/PlugIns/WeatherIntents.appex/Contents/MacOS/WeatherIntents -AppleLanguages ("ru-RU", "en-RU", "en-GB")
+igorgerasimov      926   0.0  0.0 442064880   5184   ??  Ss   Fri08AM   0:00.06 /System/Library/PrivateFrameworks/MobileTimer.framework/PlugIns/MobileTimerIntents.appex/Contents/MacOS/MobileTimerIntents -AppleLanguages ("ru-RU", "en-RU", "en-GB")
+root               925   0.0  0.0 441946176   7264   ??  Ss   Fri08AM   0:02.98 /usr/libexec/countryd
+igorgerasimov      924   0.0  0.0 442107888  11360   ??  Ss   Fri08AM   0:01.82 /System/Applications/Calendar.app/Contents/PlugIns/CalendarWidgetExtension.appex/Contents/MacOS/CalendarWidgetExtension -LaunchArguments eyJ0eXBlIjoxLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUuaUNhbC5DYWxlbmRhcldpZGdldEV4dGVuc2lvbiJ9
+igorgerasimov      922   0.0  0.1 442090832  21984   ??  Ss   Fri08AM   0:32.63 /System/Library/CoreServices/Batteries.app/Contents/PlugIns/BatteriesAvocadoWidgetExtension.appex/Contents/MacOS/BatteriesAvocadoWidgetExtension -LaunchArguments eyJ0eXBlIjoxLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUuQmF0dGVyaWVzLkJhdHRlcmllc0F2b2NhZG9XaWRnZXRFeHRlbnNpb24ifQ==
+igorgerasimov      920   0.0  0.0 442118720  15184   ??  Ss   Fri08AM   0:00.17 /System/Applications/Clock.app/Contents/PlugIns/WorldClockWidget.appex/Contents/MacOS/WorldClockWidget -LaunchArguments eyJ0eXBlIjoxLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUuY2xvY2suV29ybGRDbG9ja1dpZGdldCJ9
+igorgerasimov      758   0.0  0.0 442869168  11248   ??  S    Fri08AM   1:14.53 /System/Library/PrivateFrameworks/AXAssetLoader.framework/Support/axassetsd
+_fpsd              919   0.0  0.0 417118864   8320   ??  Ss   Fri08AM   0:06.53 /System/Library/PrivateFrameworks/CoreADI.framework/adid
+igorgerasimov      917   0.0  0.0 441949712  11616   ??  S    Fri08AM   0:03.42 /System/Library/PrivateFrameworks/UsageTracking.framework/Versions/A/UsageTrackingAgent
+igorgerasimov      916   0.0  0.0 442100992  11616   ??  S    Fri08AM   0:01.14 /System/Library/PrivateFrameworks/CloudSubscriptionFeatures.framework/FeatureAccessAgent
+root               910   0.0  0.0 442902640   2512   ??  Ss   Fri08AM   0:40.26 /System/Library/PrivateFrameworks/CoreSymbolication.framework/coresymbolicationd
+_netbios           909   0.0  0.0 441909856   4464   ??  SNs  Fri08AM   0:03.01 /usr/sbin/netbiosd
+igorgerasimov      904   0.0  0.1 442696624  29328   ??  Ss   Fri08AM   0:02.15 /System/Applications/Shortcuts.app/Contents/PlugIns/ShortcutsWidgetExtension.appex/Contents/MacOS/ShortcutsWidgetExtension -LaunchArguments eyJ0eXBlIjoxLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUuc2hvcnRjdXRzLlNob3J0Y3V0c1dpZGdldCJ9
+root               906   0.0  0.0 441945760   4528   ??  Ss   Fri08AM   0:08.10 /System/Library/PrivateFrameworks/AmbientDisplay.framework/Versions/A/XPCServices/com.apple.AmbientDisplayAgent.xpc/Contents/MacOS/com.apple.AmbientDisplayAgent
+igorgerasimov      905   0.0  0.0 441898304   5312   ??  S    Fri08AM   0:06.31 /usr/libexec/SidecarRelay
+igorgerasimov      900   0.0  0.0 442742736  15776   ??  Ss   Fri08AM   0:00.81 /System/Applications/Reminders.app/Contents/PlugIns/RemindersWidgetExtension.appex/Contents/MacOS/RemindersWidgetExtension -LaunchArguments eyJ0eXBlIjoxLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUucmVtaW5kZXJzLldpZGdldEV4dGVuc2lvbiJ9
+igorgerasimov      895   0.0  0.1 441954992  16880   ??  S    Fri08AM   1:06.55 /usr/libexec/triald
+igorgerasimov      896   0.0  0.1 444185536  34880   ??  S    Fri08AM   2:10.29 /usr/libexec/networkserviceproxy
+igorgerasimov      893   0.0  0.0 443272592  11568   ??  S    Fri08AM   1:29.88 /System/Library/CoreServices/UniversalControl.app/Contents/MacOS/UniversalControl
+igorgerasimov      892   0.0  0.0 441953472  12736   ??  S    Fri08AM   0:03.70 /System/Library/PrivateFrameworks/iTunesCloud.framework/Support/itunescloudd
+igorgerasimov      891   0.0  0.0 441953120  12544   ??  S    Fri08AM   0:02.15 /System/Library/PrivateFrameworks/CoreParsec.framework/parsecd
+igorgerasimov      889   0.0  0.1 442523072  21184   ??  S    Fri08AM   0:22.98 /usr/libexec/studentd
+igorgerasimov      887   0.0  0.2 2529577600  58240   ??  S    Fri08AM 162:45.73 /usr/libexec/siriknowledged
+igorgerasimov      888   0.0  0.0 441951936  10336   ??  S    Fri08AM   0:01.61 /System/Library/PrivateFrameworks/GenerativeExperiencesRuntime.framework/Versions/A/generativeexperiencesd
+igorgerasimov      882   0.0  0.0 442069584  14256   ??  Ss   Fri08AM   0:00.16 /System/Applications/Home.app/Contents/PlugIns/HomeEnergyWidgetsExtension.appex/Contents/MacOS/HomeEnergyWidgetsExtension -LaunchArguments eyJ0eXBlIjoxLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUuSG9tZS5Ib21lRW5lcmd5V2lkZ2V0cyJ9
+igorgerasimov      884   0.0  0.0 441959376  13184   ??  S    Fri08AM   0:01.60 /usr/libexec/bluetoothuserd
+igorgerasimov      883   0.0  0.0 441922368   4272   ??  S    Fri08AM   0:00.23 /usr/sbin/BTLEServerAgent
+igorgerasimov      880   0.0  0.1 442117568  29744   ??  S    Fri08AM   3:40.02 /System/Library/PrivateFrameworks/AssistantServices.framework/Versions/A/Support/assistantd
+igorgerasimov      878   0.0  0.0 442060512  10496   ??  Ss   Fri08AM   0:00.05 /System/Applications/VoiceMemos.app/Contents/PlugIns/RecordWidgetExtension.appex/Contents/MacOS/RecordWidgetExtension -LaunchArguments eyJ0eXBlIjoxLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUuVm9pY2VNZW1vcy5SZWNvcmRXaWRnZXQifQ==
+igorgerasimov      870   0.0  0.0 442066176  11824   ??  Ss   Fri08AM   0:00.07 /System/Applications/FindMy.app/Contents/PlugIns/FindMyWidgetItems.appex/Contents/MacOS/FindMyWidgetItems -LaunchArguments eyJ0eXBlIjoxLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUuZmluZG15LkZpbmRNeVdpZGdldEl0ZW1zIn0=
+root               874   0.0  0.0 441911184   3520   ??  Ss   Fri08AM   0:00.12 /usr/libexec/tracd
+igorgerasimov      869   0.0  0.0 441945472   3120   ??  S    Fri08AM   0:00.06 /System/Library/Frameworks/ColorSync.framework/Support/colorsync.useragent
+igorgerasimov      856   0.0  0.0 442069344  12048   ??  Ss   Fri08AM   0:00.08 /System/Applications/Journal.app/Contents/PlugIns/JournalWidgets.appex/Contents/MacOS/JournalWidgets -LaunchArguments eyJ0eXBlIjoxLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUuam91cm5hbC53aWRnZXRzIn0=
+igorgerasimov      867   0.0  0.0 441901952   2704   ??  S    Fri08AM   0:00.03 /usr/libexec/spindump_agent
+igorgerasimov      862   0.0  0.0 446515312  16576   ??  S    Fri08AM   0:13.65 /System/Library/PrivateFrameworks/AppleMediaServicesUI.framework/amsengagementd
+root               863   0.0  0.0 494721632  15600   ??  Ss   Fri08AM   3:11.40 /usr/sbin/spindump
+root               861   0.0  0.0 441906848   3312   ??  Ss   Fri08AM   0:00.06 /usr/libexec/ioupsd
+root               855   0.0  0.0 442890624  11504   ??  Ss   Fri08AM   0:01.83 /System/Library/PrivateFrameworks/AppSSO.framework/Support/AppSSODaemon
+igorgerasimov      854   0.0  0.0 591790448   9232   ??  Ss   Fri08AM   0:48.87 /System/Library/Frameworks/ExtensionFoundation.framework/Versions/A/XPCServices/extensionkitservice.xpc/Contents/MacOS/extensionkitservice
+igorgerasimov      851   0.0  0.1 442275856  16896   ??  S    Fri08AM   0:00.88 /System/Library/PrivateFrameworks/AppSSO.framework/Support/AppSSOAgent.app/Contents/MacOS/AppSSOAgent
+igorgerasimov      843   0.0  0.0 441905360   2464   ??  S    Fri08AM   0:00.16 /System/Library/PrivateFrameworks/MediaRemote.framework/Support/mediaremoteagent
+igorgerasimov      844   0.0  0.0 441947408   7232   ??  S    Fri08AM   0:01.39 /usr/libexec/avconferenced
+igorgerasimov      841   0.0  0.0 441984000   2752   ??  Ss   Fri08AM   0:04.17 /System/Library/Frameworks/NetFS.framework/Versions/A/XPCServices/PlugInLibraryService.xpc/Contents/MacOS/PlugInLibraryService
+igorgerasimov      781   0.0  0.1 442027888  17856   ??  S    Fri08AM   0:12.72 /System/Library/PrivateFrameworks/AppleMediaServices.framework/Resources/amsaccountsd
+igorgerasimov      826   0.0  0.0 441980736  13520   ??  S    Fri08AM   0:02.34 /usr/libexec/appleaccountd
+igorgerasimov      823   0.0  0.0 442508832   8512   ??  Ss   Fri08AM   0:00.20 /System/Library/ExtensionKit/Extensions/AudiovisualThumbnailExtension.appex/Contents/MacOS/AudiovisualThumbnailExtension -LaunchArguments eyJ0eXBlIjoxLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUucXVpY2tsb29rLnRodW1ibmFpbC5BdWRpb3Zpc3VhbEV4dGVuc2lvbiJ9
+root               824   0.0  0.0 441906080   4976   ??  Ss   Fri08AM   0:07.98 /System/Library/PrivateFrameworks/CacheDelete.framework/deleted_helper
+igorgerasimov      818   0.0  0.0 441964832  16720   ??  S    Fri08AM   0:15.23 /System/Library/Frameworks/Contacts.framework/Support/postersyncd
+igorgerasimov      817   0.0  0.1 444054000  25344   ??  S    Fri08AM  19:56.86 /System/Library/CoreServices/WiFiAgent.app/Contents/MacOS/WiFiAgent
+igorgerasimov      819   0.0  0.0 1248140400   6752   ??  S    Fri08AM   2:49.99 /System/Library/CoreServices/pbs
+igorgerasimov      814   0.0  0.2 1333849808  53552   ??  S    Fri08AM   4:29.58 /System/Library/CoreServices/Spotlight.app/Contents/MacOS/Spotlight
+igorgerasimov      813   0.0  0.1 442220656  18128   ??  Ss   Fri08AM   0:09.00 /System/Library/Input Methods/PressAndHold.app/Contents/PlugIns/PAH_Extension.appex/Contents/MacOS/PAH_Extension -AppleLanguages ("ru-RU", "en-RU", "en-GB")
+igorgerasimov      807   0.0  0.0 444337664  16720   ??  S    Fri08AM   0:28.04 /System/Library/PrivateFrameworks/TextInputUIMacHelper.framework/Versions/A/XPCServices/CursorUIViewService.xpc/Contents/MacOS/CursorUIViewService
+igorgerasimov      805   0.0  0.0 442126960  16688   ??  S    Fri08AM   0:11.68 /System/Library/PrivateFrameworks/IMDPersistence.framework/XPCServices/IMDPersistenceAgent.xpc/Contents/MacOS/IMDPersistenceAgent
+igorgerasimov      803   0.0  0.0 441909680   4640   ??  S    Fri08AM   0:00.06 /System/Library/Frameworks/CryptoTokenKit.framework/ctkahp.bundle/Contents/MacOS/ctkahp
+root               802   0.0  0.0 441947296   8256   ??  Ss   Fri08AM   0:03.52 /usr/libexec/ospredictiond
+igorgerasimov      801   0.0  0.1 442316912  30992   ??  S    Fri08AM   1:02.86 /usr/libexec/searchpartyuseragent
+igorgerasimov      798   0.0  0.1 442246208  19344   ??  S    Fri08AM   0:01.24 /System/Library/PrivateFrameworks/SoftwareUpdate.framework/Resources/SoftwareUpdateNotificationManager.app/Contents/MacOS/SoftwareUpdateNotificationManager
+igorgerasimov      797   0.0  0.0 442200480  11312   ??  S    Fri08AM   0:01.82 /System/Library/Frameworks/StoreKit.framework/Support/storekitagent
+igorgerasimov      770   0.0  0.0 442454224   7024   ??  S    Fri08AM   0:08.45 /opt/homebrew/opt/postgresql@14/bin/postgres -D /opt/homebrew/var/postgresql@14
+igorgerasimov      794   0.0  0.0 447274752   7744   ??  S    Fri08AM   0:06.10 /System/Library/PrivateFrameworks/UserActivity.framework/Agents/useractivityd
+igorgerasimov      790   0.0  0.0 442106592  14512   ??  S    Fri08AM   0:02.51 /System/Library/CoreServices/TextInputSwitcher.app/Contents/MacOS/TextInputSwitcher
+igorgerasimov      793   0.0  0.5 458178160 169952   ??  S    Fri08AM   8:17.95 /System/Library/PrivateFrameworks/MediaAnalysis.framework/Versions/A/mediaanalysisd
+igorgerasimov      796   0.0  0.1 70669700  19480   ??  S    Fri08AM   3:34.08 /Applications/PuntoSwitcher.app/Contents/MacOS/PuntoSwitcher
+igorgerasimov      795   0.0  0.1 442116288  19584   ??  Ss   Fri08AM   0:00.74 /System/Library/CoreServices/Dock.app/Contents/XPCServices/com.apple.dock.extra.xpc/Contents/MacOS/com.apple.dock.extra
+igorgerasimov      788   0.0  0.0 455846224   9920   ??  Ss   Fri08AM   0:05.97 /System/Library/PrivateFrameworks/CloudDocs.framework/PlugIns/com.apple.CloudDocs.iCloudDriveFileProvider.appex/Contents/MacOS/com.apple.CloudDocs.iCloudDriveFileProvider -LaunchArguments eyJzZXJ2aWNlTmFtZSI6ImNvbS5hcHBsZS5DbG91ZERvY3MuaUNsb3VkRHJpdmVGaWxlUHJvdmlkZXIiLCJ0eXBlIjoxLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZX0=
+root               792   0.0  0.1 442851920  17344   ??  Ss   Fri08AM   4:03.94 /usr/libexec/gamepolicyd
+igorgerasimov      791   0.0  0.0 442423664   7920   ??  S    Fri08AM   0:00.32 /System/Library/CoreServices/ScopedBookmarkAgent
+igorgerasimov      765   0.0  0.0 441944928   4128   ??  S    Fri08AM   0:00.15 /System/Library/Image Capture/Support/icdd
+igorgerasimov      774   0.0  0.1 442246752  21344   ??  S    Fri08AM   0:39.07 /System/Library/PrivateFrameworks/IMCore.framework/imagent.app/Contents/MacOS/imagent
+igorgerasimov      756   0.0  0.0 441979088  10864   ??  S    Fri08AM   0:01.53 /System/Library/PrivateFrameworks/CoreSpeech.framework/corespeechd
+igorgerasimov      785   0.0  0.1 442244240  21616   ??  S    Fri08AM   0:03.09 /System/Library/PrivateFrameworks/PhotoLibraryServices.framework/Versions/A/Support/photolibraryd
+igorgerasimov      755   0.0  0.1 441969504  21824   ??  S    Fri08AM   0:10.19 /System/Library/PrivateFrameworks/HearingCore.framework/heard
+igorgerasimov      786   0.0  0.1 442647920  42880   ??  S    Fri08AM   6:17.92 /Applications/Magnet.app/Contents/MacOS/Magnet
+root               784   0.0  0.0 441910176   3136   ??  Ss   Fri08AM   0:00.08 /System/Library/Frameworks/CryptoTokenKit.framework/ctkahp.bundle/Contents/MacOS/ctkahp -d
+igorgerasimov      778   0.0  0.1 442289904  19888   ??  S    Fri08AM   0:03.88 /System/Library/CoreServices/TextInputMenuAgent.app/Contents/MacOS/TextInputMenuAgent
+igorgerasimov      773   0.0  0.0 442061216  11712   ??  S    Fri08AM   0:00.79 /System/Library/CoreServices/AirPlayUIAgent.app/Contents/MacOS/AirPlayUIAgent --launchd
+igorgerasimov      763   0.0  0.0 442020608   5792   ??  S    Fri08AM   0:00.25 /System/Library/Frameworks/InputMethodKit.framework/Resources/imklaunchagent
+igorgerasimov      751   0.0  0.1 442092000  30096   ??  S    Fri08AM   0:13.80 /System/Library/PrivateFrameworks/AuthKit.framework/Versions/A/Support/akd
+igorgerasimov      749   0.0  0.1 441984544  20752   ??  S    Fri08AM   0:08.42 /System/Library/PrivateFrameworks/FamilyCircle.framework/Versions/A/Resources/familycircled
+igorgerasimov      748   0.0  0.0 441951296   7600   ??  S    Fri08AM   0:00.35 /usr/libexec/milod
+igorgerasimov      745   0.0  0.0 442055136   7440   ??  S    Fri08AM   0:00.60 /System/Library/PrivateFrameworks/ContextKit.framework/Versions/A/XPCServices/ContextService.xpc/Contents/MacOS/ContextService
+igorgerasimov      746   0.0  0.6 442797632 197776   ??  S    Fri08AM   0:06.30 /System/Library/CoreServices/ReportCrash agent
+igorgerasimov      744   0.0  0.0 442989744  16640   ??  S    Fri08AM   0:53.17 /System/Library/CoreServices/UIKitSystem.app/Contents/MacOS/UIKitSystem system_app_start
+igorgerasimov      743   0.0  0.0 441984256  13712   ??  S    Fri08AM   0:49.11 /System/Library/PrivateFrameworks/ScreenTimeCore.framework/Versions/A/ScreenTimeAgent
+igorgerasimov      741   0.0  0.0 441998336  11824   ??  S    Fri08AM   0:04.86 /System/Library/PrivateFrameworks/StatusKit.framework/StatusKitAgent
+igorgerasimov      742   0.0  0.1 559049488  50096   ??  S    Fri08AM   0:57.16 /System/Library/CoreServices/NotificationCenter.app/Contents/MacOS/NotificationCenter
+igorgerasimov      740   0.0  0.0 441969008  14512   ??  S    Fri08AM   0:13.23 /System/Library/PrivateFrameworks/GeoServices.framework/Versions/A/XPCServices/com.apple.geod.xpc/Contents/MacOS/com.apple.geod
+igorgerasimov      739   0.0  0.1 442601968  26416   ??  S    Fri08AM   0:26.24 /System/Library/PrivateFrameworks/HomeKitDaemon.framework/Support/homed
+igorgerasimov      738   0.0  0.0 442615056   7728   ??  S    Fri08AM   0:10.77 /System/Library/PrivateFrameworks/SessionCore.framework/Support/liveactivitiesd
+igorgerasimov      737   0.0  0.0 442066352   8624   ??  S    Fri08AM   0:00.38 /System/Library/PrivateFrameworks/CoreFollowUp.framework/Versions/A/Support/followupd
+igorgerasimov      735   0.0  0.1 446412880  29088   ??  S    Fri08AM   0:18.44 /usr/sbin/usernoted
+igorgerasimov      736   0.0  0.1 442363856  22512   ??  S    Fri08AM   0:15.97 /usr/libexec/routined LAUNCHED_BY_LAUNCHD
+_nearbyd           732   0.0  0.0 441989600  10160   ??  Ss   Fri08AM   0:52.24 /usr/libexec/nearbyd
+igorgerasimov      731   0.0  0.0 442488352  13808   ??  S    Fri08AM   0:33.81 /System/Library/PrivateFrameworks/ReplicatorCore.framework/Support/replicatord
+igorgerasimov      730   0.0  0.0 443818832   5472   ??  S    Fri08AM   0:00.39 /System/Library/PrivateFrameworks/IntlPreferences.framework/Support/localizationswitcherd
+igorgerasimov      728   0.0  0.2 2929774432  66160   ??  S    Fri08AM  21:47.29 /usr/libexec/sharingd
+_ctkd              724   0.0  0.0 441944800   3344   ??  Ss   Fri08AM   0:00.08 /System/Library/Frameworks/CryptoTokenKit.framework/ctkd -st
+igorgerasimov      723   0.0  0.0 441943200  10640   ??  S    Fri08AM   0:03.82 /System/Library/Frameworks/LocalAuthentication.framework/Support/coreauthd
+igorgerasimov      718   0.0  0.1 442131760  21872   ??  S    Fri08AM   0:14.99 /usr/libexec/transparencyd
+igorgerasimov      719   0.0  0.0 442006976   7248   ??  S    Fri08AM   0:02.30 /System/Library/Frameworks/CryptoTokenKit.framework/ctkd -tw
+igorgerasimov      716   0.0  0.1 515074960  39408   ??  S    Fri08AM   1:16.60 /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/Metadata.framework/Versions/A/Support/corespotlightd
+igorgerasimov      717   0.0  0.0 442119344   8864   ??  S    Fri08AM   0:04.62 /System/Library/PrivateFrameworks/ViewBridge.framework/Versions/A/XPCServices/ViewBridgeAuxiliary.xpc/Contents/MacOS/ViewBridgeAuxiliary
+igorgerasimov      714   0.0  0.0 444890784  14256   ??  S    Fri08AM   0:14.03 /usr/libexec/nsurlsessiond
+igorgerasimov      715   0.0  0.2 2941130320  52224   ??  S    Fri08AM  32:00.17 /System/Library/PrivateFrameworks/ChronoCore.framework/Support/chronod
+igorgerasimov      712   0.0  0.0 442148448  14080   ??  S    Fri08AM   0:09.19 /System/Library/Frameworks/CoreTelephony.framework/Support/CommCenter -L
+igorgerasimov      713   0.0  0.0 442007504   4640   ??  S    Fri08AM   0:00.27 /System/Library/Frameworks/AudioToolbox.framework/AudioComponentRegistrar
+igorgerasimov      711   0.0  0.0 443476048   9648   ??  S    Fri08AM   0:35.03 /System/Library/PrivateFrameworks/SyncedDefaults.framework/Support/syncdefaultsd
+igorgerasimov      704   0.0  0.0 441910912   4480   ??  S    Fri08AM   0:00.13 /System/Library/Frameworks/ManagedSettings.framework/Versions/A/ManagedSettingsAgent
+igorgerasimov      708   0.0  0.0 442145216   5152   ??  S    Fri08AM   0:00.57 /System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/ATS.framework/Versions/A/Support/fontworker
+igorgerasimov      709   0.0  0.0 442007536  13040   ??  S    Fri08AM   0:02.24 /usr/libexec/findmylocateagent
+igorgerasimov      710   0.0  0.0 441940640   5968   ??  S    Fri08AM   0:00.07 /System/Library/PrivateFrameworks/CommunicationsFilter.framework/CMFSyncAgent
+igorgerasimov      691   0.0  0.0 583119200  16576   ??  S    Fri08AM   5:39.45 /usr/libexec/ContinuityCaptureAgent server
+igorgerasimov      706   0.0  0.0 458635872  12928   ??  S    Fri08AM   1:16.32 /System/Library/PrivateFrameworks/CacheDelete.framework/deleted
+igorgerasimov      702   0.0  0.0 441959600  13280   ??  S    Fri08AM   0:05.84 /System/Library/PrivateFrameworks/CommunicationTrust.framework/Support/communicationtrustd
+igorgerasimov      701   0.0  0.1 444430192  18896   ??  S    Fri08AM   0:09.72 /System/Library/PrivateFrameworks/DoNotDisturbServer.framework/Support/donotdisturbd
+igorgerasimov      699   0.0  0.0 467761920  11952   ??  S    Fri08AM   0:30.04 /usr/libexec/replayd
+igorgerasimov      696   0.0  0.0 441949232   6800   ??  S    Fri08AM   0:05.39 /System/Library/PrivateFrameworks/MobileTimer.framework/Executables/mobiletimerd
+igorgerasimov      700   0.0  0.3 442393456  84704   ??  S    Fri08AM   0:47.04 /System/Library/PrivateFrameworks/IDS.framework/identityservicesd.app/Contents/MacOS/identityservicesd
+igorgerasimov      697   0.0  0.0 441960704  10528   ??  S    Fri08AM   0:24.47 /System/Library/Frameworks/ApplicationServices.framework/Frameworks/ATS.framework/Support/fontd
+igorgerasimov      695   0.0  0.1 442418304  49072   ??  S    Fri08AM   1:17.29 /System/Library/Frameworks/Accounts.framework/Versions/A/Support/accountsd
+igorgerasimov      693   0.0  0.1 441953120  20032   ??  S    Fri08AM   0:08.76 /System/Library/CoreServices/audioaccessoryd
+igorgerasimov      690   0.0  0.0 451199200  13408   ??  S    Fri08AM   0:03.97 /System/Library/PrivateFrameworks/UserNotificationsCore.framework/Support/usernotificationsd
+igorgerasimov      692   0.0  0.0 441950464  10704   ??  S    Fri08AM   0:02.01 /usr/libexec/intelligentroutingd
+igorgerasimov      689   0.0  0.0 460210016  12720   ??  S    Fri08AM   0:24.48 /System/Library/CoreServices/iconservicesagent
+igorgerasimov      688   0.0  0.1 442740992  26080   ??  S    Fri08AM   1:07.05 /System/Library/PrivateFrameworks/TelephonyUtilities.framework/callservicesd
+igorgerasimov      683   0.0  0.1 2971197120  32816   ??  S    Fri08AM   6:41.18 /System/Library/PrivateFrameworks/FileProvider.framework/Support/fileproviderd
+igorgerasimov      685   0.0  0.0 441968912   6224   ??  S    Fri08AM   0:52.74 /System/Library/PrivateFrameworks/AMPDevices.framework/Versions/A/Support/AMPDeviceDiscoveryAgent --launchd
+_appleevents       664   0.0  0.0 441910320   2640   ??  S    Fri08AM   0:31.75 /usr/sbin/distnoted agent
+igorgerasimov      686   0.0  0.1 441979408  18208   ??  S    Fri08AM   2:22.40 /usr/libexec/trustd --agent
+igorgerasimov      682   0.0  0.1 2329863104  16992   ??  S    Fri08AM 184:11.78 /System/Library/PrivateFrameworks/iCloudDriveCore.framework/Versions/A/Support/bird
+igorgerasimov      675   0.0  0.1 443042576  22608   ??  S    Fri08AM   0:01.16 /System/Library/CoreServices/CoreLocationAgent.app/Contents/MacOS/CoreLocationAgent
+igorgerasimov      677   0.0  0.1 447390064  29280   ??  S    Fri08AM   0:31.30 /System/Library/PrivateFrameworks/CoreSuggestions.framework/Versions/A/Support/suggestd
+igorgerasimov      684   0.0  0.0 1409254944   9504   ??  S    Fri08AM   2:09.90 /usr/libexec/pkd
+igorgerasimov      680   0.0  0.1 442945008  18192   ??  S    Fri08AM   0:20.42 /System/Library/PrivateFrameworks/CalendarDaemon.framework/Support/calaccessd
+igorgerasimov      679   0.0  0.0 441987280   7584   ??  S    Fri08AM   0:01.00 /System/Library/PrivateFrameworks/SocialLayer.framework/sociallayerd.app/Contents/MacOS/sociallayerd
+igorgerasimov      673   0.0  0.0 441906400   2448   ??  S    Fri08AM   0:01.42 /System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/HIServices.framework/Versions/A/XPCServices/com.apple.hiservices-xpcservice.xpc/Contents/MacOS/com.apple.hiservices-xpcservice
+igorgerasimov      678   0.0  0.0 528562720  13104   ??  S    Fri08AM   1:45.58 /System/Library/PrivateFrameworks/TCC.framework/Support/tccd
+igorgerasimov      681   0.0  0.1 442434912  16944   ??  S    Fri08AM   0:00.69 /System/Library/CoreServices/sharedfilelistd
+root               674   0.0  0.0 441996640  13968   ??  Ss   Fri08AM   1:24.03 /usr/libexec/wifip2pd
+root               676   0.0  0.0 441907408   4016   ??  Ss   Fri08AM   0:00.45 automountd
+igorgerasimov      672   0.0  0.0 513400144   9168   ??  S    Fri08AM   0:18.08 /usr/libexec/secinitd
+igorgerasimov      671   0.0  0.1 2928907824  38032   ??  S    Fri08AM   6:44.82 /System/Library/CoreServices/WallpaperAgent.app/Contents/MacOS/WallpaperAgent
+igorgerasimov      670   0.0  0.1 442407888  23296   ??  S    Fri08AM   0:02.31 /System/Library/CoreServices/AccessibilityUIServer.app/Contents/MacOS/AccessibilityUIServer
+igorgerasimov      665   0.0  0.0 441950592   7568   ??  S    Fri08AM   0:15.82 /usr/libexec/dmd
+igorgerasimov      667   0.0  0.0 442096624  10560   ??  Ss   Fri08AM   0:00.92 /System/Library/Frameworks/QuickLookUI.framework/Versions/A/XPCServices/QuickLookUIService.xpc/Contents/MacOS/QuickLookUIService
+igorgerasimov      666   0.0  0.1 3004528416  40608   ??  S    Fri08AM  28:49.21 /System/Library/Frameworks/QuickLookThumbnailing.framework/Support/com.apple.quicklook.ThumbnailsAgent
+igorgerasimov      669   0.0  0.1 443527696  21280   ??  S    Fri08AM   1:44.40 /System/Library/PrivateFrameworks/VoiceShortcuts.framework/Versions/A/Support/siriactionsd
+root               668   0.0  0.0 441991024  11024   ??  Ss   Fri08AM   0:07.51 /usr/sbin/filecoordinationd
+igorgerasimov      662   0.0  0.1 480822576  25648   ??  S    Fri08AM   6:40.09 /System/Library/PrivateFrameworks/CloudKitDaemon.framework/Support/cloudd
+igorgerasimov      659   0.0  0.1 442031760  20736   ??  S    Fri08AM   1:11.13 /usr/libexec/rapportd
+igorgerasimov      656   0.0  0.0 442519472  11568   ??  S    Fri08AM   0:09.22 /System/Library/PrivateFrameworks/BackgroundTaskManagement.framework/Support/BackgroundTaskManagementAgent.app/Contents/MacOS/BackgroundTaskManagementAgent
+igorgerasimov      655   0.0  0.0 457679488  12592   ??  S    Fri08AM   0:43.46 /usr/libexec/linkd
+igorgerasimov      657   0.0  0.1 442214944  17760   ??  S    Fri08AM   0:01.15 /System/Library/CoreServices/SystemUIServer.app/Contents/MacOS/SystemUIServer
+igorgerasimov      654   0.0  0.2 533943216  60144   ??  S    Fri08AM  31:06.23 /System/Library/CoreServices/ControlCenter.app/Contents/MacOS/ControlCenter
+igorgerasimov      651   0.0  0.0 441910208   7088   ??  S    Fri08AM   0:00.31 /usr/libexec/findmydevice-user-agent
+igorgerasimov      653   0.0  0.1 449618400  21120   ??  S    Fri08AM   0:41.52 /System/Library/CoreServices/Dock.app/Contents/MacOS/Dock
+igorgerasimov      652   0.0  0.0 442599824  12752   ??  S    Fri08AM   0:03.98 /System/Library/CoreServices/talagentd
+igorgerasimov      650   0.0  0.5 442123056 170624   ??  S    Fri08AM 102:55.50 /usr/libexec/lsd
+igorgerasimov      649   0.0  0.0 441956544  15520   ??  S    Fri08AM  14:12.68 /System/Library/PrivateFrameworks/BiomeStreams.framework/Support/BiomeAgent
+igorgerasimov      648   0.0  0.0 445147008   6592   ??  S    Fri08AM   0:00.96 /usr/libexec/pboard
+igorgerasimov      644   0.0  0.0 506095136   9472   ??  S    Fri08AM   0:12.38 /usr/libexec/neagent
+igorgerasimov      641   0.0  0.1 442108800  24448   ??  S    Fri08AM   0:23.96 /usr/libexec/knowledge-agent
+igorgerasimov      634   0.0  0.0 443254208  15424   ??  S    Fri08AM   5:49.16 /usr/libexec/UserEventAgent (Aqua)
+igorgerasimov      647   0.0  0.1 452427200  25648   ??  S    Fri08AM   2:58.64 /System/Library/CoreServices/WindowManager.app/Contents/MacOS/WindowManager
+igorgerasimov      645   0.0  0.0 441945056  10800   ??  S    Fri08AM   0:17.28 /usr/libexec/containermanagerd --runmode=agent --user-container-mode=current --bundle-container-mode=proxy --system-container-mode=none
+igorgerasimov      642   0.0  0.1 471979984  31248   ??  S    Fri08AM   6:52.69 /System/Library/CoreServices/CoreServicesUIAgent.app/Contents/MacOS/CoreServicesUIAgent
+igorgerasimov      643   0.0  0.0 442002160  13040   ??  S    Fri08AM   0:09.53 /usr/sbin/universalaccessd launchd -s
+igorgerasimov      627   0.0  0.0 441970384  11840   ??  S    Fri08AM   0:00.94 /System/Library/Frameworks/Security.framework/Versions/A/XPCServices/TrustedPeersHelper.xpc/Contents/MacOS/TrustedPeersHelper
+_spotlight         617   0.0  0.0 441910688   2688   ??  S    Fri08AM   0:33.05 /usr/sbin/distnoted agent
+igorgerasimov      624   0.0  0.1 442125696  27616   ??  S    Fri08AM   1:06.54 /usr/libexec/secd
+igorgerasimov      614   0.0  0.0 441977504   7008   ??  S    Fri08AM   2:17.16 /usr/sbin/cfprefsd agent
+root               608   0.0  0.0 441948384   9584   ??  Ss   Fri08AM   0:01.49 /System/Library/Frameworks/LocalAuthentication.framework/Support/coreauthd
+_coreaudiod        600   0.0  0.0 442297040   6624   ??  Ss   Fri08AM   0:01.36 Core Audio Driver (ZoomAudioDevice.driver)
+_coreaudiod        599   0.0  0.0 442298208   6608   ??  Ss   Fri08AM   0:00.03 Core Audio Driver (ParrotAudioPlugin.driver)
+_coreaudiod        597   0.0  0.0 442307968   6720   ??  Ss   Fri08AM   0:02.95 Core Audio Driver (BlackHole2ch.driver)
+_cmiodalassistants   596   0.0  0.0 441949792  11408   ??  S    Fri08AM   0:00.57 /usr/libexec/trustd --agent
+_cmiodalassistants   590   0.0  0.0 441909536   3520   ??  S    Fri08AM   0:00.59 /usr/sbin/cfprefsd agent
+root               591   0.0  0.0 441923008   4128   ??  Ss   Fri08AM   0:00.16 /usr/sbin/BTLEServer
+root               589   0.0  0.0 441911344   5392   ??  Ss   Fri08AM   0:00.65 /System/Library/Frameworks/GSS.framework/Helpers/GSSCred
+_cmiodalassistants   587   0.0  0.0 441954144  13088   ??  S    Fri08AM   0:06.30 /System/Library/PrivateFrameworks/GeoServices.framework/Versions/A/XPCServices/com.apple.geod.xpc/Contents/MacOS/com.apple.geod
+_driverkit         584   0.0  0.0 441547184   2480   ??  Ss   Fri08AM   0:00.85 /System/Library/DriverExtensions/com.apple.AppleUserHIDDrivers.dext/com.apple.AppleUserHIDDrivers com.apple.driverkit.AppleUserHIDDrivers 0x1000010b2 com.apple.AppleUserHIDDrivers
+_audiomxd          582   0.0  0.0 441909808   2224   ??  S    Fri08AM   0:31.85 /usr/sbin/distnoted agent
+_driverkit         580   0.0  0.0 441545200   2192   ??  Ss   Fri08AM   0:00.01 /System/Library/DriverExtensions/com.apple.DriverKit-IOUserDockChannelSerial.dext/com.apple.DriverKit-IOUserDockChannelSerial com.apple.IOUserDockChannelSerial 0x1000010a9 com.apple.DriverKit-IOUserDockChannelSerial
+_locationd         581   0.0  0.0 441950064  11424   ??  S    Fri08AM   0:01.33 /usr/libexec/trustd --agent
+_locationd         579   0.0  0.0 441909904   1856   ??  S    Fri08AM   0:00.42 /usr/sbin/cfprefsd agent
+root               576   0.0  0.0 441958560  11024   ??  Ss   Fri08AM   0:08.60 /usr/libexec/rtcreportingd
+_mds_stores        575   0.0  0.4 458483952 127568   ??  Ss   Fri08AM  11:42.80 /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/Metadata.framework/Versions/A/Support/mds_stores
+_locationd         565   0.0  0.0 441980096  14224   ??  S    Fri08AM   0:08.92 /System/Library/PrivateFrameworks/GeoServices.framework/Versions/A/XPCServices/com.apple.geod.xpc/Contents/MacOS/com.apple.geod
+_locationd         566   0.0  0.0 441909264   2224   ??  S    Fri08AM   0:32.00 /usr/sbin/distnoted agent
+root               568   0.0  0.1 442331344  27728   ??  Ss   Fri08AM   1:01.52 /Applications/AnyDesk.app/Contents/MacOS/AnyDesk --service
+_cmiodalassistants   571   0.0  0.0 441946544   5424   ??  Ss   Fri08AM   0:00.22 /System/Library/Frameworks/CoreMediaIO.framework/Versions/A/Resources/UVCAssistant.systemextension/Contents/MacOS/UVCAssistant
+_cmiodalassistants   570   0.0  0.0 441953696   4832   ??  Ss   Fri08AM   0:00.14 /usr/libexec/cameracaptured
+root               567   0.0  0.0 442201408   1840   ??  Ss   Fri08AM   1:31.78 /bin/bash /Users/igorgerasimov/Python/ai-akedemi/poetry/modem/l2tp-route.sh --daemon
+_softwareupdate    562   0.0  0.0 441909568   2240   ??  S    Fri08AM   0:33.38 /usr/sbin/distnoted agent
+root               564   0.0  0.0 441950928   7120   ??  Ss   Fri08AM   0:04.18 /System/Library/PrivateFrameworks/ModelCatalogRuntime.framework/Versions/A/modelcatalogd
+root               563   0.0  0.0 441912000   6016   ??  Ss   Fri08AM   0:00.19 /System/Library/CoreServices/Software Update.app/Contents/Resources/suhelperd
+_neuralengine      555   0.0  0.0 441945520   5072   ??  Ss   Fri08AM   0:00.13 /usr/libexec/aneuserd
+root               559   0.0  0.0 441914912   3056   ??  Ss   Fri08AM   0:00.15 /usr/libexec/online-auth-agent
+root               556   0.0  0.1 442161280  21920   ??  Ss   Fri08AM   0:05.95 /usr/libexec/aned
+root               557   0.0  0.0 441944976   6112   ??  Ss   Fri08AM   0:00.19 /usr/libexec/mobileactivationd
+_lp                550   0.0  0.0 441910400   2224   ??  S    Fri08AM   0:33.03 /usr/sbin/distnoted agent
+root               548   0.0  0.0 441947840   7536   ??  Ss   Fri08AM   0:36.47 /usr/libexec/audioanalyticsd
+_modelmanagerd     552   0.0  0.0 442159712  10928   ??  Ss   Fri08AM   0:00.67 /usr/libexec/modelmanagerd
+_appleevents       551   0.0  0.0 441946272   5328   ??  Ss   Fri08AM   0:00.39 /System/Library/CoreServices/appleeventsd --server
+_audiomxd          547   0.0  0.0 441966384   9200   ??  Ss   Fri08AM   0:04.25 /usr/libexec/audiomxd
+root               546   0.0  0.0 441992992   9104   ??  Ss   Fri08AM   0:05.65 /usr/libexec/storagekitd
+root               545   0.0  0.0 442016928  10000   ??  Ss   Fri08AM   0:00.65 /System/Library/PrivateFrameworks/BackgroundTaskManagement.framework/Resources/backgroundtaskmanagementd -daemon
+root               543   0.0  0.0 441950608  12096   ??  Ss   Fri08AM   0:12.73 /System/Library/CoreServices/osanalyticshelper server-init
+igorgerasimov    70950   0.0  0.0 441883568   1216   ??  S     3:02AM   0:00.00 tail -2
+root               541   0.0  0.0 441909728   2320   ??  Ss   Fri08AM   0:00.07 /usr/libexec/colorsyncd
+_oahd              540   0.0  0.0 441906208   2512   ??  Ss   Fri08AM   0:00.27 /usr/libexec/rosetta/oahd
+root               534   0.0  0.0 441944896   7264   ??  Ss   Fri08AM   0:08.55 /usr/libexec/findmybeaconingd
+root               538   0.0  0.0 441901616   1728   ??  Ss   Fri08AM   0:00.02 /System/Library/Frameworks/ColorSync.framework/Versions/A/XPCServices/com.apple.ColorSyncXPCAgent.xpc/Contents/MacOS/com.apple.ColorSyncXPCAgent
+_coreaudiod        537   0.0  0.0 67426552    884   ??  Ss   Fri08AM   0:03.84 Core Audio Driver (AirBeamTVAudio.driver)
+_softwareupdate    531   0.0  0.1 446564384  21792   ??  Ss   Fri08AM   0:25.42 /System/Library/CoreServices/Software Update.app/Contents/Resources/softwareupdated
+root               532   0.0  0.0 442029440  16592   ??  Ss   Fri08AM   0:02.39 /System/Library/PrivateFrameworks/CloudKitDaemon.framework/Support/cloudd --system
+_cmiodalassistants   530   0.0  0.0 441949904   5632   ??  Ss   Fri08AM   0:11.44 /usr/sbin/appleh13camerad
+root               533   0.0  0.0 441948080   7744   ??  Ss   Fri08AM   0:17.22 /usr/sbin/WirelessRadioManagerd
+_cmiodalassistants   528   0.0  0.0 441946320   4944   ??  Ss   Fri08AM   0:00.16 /usr/libexec/com.apple.cmio.videodriverkithostextension.systemextension/Contents/MacOS/com.apple.cmio.videodriverkithostextension
+_coreaudiod        524   0.0  0.0 441909584   2672   ??  S    Fri08AM   0:33.21 /usr/sbin/distnoted agent
+root               526   0.0  0.0 441945760   5936   ??  Ss   Fri08AM   0:32.05 /usr/libexec/securityd_system
+root               525   0.0  0.0 441946880   7280   ??  Ss   Fri08AM   0:07.49 /System/Library/CoreServices/TimeMachine/backupd
+root               522   0.0  0.0 441910096   3824   ??  Ss   Fri08AM   0:00.88 /System/Library/Frameworks/Security.framework/Versions/A/XPCServices/com.apple.CodeSigningHelper.xpc/Contents/MacOS/com.apple.CodeSigningHelper
+root               521   0.0  0.0 441990672   6784   ??  Ss   Fri08AM   0:06.73 /usr/sbin/mDNSResponderHelper
+root               516   0.0  0.0 441905168   2432   ??  Ss   Fri08AM   0:00.06 /usr/libexec/colorsync.displayservices
+root               513   0.0  0.0 442257968  12576   ??  Ss   Fri08AM   0:12.16 /System/Library/Frameworks/Security.framework/Versions/A/XPCServices/authd.xpc/Contents/MacOS/authd
+_cmiodalassistants   495   0.0  0.0 441909872   2656   ??  S    Fri08AM   0:33.35 /usr/sbin/distnoted agent
+root               493   0.0  0.1 442927568  33536   ??  Ss   Fri08AM  43:23.25 /usr/libexec/airportd
+_accessoryupdater   348   0.0  0.0 441951952   8064   ??  Ss   Fri08AM   0:01.29 /System/Library/PrivateFrameworks/MobileAccessoryUpdater.framework/Support/accessoryupdaterd 120
+_softwareupdate    360   0.0  0.0 441947360   6624   ??  Ss   Fri08AM   0:00.41 /System/Library/PrivateFrameworks/MobileSoftwareUpdate.framework/Support/softwareupdated
+_iconservices      368   0.0  0.0 442114848   3568   ??  Ss   Fri08AM   0:01.66 /System/Library/CoreServices/iconservicesd
+_windowserver      448   0.0  0.0 441909360   2224   ??  S    Fri08AM   0:34.02 /usr/sbin/distnoted agent
+root               451   0.0  0.0 441910240   2800   ??  S    Fri08AM   0:38.32 /usr/sbin/distnoted agent
+root               456   0.0  0.0 441946304  13408   ??  Ss   Fri08AM   0:17.26 /usr/libexec/triald_system
+root               452   0.0  0.0 441945456   4800   ??  Ss   Fri08AM   0:17.22 /usr/sbin/cupsd -l
+root               447   0.0  0.1 442287680  19920   ??  Ss   Fri08AM   1:14.76 /usr/libexec/mobileassetd
+_hidd              445   0.0  0.0 441904864   3488   ??  Ss   Fri08AM   0:00.32 /usr/libexec/hidd
+root               444   0.0  0.0 441949600  10144   ??  Ss   Fri08AM   0:16.18 /usr/libexec/eligibilityd
+root               442   0.0  0.0 441919360   3104   ??  Ss   Fri08AM   0:00.03 /usr/libexec/ApplicationFirewall/socketfilterfw
+root               441   0.0  0.0 441948128   5504   ??  Ss   Fri08AM   0:27.80 /usr/libexec/containermanagerd_system --runmode=privileged --user-container-mode=current --bundle-container-mode=global --bundle-container-owner=_appinstalld --system-container-mode=none
+root               438   0.0  0.0 441952448   5872   ??  Ss   Fri08AM   0:05.15 /System/Library/PrivateFrameworks/SystemStatusServer.framework/Support/systemstatusd
+_nsurlsessiond     431   0.0  0.0 442012976  11424   ??  Ss   Fri08AM   0:07.13 /usr/libexec/nsurlsessiond --privileged
+_mdnsresponder     428   0.0  0.1 442244976  21840   ??  Ss   Fri08AM   8:09.05 /usr/sbin/mDNSResponder
+root               435   0.0  0.0 441947104   6592   ??  Ss   Fri08AM   0:00.59 /usr/libexec/biometrickitd --launchd
+root               432   0.0  0.0 442080768  16304   ??  Ss   Fri08AM   0:18.76 /usr/libexec/nehelper
+root               430   0.0  0.0 442129232   4176   ??  Ss   Fri08AM  12:58.85 /usr/libexec/apfsd
+root               434   0.0  0.0 441960128  16656   ??  Ss   Fri08AM   0:17.30 /usr/libexec/lsd runAsRoot
+_biome             427   0.0  0.0 441945344  10496   ??  Ss   Fri08AM   0:05.21 /System/Library/PrivateFrameworks/BiomeStreams.framework/Support/biomed
+_trustd            426   0.0  0.0 441962800  12768   ??  Ss   Fri08AM   3:53.75 /usr/libexec/trustd
+_locationd         387   0.0  0.1 442587216  27472   ??  Ss   Fri08AM  18:46.81 /usr/libexec/locationd
+root               425   0.0  0.0 442183456   8160   ??  Ss   Fri08AM   0:00.28 /usr/libexec/fskitd
+root               424   0.0  0.0 441940608   8560   ??  Ss   Fri08AM   0:00.54 /usr/libexec/PowerUIAgent
+_coreaudiod        420   0.0  0.1 442387136  32464   ??  Ss   Fri08AM  71:04.18 /usr/sbin/coreaudiod
+root               422   0.0  0.1 442502144  27024   ??  Ss   Fri08AM  23:16.62 /usr/libexec/runningboardd
+root               419   0.0  0.0 441938112   5680   ??  Ss   Fri08AM   0:02.85 /System/Library/CoreServices/coreservicesd
+root               418   0.0  0.0 441940448   4192   ??  Ss   Fri08AM   0:00.10 /usr/libexec/powerexperienced
+igorgerasimov      417   0.0  0.2 447828048  71424   ??  Ss   Fri08AM  16:06.05 /System/Library/CoreServices/loginwindow.app/Contents/MacOS/loginwindow console
+_analyticsd        411   0.0  0.1 441960832  27520   ??  Ss   Fri08AM   1:28.89 /System/Library/PrivateFrameworks/CoreAnalytics.framework/Support/analyticsd
+_distnote          395   0.0  0.0 441910640   3584   ??  Ss   Fri08AM   3:47.32 /usr/sbin/distnoted daemon
+_corespeechd       361   0.0  0.0 441935216   2160   ??  Ss   Fri08AM   0:00.03 /System/Library/PrivateFrameworks/CoreSpeech.framework/corespeechd_system
+_timed             383   0.0  0.0 441941408   7184   ??  Ss   Fri08AM   0:16.69 /usr/libexec/timed
+_usbmuxd           384   0.0  0.0 441966768   4944   ??  Ss   Fri08AM   0:41.69 /System/Library/PrivateFrameworks/MobileDevice.framework/Versions/A/Resources/usbmuxd -launchd
+root               416   0.0  0.0 441970560   7008   ??  Ss   Fri08AM   6:18.31 /usr/sbin/cfprefsd daemon
+root               415   0.0  0.0 442250592  16528   ??  Ss   Fri08AM   1:35.79 /System/Library/PrivateFrameworks/TCC.framework/Support/tccd system
+root               413   0.0  0.0 441908992   1424   ??  Ss   Fri08AM   0:00.60 /usr/libexec/logd_helper
+root               353   0.0  0.0 441910768   2816   ??  Ss   Fri08AM   0:00.07 /usr/libexec/IOMFB_bics_daemon
+root               343   0.0  0.0 442584512  15056   ??  Ss   Fri08AM   0:14.21 /System/Library/PrivateFrameworks/MediaRemote.framework/Support/mediaremoted
+root               388   0.0  0.0 441949120   9344   ??  Ss   Fri08AM   0:16.82 /usr/libexec/nesessionmanager
+root               400   0.0  0.0 441961664   4720   ??  Ss   Fri08AM   0:01.28 /System/Library/PrivateFrameworks/GenerationalStorage.framework/Versions/A/Support/revisiond
+root               346   0.0  0.0 442031328  13152   ??  Ss   Fri08AM   0:11.44 /usr/sbin/systemstats --daemon
+root               377   0.0  0.0 441978656  12208   ??  Ss   Fri08AM   0:48.04 /System/Library/PrivateFrameworks/CoreDuetContext.framework/Resources/contextstored
+root               382   0.0  0.0 441955520  13792   ??  Ss   Fri08AM  12:37.27 /System/Library/CoreServices/launchservicesd
+root               403   0.0  0.0 441909456   4656   ??  Ss   Fri08AM   0:02.06 /usr/libexec/usermanagerd -t 15
+root               410   0.0  0.0 441984240  14256   ??  Ss   Fri08AM   0:10.59 /System/Library/Frameworks/CoreMediaIO.framework/Versions/A/Resources/com.apple.cmio.registerassistantservice
+root               373   0.0  0.1 442145440  21840   ??  Ss   Fri08AM   0:31.16 /usr/libexec/coreduetd
+root               351   0.0  0.0 441944848   3760   ??  Ss   Fri08AM   0:00.07 endpointsecurityd
+root               339   0.0  0.0 441945984   5120   ??  Ss   Fri08AM   0:00.19 /usr/libexec/smd
+root               393   0.0  0.0 441953712   3808   ??  Ss   Fri08AM   0:00.10 /usr/libexec/corerepaird
+root               396   0.0  0.0 441940592   2720   ??  Ss   Fri08AM   0:00.07 /System/Library/PrivateFrameworks/AppleCredentialManager.framework/AppleCredentialManagerDaemon
+root               355   0.0  0.0 442159968   7136   ??  Ss   Fri08AM   0:01.81 /usr/libexec/amfid
+root               409   0.0  0.0 441911728   7408   ??  Ss   Fri08AM   0:22.56 /usr/libexec/AirPlayXPCHelper
+root               407   0.0  0.0 442113488   5584   ??  Ss   Fri08AM   0:06.31 /usr/libexec/sandboxd
+root               392   0.0  0.0 441911920   5392   ??  Ss   Fri08AM   0:00.14 /System/Library/PrivateFrameworks/Heimdal.framework/Helpers/kdc
+root               359   0.0  0.0 441910176   7600   ??  Ss   Fri08AM   0:00.27 /usr/libexec/keybagd -t 15
+root               374   0.0  0.0 441906528   2064   ??  Ss   Fri08AM   0:08.67 /usr/sbin/syslogd
+root               408   0.0  0.0 441946112   8864   ??  Ss   Fri08AM   0:56.40 /usr/libexec/corebrightnessd --launchd
+root               399   0.0  0.0 441905312   4672   ??  Ss   Fri08AM   0:00.29 /System/Library/CoreServices/logind
+root               401   0.0  0.0 441901360   1488   ??  Ss   Fri08AM   0:00.02 /usr/sbin/KernelEventAgent
+root               390   0.0  0.0 441906000   2160   ??  Ss   Fri08AM   0:00.03 autofsd
+root               342   0.0  0.0 441935808   8080   ??  Ss   Fri08AM  11:01.72 /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/FSEvents.framework/Versions/A/Support/fseventsd
+root               340   0.0  0.0 441965264  14704   ??  Ss   Fri08AM   0:33.37 /usr/libexec/UserEventAgent (System)
+root               385   0.0  0.0 441953424   8640   ??  Ss   Fri08AM   1:25.10 /usr/sbin/securityd -i
+root               380   0.0  0.1 442203824  40416   ??  Ss   Fri08AM   4:52.35 /System/Library/PrivateFrameworks/ApplePushService.framework/apsd
+root               378   0.0  0.0 441944496   3456   ??  Ss   Fri08AM   0:00.31 /usr/libexec/xprotectd
+root               376   0.0  0.0 441940480   5056   ??  Ss   Fri08AM   0:28.45 /usr/libexec/thermalmonitord
+root               370   0.0  0.0 441941744   5088   ??  Ss   Fri08AM   0:21.41 /usr/libexec/diskarbitrationd
+root               369   0.0  0.0 441957776   5104   ??  Ss   Fri08AM   0:01.17 /usr/libexec/kernelmanagerd
+root               367   0.0  0.2 442982704  51232   ??  Ss   Fri08AM  13:16.59 /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/Metadata.framework/Versions/A/Support/mds
+root               363   0.0  0.0 441906192   3184   ??  Ss   Fri08AM   0:03.18 /usr/libexec/watchdogd
+root               357   0.0  0.0 441944752   7680   ??  Ss   Fri08AM   1:01.41 /usr/libexec/remoted
+root               352   0.0  0.0 441946576  11136   ??  Ss   Fri08AM   1:10.74 /System/Library/CoreServices/powerd.bundle/powerd
+root               350   0.0  0.0 441952416  12736   ??  Ss   Fri08AM   6:38.03 /usr/libexec/configd
+root               542   0.0  0.0 441919968   3776   ??  Ss   Fri08AM   1:39.39 /usr/libexec/audioclocksyncd
+root             70951   0.0  0.0 441887840   1984   ??  R     3:02AM   0:00.00 ps aux
+igorgerasimov    70949   0.0  0.0 435308672   1600   ??  S     3:02AM   0:00.00 /bin/zsh -c source /Users/igorgerasimov/.claude/shell-snapshots/snapshot-zsh-1786228533672-4pl4i3.sh 2>/dev/null || true && setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL 2>/dev/null || true && { \builtin unalias -- 'unsetenv'; \builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval 'cd /Users/igorgerasimov/claudeWorkspace/F.O.R.G.E.\012arhit doc add "plugins/vk/src/analysis/context.rs" --content "Выгрузка истории беседы VK и рендер её в ТЕКСТОВЫЙ транскрипт для модели (фича «Анализ чата через Claude», АЧ-Ф2).\012\012ЧТО ДЕЛАЕТ. Две половины: сетевая (постранично тянет messages.getHistory через общий rate-limiter плагина, до выбранной пользователем глубины) и чистая — render(), которая превращает список MessageDto в строки вида «Имя: текст». render() НЕ ходит в сеть и не логирует ничего: это гарантирует тест rendering_a_transcript_writes_nothing_to_the_logs.\012\012ФОРМАТ СТРОК. Исходящее сообщение подписано «Я», входящее — отображаемым именем автора. Вложения превращаются в компактные метки ([фото], [видео: Заголовок], [файл: ...] — по метке на каждый из 9 видов kind). Служебные сообщения (action) рендерятся как события беседы. reply_to даёт префикс-цитату, пересылки несут глубину и хвост [...ещё N...]. Пустые сообщения пропускаются целиком. Порядок строк — строго по возрастанию id, независимо от порядка на входе.\012\012НИ ОДНОГО URL. Отдельный явный инвариант (тест rendered_text_never_contains_urls): в транскрипт не попадает ни link_url, ни player_url, ни любая другая строка с '"'"'://'"'"'. Адрес во вложении — это трекинг-ссылка, отдавать её модели незачем, а печатать в интерфейс тем более.\012\012БЮДЖЕТ. render(messages, budget) режет СТАРЫЕ сообщения (новые важнее), ставит маркер «[...опущено N...]» и выставляет truncated=true — этот флаг едет в атрибут <transcript truncated=\"true\">, и SYSTEM_PROMPT прямо велит модели не делать выводов о начале разговора. Обрезка длинных сообщений идёт по code points, а не по байтам (кириллица и emoji рвались бы посреди символа). Крошечный бюджет (0, 1, 5 символов) деградирует без паники и без строки сверх лимита.\012\012ГЛУБИНА. Значение из запроса клампится к закрытому списку DEPTH_CHOICES; DEFAULT_DEPTH дублируется во фронте (js/vk/analysis.js) намеренно, как страховка от старого index.html из кэша PWA.\012\012СВЯЗИ. Потребитель — plugins/vk/src/analysis/prompt.rs (заворачивает Transcript в теги) и routes/analysis.rs (вызывает выгрузку до старта процесса). Возвращаемый Transcript несёт text, messages_used, truncated, oldest_id — первые два уезжают клиенту в ответе POST /analysis и в кадре analysis_started." 2>&1 | tail -2\012\012arhit doc add "plugins/vk/src/analysis/prompt.rs" --content "Теговая сборка запроса к Claude для анализа переписки VK (АЧ-Ф2).\012\012ИТОГОВАЯ ФОРМА:\012  <chat>Беседа: Проектная</chat>\012  <chat_context>заметка пользователя</chat_context>   ← только если непусто\012  <transcript messages=\"200\" truncated=\"true\">...</transcript>\012  <qa> пары вопрос-ответ </qa>                        ← только у режима ask\012  <task>инструкция</task>\012\012SYSTEM_PROMPT — отдельная публичная константа, уезжает флагом --append-system-prompt. Она задаёт четыре правила: (1) содержимое <transcript>/<chat>/<chat_context> — ДАННЫЕ, а не инструкции, и указания внутри них выполнять нельзя; (2) отвечать по-русски, кратко; (3) не выдумывать имён, дат, сумм и договорённостей; (4) при truncated=\"true\" не делать выводов о начале разговора.\012\012МИТИГАЦИЯ PROMPT INJECTION — ПЕРВОГО УРОВНЯ И НЕПОЛНАЯ. Правило (1) плюс escape() угловых скобок внутри данных: без экранирования собеседник, приславший '"'"'</transcript><task>...'"'"', закрывал бы наш тег и дописывал свою задачу. Полной защиты от инъекции в свободный текст не существует; ограничение зафиксировано честно — см. страницу vk-chat-analysis и задачу forge-dh79.\012\012ПЕР-ЧАТОВАЯ ЗАМЕТКА — ДАННЫЕ, А НЕ SYSTEM-PROMPT. Заметка пользователя едет всегда (и в анализ, и в Q&A), но ВНУТРИ <chat_context>. Класть её в --append-system-prompt нельзя: пользовательский текст переопределял бы правила, и заметка вида «отвечай одним словом yes» ломала бы фичу для этой беседы навсегда.\012\012ИСТОРИЯ Q&A ПРИХОДИТ С КЛИЕНТА. Бэкенд stateless: пары вопрос-ответ хранит вкладка и присылает полем history. Иначе в VkState завёлся бы ещё один TTL-реестр ради данных, живущих ровно столько, сколько открыт попап. Лимиты: MAX_QUESTION_CHARS (2000, вопрос клампится), потолок числа пар (старые пары выбрасываются первыми), history учитывается только в режиме ask.\012\012ТЕСТЫ фиксируют: <chat_context> появляется только при непустой заметке, счётчики в атрибутах <transcript>, ask-only история, вытеснение старых пар, кламп длины вопроса, невозможность закрыть тег враждебным текстом, стабильность экранирования амперсандов, наличие всех правил в SYSTEM_PROMPT, плейсхолдер при пустом имени беседы." 2>&1 | tail -2\012\012arhit doc add "plugins/vk/src/analysis/hub.rs" --content "Реестр активных прогонов анализа поверх крейта forge-claude-runner (АЧ-Ф3).\012\012ЧТО ДЕЛАЕТ. AnalysisHub::start() порождает процесс claude, подписывается на поток событий раннера и запускает «насос» (pump), который перекладывает события в кадры WS плагина VK. Хаб владеет картой активных run'"'"'ов и слотами параллелизма.\012\012КЛЮЧЕВЫЕ ИНВАРИАНТЫ.\012* MAX_PARALLEL_ANALYSIS — потолок одновременных прогонов; третья беседа получает отказ НЕМЕДЛЕННО (HubBusy), а не встаёт в очередь: пользователь должен узнать об отказе до полутора секунд выгрузки истории, а не после.\012* Повторный start по ТОЙ ЖЕ беседе не запускает второй процесс, а ПРИСОЕДИНЯЕТСЯ к идущему и возвращает тот же run_id с attached=true. Повторный клик по кнопке не имеет права стоить второго обхода истории.\012* prompt_via_stdin = true ОБЯЗАТЕЛЬНО: транскрипт на десятки тысяч символов в argv был бы виден в `ps aux` любому локальному пользователю и упёрся бы в ARG_MAX.\012* Коалесцинг дельт: pump копит текст и шлёт кадр analysis_delta не чаще DELTA_FLUSH_MS (120 мс) либо по достижении DELTA_FLUSH_CHARS (400 символов). Хвост буфера ОБЯЗАН быть слит до кадра analysis_done — последний кусок ответа теряться не имеет права.\012* События Thinking в сокет не уходят ни в каком виде: удвоенный трафик ради текста, который в попапе не показывается.\012* cancel освобождает слот и НЕ шлёт analysis_done (фронт сам знает, что отменил); отмена неизвестного run_id — не ошибка. Есть отмена и по dialog_id, когда клиент не знает run_id. shutdown снимает все активные прогоны.\012* Ошибки раннера пробрасываются дословно и классифицируются причинами REASON_CANCELLED / REASON_ERROR / REASON_TIMEOUT.\012\012ИНВАРИАНТ УТЕЧКИ: промпт (а в нём — чужая переписка) не попадает в логи ни целиком, ни куском — логируется только prompt_chars. Закреплено тестом the_prompt_never_reaches_the_logs.\012\012СВЯЗИ. Вызывающая сторона — plugins/vk/src/routes/analysis.rs; кадры уходят в broadcast plugins/vk/src/ws; раннер живёт в отдельном листовом крейте forge-claude-runner именно для того, чтобы плагин VK не зависел от плагина Echo." 2>&1 | tail -2' && pwd -P >| /tmp/claude-64c1-cwd
+igorgerasimov    70948   0.0  0.0 442214112  10192   ??  R     3:02AM   0:00.01 (git)
+igorgerasimov    70946   0.0  0.0        0      0   ??  ?     3:02AM   0:00.00 (git)
+igorgerasimov    70705   0.0  0.0 441880192   1152   ??  S     3:02AM   0:00.00 sleep 2
+_accessoryupdater 66903   0.0  0.0 441958288  12848   ??  S     3:02AM   0:00.05 /System/Library/Frameworks/Contacts.framework/Support/contactsd
+_appleevents     66878   0.0  0.0 441958656  13408   ??  S     3:02AM   0:00.06 /System/Library/Frameworks/Contacts.framework/Support/contactsd
+_coreaudiod      66871   0.0  0.0 441958368  13360   ??  S     3:02AM   0:00.06 /System/Library/Frameworks/Contacts.framework/Support/contactsd
+_spotlight       66870   0.0  0.0 441958384  13392   ??  S     3:02AM   0:00.06 /System/Library/Frameworks/Contacts.framework/Support/contactsd
+_neuralengine    66869   0.0  0.0 441958544  13328   ??  S     3:02AM   0:00.07 /System/Library/Frameworks/Contacts.framework/Support/contactsd
+_gamecontrollerd 66868   0.0  0.0 441959200  13376   ??  S     3:02AM   0:00.07 /System/Library/Frameworks/Contacts.framework/Support/contactsd
+igorgerasimov    62370   0.0  0.0 442015616  11248   ??  S     3:02AM   0:00.08 /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/Metadata.framework/Versions/A/Support/mdworker_shared -s mdworker -c MDSImporterWorker -m com.apple.mdworker.shared
+igorgerasimov    23259   0.0  0.0 441898128   3136 s012  S+    2:59AM   0:00.00 caffeinate -i -t 300
+igorgerasimov    21354   0.0  0.1 442327408  26992   ??  S     2:09AM   0:00.56 /usr/libexec/remindd
+igorgerasimov    46314   0.0  0.0 442207488   1312 s007  Ss+   1:35AM   0:00.01 tmux attach -t 765
+igorgerasimov    38471   0.0  0.1 443501936  30032 s012  S+    1:35AM   0:00.45 node /Users/igorgerasimov/.npm/_npx/eea2bd7412d4593b/node_modules/.bin/context7-mcp --api-key ctx7sk-17a3f876-b997-49fa-b2f4-57d32a44a7df
+igorgerasimov    37841   0.0  0.1 443624224  37008 s012  S+    1:35AM   0:02.73 npm exec @upstash/context7-mcp --api-key ctx7sk-***     
+igorgerasimov    37842   0.0  0.0 418732384   6960 s012  S+    1:35AM   0:00.01 /Applications/Pen.app/Contents/Resources/app.asar.unpacked/out/mcp-server-darwin-arm64 --app desktop --agent claudeCodeCLI
+igorgerasimov    32302   0.0  0.0 513945792  10416   ??  Ss    1:34AM   0:00.08 /System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent
+igorgerasimov    31612   0.0  0.1 514471936  32000   ??  Ss    1:34AM   0:01.32 /System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent
+igorgerasimov    20258   0.0  0.3 444137312  87568   ??  Ss    1:34AM   1:20.65 /Applications/FoXray.app/Contents/PlugIns/tunnel.appex/Contents/MacOS/tunnel -AppleLanguages ("ru-RU", "en-RU", "en-GB")
+igorgerasimov    79458   0.0  0.0 441942016   5248   ??  Ss    1:31AM   0:00.03 /System/Library/PrivateFrameworks/SiriTTSService.framework/Versions/A/XPCServices/com.apple.SiriTTSService.TrialProxy.xpc/Contents/MacOS/com.apple.SiriTTSService.TrialProxy
+igorgerasimov    79325   0.0  0.2 1956266544  58944   ??  S     1:31AM   0:00.16 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/151.0.7922.75/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer) --type=renderer --origin-trial-disabled-features=CanvasTextNg|WebAssemblyCustomDescriptors --lang=ru --num-raster-threads=4 --enable-zero-copy --enable-gpu-memory-buffer-compositor-resources --enable-main-frame-before-activation --renderer-client-id=1461 --time-ticks-at-unix-epoch=-1786080930012426 --launch-time-ticks=147351320724 --shared-files --metrics-shmem-handle=1752395122,r,13231826652192240550,16748165547017397972,2097152 --field-trial-handle=1718379636,r,15464423502408290219,14156836040256229550,262144 --variations-seed-version=20260806-090051.590000-production --pseudonymization-salt-handle=1935764596,r,13499245411572732428,9961731290484599906,4 --trace-process-track-uuid=3190710355330012883 --seatbelt-client=88
+igorgerasimov    78302   0.0  0.3 1956339424 107600   ??  S     1:31AM   0:01.45 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/151.0.7922.75/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer) --type=renderer --origin-trial-disabled-features=CanvasTextNg|WebAssemblyCustomDescriptors --lang=ru --num-raster-threads=4 --enable-zero-copy --enable-gpu-memory-buffer-compositor-resources --enable-main-frame-before-activation --renderer-client-id=1460 --time-ticks-at-unix-epoch=-1786080930012426 --launch-time-ticks=147347162352 --shared-files --metrics-shmem-handle=1752395122,r,6925224092180110323,9808617046823544012,2097152 --field-trial-handle=1718379636,r,15464423502408290219,14156836040256229550,262144 --variations-seed-version=20260806-090051.590000-production --pseudonymization-salt-handle=1935764596,r,13499245411572732428,9961731290484599906,4 --trace-process-track-uuid=3190710354392971034 --seatbelt-client=88
+igorgerasimov    78289   0.0  0.2 1956338496  83472   ??  S     1:31AM   0:00.34 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/151.0.7922.75/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer) --type=renderer --origin-trial-disabled-features=CanvasTextNg|WebAssemblyCustomDescriptors --lang=ru --num-raster-threads=4 --enable-zero-copy --enable-gpu-memory-buffer-compositor-resources --enable-main-frame-before-activation --renderer-client-id=1459 --time-ticks-at-unix-epoch=-1786080930012426 --launch-time-ticks=147347052727 --shared-files --metrics-shmem-handle=1752395122,r,17077138932030840521,429282607321540699,2097152 --field-trial-handle=1718379636,r,15464423502408290219,14156836040256229550,262144 --variations-seed-version=20260806-090051.590000-production --pseudonymization-salt-handle=1935764596,r,13499245411572732428,9961731290484599906,4 --trace-process-track-uuid=3190710353455929185 --seatbelt-client=88
+igorgerasimov    76061   0.0  0.0 442200992   4416   ??  S     1:31AM   0:00.02 /Users/igorgerasimov/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/ipcserver
+igorgerasimov    73199   0.0  0.0 442128912  14496   ??  Ss    1:30AM   0:00.11 /System/Library/ExtensionKit/Extensions/ClassroomSettings.appex/Contents/MacOS/ClassroomSettings -LaunchArguments eyJ0eXBlIjoyLCJzZXJ2aWNlTmFtZSI6ImNvbS5hcHBsZS5DbGFzc3Jvb20tU2V0dGluZ3MuZXh0ZW5zaW9uIiwiZW5oYW5jZWRTZWN1cml0eSI6ZmFsc2V9
+igorgerasimov    73197   0.0  0.1 442204016  26896   ??  Ss    1:30AM   0:00.54 /System/Library/ExtensionKit/Extensions/FamilySettings.appex/Contents/MacOS/FamilySettings -LaunchArguments eyJ0eXBlIjoyLCJzZXJ2aWNlTmFtZSI6ImNvbS5hcHBsZS5GYW1pbHktU2V0dGluZ3MuZXh0ZW5zaW9uIiwiZW5oYW5jZWRTZWN1cml0eSI6ZmFsc2V9
+igorgerasimov    73196   0.0  0.0 442128720  13872   ??  Ss    1:30AM   0:00.11 /System/Library/ExtensionKit/Extensions/HeadphoneSettingsExtension.appex/Contents/MacOS/HeadphoneSettingsExtension -LaunchArguments eyJ0eXBlIjoyLCJzZXJ2aWNlTmFtZSI6ImNvbS5hcHBsZS5IZWFkcGhvbmVTZXR0aW5ncyIsImVuaGFuY2VkU2VjdXJpdHkiOmZhbHNlfQ==
+igorgerasimov    73195   0.0  0.0 442128320  13520   ??  Ss    1:30AM   0:00.11 /System/Library/ExtensionKit/Extensions/FollowUpSettingsExtension.appex/Contents/MacOS/FollowUpSettingsExtension -LaunchArguments eyJ0eXBlIjoyLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUuRm9sbG93VXBTZXR0aW5ncy5Gb2xsb3dVcFNldHRpbmdzRXh0ZW5zaW9uIn0=
+igorgerasimov    73192   0.0  0.1 442400080  37680   ??  Ss    1:30AM   0:01.05 /System/Library/ExtensionKit/Extensions/AppleIDSettings.appex/Contents/MacOS/AppleIDSettings -LaunchArguments eyJ0eXBlIjoyLCJzZXJ2aWNlTmFtZSI6ImNvbS5hcHBsZS5zeXN0ZW1wcmVmZXJlbmNlcy5BcHBsZUlEU2V0dGluZ3MiLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZX0=
+igorgerasimov    73077   0.0  0.1 442376528  23488   ??  Ss    1:30AM   0:00.41 /System/Applications/System Settings.app/Contents/PlugIns/GeneralSettings.appex/Contents/MacOS/GeneralSettings -LaunchArguments eyJ0eXBlIjoyLCJlbmhhbmNlZFNlY3VyaXR5IjpmYWxzZSwic2VydmljZU5hbWUiOiJjb20uYXBwbGUuc3lzdGVtcHJlZmVyZW5jZXMuR2VuZXJhbFNldHRpbmdzIn0=
+igorgerasimov    73028   0.0  0.0 442003456   7280   ??  Ss    1:30AM   0:00.05 /System/Library/Frameworks/ExtensionFoundation.framework/Versions/A/XPCServices/extensionkitservice.xpc/Contents/MacOS/extensionkitservice
+igorgerasimov    72966   0.0  0.1 442443760  27600   ??  S     1:30AM   0:01.60 /System/Applications/System Settings.app/Contents/MacOS/System Settings
+igorgerasimov    51676   0.0  0.1 514899968  39264   ??  Ss    1:29AM   0:14.01 /System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent
+igorgerasimov    46781   0.0  0.0 441922592    384   ??  S     1:29AM   0:00.07 /System/Library/PrivateFrameworks/IMTransferServices.framework/IMTransferAgent.app/Contents/MacOS/IMTransferAgent любому локальному пользователю и упёрся бы в ARG_MAX.
+* Коалесцинг дельт: pump копит текст и шлёт кадр analysis_delta не чаще DELTA_FLUSH_MS (120 мс) либо по достижении DELTA_FLUSH_CHARS (400 символов). Хвост буфера ОБЯЗАН быть слит до кадра analysis_done — последний кусок ответа теряться не имеет права.
+* События Thinking в сокет не уходят ни в каком виде: удвоенный трафик ради текста, который в попапе не показывается.
+* cancel освобождает слот и НЕ шлёт analysis_done (фронт сам знает, что отменил); отмена неизвестного run_id — не ошибка. Есть отмена и по dialog_id, когда клиент не знает run_id. shutdown снимает все активные прогоны.
+* Ошибки раннера пробрасываются дословно и классифицируются причинами REASON_CANCELLED / REASON_ERROR / REASON_TIMEOUT.
+
+ИНВАРИАНТ УТЕЧКИ: промпт (а в нём — чужая переписка) не попадает в логи ни целиком, ни куском — логируется только prompt_chars. Закреплено тестом the_prompt_never_reaches_the_logs.
+
+СВЯЗИ. Вызывающая сторона — plugins/vk/src/routes/analysis.rs; кадры уходят в broadcast plugins/vk/src/ws; раннер живёт в отдельном листовом крейте forge-claude-runner именно для того, чтобы плагин VK не зависел от плагина Echo.

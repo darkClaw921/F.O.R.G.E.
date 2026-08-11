@@ -55,6 +55,11 @@ import {
     comboFromEvent as vkComboFromEvent, normalizeCombo as vkNormalizeCombo,
     overridesFromBindings as vkOverridesFromBindings,
 } from '../vk/keys.js';
+import {
+    B24_ACTIONS, B24_ACTION_GROUPS, bindingRows as b24BindingRows,
+    comboFromEvent as b24ComboFromEvent, normalizeCombo as b24NormalizeCombo,
+    overridesFromBindings as b24OverridesFromBindings,
+} from '../bitrix/keys.js';
 import { updateUserSettings } from './user-settings-api.js';
 
 /** Текст на кнопке в режиме записи. */
@@ -114,6 +119,32 @@ export const VK_HOTKEYS_CONFIG = {
     enabledKey: 'vk_hotkeys_enabled',
     mapKey: 'vk_hotkeys',
     invalidate: () => invalidatePanelBindings('vkKeys'),
+};
+
+/**
+ * Конфиг формы для панели «Битрикс24».
+ *
+ * Третий конфиг — и по-прежнему НИ ОДНОЙ строки самой формы не скопировано:
+ * ровно ради этого она и параметризована. Отличий снова три — реестр действий,
+ * имена двух полей настроек и тексты.
+ */
+export const B24_HOTKEYS_CONFIG = {
+    legend: 'Горячие клавиши Битрикс24',
+    hint: 'Клавиатурная навигация по панели Битрикс24: выбор диалога, чтение, '
+        + 'ответ и правка, вложения, действия над задачей — без мыши. Работает '
+        + 'только когда вкладка Битрикс24 открыта и фокус внутри неё; в поле '
+        + 'ввода одиночные клавиши не перехватываются. Внутри панели шпаргалку '
+        + 'открывает «?».',
+    toggleLabel: ' Клавиатурная навигация в Битрикс24',
+    actions: B24_ACTIONS,
+    groups: B24_ACTION_GROUPS,
+    bindingRows: b24BindingRows,
+    overridesFromBindings: b24OverridesFromBindings,
+    comboFromEvent: b24ComboFromEvent,
+    normalizeCombo: b24NormalizeCombo,
+    enabledKey: 'bitrix_hotkeys_enabled',
+    mapKey: 'bitrix_hotkeys',
+    invalidate: () => invalidatePanelBindings('b24Keys'),
 };
 
 /**
@@ -257,20 +288,23 @@ export function buildHotkeysForm(settings, onSaved, config) {
             });
             line.appendChild(reset);
 
+            // Четвёртая колонка сетки. Ячейка создаётся ВСЕГДА, даже пустая:
+            // строка без примечания иначе теряла бы колонку, и клавиши
+            // соседних строк переставали выравниваться по вертикали.
+            const note = document.createElement('span');
             if (row.conflictWith) {
                 conflicts += 1;
                 line.classList.add('tg-hotkeys-row-conflict');
-                const warn = document.createElement('span');
-                warn.className = 'tg-hotkeys-warn';
+                note.className = 'tg-hotkeys-warn';
                 const other = cfg.actions.find((a) => a.id === row.conflictWith);
-                warn.textContent = `занято: ${other ? other.title : row.conflictWith}`;
-                line.appendChild(warn);
-            } else if (row.hint) {
-                const h = document.createElement('span');
-                h.className = 'tg-hotkeys-hint';
-                h.textContent = row.hint;
-                line.appendChild(h);
+                note.textContent = `занято: ${other ? other.title : row.conflictWith}`;
+            } else {
+                note.className = 'tg-hotkeys-hint';
+                note.textContent = row.hint || '';
             }
+            // Текст обрезается многоточием — полный вид остаётся в подсказке.
+            if (note.textContent) note.title = note.textContent;
+            line.appendChild(note);
 
             table.appendChild(line);
         }

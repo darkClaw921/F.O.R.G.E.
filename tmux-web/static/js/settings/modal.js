@@ -2,10 +2,11 @@
 //
 // Диспетчер табов: Notifications (global notifier-config), Themes,
 // TODO behavior, Echo, Сводка дня, Интерфейс, Telegram (видимость чатов +
-// горячие клавиши), VK (видимость бесед + горячие клавиши) и опциональный
-// Remote servers tab в remote-mode.
+// горячие клавиши), VK (видимость бесед + горячие клавиши), Битрикс24
+// (видимость диалогов + горячие клавиши) и опциональный Remote servers tab в
+// remote-mode.
 //
-// Форма горячих клавиш ОДНА на обе панели и параметризуется конфигом
+// Форма горячих клавиш ОДНА на все три панели и параметризуется конфигом
 // (см. hotkeys-tab.js): вторая копия дала бы третью точку правки при каждом
 // изменении UX записи комбинаций.
 //
@@ -27,9 +28,12 @@ import { fetchUserSettings } from './user-settings-api.js';
 import { renderEchoSettingsTab } from '../echo/settings.js';
 import { renderDailySummaryTab } from './daily-summary-tab.js';
 import { buildInterfaceForm } from './interface-tab.js';
-import { buildHotkeysForm, TELEGRAM_HOTKEYS_CONFIG, VK_HOTKEYS_CONFIG } from './hotkeys-tab.js';
+import {
+    buildHotkeysForm, B24_HOTKEYS_CONFIG, TELEGRAM_HOTKEYS_CONFIG, VK_HOTKEYS_CONFIG,
+} from './hotkeys-tab.js';
 import { buildVisibilityForm } from './telegram-visibility-tab.js';
 import { buildVkVisibilityForm } from './vk-visibility-tab.js';
+import { buildBitrixVisibilityForm } from './bitrix-visibility-tab.js';
 
 export function openSettingsModal(initialTab) {
     const overlay = buildModalOverlay();
@@ -83,6 +87,7 @@ export function openSettingsModal(initialTab) {
             <button type="button" class="modal-tab-btn" data-tab="interface" role="tab">Интерфейс</button>
             <button type="button" class="modal-tab-btn" data-tab="telegram" role="tab">Telegram</button>
             <button type="button" class="modal-tab-btn" data-tab="vk" role="tab">VK</button>
+            <button type="button" class="modal-tab-btn" data-tab="bitrix" role="tab">Битрикс24</button>
             ${remoteTabBtn}
         </div>
         <div class="modal-tab-panel" id="ps-panel-notifications" data-panel="notifications">
@@ -121,6 +126,10 @@ export function openSettingsModal(initialTab) {
             <h2>VK</h2>
             <div class="vk-settings-content" id="ps-vk-content"></div>
         </div>
+        <div class="modal-tab-panel" id="ps-panel-bitrix" data-panel="bitrix" hidden>
+            <h2>Битрикс24</h2>
+            <div class="bitrix-settings-content" id="ps-bitrix-content"></div>
+        </div>
         ${remotePanel}
         <div class="modal-actions">
             <button type="button" id="ps-close" class="primary">Close</button>
@@ -146,6 +155,7 @@ export function openSettingsModal(initialTab) {
     const $interfaceContent = card.querySelector('#ps-interface-content');
     const $telegramContent = card.querySelector('#ps-telegram-content');
     const $vkContent = card.querySelector('#ps-vk-content');
+    const $bitrixContent = card.querySelector('#ps-bitrix-content');
 
     // TODO behavior tab state: рендерим форму один раз при первом клике.
     // userSettings fetch выполняется лениво, если bootstrap-preload не успел
@@ -167,6 +177,9 @@ export function openSettingsModal(initialTab) {
         loaded: false,
     };
     const vkTabState = {
+        loaded: false,
+    };
+    const bitrixTabState = {
         loaded: false,
     };
 
@@ -301,6 +314,38 @@ export function openSettingsModal(initialTab) {
         $vkContent.appendChild(buildHotkeysForm(settingsArg, onSaved, VK_HOTKEYS_CONFIG));
     };
 
+    // Вкладка «Битрикс24»: два раздела — видимость диалогов (белый список
+    // видов и отдельных диалогов) и горячие клавиши панели. Тот же ленивый
+    // паттерн и тот же кеш state.userSettings, что у соседей.
+    //
+    // Порядок тот же, что у Telegram и VK, и по той же причине: видимость
+    // меняет ТО, ЧТО видно на экране, а хоткеи — то, КАК этим управлять.
+    //
+    // Третья отдельная вкладка, а не общая «Мессенджеры»: объединение
+    // потребовало бы переписать две работающие панели. Слияние — отдельная
+    // задача, и появление третьего мессенджера её не делает срочной: вкладки
+    // различаются содержимым списков, а не устройством.
+    const renderBitrixPanel = async () => {
+        if (bitrixTabState.loaded) return;
+        bitrixTabState.loaded = true;
+        $bitrixContent.innerHTML = '<div class="themes-loading">Loading settings…</div>';
+        if (state.userSettings === null) {
+            try {
+                await fetchUserSettings();
+            } catch (_) { /* fetchUserSettings swallows errors itself */ }
+        }
+        $bitrixContent.innerHTML = '';
+        // Пустой объект при недоступном backend: форма видимости покажет фильтр
+        // выключенным, а форма клавиш — тумблер ВКЛЮЧЁННЫМ (дефолты этих двух
+        // настроек намеренно разные, см. user_settings.rs).
+        const settingsArg = state.userSettings || {};
+        const onSaved = (updated) => {
+            if (updated) state.userSettings = updated;
+        };
+        $bitrixContent.appendChild(buildBitrixVisibilityForm(settingsArg, onSaved));
+        $bitrixContent.appendChild(buildHotkeysForm(settingsArg, onSaved, B24_HOTKEYS_CONFIG));
+    };
+
     const notifierState = {
         loaded: false,
     };
@@ -377,6 +422,9 @@ export function openSettingsModal(initialTab) {
         }
         if (name === 'vk') {
             renderVkPanel();
+        }
+        if (name === 'bitrix') {
+            renderBitrixPanel();
         }
     };
     $tabBtns.forEach((btn) => {
@@ -507,7 +555,7 @@ export function openSettingsModal(initialTab) {
         });
     }
 
-    if (initialTab && (initialTab === 'notifications' || initialTab === 'themes' || initialTab === 'todo' || initialTab === 'echo' || initialTab === 'daily-summary' || initialTab === 'interface' || initialTab === 'telegram' || initialTab === 'vk' || (initialTab === 'remotes' && isRemoteMode()))) {
+    if (initialTab && (initialTab === 'notifications' || initialTab === 'themes' || initialTab === 'todo' || initialTab === 'echo' || initialTab === 'daily-summary' || initialTab === 'interface' || initialTab === 'telegram' || initialTab === 'vk' || initialTab === 'bitrix' || (initialTab === 'remotes' && isRemoteMode()))) {
         showTab(initialTab);
     }
 

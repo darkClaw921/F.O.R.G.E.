@@ -10,17 +10,16 @@
 //!
 //! ### Контракт детектора
 //!
-//! `detect_claude_prompt` срабатывает когда в панели одновременно присутствуют
-//! **три** маркера структуры меню выбора Claude Code:
-//! - `❯ 1. Yes` — курсор на первом варианте;
-//! - `2. Yes,` — второй вариант (любой sub-text: «and don't ask again»,
-//!   «allow all edits during this session» и пр.);
-//! - `3. No` — третий вариант (любой sub-text: «», «tell Claude what to do» и пр.).
+//! `detect_claude_prompt` срабатывает на известные формы меню выбора Claude
+//! Code (см. `detect_permission_prompt`): трёхопционный permission
+//! (`❯ 1. Yes` + `2. Yes,` + `3. No`), двухопционный (`❯ 1. Yes` + `2. No`),
+//! Claude in Chrome (`❯ 1. Allow` + `2. Deny`/`2. Allow all`), а также plan и
+//! question по их footer'ам.
 //!
-//! AND-семантика выбрана сознательно: каждый из маркеров может встретиться
-//! и в обычном выводе (например, в логах), но все три вместе — практически
-//! однозначно prompt. Маркеры намеренно сделаны «короткими», чтобы покрыть
-//! разные варианты Claude UI (file create, edit, bash, и т.п.).
+//! AND-семантика внутри каждой формы выбрана сознательно: каждый маркер по
+//! отдельности может встретиться в обычном выводе (например, в логах), но
+//! сочетание — практически однозначно prompt. Маркеры намеренно «короткие»,
+//! чтобы покрыть разные варианты Claude UI (file create, edit, bash и т.п.).
 //!
 //! ### Состояние
 //!
@@ -372,21 +371,83 @@ impl AttentionState {
 /// не переносятся, поэтому раньше работал только он). Нормализация покрывает
 /// word-wrap (перенос по границам слов — штатное поведение TUI).
 pub fn detect_claude_prompt(pane: &str) -> bool {
+    if !prompt_at_bottom(pane) {
+        return false;
+    }
     let norm = normalize_ws(pane);
     detect_permission_prompt(&norm) || detect_plan_prompt(&norm) || detect_question_prompt(&norm)
+}
+
+/// Гейт против «процитированного prompt'а»: настоящий prompt Claude Code
+/// рисуется В САМОМ НИЗУ панели — поле ввода и статус-бар на это время
+/// скрыты. Текст с теми же маркерами, просто показанный в терминале (diff с
+/// тест-фикстурами, cat исходника, лог), стоит ВЫШЕ поля ввода и статус-бара.
+///
+/// «Низ панели — это prompt», если последние непустые строки — одно из двух:
+/// - footer-подсказка («Esc to cancel · Tab to amend · ctrl+e to explain» у
+///   permission, «Enter to select · … · Esc to cancel» у plan/question);
+/// - пункт меню вида `2. …` / `3. Deny (esc)` — prompt'ы Claude in Chrome
+///   отдельного footer'а НЕ рисуют и заканчиваются самим меню (esc указан
+///   прямо в пункте Deny). Обнаружено живым кейсом: footer-гейт первой
+///   редакции перекрыл авто-апрув настоящих Chrome-prompt'ов.
+///
+/// Без этого гейта воркер авто-апрува однажды принял diff собственных тестов
+/// за AllowBroad-prompt и напечатал «2» в поле ввода чужой сессии. Строки
+/// diff'а под пункт меню не маскируются: у них префикс `+`/`-`, и главное —
+/// цитата не может оказаться ПОД полем ввода и статус-баром.
+///
+/// Берутся последние 4 непустые строки: в узком терминале footer переносится
+/// по словам, и «Esc to cancel» может уехать со своей строки на соседнюю.
+pub(crate) fn prompt_at_bottom(pane: &str) -> bool {
+    let mut tail: Vec<&str> = pane
+        .lines()
+        .rev()
+        .filter(|l| !l.trim().is_empty())
+        .take(4)
+        .collect();
+    // Возвращаем исходный порядок строк: footer мог перенестись («… Esc to» /
+    // «cancel»), и склейка в обратном порядке разорвала бы искомую фразу.
+    tail.reverse();
+    if normalize_ws(&tail.join(" ")).contains("Esc to cancel") {
+        return true;
+    }
+    // Chrome-форма: меню заканчивает панель. Пункт мог перенестись по словам,
+    // поэтому смотрим две последние строки — при переносе номер остаётся на
+    // предпоследней, а последняя несёт хвост текста пункта.
+    tail.iter().rev().take(2).any(|line| {
+        let t = line.trim_start().trim_start_matches('❯').trim_start();
+        let mut c = t.chars();
+        matches!(
+            (c.next(), c.next(), c.next()),
+            (Some(d), Some('.'), Some(' ')) if d.is_ascii_digit()
+        )
+    })
 }
 
 /// Схлопывает все последовательности whitespace (пробелы, табы, переносы
 /// строк) в один пробел. См. раздел «Нормализация whitespace» в
 /// [`detect_claude_prompt`] — нужно для устойчивости детекции к переносу
 /// длинного footer в узких терминалах.
-fn normalize_ws(s: &str) -> String {
+pub(crate) fn normalize_ws(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// Permission prompt: `❯ 1. Yes` + `2. Yes,` + `3. No`.
+/// Permission prompt во всех известных формах:
+/// - трёхопционный: `❯ 1. Yes` + `2. Yes,` + `3. No`;
+/// - двухопционный: `❯ 1. Yes` + `2. No` (короткий `Do you want to proceed?`);
+/// - Claude in Chrome: `❯ 1. Allow` + `2. Deny` / `2. Allow all`.
+///
+/// Двухопционные формы добавлены после живого кейса: prompt `1. Yes / 2. No`,
+/// оставленный человеку блоклистом авто-апрува, не зажигал свечение — тот же
+/// набор форм распознаёт `auto_approve::classify_prompt`.
 fn detect_permission_prompt(pane: &str) -> bool {
-    pane.contains("❯ 1. Yes") && pane.contains("2. Yes,") && pane.contains("3. No")
+    if pane.contains("❯ 1. Yes") {
+        return (pane.contains("2. Yes,") && pane.contains("3. No")) || pane.contains("2. No");
+    }
+    if pane.contains("❯ 1. Allow") {
+        return pane.contains("2. Deny") || pane.contains("2. Allow all");
+    }
+    false
 }
 
 /// Plan prompt (`ExitPlanMode`): footer с `Tab/Arrow keys to navigate`.
@@ -409,6 +470,7 @@ Do you want to make this edit to file.rs?
   ❯ 1. Yes
     2. Yes, and don't ask again this session
     3. No, tell Claude what to do differently
+ Esc to cancel · Tab to amend · ctrl+e to explain
 ";
 
     /// Фикстура — file-create prompt Claude Code (другой вариант текста
@@ -418,6 +480,7 @@ Do you want to create mandelbrot.py?
  ❯ 1. Yes
    2. Yes, allow all edits during this session (shift+tab)
    3. No
+ Esc to cancel · Tab to amend · ctrl+e to explain
 ";
 
     /// Фикстура — обычный shell output без признаков prompt'а.
@@ -477,6 +540,7 @@ Do you want to make this edit?
     2. Yes, and don't ask
        again this session
     3. No
+ Esc to cancel · Tab to amend · ctrl+e to explain
 ";
 
     #[test]
@@ -493,6 +557,90 @@ Do you want to make this edit?
     fn ignores_plain_shell_output() {
         assert!(!detect_claude_prompt(SHELL_FIXTURE));
         assert!(!detect_claude_prompt(""));
+    }
+
+    /// Двухопционный permission (`Do you want to proceed?` без «don't ask
+    /// again») — живой кейс: такой prompt, оставленный человеку блоклистом
+    /// авто-апрува, не зажигал свечение.
+    #[test]
+    fn detects_two_option_permission_prompt() {
+        let pane = "\
+Bash command
+  rm -rf src/old
+Do you want to proceed?
+❯ 1. Yes
+  2. No
+ Esc to cancel · Tab to amend · ctrl+e to explain
+";
+        assert!(detect_claude_prompt(pane));
+    }
+
+    /// Вырожденные панели: пустая, из одних пробелов, однострочная. Гейт
+    /// индексирует хвост срезами — паниковать он не должен ни на одной.
+    #[test]
+    fn bottom_gate_handles_degenerate_panes() {
+        for pane in ["", "\n", "   \n\t\n", "just one line"] {
+            assert!(!prompt_at_bottom(pane), "pane = {pane:?}");
+            assert!(!detect_claude_prompt(pane), "pane = {pane:?}");
+        }
+    }
+
+    /// `capture-pane` дорисовывает панель до полной высоты окна, поэтому под
+    /// footer'ом почти всегда идут пустые строки. Гейт обязан их пропускать —
+    /// иначе настоящий prompt не признавался бы «нижним».
+    #[test]
+    fn bottom_gate_ignores_trailing_blank_lines() {
+        let pane = format!("{PROMPT_FIXTURE}\n   \n\t\n\n");
+        assert!(prompt_at_bottom(&pane));
+        assert!(detect_claude_prompt(&pane));
+    }
+
+    /// Строки НИЖЕ prompt'а (виджет фоновых агентов, который Claude Code
+    /// рисует под областью ввода) уводят footer за окно из четырёх хвостовых
+    /// строк — гейт перестаёт признавать prompt нижним. Тест фиксирует
+    /// известную границу: если такая раскладка встретится живьём, авто-апрув
+    /// и свечение по ней не сработают, и лечится это расширением гейта, а не
+    /// правкой классификатора.
+    #[test]
+    fn bottom_gate_stops_at_widgets_below_prompt() {
+        let pane = format!("{PROMPT_FIXTURE}⏺ main\n◯ run-phase Фаза 1\n◯ e2e-writer тесты\n◯ security-audit\n");
+        assert!(!prompt_at_bottom(&pane));
+    }
+
+    /// Процитированный prompt (diff/cat с маркерами меню) НАД полем ввода и
+    /// статус-баром — не настоящий prompt: footer'а внизу нет, детект молчит.
+    /// Живой кейс: воркер авто-апрува принял diff собственных тест-фикстур за
+    /// AllowBroad и напечатал «2» в поле ввода чужой сессии.
+    #[test]
+    fn ignores_quoted_prompt_above_input_box() {
+        let pane = "\
++❯ 1. Allow
++  2. Allow all actions on host for this session
++Do you want to proceed?
++❯ 1. Yes
++  2. No
+───────────────
+❯ 
+───────────────
+  ~/project │ master │ 30%: 257k
+  ⏵⏵ accept edits on
+";
+        assert!(!detect_claude_prompt(pane));
+    }
+
+    /// Prompt'ы Claude in Chrome: `Allow/Deny` и `Allow/Allow all`.
+    #[test]
+    fn detects_chrome_allow_prompts() {
+        assert!(detect_claude_prompt(
+            "Claude in Chrome wants to read your tabs\n❯ 1. Allow\n  2. Deny (esc)\n"
+        ));
+        assert!(detect_claude_prompt(
+            "Claude in Chrome wants to navigate\n❯ 1. Allow\n  2. Allow all actions on host for this session\n"
+        ));
+        // Трёхопционная форма Allow / Allow all / Deny — тоже без footer'а.
+        assert!(detect_claude_prompt(
+            "Claude in Chrome wants to navigate and take a screenshot on host\n❯ 1. Allow\n  2. Allow all actions on host for this session\n  3. Deny (esc)\n"
+        ));
     }
 
     #[test]
@@ -1253,8 +1401,33 @@ pub async fn watcher_loop(attention: Arc<AttentionState>) {
         let mut collected: Vec<SessionAttention> = Vec::with_capacity(sessions.len());
         let mut gens: Vec<GenSnapshot> = Vec::with_capacity(sessions.len());
         for s in sessions.iter() {
-            let pane = crate::tmux::capture_pane(&s.name).await.unwrap_or_default();
-            let detected = detect_claude_prompt(&pane);
+            // Prompt может висеть в ФОНОВОМ окне сессии (пользователь смотрит
+            // соседнее), поэтому обходим все Claude-панели, как auto_approve.
+            // `capture_pane` остаётся fallback'ом, когда Claude-панели не
+            // опознаны по имени процесса.
+            let claude_panes = crate::tmux::list_claude_pane_targets(&s.name)
+                .await
+                .unwrap_or_default();
+            let mut detected = false;
+            let mut pane = String::new();
+            if claude_panes.is_empty() {
+                pane = crate::tmux::capture_pane(&s.name).await.unwrap_or_default();
+                detected = detect_claude_prompt(&pane);
+            } else {
+                for pt in claude_panes.iter() {
+                    let p = crate::tmux::capture_pane_target(&s.name, &pt.target)
+                        .await
+                        .unwrap_or_default();
+                    if detect_claude_prompt(&p) {
+                        detected = true;
+                        pane = p;
+                        break;
+                    }
+                    if pane.is_empty() {
+                        pane = p;
+                    }
+                }
+            }
             let pane_hash = hash_pane(&pane);
 
             // Generation-detector: захват последних 50 строк pane (включая

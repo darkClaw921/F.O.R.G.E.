@@ -49,6 +49,123 @@ CARGO_TOML="tmux-web/Cargo.toml"
 CARGO_LOCK="Cargo.lock"
 
 # ----------------------------------------------------------------------
+# AUR: проверка доступности и публикация
+# ----------------------------------------------------------------------
+#
+# Почему проверка идёт через `git ls-remote`, а не через `ssh ... help`:
+# приветственная команда отвечает и когда сервис лежит на техобслуживании
+# («The AUR is down due to maintenance»), и её код возврата не описывает
+# то, что нам нужно на самом деле — сможем ли мы клонировать и запушить
+# репозиторий пакета. Проверяем ровно ту операцию, которую собираемся
+# делать.
+#
+# Печатает диагноз, различая три разные причины отказа: они требуют
+# разных действий от человека, и общее «нет доступа» отправляет чинить
+# то, что не сломано.
+aur_reachable() {
+    local out rc
+    out=$(GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=15" \
+        git ls-remote "ssh://aur@aur.archlinux.org/devforge.git" 2>&1) && rc=0 || rc=$?
+    if [ "${rc}" = "0" ]; then
+        return 0
+    fi
+    if printf '%s' "${out}" | grep -qi "maintenance\|is down"; then
+        echo "    причина: сам aur.archlinux.org недоступен (техобслуживание)." >&2
+        echo "            Ключ и ~/.ssh/config здесь ни при чём — чинить нечего," >&2
+        echo "            дождитесь подъёма сервиса и догоните: AUR_ONLY=1 ./release.sh" >&2
+    elif printf '%s' "${out}" | grep -qi "permission denied\|publickey"; then
+        echo "    причина: ключ не принят сервером." >&2
+        echo "            Проверьте ~/.ssh/config (Host aur.archlinux.org →" >&2
+        echo "            IdentityFile ~/.ssh/aur_devforge) и что публичная часть" >&2
+        echo "            добавлена в профиль на aur.archlinux.org." >&2
+    else
+        echo "    причина: не удалось связаться с AUR." >&2
+        printf '            %s\n' "${out}" | head -3 >&2
+    fi
+    return 1
+}
+
+# publish_aur <версия> <sha256> — доводит PKGBUILD/.SRCINFO в AUR до версии.
+# Ничего не коммитит в основном репозитории, кроме синхронизации .SRCINFO.
+publish_aur() {
+    local target="$1" sha="$2"
+    local aur_local_pkgbuild="${REPO_ROOT}/packaging/aur/devforge/PKGBUILD"
+
+    if [ ! -f "${aur_local_pkgbuild}" ]; then
+        echo "WARN: ${aur_local_pkgbuild} не найден — пропускаю AUR-публикацию." >&2
+        return 1
+    fi
+    if ! command -v docker >/dev/null 2>&1; then
+        echo "WARN: docker не найден — не могу сгенерировать .SRCINFO; пропускаю AUR." >&2
+        echo "      Установите docker или выставьте SKIP_AUR=1." >&2
+        return 1
+    fi
+    if ! aur_reachable; then
+        echo "WARN: AUR пропущен." >&2
+        return 1
+    fi
+
+    local aur_dir
+    aur_dir="$(mktemp -d)"
+
+    git clone ssh://aur@aur.archlinux.org/devforge.git "${aur_dir}" || {
+        rm -rf "${aur_dir}"; return 1
+    }
+
+    cp "${aur_local_pkgbuild}" "${aur_dir}/PKGBUILD"
+    sed -i.bak \
+        -e "s|^pkgver=.*|pkgver=${target}|" \
+        -e "s|^pkgrel=.*|pkgrel=1|" \
+        -e "s|^sha256sums=.*|sha256sums=('${sha}')|" \
+        "${aur_dir}/PKGBUILD"
+    rm -f "${aur_dir}/PKGBUILD.bak"
+
+    # .SRCINFO генерируется makepkg'ом, которого на macOS нет, — поэтому
+    # archlinux-контейнер. --security-opt seccomp=unconfined нужен Docker
+    # Desktop на macOS (иначе pacman падает на seccomp).
+    echo "    Generating .SRCINFO via docker archlinux:latest..."
+    docker run --rm --platform linux/amd64 --security-opt seccomp=unconfined \
+        -v "${aur_dir}:/pkg" -w /pkg archlinux:latest bash -c '
+            sed -i "s/^DownloadUser/#DownloadUser/" /etc/pacman.conf || true
+            pacman -Syu --noconfirm --needed --quiet pacman-contrib sudo >/dev/null 2>&1
+            useradd -m srcuser 2>/dev/null || true
+            chown -R srcuser:srcuser /pkg
+            sudo -u srcuser bash -c "cd /pkg && makepkg --printsrcinfo > .SRCINFO"
+            chown -R 0:0 /pkg
+        ' || { rm -rf "${aur_dir}"; return 1; }
+
+    # Синхронизируем .SRCINFO в основной репозиторий — чтобы содержимое AUR
+    # и packaging/aur/ не разъезжались между релизами.
+    cp "${aur_dir}/.SRCINFO" "${REPO_ROOT}/packaging/aur/devforge/.SRCINFO"
+
+    if [ ! -f "${aur_dir}/.gitignore" ]; then
+        cat > "${aur_dir}/.gitignore" <<'AUR_GITIGNORE'
+*.pkg.tar.zst
+*.tar.gz
+src/
+pkg/
+AUR_GITIGNORE
+    fi
+
+    (
+        cd "${aur_dir}"
+        git add PKGBUILD .SRCINFO .gitignore
+        if ! git diff --cached --quiet; then
+            git -c user.email="darkclaw921@users.noreply.github.com" \
+                -c user.name="darkClaw921" \
+                commit -m "Release v${target}"
+            git push origin master
+            echo "    ✓ AUR обновлён: https://aur.archlinux.org/packages/devforge"
+        else
+            echo "    (AUR PKGBUILD already up-to-date)"
+        fi
+    ) || { rm -rf "${aur_dir}"; return 1; }
+
+    rm -rf "${aur_dir}"
+    return 0
+}
+
+# ----------------------------------------------------------------------
 # 1) Определение TARGET-версии
 # ----------------------------------------------------------------------
 
@@ -64,6 +181,34 @@ fi
 CUR_MAJOR="${BASH_REMATCH[1]}"
 CUR_MINOR="${BASH_REMATCH[2]}"
 CUR_PATCH="${BASH_REMATCH[3]}"
+
+# ----------------------------------------------------------------------
+# 1a) AUR_ONLY: догнать AUR для УЖЕ выпущенной версии
+# ----------------------------------------------------------------------
+# Нужен, когда релиз прошёл, а шаг AUR не отработал — например,
+# aur.archlinux.org лежал на техобслуживании. Без этого режима догнать
+# AUR можно было бы только выпустив новый релиз, что абсурдно: тег,
+# GitHub Release и формула уже на месте и трогать их незачем.
+#
+#   AUR_ONLY=1 ./release.sh          # версия берётся из Cargo.toml
+#   AUR_ONLY=1 ./release.sh 0.1.55   # явно
+if [ "${AUR_ONLY:-0}" = "1" ]; then
+    TARGET="${1:-${current}}"
+    TAG="v${TARGET}"
+    echo "==> AUR_ONLY: догоняю AUR до ${TAG} (релиз заново НЕ выпускается)"
+    if ! git ls-remote --tags origin "${TAG}" 2>/dev/null | grep -q "${TAG}"; then
+        echo "ERROR: тега ${TAG} нет на origin — сначала выпустите релиз." >&2
+        exit 1
+    fi
+    SHA256=$(curl -fsSL "https://github.com/${REPO}/archive/refs/tags/${TAG}.tar.gz" \
+        | shasum -a 256 | awk '{print $1}')
+    echo "    sha256: ${SHA256}"
+    if publish_aur "${TARGET}" "${SHA256}"; then
+        echo "==> Done. AUR на ${TAG}."
+        exit 0
+    fi
+    exit 1
+fi
 
 if [ $# -ge 1 ] && [ -n "$1" ]; then
     TARGET="$1"
@@ -294,76 +439,15 @@ cd "${REPO_ROOT}"
 #
 # Отключить шаг: SKIP_AUR=1 ./release.sh
 
+AUR_OK=1
 if [ "${SKIP_AUR:-0}" = "1" ]; then
     echo "==> AUR push skipped (SKIP_AUR=1)."
 else
     echo "==> Updating AUR package devforge → ${TAG}..."
-
-    AUR_LOCAL_PKGBUILD="${REPO_ROOT}/packaging/aur/devforge/PKGBUILD"
-    if [ ! -f "${AUR_LOCAL_PKGBUILD}" ]; then
-        echo "WARN: ${AUR_LOCAL_PKGBUILD} не найден — пропускаю AUR-публикацию." >&2
-    elif ! command -v docker >/dev/null 2>&1; then
-        echo "WARN: docker не найден — не могу сгенерировать .SRCINFO; пропускаю AUR." >&2
-        echo "      Установите docker или выставьте SKIP_AUR=1." >&2
-    elif ! ssh -o BatchMode=yes -o ConnectTimeout=10 aur@aur.archlinux.org help >/dev/null 2>&1; then
-        echo "WARN: нет SSH-доступа к aur@aur.archlinux.org — пропускаю AUR." >&2
-        echo "      Проверьте ~/.ssh/config (Host aur.archlinux.org → IdentityFile ~/.ssh/aur_devforge)." >&2
-    else
-        AUR_DIR="$(mktemp -d)"
-        # Расширяем основной EXIT-trap, чтобы убрать и AUR-каталог
-        trap 'rm -rf "${TAP_DIR}" "${FORMULA_OUT}" "${AUR_DIR}"' EXIT
-
-        git clone ssh://aur@aur.archlinux.org/devforge.git "${AUR_DIR}"
-
-        # Берём PKGBUILD из основного репо и подставляем pkgver / sha256sums / pkgrel.
-        cp "${AUR_LOCAL_PKGBUILD}" "${AUR_DIR}/PKGBUILD"
-        sed -i.bak \
-            -e "s|^pkgver=.*|pkgver=${TARGET}|" \
-            -e "s|^pkgrel=.*|pkgrel=1|" \
-            -e "s|^sha256sums=.*|sha256sums=('${SHA256}')|" \
-            "${AUR_DIR}/PKGBUILD"
-        rm -f "${AUR_DIR}/PKGBUILD.bak"
-
-        # Генерируем .SRCINFO в archlinux-контейнере (makepkg --printsrcinfo).
-        # --security-opt seccomp=unconfined нужен для Docker Desktop на macOS
-        # (иначе pacman падает с "error restricting syscalls via seccomp").
-        echo "    Generating .SRCINFO via docker archlinux:latest..."
-        docker run --rm --platform linux/amd64 --security-opt seccomp=unconfined \
-            -v "${AUR_DIR}:/pkg" -w /pkg archlinux:latest bash -c '
-                sed -i "s/^DownloadUser/#DownloadUser/" /etc/pacman.conf || true
-                pacman -Syu --noconfirm --needed --quiet pacman-contrib sudo >/dev/null 2>&1
-                useradd -m srcuser 2>/dev/null || true
-                chown -R srcuser:srcuser /pkg
-                sudo -u srcuser bash -c "cd /pkg && makepkg --printsrcinfo > .SRCINFO"
-                chown -R 0:0 /pkg
-            '
-
-        # Синхронизируем .SRCINFO в основной репо (для коммит-в-коммит парности).
-        cp "${AUR_DIR}/.SRCINFO" "${REPO_ROOT}/packaging/aur/devforge/.SRCINFO"
-
-        # .gitignore артефактов сборки в AUR-репо (idempotent).
-        if [ ! -f "${AUR_DIR}/.gitignore" ]; then
-            cat > "${AUR_DIR}/.gitignore" <<'AUR_GITIGNORE'
-*.pkg.tar.zst
-*.tar.gz
-src/
-pkg/
-AUR_GITIGNORE
-        fi
-
-        cd "${AUR_DIR}"
-        git add PKGBUILD .SRCINFO .gitignore
-        if ! git diff --cached --quiet; then
-            git -c user.email="darkclaw921@users.noreply.github.com" \
-                -c user.name="darkClaw921" \
-                commit -m "Release v${TARGET}"
-            git push origin master
-            echo "    ✓ AUR обновлён: https://aur.archlinux.org/packages/devforge"
-        else
-            echo "    (AUR PKGBUILD already up-to-date)"
-        fi
-        cd "${REPO_ROOT}"
-    fi
+    # Сбой AUR НЕ роняет релиз: тег, GitHub Release и формула к этому моменту
+    # уже опубликованы, и ненулевой код возврата всего скрипта означал бы
+    # «релиз не удался», хотя он удался. Отставший AUR догоняется отдельно.
+    publish_aur "${TARGET}" "${SHA256}" || AUR_OK=0
 fi
 
 echo ""
@@ -371,4 +455,10 @@ echo "==> Done. Released ${TAG}."
 echo "    GitHub:  https://github.com/${REPO}/releases/tag/${TAG}"
 echo "    Install: brew tap darkClaw921/tap && brew install devforge"
 echo "    Upgrade: brew upgrade devforge"
-echo "    AUR:     yay -S devforge   (https://aur.archlinux.org/packages/devforge)"
+if [ "${AUR_OK}" = "1" ]; then
+    echo "    AUR:     yay -S devforge   (https://aur.archlinux.org/packages/devforge)"
+else
+    echo ""
+    echo "    ВНИМАНИЕ: AUR остался на прежней версии — релиз это НЕ отменяет."
+    echo "    Догнать, когда причина выше устранена:  AUR_ONLY=1 ./release.sh ${TARGET}"
+fi

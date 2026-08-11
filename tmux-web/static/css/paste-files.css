@@ -1,0 +1,64 @@
+/* Передача файлов в терминал (Ctrl/Cmd+V и drag&drop) — статусный тост и
+ * подсветка зоны броска.
+ *
+ * Сообщение нельзя печатать в сам терминал (оно уйдёт в вывод tmux и
+ * останется в истории сессии), поэтому статус загрузки показывается
+ * DOM-оверлеем поверх #terminal. Позиционируется absolute относительно
+ * #terminal (у него position: relative в layout.css).
+ *
+ * pointer-events: none — тост не должен перехватывать клики по терминалу.
+ */
+
+.paste-toast {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    max-width: min(70%, 620px);
+    z-index: 20;
+    padding: 6px 10px;
+    border: 1px solid var(--border, #2b3242);
+    border-radius: 6px;
+    background: var(--bg-elev, #161b22);
+    color: var(--fg, #d8dee9);
+    font-size: 0.78rem;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+}
+
+.paste-toast[hidden] {
+    display: none;
+}
+
+.paste-toast-error {
+    border-color: var(--danger, #bf616a);
+    color: var(--danger, #bf616a);
+}
+
+/* Подсветка терминала во время перетаскивания файла.
+ *
+ * pointer-events: none — КРИТИЧНО: иначе оверлей сам станет целью переноса,
+ * перехватит dragleave/drop у #terminal и подсветка залипнет, а бросок
+ * потеряется.
+ */
+.terminal-dropzone {
+    position: absolute;
+    inset: 8px;
+    z-index: 19;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    border: 2px dashed var(--accent, #58a6ff);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--bg-elev, #161b22) 72%, transparent);
+    color: var(--fg, #d8dee9);
+    font-size: 0.85rem;
+    text-align: center;
+    pointer-events: none;
+}
+
+.terminal-dropzone[hidden] {
+    display: none;
+}

@@ -1,0 +1,29 @@
+[package]
+name = "forge-claude-runner"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Общий стриминговый раннер Claude CLI (`claude -p --output-format stream-json`) для плагинов F.O.R.G.E."
+
+# ЛИСТОВОЙ крейт: ни одной зависимости на forge-echo / forge-vk / devforge.
+# Ровно ради этого раннер и вынесен из Echo — forge-vk не может зависеть от
+# forge-echo (плагины изолированы), а дублировать процессный код нельзя.
+# Любая зависимость на плагин вернёт тот самый цикл, из-за которого вынос
+# затевался.
+[dependencies]
+# process + io-util (BufReader/lines) + time (timeout) + sync (Semaphore,
+# Mutex, mpsc) + rt (tokio::spawn). Берём workspace-версию с features = full,
+# чтобы в дереве был ровно один tokio с тем же набором фич, что у echo/vk.
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+
+# UUID v4 — генерация run_id в `RunRequest::new`. Версия совпадает с
+# объявленной в plugins/echo/Cargo.toml, поэтому узел в дереве один.
+uuid = { version = "1.23", features = ["v4"] }
+
+[dev-dependencies]
+# Временные каталоги для mock-CLI (shell-скрипт с NDJSON) в тестах раннера.
+tempfile = "3"

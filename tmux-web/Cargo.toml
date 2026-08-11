@@ -1,6 +1,6 @@
 [package]
 name = "devforge"
-version = "0.1.55"
+version = "0.1.65"
 edition = "2021"
 description = "Web-viewer для tmux сессий через WebSocket + xterm.js"
 license = "MIT"
@@ -88,6 +88,14 @@ forge-telegram = { path = "../plugins/telegram" }
 # от хоста нужен только `Router`, а auth покрывается порядком регистрации
 # роутов (до `.layer(auth_middleware)`).
 forge-vk = { path = "../plugins/vk" }
+# Bitrix24 плагин (opt-in, флаг `--bitrix`) — вкладка мессенджера портала:
+# чаты и чаты задач через ВХОДЯЩИЙ ВЕБХУК пользователя
+# (`https://<portal>/rest/<uid>/<code>/`). Подключается как path-dep в Cargo
+# workspace (member: plugins/bitrix). Отдельного `bitrix-host-api` НЕТ — по
+# той же причине, что у Telegram и VK: плагину от хоста нужен только
+# `Router`, а auth покрывается порядком регистрации роутов (до
+# `.layer(auth_middleware)`).
+forge-bitrix = { path = "../plugins/bitrix" }
 # async-trait нужен в tmux-web потому что EchoHostAdapter имплементит
 # echo_host_api::HostApi (trait объявлен через #[async_trait]).
 async-trait = "0.1"

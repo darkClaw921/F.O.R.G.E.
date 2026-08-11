@@ -1,0 +1,3 @@
+# Transcript
+
+plugins/chat-analysis/src/transcript.rs. Готовый транскрипт беседы — общий стык плагина и ядра анализа: text (по строке на сообщение, порядок по ВОЗРАСТАНИЮ id), messages_used, truncated, oldest_id, newest_id. Собирает его ПЛАГИН (у каждого мессенджера свой API истории и свой DTO сообщения — у VK это analysis/context.rs), потребляет ядро: prompt::build кладёт текст в <transcript>, а hub сохраняет newest_id как ChatAnalysis::last_message_id, то есть точку отсчёта следующего REFRESH. Живёт в крейте, потому что иначе prompt::build пришлось бы делать generic ради трёх одинаковых наборов из пяти полей. В plugins/vk переэкспортирован как analysis::context::Transcript — путь не изменился.

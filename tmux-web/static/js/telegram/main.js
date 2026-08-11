@@ -16,10 +16,14 @@
 
 import {
     $telegramToggle, $tgUnreadBadge, $telegram, $tgSelfUser, $tgLogout,
-    $tgSessionHead, $tgMode, $tgLat, $tgTyping, $tgTitlebar,
+    $tgSessionHead, $tgMode, $tgLat, $tgTyping, $tgTitlebar, $tgAnalysisToggle,
 } from '../core/dom.js';
 import { notify } from '../echo/notifications.js';
 
+import {
+    initAnalysis, openAnalysis, teardownAnalysis, _debugAnalysisState,
+    onAnalysisStarted, onAnalysisDelta, onAnalysisDone, onAnalysisError,
+} from './analysis.js';
 import { getStatus, logout as apiLogout, markRead } from './api.js';
 import * as chat from './chat.js';
 import * as dialogs from './dialogs.js';
@@ -50,6 +54,8 @@ const local = {
     gated: false,
     /** Обработчик кнопки выхода навешен. */
     logoutBound: false,
+    /** Обработчик кнопки ✦ (попап анализа) навешен. */
+    analysisToggleBound: false,
     /** Собранная карта WS-обработчиков (строится один раз). */
     handlers: null,
     /** dialog_id → когда показывали прошлый тост (мс). */
@@ -591,6 +597,15 @@ export function buildHandlers() {
         // (dialog_id, message_id), события не про открытый диалог
         // игнорируются самим обработчиком.
         download_progress: (msg) => onDownloadProgress(msg),
+
+        // --- анализ чата через Claude ---
+        // Кадры вещаются БЕЗ фильтрации по чату — попап (js/telegram/analysis.js)
+        // сам решает, его ли это run, по паре (dialog_id, run_id). Обработчики
+        // поэтому только делегируют и DOM не трогают.
+        analysis_started: (evt) => onAnalysisStarted(evt),
+        analysis_delta: (evt) => onAnalysisDelta(evt),
+        analysis_done: (evt) => onAnalysisDone(evt),
+        analysis_error: (evt) => onAnalysisError(evt),
     };
     return local.handlers;
 }
@@ -1116,6 +1131,18 @@ export function initTelegram() {
         // Присутствие живёт в dialogs.js — шапка сессии читает его оттуда.
         presenceOf: (id) => dialogs.presenceOf(id),
     });
+    // Попап анализа — ДО медиа и мобильного оверлея: его слушатель Esc обязан
+    // зарегистрироваться РАНЬШЕ, иначе одно нажатие закрывало бы то, что лежит
+    // под попапом, а сам попап оставался бы на экране.
+    initAnalysis({
+        onNotice: (text) => notify({ level: 'info', title: 'Telegram', body: text, ttl: 2600 }),
+    });
+    // Флаг тот же приём, что и у кнопки выхода: teardownTelegram сбрасывает
+    // `initialized`, и без него повторный вход навесил бы второй слушатель.
+    if ($tgAnalysisToggle && !local.analysisToggleBound) {
+        local.analysisToggleBound = true;
+        $tgAnalysisToggle.addEventListener('click', () => openAnalysis());
+    }
     // Отправка файлов: picker ⇪, drag&drop по панели, вставка из буфера.
     initUpload();
     // Off-canvas контакты на узких экранах: ☰, подложка, Esc.
@@ -1184,6 +1211,9 @@ export function teardownTelegram() {
     // Клавиатура: снимаем свой document-слушатель и оверлей шпаргалки, иначе
     // они переживут страницу вместе со ссылками на её узлы.
     teardownKeynav();
+    // Попап анализа держит свой слушатель Esc на document и кадр анимации для
+    // склейки дельт — оба обязаны сняться здесь.
+    teardownAnalysis();
     clearTgAccountData();
     local.lastToastAt.clear();
     local.initialized = false;
@@ -1209,5 +1239,6 @@ export function _debugState() {
         mode: $tgMode ? $tgMode.textContent : null,
         wsOpen: isTelegramWsOpen(),
         dialogs: (tgState.dialogs || []).length,
+        analysis: _debugAnalysisState(),
     };
 }

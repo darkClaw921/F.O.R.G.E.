@@ -15,9 +15,11 @@
 //!    цитируют URL.
 //! 2. **Соблюдение лимита.** Один [`Throttle`] на клиент, то есть на токен
 //!    (см. [`throttle`]).
-//! 3. **Ретраи.** Ровно по таблице [`error::retry_for`], не более одного
-//!    повтора, и повтор НЕ пересобирает параметры — благодаря этому
-//!    `messages.send` остаётся идемпотентным по `random_id`.
+//! 3. **Ретраи.** По таблице [`error::retry_for`] — как правило не более
+//!    одного повтора, но код 6 повторяется до [`error::MAX_CODE6_RETRIES`]
+//!    раз (forge-zzy7: одного повтора не хватало под стартовым залпом
+//!    собственных вызовов). Повтор НЕ пересобирает параметры — благодаря
+//!    этому `messages.send` остаётся идемпотентным по `random_id`.
 //! 4. **Здоровье соединения.** Успех ⇒ [`ConnHealth::Ok`], транспортный отказ
 //!    ⇒ [`ConnHealth::Down`]. У VK нет постоянного соединения, и без этой
 //!    отметки ответ `503 not_connected` был бы ни на чём не основан.
@@ -253,6 +255,12 @@ impl VkClient {
     /// пересборка параметров (то есть новый `random_id`) превратила бы
     /// безобидный повтор после обрыва в дубль сообщения у собеседника.
     ///
+    /// **Сколько раз повторять — зависит от класса.**
+    /// [`Retry::AfterNetworkBackoff`] — не более одного раза, как и раньше.
+    /// [`Retry::AfterOneSecond`] (код 6) — до [`error::MAX_CODE6_RETRIES`] раз
+    /// (forge-zzy7): см. документацию [`Retry::AfterOneSecond`] о том, почему
+    /// одного повтора недостаточно под стартовым залпом собственных вызовов.
+    ///
     /// # Errors
     ///
     /// [`VkError::Transport`] / [`VkError::Http`] — до VK не доехали;
@@ -286,7 +294,14 @@ impl VkClient {
             }
 
             let retry = retry_for(&err);
-            if attempt == 0 && retry != Retry::Never {
+            // Код 6 получает больше попыток, чем всё остальное — см.
+            // документацию `Retry::AfterOneSecond` (forge-zzy7).
+            let may_retry = match retry {
+                Retry::Never => false,
+                Retry::AfterNetworkBackoff => attempt == 0,
+                Retry::AfterOneSecond => attempt < error::MAX_CODE6_RETRIES,
+            };
+            if may_retry {
                 let delay = self.retry_delay(retry);
                 // В лог уходят метод, длительность и КОД ошибки — но никогда
                 // параметры: в них живёт токен.
@@ -294,22 +309,25 @@ impl VkClient {
                     target: "forge_vk",
                     method,
                     elapsed_ms,
+                    attempt,
                     error = %err,
                     retry_in_ms = delay.as_millis() as u64,
-                    "forge-vk: vk call failed, retrying once"
+                    "forge-vk: vk call failed, retrying"
                 );
                 tokio::time::sleep(delay).await;
                 attempt += 1;
                 continue;
             }
 
-            if attempt > 0 && err.code() == Some(error::CODE_TOO_MANY_PER_SECOND) {
-                // Второй код 6 подряд означает, что наш троттлер настроен
-                // слишком щедро: пользователь увидит 429, и это уже честно.
+            if retry == Retry::AfterOneSecond {
+                // Код 6 пережил все положенные повторы — либо стартовый залп
+                // оказался ещё гуще обычного, либо `rate_limit_rps` и правда
+                // завышен. Дальше это уже честный 429 пользователю.
                 tracing::warn!(
                     target: "forge_vk",
                     method,
-                    "forge-vk: VK reports `too many requests` even after a retry — lower rate_limit_rps"
+                    attempts = attempt + 1,
+                    "forge-vk: VK reports `too many requests` even after retrying — lower rate_limit_rps"
                 );
             }
             tracing::warn!(

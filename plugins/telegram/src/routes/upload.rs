@@ -645,6 +645,7 @@ mod tests {
         let cfg = TelegramConfig {
             session_path: dir.join("telegram.session"),
             cache_dir: dir.join("cache"),
+            prompts_path: dir.join("cache").join("chat-prompts.json"),
             ..TelegramConfig::default()
         };
         TelegramState::new(cfg)
@@ -768,6 +769,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let cfg = TelegramConfig {
             cache_dir: dir.path().join("cache"),
+            prompts_path: dir.path().join("cache").join("chat-prompts.json"),
             ..TelegramConfig::default()
         };
         let p = staging_path(&cfg, "0191b0de-1111-4222-8333-444455556666");
@@ -1263,6 +1265,7 @@ mod tests {
         let cfg = TelegramConfig {
             session_path: dir.path().join("telegram.session"),
             cache_dir: dir.path().join("cache"),
+            prompts_path: dir.path().join("cache").join("chat-prompts.json"),
             max_upload_bytes: 5,
             ..TelegramConfig::default()
         };

@@ -705,10 +705,30 @@ async fn code_six_is_retried_once_and_code_nine_is_never() {
     assert_eq!(api.status, StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(api.body.retry_after_secs, Some(60));
 
-    // Две шестёрки подряд — честный 429 пользователю.
+    // Две шестёрки подряд (forge-zzy7) — это ещё в пределах бюджета
+    // MAX_CODE6_RETRIES=2: стартовый залп (проверка токена + курсор
+    // LongPoll + список бесед) регулярно даёт именно такую картину, и один
+    // повтор её не разгребает. Пользователь не должен увидеть ошибку.
     stub.state.script(
         "messages.markAsRead",
         vec![
+            Reply::Error(vk_error(6, "Too many")),
+            Reply::Error(vk_error(6, "Too many")),
+            Reply::Response(json!(1)),
+        ],
+    );
+    stub.state.calls.lock().unwrap().clear();
+    client(&stub, 20)
+        .mark_as_read(1234, None, None)
+        .await
+        .expect("две шестёрки подряд обязаны чиниться вторым повтором");
+    assert_eq!(stub.state.calls_of("messages.markAsRead").len(), 3);
+
+    // Три шестёрки подряд — бюджет исчерпан, честный 429 пользователю.
+    stub.state.script(
+        "messages.markAsRead",
+        vec![
+            Reply::Error(vk_error(6, "Too many")),
             Reply::Error(vk_error(6, "Too many")),
             Reply::Error(vk_error(6, "Too many")),
         ],
@@ -719,7 +739,7 @@ async fn code_six_is_retried_once_and_code_nine_is_never() {
         .await
         .unwrap_err();
     assert_eq!(err.code(), Some(6));
-    assert_eq!(stub.state.calls_of("messages.markAsRead").len(), 2);
+    assert_eq!(stub.state.calls_of("messages.markAsRead").len(), 3);
 }
 
 /// Не-JSON от captive portal превращается в `decode`, а не в панику.
@@ -4364,4 +4384,306 @@ async fn pressing_a_button_without_a_token_hits_authorization_first() {
     assert_eq!(status, StatusCode::CONFLICT, "{json}");
     assert_eq!(json["error"]["code"], "not_authorized");
     assert!(stub.state.calls().is_empty());
+}
+
+// ===========================================================================
+// Инкрементальный анализ (АЧ-И1): выгрузка «только новое» на живом HTTP.
+// ===========================================================================
+
+/// Авторизованный плагин на стенде — вместе с состоянием.
+///
+/// Отличается от [`data_app`] ровно тем, что отдаёт `state`: тестам
+/// инкрементального анализа нужно и заглянуть в хранилище разборов, и
+/// убедиться, что модель НЕ запускалась.
+async fn analysis_state(stub: &Stub, dir: &tempfile::TempDir) -> Arc<forge_vk::state::VkState> {
+    use forge_vk::login::{LoginFlow, VkUserDto};
+    use forge_vk::state::VkState;
+
+    let state = VkState::new(VkConfig {
+        access_token: SecretToken::new(TOKEN),
+        base_url: stub.base_url.clone(),
+        rate_limit_rps: 50,
+        cache_dir: dir.path().join("cache"),
+        config_path: dir.path().join("vk.toml"),
+        prompts_path: dir.path().join("prompts.json"),
+        // Существующий бинарь: проверка `claude_unavailable` стоит ДО выгрузки
+        // истории, и без неё тест не дошёл бы до проверяемого места. Запускать
+        // его при этом не придётся ни разу — в этом и смысл `no_new_messages`.
+        claude_cli_path: std::path::PathBuf::from("/bin/echo"),
+        ..VkConfig::default()
+    });
+    state
+        .set_login(LoginFlow::Authorized {
+            user: VkUserDto {
+                id: "999".into(),
+                first_name: Some("Я".into()),
+                ..Default::default()
+            },
+        })
+        .await;
+    state
+}
+
+/// Страница истории из сообщений с заданными id (VK отдаёт от новых к старым).
+fn history_page(peer: i64, ids: &[i32]) -> Value {
+    let items: Vec<Value> = ids
+        .iter()
+        .rev()
+        .map(|id| {
+            json!({
+                "id": id,
+                "peer_id": peer,
+                "date": 1_700_000_000_i64 + i64::from(*id),
+                "from_id": peer,
+                "text": format!("реплика {id}"),
+                "conversation_message_id": id,
+            })
+        })
+        .collect();
+    json!({ "count": items.len(), "items": items })
+}
+
+/// ГЛАВНОЕ СВОЙСТВО ИНКРЕМЕНТА: ни одного сообщения, которое уже было в
+/// разборе, — и цикл останавливается на границе, то есть стоит ОДИН вызов VK.
+#[tokio::test]
+async fn fetch_since_returns_only_the_newer_messages() {
+    use forge_vk::analysis::context;
+
+    let stub = start_stub().await;
+    let dir = tempfile::tempdir().unwrap();
+    let state = analysis_state(&stub, &dir).await;
+    let client = client(&stub, 50);
+    stub.state.script(
+        "messages.getHistory",
+        vec![Reply::Response(history_page(1234, &(1..=30).collect::<Vec<_>>()))],
+    );
+
+    let fresh = context::fetch_since(&state, &client, 1234, 20, 200)
+        .await
+        .unwrap();
+    let ids: Vec<i32> = fresh.messages.iter().map(|m| m.id).collect();
+    assert_eq!(ids, (21..=30).collect::<Vec<_>>(), "старое не имеет права доехать");
+    assert!(!fresh.truncated, "всё новое поместилось");
+    assert_eq!(
+        stub.state.calls_of("messages.getHistory").len(),
+        1,
+        "граница найдена на первой же странице"
+    );
+
+    // И транскрипт из них знает, до какого сообщения разобрано.
+    let t = context::render(&fresh.messages, 60_000);
+    assert_eq!(t.newest_id, Some(30));
+    assert_eq!(t.oldest_id, Some(21));
+    assert_eq!(t.messages_used, 10);
+}
+
+/// Сообщений новее разбора нет — выборка ПУСТА, а транскрипт из неё не имеет
+/// точки отсчёта. Это и есть вход штатного ответа `no_new_messages`.
+#[tokio::test]
+async fn fetch_since_at_the_newest_id_returns_nothing() {
+    use forge_vk::analysis::context;
+
+    let stub = start_stub().await;
+    let dir = tempfile::tempdir().unwrap();
+    let state = analysis_state(&stub, &dir).await;
+    let client = client(&stub, 50);
+    stub.state.script(
+        "messages.getHistory",
+        vec![Reply::Response(history_page(1234, &(1..=30).collect::<Vec<_>>()))],
+    );
+
+    let fresh = context::fetch_since(&state, &client, 1234, 30, 200)
+        .await
+        .unwrap();
+    assert!(fresh.messages.is_empty());
+    assert!(!fresh.truncated);
+
+    let t = context::render(&fresh.messages, 60_000);
+    assert_eq!(t.messages_used, 0);
+    assert_eq!(t.newest_id, None);
+}
+
+/// Новых сообщений больше потолка — берутся САМЫЕ НОВЫЕ, и обрезка честно
+/// объявляется: модель обязана знать, что кусок переписки она не видела.
+#[tokio::test]
+async fn fetch_since_keeps_the_newest_and_admits_the_cut() {
+    use forge_vk::analysis::context;
+
+    let stub = start_stub().await;
+    let dir = tempfile::tempdir().unwrap();
+    let state = analysis_state(&stub, &dir).await;
+    let client = client(&stub, 50);
+    // Обе страницы — целиком новее границы, до неё выгрузка не доберётся.
+    stub.state.script(
+        "messages.getHistory",
+        vec![
+            Reply::Response(history_page(1234, &(4_001..=4_050).collect::<Vec<_>>())),
+            Reply::Response(history_page(1234, &(3_951..=4_000).collect::<Vec<_>>())),
+        ],
+    );
+
+    let fresh = context::fetch_since(&state, &client, 1234, 1, 50)
+        .await
+        .unwrap();
+    assert_eq!(fresh.messages.len(), 50);
+    assert!(fresh.truncated, "взяли не всё — и сказали об этом");
+    assert_eq!(
+        fresh.messages.first().map(|m| m.id),
+        Some(4_001),
+        "оставлены самые новые"
+    );
+    assert_eq!(fresh.messages.last().map(|m| m.id), Some(4_050));
+}
+
+/// ШТАТНЫЙ ОТВЕТ, А НЕ ОШИБКА: обновлять нечего ⇒ `200 no_new_messages` и
+/// НИ ОДНОГО запущенного процесса модели.
+#[tokio::test]
+async fn refresh_without_new_messages_never_starts_the_model() {
+    let stub = start_stub().await;
+    let dir = tempfile::tempdir().unwrap();
+    let state = analysis_state(&stub, &dir).await;
+    state
+        .set_chat_analysis("1234", "ПРОШЛЫЙ РАЗБОР", 30, 12, 1_800_000_000)
+        .await
+        .unwrap();
+    stub.state.script(
+        "messages.getHistory",
+        vec![Reply::Response(history_page(1234, &(1..=30).collect::<Vec<_>>()))],
+    );
+
+    let (status, json) = post_json(
+        forge_vk::routes::build_router(state.clone()),
+        "/api/vk/dialogs/1234/analysis",
+        json!({"kind": "refresh"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{json}");
+    assert_eq!(json["no_new_messages"], true);
+    assert!(json["run_id"].is_null(), "модель не запускалась — нечего слушать");
+    assert_eq!(json["messages_used"], 0);
+    assert_eq!(json["truncated"], false);
+    assert_eq!(json["attached"], false);
+    assert_eq!(state.analysis.active_count().await, 0, "run не заведён");
+
+    // И сохранённый разбор при этом не тронут.
+    let saved = state.chat_analysis("1234").await.unwrap();
+    assert_eq!(saved.text, "ПРОШЛЫЙ РАЗБОР");
+    assert_eq!(saved.last_message_id, 30);
+}
+
+/// СКВОЗНОЙ СЦЕНАРИЙ ДОРАБОТКИ на живом HTTP: сохранённый разбор + только
+/// новые сообщения уезжают в модель, а её ответ ЗАМЕНЯЕТ сохранённый разбор.
+///
+/// Проверяется именно проводка целиком (роут → `fetch_since` → промпт
+/// `Refresh` → пампер → файл): каждое звено покрыто своим unit-тестом, но
+/// разъехаться они могут только здесь.
+#[tokio::test]
+async fn a_refresh_feeds_the_model_only_the_new_messages_and_replaces_the_analysis() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let stub = start_stub().await;
+    let dir = tempfile::tempdir().unwrap();
+
+    // Mock CLI: складывает полученный промпт в файл и отвечает одной дельтой.
+    let dump = dir.path().join("prompt.txt");
+    let cli = dir.path().join("mock-claude");
+    std::fs::write(
+        &cli,
+        format!(
+            "#!/bin/sh\ncat > {dump}\n\
+             printf '%s\\n' '{{\"type\":\"content_block_delta\",\"index\":0,\
+             \"delta\":{{\"type\":\"text_delta\",\"text\":\"НОВЫЙ РАЗБОР\"}}}}'\n\
+             printf '%s\\n' '{{\"type\":\"result\",\"usage\":\
+             {{\"input_tokens\":1,\"output_tokens\":1}}}}'\n",
+            dump = dump.display()
+        ),
+    )
+    .unwrap();
+    let mut perms = std::fs::metadata(&cli).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&cli, perms).unwrap();
+
+    // Состояние собирается вручную (а не [`analysis_state`]): путь к CLI —
+    // часть конфига, и подменить его после конструктора нельзя.
+    let state = {
+        use forge_vk::login::{LoginFlow, VkUserDto};
+        let state = forge_vk::state::VkState::new(VkConfig {
+            access_token: SecretToken::new(TOKEN),
+            base_url: stub.base_url.clone(),
+            rate_limit_rps: 50,
+            cache_dir: dir.path().join("cache"),
+            config_path: dir.path().join("vk.toml"),
+            prompts_path: dir.path().join("prompts.json"),
+            claude_cli_path: cli,
+            ..VkConfig::default()
+        });
+        state
+            .set_login(LoginFlow::Authorized {
+                user: VkUserDto {
+                    id: "999".into(),
+                    ..Default::default()
+                },
+            })
+            .await;
+        state
+    };
+
+    state
+        .set_chat_prompt("1234", "это заказчик", 1_800_000_000)
+        .await
+        .unwrap();
+    state
+        .set_chat_analysis("1234", "ПРОШЛЫЙ РАЗБОР", 30, 12, 1_800_000_000)
+        .await
+        .unwrap();
+    stub.state.script(
+        "messages.getHistory",
+        vec![Reply::Response(history_page(1234, &(1..=35).collect::<Vec<_>>()))],
+    );
+
+    let mut rx = state.subscribe();
+    let (status, json) = post_json(
+        forge_vk::routes::build_router(state.clone()),
+        "/api/vk/dialogs/1234/analysis",
+        json!({"kind": "refresh"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{json}");
+    assert_eq!(json["no_new_messages"], false);
+    assert!(json["run_id"].is_string());
+    assert_eq!(json["messages_used"], 5, "в модель уехали только 31…35");
+
+    // Ждём финального кадра — сохранение происходит непосредственно до него.
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+    loop {
+        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+        assert!(!left.is_zero(), "analysis_done не пришёл");
+        if let Ok(Ok(forge_vk::VkServerMsg::AnalysisDone { ok, .. })) =
+            tokio::time::timeout(left, rx.recv()).await
+        {
+            assert!(ok, "mock CLI обязан завершиться успешно");
+            break;
+        }
+    }
+
+    let prompt = std::fs::read_to_string(&dump).expect("промпт не доехал до CLI");
+    assert!(prompt.contains("<previous_analysis>"), "{prompt}");
+    assert!(prompt.contains("ПРОШЛЫЙ РАЗБОР"), "{prompt}");
+    assert!(prompt.contains("<chat_context>это заказчик</chat_context>"), "{prompt}");
+    assert!(prompt.contains("реплика 35"), "новое обязано доехать:\n{prompt}");
+    assert!(
+        !prompt.contains("реплика 30") && !prompt.contains("реплика 5"),
+        "разобранное второй раз не выгружается:\n{prompt}"
+    );
+
+    let saved = state.chat_analysis("1234").await.unwrap();
+    assert_eq!(saved.text, "НОВЫЙ РАЗБОР", "ответ ЗАМЕНИЛ прошлый разбор");
+    assert_eq!(saved.last_message_id, 35, "точка отсчёта сдвинулась");
+    assert_eq!(saved.messages_used, 5);
+    assert_eq!(
+        state.chat_prompt("1234").await.unwrap().prompt,
+        "это заказчик",
+        "заметка не тронута"
+    );
+    state.analysis.shutdown().await;
 }

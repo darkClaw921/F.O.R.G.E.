@@ -612,7 +612,7 @@ dependencies = [
 
 [[package]]
 name = "devforge"
-version = "0.1.54"
+version = "0.1.65"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -622,6 +622,7 @@ dependencies = [
  "bytes",
  "chrono",
  "echo-host-api",
+ "forge-bitrix",
  "forge-echo",
  "forge-telegram",
  "forge-vk",
@@ -869,6 +870,60 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
+name = "forge-bitrix"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "base64",
+ "chrono",
+ "forge-chat-analysis",
+ "forge-claude-runner",
+ "futures-util",
+ "mime_guess",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "toml",
+ "tower",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "forge-chat-analysis"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "forge-claude-runner",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "forge-claude-runner"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "forge-echo"
 version = "0.1.0"
 dependencies = [
@@ -877,6 +932,7 @@ dependencies = [
  "axum",
  "chrono",
  "echo-host-api",
+ "forge-claude-runner",
  "futures-util",
  "rusqlite",
  "rust-embed",
@@ -900,6 +956,8 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
+ "forge-chat-analysis",
+ "forge-claude-runner",
  "futures-util",
  "grammers-client",
  "grammers-mtsender",
@@ -926,6 +984,8 @@ dependencies = [
  "axum",
  "bytes",
  "chrono",
+ "forge-chat-analysis",
+ "forge-claude-runner",
  "futures-util",
  "mime_guess",
  "reqwest",

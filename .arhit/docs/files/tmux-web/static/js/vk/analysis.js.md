@@ -1,0 +1,15 @@
+# tmux-web/static/js/vk/analysis.js
+
+Попап «Анализ чата» панели VK (#vk-analysis): жизненный цикл окна, вкладки «АНАЛИЗ»/«КОНТЕКСТ ЧАТА», запуск разбора (ANALYZE), инкрементального обновления (REFRESH), вопросов (ASK) и отмены (STOP), приём кадров analysis_started/delta/done/error из /ws/vk.
+
+ДВА ВЫВОДА. #vk-analysis-out принадлежит РАЗБОРУ и никогда не затирается ответом на вопрос; ответ уходит в свою строку #vk-analysis-thread. Куда лить дельты, решает deltaTarget() по наличию открытой строки треда (local.askRow), а НЕ по local.kind: kind может приехать кадром analysis_started уже после первых дельт.
+
+ТРЕД ЖИВЁТ НА СЕРВЕРЕ (доработка АЧ-И2). local.thread наполняется полем thread ответа GET /api/vk/dialogs/:id/analysis (applyThread) при открытии попапа и при смене беседы, свои свежие пары дописываются в тот же список. Ровно этим чинится жалоба «после обновления страницы история вопросов пропадает». Два лимита РАЗНЫЕ намеренно: clampThreadForView (MAX_THREAD_TURNS=12, зеркало сервера) режет то, что ПОКАЗЫВАЕМ и помним, clampThread (MAX_HISTORY_TURNS=6 / MAX_HISTORY_CHARS=8000) — то, что уезжает модели полем history. Помним больше, чем отправляем.
+
+ДВЕ КНОПКИ ОЧИСТКИ БЬЮТ В РАЗНЫЕ АДРЕСА. clearAnalysis() — DELETE .../analysis (разбор, тред цел), clearThread() — DELETE .../analysis/thread (тред, разбор цел). Обе правят локальное состояние ТОЛЬКО по успеху сервера и гаснут на время запроса (analysisBusy / threadBusy). applyThread вынесена из applySavedAnalysis именно для того, чтобы CLEAR анализа не стирал с экрана вопросы.
+
+СВОРАЧИВАНИЕ. setOutCollapsed/toggleOutCollapsed/applyCollapsed прячут РОВНО один узел — #vk-analysis-out; метка «разобрано до …», статус и тред лежат снаружи и остаются видимыми. Состояние глобальное (localStorage, ключ COLLAPSE_STORAGE_KEY='vk.analysis.collapsed'), чтение и запись обёрнуты try/catch (Safari private mode). expandOutForRun() разворачивает блок при старте ANALYZE и REFRESH и запоминает это — иначе дельты текли бы в невидимое. aria-expanded и каретка ▾/▸ обновляются вместе с состоянием.
+
+MARKDOWN. renderMarkdownInto(node, text) строит дерево через js/messenger/markdown.js (DocumentFragment из createElement/createTextNode); записи разметки строкой в модуле нет ни одной — это проверяется тестом по исходнику. Во время стрима блок показывает СЫРОЙ текст (pre-wrap), перерисовка Markdown'ом происходит ОДИН раз по analysis_done и только у целого ответа (ok && reason===null): у оборванного незакрыты таблицы и списки. Сохранённый разбор и ответы треда из GET рисуются Markdown'ом сразу. Вопрос пользователя остаётся текстом. Сырой ответ для history снимается ДО перерисовки — иначе модели уехал бы текст без символов разметки.
+
+ОСТАЛЬНЫЕ ИНВАРИАНТЫ: кадры фильтруются по паре (dialog_id, run_id); run_id усыновляется из analysis_started (кадр обгоняет ответ POST); дельты копятся в rAF-буфере и сливаются синхронно на done/error; ошибки разбираются строго по err.code; Esc уступает открытой captcha; заметка и сохранённый разбор читаются ровно один раз на беседу.
