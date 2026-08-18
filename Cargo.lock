@@ -624,6 +624,7 @@ dependencies = [
  "echo-host-api",
  "forge-bitrix",
  "forge-echo",
+ "forge-meet",
  "forge-telegram",
  "forge-vk",
  "futures-util",
@@ -870,6 +871,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
+name = "forge-atomic"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "tempfile",
+]
+
+[[package]]
 name = "forge-bitrix"
 version = "0.1.0"
 dependencies = [
@@ -895,10 +904,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "forge-cdp"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64",
+ "futures-util",
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "forge-chat-analysis"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "forge-atomic",
  "forge-claude-runner",
  "serde",
  "serde_json",
@@ -945,6 +972,38 @@ dependencies = [
  "toml",
  "tower",
  "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "forge-meet"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "base64",
+ "chrono",
+ "forge-atomic",
+ "forge-cdp",
+ "forge-claude-runner",
+ "futures-util",
+ "libc",
+ "reqwest",
+ "rusqlite",
+ "rust-embed",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tokio",
+ "tokio-rusqlite",
+ "tokio-util",
+ "toml",
+ "toml_edit",
+ "tower",
+ "tracing",
+ "url",
  "uuid",
 ]
 

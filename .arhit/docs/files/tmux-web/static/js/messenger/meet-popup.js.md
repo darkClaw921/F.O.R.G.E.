@@ -1,0 +1,3 @@
+# tmux-web/static/js/messenger/meet-popup.js
+
+Карточка встречи (попап), общая на три панели. Фронтовая Ф4 forge-meet. См. запись meet-popup.js и createMeetPopup: фабрика по экземпляру на панель (токены палитры живут на #telegram/#vk/#bitrix), разметка узлами без innerHTML, z-index 6 последним потомком панели, Esc со stopPropagation и снятием в teardown, дельты расшифровки пачкой за кадр rAF, автопрокрутка общим createFollow, потолок 2000 строк вместо виртуализации, плеер через fetch+blob с обязательным revokeObjectURL, саммари через renderMarkdownText, ветка в panelVisible всех трёх keynav. Ф11: таблица действий ACTS_BY_STATUS экспортирована ради контрактного теста и получила строку pruned.

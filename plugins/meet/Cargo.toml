@@ -1,0 +1,133 @@
+[package]
+name = "forge-meet"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Плагин видеовстреч для F.O.R.G.E. — бот в Chrome через CDP, запись звука, расшифровка whisper.cpp и саммари"
+
+[dependencies]
+# Axum 0.7 совпадает с tmux-web и остальными плагинами, чтобы Router/State
+# были одного типа и `app.merge(plugin_router)` компилировался без адаптеров.
+axum = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+# `StreamExt::split` для расщепления WS-сокета в `ws/mod.rs`.
+futures-util = { workspace = true }
+# `trait MeetBot` обязан быть объектно-безопасным: за ним прячется Chrome, и
+# рекордер держит `Arc<dyn MeetBot>`, не зная, живой это браузер или
+# `ScriptedBot`. Нативные `async fn` в трейтах объектную безопасность не дают.
+# Новых узлов в дерево не добавляет: `async-trait` уже поднят в
+# `[workspace.dependencies]` и используется `forge-cdp`.
+async-trait = { workspace = true }
+
+# SQLite — хранилище встреч. Час встречи это 2000–4000 сегментов, поэтому
+# JSON-стор по образцу `PromptStore` не годится: каждое сохранение переписывало
+# бы файл целиком, а краш оставлял бы «последнюю удачную полную запись».
+#
+# Версия и features (`bundled` + `backup`) объявлены в
+# `[workspace.dependencies]` корневого Cargo.toml, и повторять их здесь
+# ЗАПРЕЩЕНО: расхождение с `forge-echo` дало бы ВТОРОЙ SQLite в дереве, а он
+# роняет процесс (разбор — в шапке `plugins/telegram/Cargo.toml`).
+rusqlite = { workspace = true }
+tokio-rusqlite = { workspace = true }
+
+# Встраивание миграций (`plugins/meet/migrations/V*.sql`) в бинарь: схема
+# едет вместе с devforge и применяется идемпотентно на старте.
+rust-embed = { workspace = true }
+
+# CancellationToken — graceful shutdown (будит WS-циклы и воркеров одним
+# сигналом), как у forge-echo/forge-telegram/forge-bitrix.
+tokio-util = { version = "0.7", default-features = false }
+
+# Конфиг плагина `~/.config/forge/meet.toml`. 0.8.x — та же линия, что у Echo,
+# Telegram и Bitrix, поэтому новый крейт в дерево не добавляется.
+toml = "0.8"
+
+# Правка `meet.toml` из интерфейса С СОХРАНЕНИЕМ КОММЕНТАРИЕВ и порядка ключей
+# (`PUT /api/meet/config`).
+#
+# Прямая зависимость, но НОВЫХ УЗЛОВ В ДЕРЕВЕ НЕТ: `toml 0.8.23` уже тянет
+# `toml_edit 0.22.27` — это его собственный разборщик, и версия та же самая.
+# Без него сохранение настроек пришлось бы делать пересборкой файла из
+# `toml::Table`, а такая перезапись стирает комментарии молча: человек написал
+# «# у нас Teams зависает в лобби, поэтому 120», нажал в интерфейсе
+# «сохранить» — и объяснение исчезло навсегда.
+toml_edit = "0.22"
+
+# Разбор ссылок на встречи. Матчинг платформы идёт ТОЛЬКО по `Url::host_str`,
+# и это не стилистика: подстрочный поиск даёт три готовых обхода
+# (`telemost.yandex.ru.evil.com`, `evil.com/?r=telemost.yandex.ru`,
+# `evil.com#telemost.yandex.ru`). Свой парсер пришлось бы писать против тех же
+# трёх атак, а `url` 2.5 УЖЕ в дереве (транзитивно через reqwest), то есть
+# прямая зависимость не добавляет ни одного узла.
+#
+# `regex` НЕ подключается намеренно: в дереве он живёт только как
+# dev-зависимость wiremock, и прямая ссылка вытащила бы regex-automata с
+# regex-syntax в релизный бинарь. Поле `link_regex` в реестре платформ — это
+# строка ДЛЯ ФРОНТА, бэкенд её никогда не компилирует.
+url = "2.5"
+
+# Декодирование PCM-кадров из base64: по проводу от инжектированного скрипта
+# идёт `{"d":"<base64 PCM16>"}`. 0.22 уже в дереве (tokio-tungstenite у
+# forge-cdp, Echo, Telegram), новых узлов не добавляет.
+base64 = "0.22"
+
+# Идентификаторы встреч (`meeting_id`) — UUID v4. 1.23 уже в дереве.
+uuid = { version = "1.23", features = ["v4"] }
+
+# Скачивание моделей whisper (`POST /api/meet/models/:name/download`).
+# Объявление ИЗ workspace, а не своё: только так `default-features = false`
+# остаётся неотменяемым, и инвариант «openssl в дереве нет» держится
+# построением, а не дисциплиной (разбор — в шапке корневого Cargo.toml).
+# Новых узлов не добавляет: reqwest уже тянут devforge и forge-vk.
+reqwest = { workspace = true }
+
+# Контрольная сумма скачанной модели. Хэши взяты из `x-linked-etag`
+# HuggingFace (у LFS-файлов это SHA-256 содержимого) и сверены с локальной
+# копией. 0.10 уже в дереве транзитивно — новой версии не добавляется.
+#
+# Проверка нужна не от злоумышленника, а от обрыва и от HTML-страницы ошибки,
+# прилетевшей вместо гигабайта весов: файл `.bin` с текстом «502 Bad Gateway»
+# внутри иначе выглядел бы готовой моделью, и человек узнал бы об этом через
+# полчаса ожидания расшифровки.
+sha2 = "0.10"
+
+# Атомарная запись `manifest.json`, `transcript.json`/`.md` и `summary.md`:
+# общий крейт, а не четвёртая копия `tmp+rename+chmod`.
+forge-atomic = { workspace = true }
+
+# Клиент Chrome DevTools Protocol: запуск браузера, инжект до навигации,
+# биндинг для пер-трекового PCM и — уже в этой фазе — подметание осиротевших
+# Chrome в `reconcile_on_boot` (`orphans::sweep_orphans`).
+forge-cdp = { path = "../forge-cdp" }
+
+# Саммари встречи (Ф6). Общий раннер `claude -p --output-format stream-json`,
+# а НЕ своя копия spawn/kill/таймаута: процессный код, размноженный по
+# плагинам, расходится гарантированно. Крейт листовой, новых узлов в дерево не
+# добавляет — его уже тянут forge-echo и forge-vk.
+#
+# Промпт при этом СВОЙ (`src/summary/prompt.rs`): `forge-chat-analysis` в
+# зависимости не входит, его системная инструкция говорит про переписку из
+# ВКонтакте.
+forge-claude-runner = { path = "../claude-runner" }
+
+[dev-dependencies]
+# ГЕРМЕТИЧНОСТЬ ОБЯЗАТЕЛЬНА: каждый тест ставит FORGE_MEET_CONFIG_PATH,
+# FORGE_MEET_CACHE_DIR и db_path в TempDir. Без этого `cargo test` съел бы
+# реальные записи встреч пользователя.
+tempfile = "3"
+# ServiceExt::oneshot — прогон Router через одиночный Request без поднятия
+# настоящего HTTP-сервера (тот же приём, что в auth.rs и в соседних плагинах).
+tower = { version = "0.5", features = ["util"] }
+libc = "0.2"
+
+# `RecordingTransport` — фейковый транспорт CDP без сокета и без браузера.
+# Им проверяется ПОРЯДОК команд входа (`setBypassCSP` → биндинг → скрипт →
+# `setAutoAttach` → `navigate`): нарушение этого порядка ломает инжект МОЛЧА —
+# страница загрузится, звук не пойдёт, и узнается это только на живой встрече.
+# Feature только в dev-зависимости: тестовый код не попадает в бинарь devforge.
+forge-cdp = { path = "../forge-cdp", features = ["testing"] }

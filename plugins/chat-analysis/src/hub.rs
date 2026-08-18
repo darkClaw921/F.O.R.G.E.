@@ -741,13 +741,75 @@ sleep 30
         }
     }
 
+    /// Потолок ожидания события, которое ОБЯЗАНО произойти.
+    ///
+    /// Щедрый намеренно. В `cargo test --workspace` этот модуль гоняется
+    /// параллельно с десятками других бинарей, и спавн мок-процесса
+    /// `/bin/sh` под нагрузкой занимает секунды вместо миллисекунд. Прежние
+    /// 20 с иногда не укрывали именно это — тест падал не на дефекте
+    /// продукта, а на таймере (см. forge-s4b2k). На зелёном прогоне высокий
+    /// потолок не стоит ничего: ждём по факту, а не по часам.
+    const WAIT_CAP: Duration = Duration::from_secs(60);
+
+    /// Окно, в течение которого ЗАПРЕЩЁННАЯ запись могла бы всплыть.
+    ///
+    /// Единственное место, где сон уместен: отсутствие события опросом не
+    /// доказывается — ждать «пока ничего не появится» можно только конечное
+    /// время. Здесь сон не флакует: если фон опоздает, тест не упадёт ложно,
+    /// а в худшем случае пропустит регресс, поэтому окно щедрое.
+    const FORBIDDEN_WRITE_GRACE: Duration = Duration::from_millis(500);
+
+    /// Ждёт кадр, удовлетворяющий предикату, до [`WAIT_CAP`].
+    ///
+    /// Отдельная функция, а не голый `sink.wait_for`: потолок обязан быть
+    /// один на весь модуль, иначе он снова расползётся по числам в вызовах.
+    async fn wait_frame(sink: &RecordingSink, pred: impl Fn(&Frame) -> bool) -> Option<Frame> {
+        sink.wait_for(WAIT_CAP, pred).await
+    }
+
     /// Ждёт кадр, удовлетворяющий предикату, не дольше `secs`.
+    ///
+    /// Остаётся ради проверок ОТСУТСТВИЯ кадра, где короткий потолок — часть
+    /// смысла теста. Для «кадр обязан прийти» используй [`wait_frame`].
     async fn wait_for(
         sink: &RecordingSink,
         secs: u64,
         pred: impl Fn(&Frame) -> bool,
     ) -> Option<Frame> {
         sink.wait_for(Duration::from_secs(secs), pred).await
+    }
+
+    /// Ждёт АСИНХРОННОЕ условие до [`WAIT_CAP`], опрашивая его.
+    ///
+    /// Макрос, а не функция: условие содержит `.await` (поход под
+    /// `store.lock().await`), и заворачивать его в замыкание, возвращающее
+    /// future, значило бы бороться с временами жизни там, где боремся с
+    /// флаком. Приём скопирован из `plugins/meet/tests/pipeline.rs` (фаза 7),
+    /// намеренно копией: тащить зависимость между крейтами ради макроса
+    /// дороже, чем повторить восемь строк.
+    ///
+    /// НЕ ЗАМЕНЯЙ НА `sleep`. Фоновая запись (пампер → `PromptStore` → файл)
+    /// происходит не «за 100 мс», а «когда планировщик дойдёт»; под
+    /// параллельным прогоном workspace это иногда сотни миллисекунд. Сон на
+    /// глазок делает тест красным без единого дефекта в продукте — ровно тот
+    /// баг, что чинился в forge-s4b2k.
+    macro_rules! wait_until {
+        ($label:expr, $cond:expr) => {{
+            let started = std::time::Instant::now();
+            let mut reached = false;
+            while started.elapsed() < WAIT_CAP {
+                if $cond {
+                    reached = true;
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            assert!(
+                reached,
+                "{}: ТАЙМАУТ ожидания ({:?}) — это не «неверное состояние», а «не дождались»",
+                $label, WAIT_CAP
+            );
+        }};
     }
 
     /// ДЕДУП ПО БЕСЕДЕ: второй запуск подключается к идущему run'у и НЕ
@@ -814,7 +876,7 @@ sleep 30
             other => panic!("первым обязан быть started: {other:?}"),
         }
         assert!(
-            wait_for(&sink, 20, Frame::is_done).await.is_some(),
+            wait_frame(&sink, Frame::is_done).await.is_some(),
             "финальный кадр не пришёл"
         );
         hub.shutdown().await;
@@ -855,7 +917,7 @@ sleep 30
         let sink = RecordingSink::new();
 
         hub.start(sink.clone(), req("77")).await.unwrap();
-        let done = wait_for(&sink, 20, Frame::is_done)
+        let done = wait_frame(&sink, Frame::is_done)
             .await
             .expect("финальный кадр не пришёл");
         match done {
@@ -873,15 +935,11 @@ sleep 30
             other => panic!("{other:?}"),
         }
 
-        // Запись снимается таской ПОСЛЕ кадра — короткое ожидание честнее
-        // sleep'а на глазок.
-        for _ in 0..50 {
-            if hub.active_count().await == 0 {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-        assert_eq!(hub.active_count().await, 0, "слот не освободился");
+        // Запись снимается таской ПОСЛЕ кадра, поэтому опрос до условия, а не
+        // сон и не цикл на глазок: под параллельным прогоном workspace
+        // планировщик доходит до фоновой таски когда угодно, и «50 раз по
+        // 20 мс» — такой же таймер, только длиннее.
+        wait_until!("слот освободился", hub.active_count().await == 0);
         // И та же беседа снова запускается.
         assert!(matches!(
             hub.start(sink, req("77")).await.unwrap(),
@@ -907,7 +965,7 @@ sleep 30
             .to_string();
         // Дожидаемся первой дельты — процесс точно живой.
         assert!(
-            wait_for(&sink, 20, Frame::is_delta).await.is_some(),
+            wait_frame(&sink, Frame::is_delta).await.is_some(),
             "дельта от mock CLI не пришла"
         );
 
@@ -1177,10 +1235,17 @@ sleep 30
 
         hub.start(sink.clone(), req("2000000001")).await.unwrap();
         assert!(
-            wait_for(&sink, 20, Frame::is_done).await.is_some(),
+            wait_frame(&sink, Frame::is_done).await.is_some(),
             "финальный кадр не пришёл"
         );
 
+        // Опрос, а не сон и не «сразу после кадра»: порядок «сохранили →
+        // отдали финальный кадр» — деталь пампера, на которую тест не обязан
+        // закладываться. Ждём сам факт записи.
+        wait_until!(
+            "разбор сохранён",
+            store.lock().await.analysis("2000000001").is_some()
+        );
         let saved = store.lock().await.analysis("2000000001").cloned().unwrap();
         assert_eq!(saved.text, "раз два", "сохранён ПОЛНЫЙ ответ, а не хвост буфера");
         assert_eq!(saved.last_message_id, 7042, "точка отсчёта следующего REFRESH");
@@ -1217,9 +1282,13 @@ sleep 30
             .run_id()
             .to_string();
         // Дельта пришла — то есть текст, который мог бы «сохраниться», уже есть.
-        assert!(wait_for(&sink, 20, Frame::is_delta).await.is_some());
+        assert!(wait_frame(&sink, Frame::is_delta).await.is_some());
         hub.cancel(&run_id).await;
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        // ЕДИНСТВЕННЫЙ случай, где сон правомерен: проверяется ОТСУТСТВИЕ
+        // записи, а отсутствие опросом не доказывается — «ждать, пока ничего
+        // не появится» можно только конечное время. Флак отсюда не растёт: при
+        // опоздании фона тест не покраснеет ложно.
+        tokio::time::sleep(FORBIDDEN_WRITE_GRACE).await;
 
         let saved = store.lock().await.analysis("500").cloned().unwrap();
         assert_eq!(saved.text, "ПРОШЛЫЙ РАЗБОР", "отмена переписала разбор");
@@ -1233,9 +1302,10 @@ sleep 30
             .unwrap()
             .run_id()
             .to_string();
-        assert!(wait_for(&sink2, 20, Frame::is_delta).await.is_some());
+        assert!(wait_frame(&sink2, Frame::is_delta).await.is_some());
         hub.cancel(&run_id).await;
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        // Та же проверка отсутствия — см. комментарий выше.
+        tokio::time::sleep(FORBIDDEN_WRITE_GRACE).await;
         assert!(store.lock().await.analysis("501").is_none());
         hub.shutdown().await;
     }
@@ -1251,8 +1321,12 @@ sleep 30
         hub.start(sink.clone(), ask_req("77", "а что со сроками?"))
             .await
             .unwrap();
-        assert!(wait_for(&sink, 20, Frame::is_done).await.is_some());
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(wait_frame(&sink, Frame::is_done).await.is_some());
+        // Опрос до факта записи, а не сон: пампер сохраняет пару в фоне, и
+        // «100 мс после финального кадра» — это ставка на планировщик, а не
+        // проверка. Под параллельным прогоном workspace ставка проигрывает, и
+        // тест краснеет без единого дефекта в продукте (forge-s4b2k).
+        wait_until!("ответ доехал до треда", !store.lock().await.thread("77").is_empty());
 
         let saved = store.lock().await.analysis("77").cloned().unwrap();
         assert_eq!(saved.text, "ПРОШЛЫЙ", "ответ на вопрос стал разбором");
@@ -1273,8 +1347,12 @@ sleep 30
         hub.start(sink.clone(), ask_req("88", "  а что со сроками? "))
             .await
             .unwrap();
-        assert!(wait_for(&sink, 20, Frame::is_done).await.is_some());
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(wait_frame(&sink, Frame::is_done).await.is_some());
+        // Опрос до появления пары, а не сон: запись в `PromptStore` и в файл
+        // делает фоновая таска пампера. Сон на глазок здесь и был причиной
+        // флака forge-s4b2k — не возвращай его, «проще» он только на пустой
+        // машине.
+        wait_until!("пара доехала до треда", store.lock().await.thread("88").len() == 1);
 
         let guard = store.lock().await;
         let thread = guard.thread("88");
@@ -1307,11 +1385,14 @@ sleep 30
             .run_id()
             .to_string();
         assert!(
-            wait_for(&sink, 20, Frame::is_delta).await.is_some(),
+            wait_frame(&sink, Frame::is_delta).await.is_some(),
             "текст, который мог бы «сохраниться», уже натёк"
         );
         hub.cancel(&run_id).await;
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        // Проверяется ОТСУТСТВИЕ пары — здесь опрос бессмыслен (см.
+        // `FORBIDDEN_WRITE_GRACE`): ждём окно, в которое запрещённая запись
+        // успела бы всплыть.
+        tokio::time::sleep(FORBIDDEN_WRITE_GRACE).await;
 
         assert!(store.lock().await.thread("99").is_empty());
         hub.shutdown().await;
@@ -1378,8 +1459,15 @@ sleep 30
                 ..req("7")
             };
             hub.start(sink.clone(), r).await.unwrap();
-            assert!(wait_for(&sink, 20, Frame::is_done).await.is_some(), "{kind}");
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            assert!(wait_frame(&sink, Frame::is_done).await.is_some(), "{kind}");
+            // Опрос до появления разбора, а не сон: разбор пишет фоновая
+            // таска пампера, и её момент задаёт планировщик, а не таймер. Как
+            // только разбор на месте — видно и то, что тред при этом не
+            // тронут, ради чего тест и написан.
+            wait_until!(
+                format!("{kind}: разбор сохранён"),
+                store.lock().await.analysis("7").is_some()
+            );
 
             let guard = store.lock().await;
             assert_eq!(guard.thread("7").len(), 1, "{kind}: тред вырос");
@@ -1510,7 +1598,7 @@ sleep 30
         let mut r = req("2000000001");
         r.prompt = format!("<transcript>{CANARY}</transcript>");
         hub.start(sink.clone(), r).await.unwrap();
-        let _ = wait_for(&sink, 20, Frame::is_done).await;
+        let _ = wait_frame(&sink, Frame::is_done).await;
         hub.shutdown().await;
 
         let logged = crate::testlog::since(mark);

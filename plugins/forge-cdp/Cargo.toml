@@ -1,0 +1,80 @@
+[package]
+name = "forge-cdp"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Тонкий клиент Chrome DevTools Protocol: свой Chrome, flat-сессии, инжект до навигации, ввод, скриншот, убийство сирот."
+
+# ЛИСТОВОЙ крейт: ни одной зависимости на другой член workspace — ни на
+# devforge, ни на плагины, ни даже на `forge-atomic`. Это не эстетика, а
+# условие подмены: клиент спрятан за `trait CdpTransport`, и если реализация
+# на tokio-tungstenite окажется тупиковой, замена (например, на chromiumoxide)
+# должна быть локальной работой внутри этого крейта, не задевающей `forge-meet`.
+# Любое ребро отсюда на плагин это свойство немедленно ломает.
+#
+# Почему свой клиент, а не chromiumoxide: chromiumoxide тянет `async-tungstenite`,
+# то есть ВТОРОЙ ws-стек в дерево, где уже живёт `tokio-tungstenite 0.24`
+# (tmux-web/Cargo.toml, `remote_proxy.rs`). Гейт `cargo tree -d` от этого
+# краснеет сразу. Нужно ~20 методов протокола, все из его стабильного ядра, —
+# цена своей реализации ниже цены второго ws-стека и генерируемых структур
+# протокола на 3 МБ.
+[dependencies]
+# rt + macros + net (TcpStream под ws) + io-util + time (таймауты команд и
+# ожидание DevToolsActivePort) + sync (oneshot/broadcast/mpsc) + process
+# (запуск Chrome). Берём workspace-версию с features = full, чтобы в дереве
+# был ровно один tokio с тем же набором фич, что у остальных членов.
+tokio = { workspace = true }
+
+# Транспорт CDP. Версия и линия те же, что у `tmux-web` (0.24) — иначе в
+# дереве появится второй tungstenite. Features сознательно УЖЕ, чем у
+# tmux-web: CDP всегда `ws://127.0.0.1:<порт>`, TLS здесь не нужен ни при
+# каких обстоятельствах, и `rustls-tls-webpki-roots` не запрашивается. При
+# сборке всего workspace features складываются, поэтому узел остаётся один.
+tokio-tungstenite = { version = "0.24", features = ["connect", "handshake"] }
+
+# `StreamExt::split` для расщепления ws-сокета на читающую и пишущую половины
+# (две задачи: роутер ответов/событий и писатель команд).
+futures-util = { workspace = true }
+
+serde = { workspace = true }
+# Payload'ы протокола держим в `serde_json::Value`, а НЕ в генерируемых
+# структурах: CDP дрейфует, мы используем малую его часть, и владеть дрейфом
+# дешевле, чем тащить генератор и 3 МБ типов ради двадцати методов.
+serde_json = { workspace = true }
+
+# `trait CdpTransport` асинхронный, а стабильных async-fn-in-trait для
+# трейт-объектов (`Arc<dyn CdpTransport>`) нет. async-trait уже в дереве.
+async-trait = { workspace = true }
+tracing = { workspace = true }
+
+# `Page.captureScreenshot` отдаёт PNG строкой base64 — декодируем в байты.
+# Версия совпадает с объявленной в tmux-web/Cargo.toml, узел один.
+base64 = "0.22"
+
+# `setsid(2)` в `pre_exec` (своя группа процессов для Chrome), `kill(pid, 0)`
+# (проверка «процесс жив»), `killpg` и `getpgid` в подметальщике сирот.
+# Тот же libc 0.2, что у tmux-web (`daemon.rs` делает ровно тот же setsid).
+#
+# Почему libc, а не nix, хотя задача упоминала оба: `nix` в дереве ЕСТЬ, но
+# в ДВУХ версиях сразу (0.25.1 через portable-pty и 0.31.3 через os_info →
+# grammers). Прямая зависимость заставила бы выбрать одну из них и закрепить
+# чужой транзитивный выбор, а промах версией дал бы третий узел. libc в дереве
+# ровно один и даёт все четыре нужных вызова.
+libc = "0.2"
+
+# Имя биндинга, случайное НА ВСТРЕЧУ (`__forge_<32 hex>`): 128 бит из v4-UUID.
+# uuid 1.23 уже в дереве (forge-claude-runner, devforge, forge-echo).
+uuid = { version = "1.23", features = ["v4"] }
+
+[dev-dependencies]
+# Профиль Chrome, кэш с silence.wav и каталоги chrome.pid в тестах — только
+# во временных каталогах: тесты не имеют права трогать ~/.forge.
+tempfile = "3"
+
+[features]
+# Помощники для тестов ПОТРЕБИТЕЛЕЙ крейта (`RecordingTransport`,
+# `FakeCdpServer`): forge-meet будет проверять свои адаптеры без живого
+# Chrome. Внутри самого крейта модуль всегда доступен под `cfg(test)`,
+# наружу — только по явному запросу, чтобы тестовый код не попадал в бинарь
+# devforge.
+testing = []

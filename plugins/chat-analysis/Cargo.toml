@@ -40,6 +40,14 @@ thiserror = "2"
 # листовой крейт, которым пользуются Echo и VK.
 forge-claude-runner = { path = "../claude-runner" }
 
+# Атомарная запись приватного файла. РАНЬШЕ это был модуль `atomic` ЗДЕСЬ;
+# вынесен в собственный листовой крейт, потому что `forge-meet` пишет свои
+# четыре файла тем же способом, а ядро анализа чата ему не нужно.
+# Зависимость сохраняется ради переэкспорта `pub use forge_atomic as atomic;`
+# в lib.rs: все внешние вызовы `forge_chat_analysis::atomic::*` (например, в
+# `plugins/vk/src/config.rs`) продолжают компилироваться без правок.
+forge-atomic = { workspace = true }
+
 [dev-dependencies]
 # Временные каталоги для mock-CLI (shell-скрипт с NDJSON) и файлов хранилища.
 tempfile = "3"

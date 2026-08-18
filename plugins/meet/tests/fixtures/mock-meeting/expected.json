@@ -1,0 +1,165 @@
+{
+  "_comment": [
+    "ЭТАЛОННЫЙ ТАЙМЛАЙН МОК-ВСТРЕЧИ. Дублирует расписание из index.html НАМЕРЕННО:",
+    "эталон, вычисляемый тем же кодом, который проверяется, не проверяет ничего.",
+    "Правка расписания в index.html обязана идти вместе с правкой этого файла —",
+    "на расхождение есть тест the_page_schedule_matches_the_expected_timeline.",
+    "",
+    "Все времена — миллисекунды от T0 = момента постановки гейтов (mock.t0).",
+    "tolerance покрывает три источника расхождения: округление кадра захвата",
+    "(20 мс), подтверждение VAD (120 мс — эмитится СО СДВИГОМ НАЗАД, поэтому",
+    "остаточная ошибка мала) и hangover на выключении (500 мс, целиком)."
+  ],
+  "sample_rate_page": 48000,
+  "sample_rate_wire": 16000,
+  "frame_ms": 20,
+  "duration_ms": 8000,
+  "tolerance_ms": {
+    "speech_start": 250,
+    "speech_end": 700
+  },
+  "modes": {
+    "per-track": {
+      "audio_tracks": 3,
+      "participants_in_dom": 4,
+      "track_mode": "per_participant",
+      "capture_path": "rtcpeerconnection",
+      "tracks": [
+        {
+          "index": 0,
+          "tone_hz": 220,
+          "speech": [
+            { "speaker": "Алиса", "start_ms": 500, "end_ms": 2000 },
+            { "speaker": "Алиса", "start_ms": 3500, "end_ms": 5000 }
+          ]
+        },
+        {
+          "index": 1,
+          "tone_hz": 330,
+          "speech": [
+            { "speaker": "Борис", "start_ms": 1500, "end_ms": 2500 },
+            { "speaker": "Борис", "start_ms": 4500, "end_ms": 5500 }
+          ]
+        },
+        {
+          "index": 2,
+          "tone_hz": 440,
+          "speech": [
+            { "speaker": "Виктор", "start_ms": 6500, "end_ms": 8000 }
+          ]
+        }
+      ],
+      "overlaps": [
+        { "start_ms": 1500, "end_ms": 2000, "speakers": ["Алиса", "Борис"] },
+        { "start_ms": 4500, "end_ms": 5000, "speakers": ["Алиса", "Борис"] }
+      ],
+      "silence": [
+        { "start_ms": 0, "end_ms": 500 },
+        { "start_ms": 2500, "end_ms": 3500 },
+        { "start_ms": 5500, "end_ms": 6500 }
+      ]
+    },
+
+    "slots": {
+      "audio_tracks": 2,
+      "participants_in_dom": 7,
+      "track_mode": "slots",
+      "capture_path": "rtcpeerconnection",
+      "_comment": [
+        "Шестеро собеседников на двух дорожках, и КТО в дорожке — меняется.",
+        "Поэтому поле speaker здесь СПРАВОЧНОЕ: атрибуция в этом режиме идёт",
+        "только из DOM, трекам верить нельзя. Проверять по дорожкам можно",
+        "интервалы речи, но не имена."
+      ],
+      "tracks": [
+        {
+          "index": 0,
+          "tone_hz": 220,
+          "speech": [
+            { "speaker": "Алиса", "start_ms": 500, "end_ms": 2500 },
+            { "speaker": "Галина", "start_ms": 4500, "end_ms": 6000 }
+          ]
+        },
+        {
+          "index": 1,
+          "tone_hz": 550,
+          "speech": [
+            { "speaker": "Борис", "start_ms": 1500, "end_ms": 3000 },
+            { "speaker": "Дмитрий", "start_ms": 5000, "end_ms": 7000 }
+          ]
+        }
+      ],
+      "overlaps": [
+        { "start_ms": 1500, "end_ms": 2500, "speakers": ["Алиса", "Борис"] },
+        { "start_ms": 5000, "end_ms": 6000, "speakers": ["Галина", "Дмитрий"] }
+      ],
+      "silence": [
+        { "start_ms": 0, "end_ms": 500 },
+        { "start_ms": 3000, "end_ms": 4500 },
+        { "start_ms": 7000, "end_ms": 8000 }
+      ]
+    },
+
+    "mixed": {
+      "audio_tracks": 1,
+      "participants_in_dom": 4,
+      "track_mode": "mixed",
+      "capture_path": "rtcpeerconnection",
+      "_comment": [
+        "Одна дорожка, в которой смешаны трое. `sources` — кто и когда в неё",
+        "подмешан (это и есть расписание страницы), `speech` — то, что дорожка",
+        "отдаёт НАБЛЮДАТЕЛЮ: слитые интервалы. Наложенная речь здесь физически",
+        "неразделима, и это главный довод в пользу пер-трекового захвата там,",
+        "где он возможен.",
+        "",
+        "ПАУЗЫ ЗДЕСЬ 1200 МС, А НЕ 500. Пауза длиной ровно в hangover VAD",
+        "(500 мс) не является концом реплики ПО ОПРЕДЕЛЕНИЮ параметра, и",
+        "требовать её разделения значило бы требовать от детекта обратного",
+        "тому, на что он настроен. Живой прогон слил такие интервалы в один —",
+        "и был прав. Правя эти числа, правь index.html тем же коммитом."
+      ],
+      "tracks": [
+        {
+          "index": 0,
+          "tone_hz": 880,
+          "sources": [
+            { "speaker": "Алиса", "tone_hz": 880, "start_ms": 500, "end_ms": 2000 },
+            { "speaker": "Борис", "tone_hz": 990, "start_ms": 1500, "end_ms": 3000 },
+            { "speaker": "Алиса", "tone_hz": 880, "start_ms": 4200, "end_ms": 5600 },
+            { "speaker": "Виктор", "tone_hz": 770, "start_ms": 6800, "end_ms": 8000 }
+          ],
+          "speech": [
+            { "speaker": "смесь", "start_ms": 500, "end_ms": 3000 },
+            { "speaker": "смесь", "start_ms": 4200, "end_ms": 5600 },
+            { "speaker": "смесь", "start_ms": 6800, "end_ms": 8000 }
+          ]
+        }
+      ],
+      "overlaps": [
+        { "start_ms": 1500, "end_ms": 2000, "speakers": ["Алиса", "Борис"] }
+      ],
+      "silence": [
+        { "start_ms": 0, "end_ms": 500 },
+        { "start_ms": 3000, "end_ms": 4200 },
+        { "start_ms": 5600, "end_ms": 6800 }
+      ]
+    }
+  },
+
+  "dom": {
+    "_comment": "Селекторы страницы. Ф4 переносит их в meet.probes.toml профилем `mock`.",
+    "participant_list": "[data-testid=\"participant-list\"]",
+    "participant": "[data-testid=\"participant\"]",
+    "participant_name": "[data-testid=\"participant-name\"]",
+    "speaking_attr": "data-speaking",
+    "active_speaker": "[data-testid=\"active-speaker\"]",
+    "track_count": "[data-testid=\"track-count\"]",
+    "mic_toggle": "[data-testid=\"mic-toggle\"]",
+    "cam_toggle": "[data-testid=\"cam-toggle\"]",
+    "leave": "[data-testid=\"leave\"]",
+    "continue_in_browser": "[data-testid=\"continue-in-browser\"]",
+    "name_input": "[data-testid=\"name-input\"]",
+    "join": "[data-testid=\"join\"]",
+    "meeting_ended": "[data-testid=\"meeting-ended\"][data-ended=\"true\"]"
+  }
+}

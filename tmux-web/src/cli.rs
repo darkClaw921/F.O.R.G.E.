@@ -78,6 +78,17 @@ pub struct RunOptions {
     /// фронте остаётся скрытой. Источник истины для гейтинга —
     /// [`crate::server_config::EffectiveConfig::bitrix_enabled`].
     pub bitrix: bool,
+    /// `--meet` (bool flag). True ⇒ включает opt-in плагин встреч
+    /// (`forge-meet`: бот в Chrome через CDP, запись звука, расшифровка и
+    /// саммари — роуты `/api/meet/*` и `/ws/meet`). False (default) ⇒
+    /// поведение байт-в-байт как раньше: роутов нет, кнопка встречи в лентах
+    /// не рисуется. Источник истины для гейтинга —
+    /// [`crate::server_config::EffectiveConfig::meet_enabled`].
+    ///
+    /// Флаг обязан доехать и до ДОЧЕРНЕГО процесса `devforge start`
+    /// (`crate::daemon::build_daemon_args`), иначе демон молча поднимется без
+    /// плагина.
+    pub meet: bool,
 }
 
 impl Default for RunOptions {
@@ -91,6 +102,7 @@ impl Default for RunOptions {
             telegram: false,
             vk: false,
             bitrix: false,
+            meet: false,
         }
     }
 }
@@ -180,6 +192,7 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
     let mut telegram = false;
     let mut vk = false;
     let mut bitrix = false;
+    let mut meet = false;
 
     while let Some(a) = iter.next() {
         match a.as_str() {
@@ -206,6 +219,9 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
             }
             "--bitrix" => {
                 bitrix = true;
+            }
+            "--meet" => {
+                meet = true;
             }
             "--bind" => {
                 let v = iter
@@ -252,7 +268,7 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
 
     let port = port.unwrap_or(DEFAULT_PORT);
     let has_run_only_flags =
-        remote || bind.is_some() || token.is_some() || pwa || telegram || vk || bitrix;
+        remote || bind.is_some() || token.is_some() || pwa || telegram || vk || bitrix || meet;
     let run_opts = RunOptions {
         port,
         remote,
@@ -262,6 +278,7 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
         telegram,
         vk,
         bitrix,
+        meet,
     };
 
     let mode = match subcmd.as_deref() {
@@ -272,7 +289,7 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
                 bail!("`--port` is not valid for `stop` (PID is read from pid-file)");
             }
             if has_run_only_flags {
-                bail!("`--remote`/`--bind`/`--token`/`--pwa`/`--telegram`/`--vk`/`--bitrix` are not valid for `stop`");
+                bail!("`--remote`/`--bind`/`--token`/`--pwa`/`--telegram`/`--vk`/`--bitrix`/`--meet` are not valid for `stop`");
             }
             Mode::Stop
         }
@@ -281,7 +298,7 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
                 bail!("`--port` is not valid for `status`");
             }
             if has_run_only_flags {
-                bail!("`--remote`/`--bind`/`--token`/`--pwa`/`--telegram`/`--vk`/`--bitrix` are not valid for `status`");
+                bail!("`--remote`/`--bind`/`--token`/`--pwa`/`--telegram`/`--vk`/`--bitrix`/`--meet` are not valid for `status`");
             }
             Mode::Status
         }
@@ -616,6 +633,7 @@ pub fn help_text() -> String {
                  --telegram    Enable Telegram plugin (personal account messenger tab). Opt-in; off by default.\n    \
                  --vk          Enable VK plugin (personal account messenger tab). Opt-in; off by default.\n    \
                  --bitrix      Enable Bitrix24 plugin (portal chats and task chats tab). Opt-in; off by default.\n    \
+                 --meet        Enable meetings plugin (join, record, transcribe and summarise video calls). Opt-in; off by default.\n    \
              -h, --help        Show this help message\n\
          \n\
          EXAMPLES:\n    \
@@ -876,6 +894,75 @@ mod tests {
     #[test]
     fn help_text_mentions_bitrix() {
         assert!(help_text().contains("--bitrix"));
+    }
+
+    // --- плагин встреч (--meet) ------------------------------------------
+
+    #[test]
+    fn parse_meet_flag_default_false() {
+        // Без флага поле остаётся false — инвариант opt-in: поведение бинаря
+        // байт-в-байт прежнее, роутов `/api/meet/*` нет вовсе.
+        let m = parse_from(args(&["run"])).unwrap();
+        assert!(!expect_run(m).meet);
+        let m = parse_from(args(&[])).unwrap();
+        assert!(!expect_run(m).meet);
+    }
+
+    #[test]
+    fn parse_meet_flag_sets_true() {
+        let m = parse_from(args(&["run", "--meet"])).unwrap();
+        assert!(expect_run(m).meet);
+    }
+
+    /// Флаг встреч не имеет права включать соседние плагины и наоборот.
+    /// Ловит копипасту вида `meet = true` в ветке `--bitrix`.
+    #[test]
+    fn parse_meet_is_independent_of_the_other_flags() {
+        let only_meet = expect_run(parse_from(args(&["run", "--meet"])).unwrap());
+        assert!(only_meet.meet);
+        assert!(!only_meet.bitrix && !only_meet.vk && !only_meet.telegram && !only_meet.pwa);
+
+        let only_b24 = expect_run(parse_from(args(&["run", "--bitrix"])).unwrap());
+        assert!(!only_b24.meet, "--bitrix не включает плагин встреч");
+
+        let all = expect_run(
+            parse_from(args(&[
+                "run",
+                "--pwa",
+                "--telegram",
+                "--vk",
+                "--bitrix",
+                "--meet",
+            ]))
+            .unwrap(),
+        );
+        assert!(all.pwa && all.telegram && all.vk && all.bitrix && all.meet);
+    }
+
+    #[test]
+    fn parse_meet_carried_by_start() {
+        let m = parse_from(args(&["start", "--meet"])).unwrap();
+        match m {
+            Mode::Start(o) => assert!(o.meet),
+            _ => panic!("expected Start"),
+        }
+    }
+
+    #[test]
+    fn parse_meet_rejected_for_stop_status() {
+        let err = parse_from(args(&["stop", "--meet"]))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("--meet"), "ошибка обязана называть флаг: {err}");
+        let err = parse_from(args(&["status", "--meet"]))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("--meet"), "ошибка обязана называть флаг: {err}");
+    }
+
+    #[test]
+    fn help_text_mentions_meet() {
+        assert!(help_text().contains("--meet"));
     }
 
     #[test]
@@ -1231,6 +1318,7 @@ mod tests {
             telegram_enabled: false,
             vk_enabled: false,
             bitrix_enabled: false,
+            meet_enabled: false,
         };
         let got = crate::server_config::finalize_token_at(&eff, &path).unwrap();
         assert_eq!(

@@ -443,6 +443,11 @@ const { vkState } = await import(`${base}state.js`);
 const tgBase = new URL('../../static/js/telegram/', import.meta.url).href;
 const tgKeynav = await import(`${tgBase}keynav.js`);
 const { tgState } = await import(`${tgBase}state.js`);
+// Карточка встречи: её гейт живёт в panelVisible(), и проверять его надо
+// НАСТОЯЩИМ попапом — узел создаётся кодом, в разметке приложения его нет.
+const meetPopup = await import(
+    new URL('../../static/js/messenger/meet-popup.js', import.meta.url).href
+);
 
 // ---------------------------------------------------------------------------
 // Мини-фреймворк
@@ -694,6 +699,32 @@ eq(keynav.vkOwnsKeyboard(), false, 'гейт: при открытом попап
 }
 $analysis.hidden = true;
 eq(keynav.panelVisible(), true, 'гейт: закрытый попап анализа возвращает навигацию');
+
+// Карточка встречи. Без этой ветки vim-навигация забирает `j`/`k` у поля
+// поиска по расшифровке и у поля переименования участника. Проверка идёт
+// НАСТОЯЩИМ попапом: класс `.modal-overlay` он не несёт (тот тянет глобальные
+// токены и position: fixed), поэтому существующая проверка модалки его не
+// видит — «само» тут не заработает.
+{
+    const popup = meetPopup.createMeetPopup({ panel: 'vk', host: $panel, doc: $document });
+    eq(keynav.panelVisible(), true, 'встреча: закрытая карточка навигации не мешает');
+
+    popup.open({ key: 'vk|2000000001|7', panel: 'vk', chatId: '2000000001', messageId: 7, state: null });
+    eq(keynav.panelVisible(), false, 'встреча: открытая карточка = панель не готова');
+    eq(keynav.vkOwnsKeyboard(), false, 'встреча: при открытой карточке владения нет');
+    {
+        keynav.clearCursor();
+        const eDown = press('KeyJ', 'j');
+        eq(eDown.defaultPrevented, false, 'встреча: `j` не перехвачен — буква уходит в поиск');
+        const eUp = press('KeyK', 'k');
+        eq(eUp.defaultPrevented, false, 'встреча: `k` не перехвачен');
+        ok(cursorNode() === null, 'встреча: курсор по беседам не появился');
+    }
+
+    popup.close();
+    eq(keynav.panelVisible(), true, 'встреча: закрытие карточки возвращает навигацию');
+    popup.teardown();
+}
 
 activeElement = null;
 eq(keynav.vkOwnsKeyboard(), true, 'гейт: фокус нигде — панель владеет');

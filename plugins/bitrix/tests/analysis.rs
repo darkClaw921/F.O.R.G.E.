@@ -30,6 +30,61 @@ use forge_bitrix::config::{BitrixConfig, WebhookUrl};
 use forge_bitrix::login::{B24UserDto, LoginFlow};
 use forge_bitrix::state::B24State;
 
+/// Потолок ожидания события, которое ОБЯЗАНО произойти.
+///
+/// Щедрый намеренно. В `cargo test --workspace` этот бинарь гоняется
+/// параллельно с десятками других, и спавн мок-процесса `/bin/sh` (а тем
+/// более запись им pid-файла) под нагрузкой занимает секунды вместо
+/// миллисекунд. Прежние «200 итераций по 20 мс» = 4 с иногда этого не
+/// укрывали — тест падал не на дефекте продукта, а на таймере (forge-s4b2k).
+/// На зелёном прогоне высокий потолок не стоит ничего: ждём по факту.
+const WAIT_CAP: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Ждёт условие до [`WAIT_CAP`], опрашивая его.
+///
+/// Макрос, а не функция: условие содержит `.await` (поход в хаб за
+/// `active_count`), и заворачивать его в замыкание, возвращающее future,
+/// значило бы бороться с временами жизни там, где боремся с флаком.
+///
+/// НЕ ЗАМЕНЯЙ НА `sleep` и не возвращай счётчик итераций: события здесь —
+/// спавн процесса, его смерть, снятие записи из реестра — происходят «когда
+/// планировщик и ядро дойдут», а не «через N мс». Таймер на глазок делает
+/// тест красным без единого дефекта в продукте.
+macro_rules! wait_until {
+    ($label:expr, $cond:expr) => {{
+        let started = std::time::Instant::now();
+        let mut reached = false;
+        while started.elapsed() < WAIT_CAP {
+            if $cond {
+                reached = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        assert!(
+            reached,
+            "{}: ТАЙМАУТ ожидания ({:?}) — это не «неверное состояние», а «не дождались»",
+            $label, WAIT_CAP
+        );
+    }};
+}
+
+/// Читает pid, записанный мок-процессом, дождавшись самой записи.
+///
+/// Опрос до факта, а не сон: между `spawn` и первой строкой скрипта лежит
+/// планировщик ОС, и под параллельным прогоном workspace эта пауза
+/// растягивается на секунды.
+async fn wait_for_pid(pidfile: &std::path::Path) -> i32 {
+    let mut pid: Option<i32> = None;
+    wait_until!("mock CLI записал pid", {
+        pid = std::fs::read_to_string(pidfile)
+            .ok()
+            .and_then(|raw| raw.trim().parse::<i32>().ok());
+        pid.is_some()
+    });
+    pid.expect("mock CLI не записал pid — процесс не запустился")
+}
+
 // ---------------------------------------------------------------------------
 // Фейковый портал.
 // ---------------------------------------------------------------------------
@@ -449,14 +504,10 @@ exit 3"#,
 
     seed_run(&state, "chat27").await;
 
-    // Ждём завершения run'а.
-    for _ in 0..200 {
-        if state.analysis.active_count().await == 0 {
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-    }
-    assert_eq!(state.analysis.active_count().await, 0, "run не завершился");
+    // Ждём завершения run'а — опросом до факта, а не отсчётом фиксированных
+    // 4 с: момент снятия записи задаёт планировщик, и под нагрузкой полного
+    // прогона workspace он в короткий бюджет не укладывается.
+    wait_until!("run завершился", state.analysis.active_count().await == 0);
 
     let saved = state.chat_analysis("chat27").await.expect("разбор на месте");
     assert_eq!(
@@ -488,18 +539,9 @@ async fn cancelling_a_run_actually_kills_the_process() {
 
     let run_id = seed_run(&state, "chat27").await;
 
-    // Ждём, пока mock успеет записать pid (spawn асинхронный).
-    let mut pid: Option<i32> = None;
-    for _ in 0..200 {
-        if let Ok(raw) = std::fs::read_to_string(&pidfile) {
-            if let Ok(v) = raw.trim().parse::<i32>() {
-                pid = Some(v);
-                break;
-            }
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-    }
-    let pid = pid.expect("mock CLI не записал pid — процесс не запустился");
+    // Ждём, пока mock успеет записать pid (spawn асинхронный) — опросом с
+    // общим потолком, см. `wait_for_pid`.
+    let pid = wait_for_pid(&pidfile).await;
     assert!(alive(pid), "перед отменой процесс обязан быть живым");
 
     // `cancel` отдаёт dialog_id отменённого run'а (не run_id) — на этом же
@@ -510,16 +552,13 @@ async fn cancelling_a_run_actually_kills_the_process() {
         "отмена обязана найти идущий run и вернуть его диалог"
     );
 
-    // Смерть процесса асинхронна: ждём её, а не предполагаем.
-    let mut died = false;
-    for _ in 0..200 {
-        if !alive(pid) {
-            died = true;
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-    }
-    assert!(died, "процесс {pid} пережил отмену — это утечка «claude -p»");
+    // Смерть процесса асинхронна: ждём её опросом, а не предполагаем. Отсчёт
+    // фиксированного бюджета здесь врал бы под нагрузкой — reap дочернего
+    // процесса делает ядро, а не тест.
+    wait_until!(
+        format!("процесс {pid} умер после отмены (иначе утечка «claude -p»)"),
+        !alive(pid)
+    );
     assert_eq!(state.analysis.active_count().await, 0, "слот освобождён");
 }
 
@@ -547,31 +586,18 @@ async fn shutdown_kills_a_running_analysis() {
     let (_dir, state) = state_with_cli(cli);
     seed_run(&state, "chat27").await;
 
-    let mut pid: Option<i32> = None;
-    for _ in 0..200 {
-        if let Ok(raw) = std::fs::read_to_string(&pidfile) {
-            if let Ok(v) = raw.trim().parse::<i32>() {
-                pid = Some(v);
-                break;
-            }
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-    }
-    let pid = pid.expect("mock CLI не записал pid");
+    // Опрос до появления pid — тот же приём и тот же общий потолок.
+    let pid = wait_for_pid(&pidfile).await;
 
     // Полный teardown плагина, а не только хаба: проверяется именно то, что
     // `forge_bitrix::shutdown` до хаба доходит.
     forge_bitrix::shutdown(&state).await;
 
-    let mut died = false;
-    for _ in 0..200 {
-        if !alive(pid) {
-            died = true;
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-    }
-    assert!(died, "процесс {pid} пережил teardown плагина");
+    // Снова опрос: смерть процесса — событие ядра, не таймер теста.
+    wait_until!(
+        format!("процесс {pid} умер после teardown плагина"),
+        !alive(pid)
+    );
 
     assert_eq!(
         state.analysis.active_count().await,

@@ -37,6 +37,11 @@
 //   текста). Вся логика без DOM вынесена в js/telegram/reply.js.
 
 import { $tgInput, $tgLightbox, $tgLog, $tgPrompt, $tgSend, $tgSessionHead } from '../core/dom.js';
+// Кнопка встречи — общая на три панели (js/messenger/meet-row.js). При
+// выключенном плагине `attachMeetButton` выходит первой строкой и не стоит
+// ленте ничего: ни детекта, ни узла, ни запроса.
+import { ESC_DEPTH, registerEscLayer } from '../messenger/esc-stack.js';
+import { attachMeetButton } from '../messenger/meet-row.js';
 
 import { getMessages, sendMessage, sendTyping } from './api.js';
 // `getMessage` появился вместе с роутом одного сообщения. Берём его через
@@ -509,13 +514,31 @@ function buildMessageRow(msg, dialog) {
     const kb = buildMessageKeyboard(msg);
     if (kb) li.appendChild(kb);
 
-    // Кнопка «ответить» — ПОСЛЕДНЕЙ и вне потока (CSS позиционирует её
-    // абсолютно): в потоке она разрывала бы перенос текста и налезала на
+    // Действия строки — ПОСЛЕДНИМИ и вне потока (CSS позиционирует абсолютно
+    // саму обёртку): в потоке они разрывали бы перенос текста и налезали на
     // маркер «⋯ в пути» у неподтверждённых строк.
+    //
+    // Обёртка, а не две кнопки подряд: кнопка встречи меняет ширину каждую
+    // секунду (таймер записи), и раскладывать соседей руками пришлось бы на
+    // каждый тик. Порядок внутри — встреча, потом ответ: ответ остаётся у
+    // правого края там же, где был до появления соседа.
+    const actions = document.createElement('span');
+    actions.className = 'tg-line-actions';
+    li.appendChild(actions);
+    const meetBtn = attachMeetButton(li, {
+        panel: 'telegram',
+        msg,
+        chatId: msg.dialog_id,
+        container: actions,
+        root: $tgLog,
+    });
     const replyBtn = buildReplyButton(msg, dialog);
-    if (replyBtn) li.appendChild(replyBtn);
+    if (replyBtn) actions.appendChild(replyBtn);
+    // Пустая обёртка не нужна никому: у строки без подтверждённого id нет ни
+    // ответа, ни встречи, а невидимый бокс поверх текста — лишний узел.
+    if (actions.childNodes.length === 0) actions.remove();
 
-    li._tg = { text, suffix, msg, card, kb, quote };
+    li._tg = { text, suffix, msg, card, kb, quote, actions, meetBtn };
     return li;
 }
 
@@ -966,8 +989,18 @@ function bindReplyUi() {
         $tgLog.addEventListener('click', onLogClick);
         $tgLog.addEventListener('keydown', onLogKeyDown);
     }
+    // Esc — слоем в общем реестре (`messenger/esc-stack.js`), а не своим
+    // слушателем на документе: там же слушают попап анализа и карточка встречи,
+    // и одно нажатие снимало полосу цитаты ЗАОДНО с закрытием карточки, стирая
+    // набранный контекст ответа (forge-o0sdg). Полоса — самый нижний слой:
+    // любое открытое окно забирает Esc себе.
     if (typeof document !== 'undefined' && document.addEventListener) {
-        document.addEventListener('keydown', onReplyEscape);
+        registerEscLayer({
+            name: 'tg-reply-bar',
+            depth: ESC_DEPTH.REPLY_BAR,
+            isOpen: replyEscapeArmed,
+            close: onReplyEscape,
+        });
     }
 }
 
@@ -1008,18 +1041,26 @@ function quoteTargetId(target) {
 }
 
 /**
+ * Готова ли полоса цитаты принять Esc — условие слоя в реестре.
+ *
+ * Гард на лайтбокс обязателен: лайтбокс реестру не известен и слушает Esc сам,
+ * поэтому при открытой картинке полоса объявляет себя ЗАКРЫТОЙ и нажатие
+ * достаётся лайтбоксу. Без этого одно нажатие снимало бы цитату вместо закрытия
+ * картинки.
+ */
+function replyEscapeArmed() {
+    if ($tgLightbox && !$tgLightbox.hidden) return false;
+    return !!replyTarget(tgState.activeDialogId);
+}
+
+/**
  * Esc снимает выбранный ответ.
  *
- * Гард на лайтбокс обязателен: этот обработчик регистрируется раньше
- * лайтбоксного (initChat идёт до initMedia), и без проверки одно нажатие Esc
- * снимало бы полосу ответа вместо закрытия картинки. `preventDefault` — только
- * когда действительно что-то отменили, чтобы не глотать Esc у соседей.
+ * Зовётся реестром слоёв Esc — и только когда полоса действительно верхняя:
+ * `preventDefault` и выбор окна остались на его стороне.
  */
-function onReplyEscape(e) {
-    if (e.key !== 'Escape') return;
-    if ($tgLightbox && !$tgLightbox.hidden) return;
+function onReplyEscape() {
     if (!replyTarget(tgState.activeDialogId)) return;
-    e.preventDefault();
     cancelReply();
     if ($tgInput) {
         try { $tgInput.focus(); } catch (_) { /* поля может не быть */ }

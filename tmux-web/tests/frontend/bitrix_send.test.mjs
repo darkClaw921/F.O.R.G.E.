@@ -23,7 +23,8 @@
 // Код возврата 0 — все ассерты прошли, 1 — есть [FAIL].
 
 import {
-    $charCount, $input, $log, $promptNote, $send, dispatch, flush, jsonRes, netCalls, setNet,
+    $charCount, $document, $input, $log, $promptNote, $send, dispatch, flush, jsonRes,
+    netCalls, setNet,
 } from './bitrix_dom_stub.mjs';
 
 const chat = await import(new URL('../../static/js/bitrix/chat.js', import.meta.url).href);
@@ -271,6 +272,30 @@ chat.initChat({});
     dispatch($input, 'keydown', { key: 'Escape' });
     eq(chat._debugChatState().mode, null, 'Esc снял режим ответа');
     eq($input.value, 'черновик', 'набранный ответ не стёрт');
+
+    // Окно ПОВЕРХ панели (карточка встречи) забирает Esc себе — forge-o0sdg.
+    // Здесь обработчик живёт на ПОЛЕ ВВОДА и срабатывает РАНЬШЕ любого
+    // слушателя документа, поэтому остановить его со стороны окна невозможно —
+    // он обязан сам спросить реестр `messenger/esc-stack.js`. Живой дефект: одно
+    // нажатие закрывало карточку и заодно снимало цитату вместе с контекстом.
+    const ESC = await import(new URL('../../static/js/messenger/esc-stack.js', import.meta.url).href);
+    const card = { open: true };
+    const off = ESC.registerEscLayer({
+        doc: $document,
+        name: 'meet-card-stub',
+        depth: ESC.ESC_DEPTH.MEET_CARD,
+        isOpen: () => card.open,
+        close: () => { card.open = false; },
+    });
+    chat.startReply(114);
+    eq(chat._debugChatState().mode, 'reply', 'карточка: режим ответа включён под окном');
+    dispatch($input, 'keydown', { key: 'Escape' });
+    eq(chat._debugChatState().mode, 'reply',
+        'карточка: Esc НЕ снял режим — нажатие принадлежит верхнему окну');
+    card.open = false;
+    dispatch($input, 'keydown', { key: 'Escape' });
+    eq(chat._debugChatState().mode, null, 'карточка закрыта — Esc снова снимает режим ответа');
+    off();
     $input.value = '';
     chat.updateCharCount();
 }

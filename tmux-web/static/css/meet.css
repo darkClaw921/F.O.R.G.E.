@@ -1,0 +1,621 @@
+/* tmux-web — ВСТРЕЧИ: общий вид кнопки в лентах трёх мессенджеров И карточки
+ * встречи (попап), которая по этой кнопке открывается.
+ *
+ * =========================================================================
+ * ПОЧЕМУ ЗДЕСЬ НЕТ НИ ОДНОГО ЛИТЕРАЛА ЦВЕТА
+ * =========================================================================
+ *
+ * Панели живут в СОБСТВЕННЫХ палитрах: токены объявлены на `#telegram`,
+ * `#vk` и `#bitrix`, у каждой две темы, и глобальных токенов приложения они
+ * не наследуют. Кнопка встречи живёт ВНУТРИ этих поддеревьев и обязана
+ * выглядеть своей в каждом — значит, красить её фиксированным цветом нельзя:
+ * зелёная кнопка в оранжевом Битриксе читается как чужеродный элемент, а на
+ * светлой теме половина хардкодов ещё и перестаёт быть читаемой.
+ *
+ * Поэтому файл написан целиком на СЛОЕ АЛИАСОВ `--m-*`, а сам слой объявлен
+ * ТРИЖДЫ — по разу на панель. Дальше правила общие: тема, контраст и
+ * переключение light/dark работают сами, потому что алиас указывает на
+ * панельный токен, а тот уже переопределён в светлой теме своего файла.
+ *
+ * ⚠ ПРАВИЛО ПОПОЛНЕНИЯ. Каждый новый `--m-*` обязан появиться ВО ВСЕХ ТРЁХ
+ * блоках. Пропущенный алиас не «падает» — он просто не резолвится, и
+ * свойство молча теряется (в Битриксе кнопка окажется без рамки, и никто не
+ * узнает). На полноту есть контрактный тест.
+ *
+ * =========================================================================
+ * ПОЧЕМУ КАРТОЧКА ВСТРЕЧИ НЕ ОВЕРЛЕЙ ВЕРХНЕГО УРОВНЯ
+ * =========================================================================
+ *
+ * Из того же самого: попап, положенный в `body`, оказался бы ЗА пределами
+ * `#telegram`/`#vk`/`#bitrix`, и ни один `var(--t-*)` в нём не резолвился бы.
+ * Не «выглядел бы иначе» — не резолвился бы вовсе: текст без цвета, рамки без
+ * рамок. Поэтому попап создаётся ПО ЭКЗЕМПЛЯРУ НА ПАНЕЛЬ и живёт последним
+ * потомком своей панели (`js/messenger/meet-popup.js`), а красится теми же
+ * `--m-*`.
+ *
+ * `position: absolute`, а НЕ `fixed`: `fixed` вырвал бы попап из панели в
+ * область просмотра, и он накрыл бы шапку приложения и боковую панель. Панель
+ * для этого объявлена `position: relative` (см. `#telegram` в telegram.css).
+ *
+ * `z-index: 6` — тот же слой, что у попапа анализа. При равном z-index
+ * побеждает порядок в DOM, а карточка встречи добавляется в панель ПОСЛЕ него,
+ * поэтому оставленный открытым анализ она перекрывает, а не прячется под ним.
+ *
+ * =========================================================================
+ * ЧТО ЖИВЁТ ЗДЕСЬ, А ЧТО В ФАЙЛАХ ПАНЕЛЕЙ
+ * =========================================================================
+ *
+ * Здесь — ВИД: подложка, рамка, размер, тон состояния, пульсация глифа.
+ * В панелях — ВИДИМОСТЬ: когда кнопка проявляется. Механика показа у панелей
+ * разная (у Telegram и VK кнопка гасится сама, у Битрикса — вместе с
+ * контейнером действий), и попытка описать её одним правилом здесь неизбежно
+ * сломала бы одну из трёх.
+ *
+ * Импортируется из style.css ПОСЛЕ файлов панелей: алиасы ссылаются на их
+ * токены, а общие правила обязаны побеждать при равной специфичности.
+ */
+
+/* =========================================================================
+   Слой алиасов, объявление 1 из 3 — Telegram (зелёный терминал)
+   ========================================================================= */
+#telegram {
+    --m-bg: var(--t-bar);
+    --m-bg-hover: var(--t-active);
+    --m-border: var(--t-grn-faint);
+    --m-border-hi: var(--t-grn-dim);
+
+    /* Поверхности карточки. `veil` — то, чем притеняется панель под попапом:
+       берётся ФОН панели, а не чёрный, иначе в светлой теме подложка выглядела
+       бы провалом. `surface` — сама коробка. */
+    --m-veil: var(--t-bg);
+    --m-surface: var(--t-panel);
+
+    /* Текст: основной, выделенный (заголовок, имя спикера, активная вкладка) и
+       приглушённый (метки времени, подписи полей). Ровно те три роли, что уже
+       разведены в палитре панели, — четвёртой здесь не заводим. */
+    --m-text: var(--t-grn-dim);
+    --m-text-hi: var(--t-grn);
+    --m-text-faint: var(--t-faint-text);
+    --m-accent: var(--t-grn-hi);
+
+    /* Тона состояний. `wait` и `work` намеренно одного цвета: и «входит», и
+       «расшифровывает» означают «идёт процесс», а различает их глиф (◌ против
+       ⧗) и подпись. Разводить их ещё и цветом значило бы сделать из кнопки
+       светофор из пяти лампочек. */
+    --m-tone-idle: var(--t-grn-dim);
+    --m-tone-wait: var(--t-cyan);
+    --m-tone-work: var(--t-cyan);
+    --m-tone-warn: var(--t-amber);
+    --m-tone-live: var(--t-red);
+    --m-tone-ok: var(--t-grn);
+    --m-tone-err: var(--t-red);
+    --m-tone-off: var(--t-faint-text);
+}
+
+/* =========================================================================
+   Объявление 2 из 3 — VK (синий)
+   ========================================================================= */
+#vk {
+    --m-bg: var(--v-bar);
+    --m-bg-hover: var(--v-active);
+    --m-border: var(--v-acc-faint);
+    --m-border-hi: var(--v-acc-dim);
+
+    --m-veil: var(--v-bg);
+    --m-surface: var(--v-panel);
+
+    --m-text: var(--v-acc-dim);
+    --m-text-hi: var(--v-acc);
+    --m-text-faint: var(--v-faint-text);
+    --m-accent: var(--v-acc-hi);
+
+    --m-tone-idle: var(--v-acc-dim);
+    --m-tone-wait: var(--v-cyan);
+    --m-tone-work: var(--v-cyan);
+    --m-tone-warn: var(--v-amber);
+    --m-tone-live: var(--v-red);
+    /* Зелёного в палитре VK нет вовсе, и заводить его здесь нельзя: цвет,
+       которого нет в панели, не переопределится её светлой темой. «Готово»
+       говорит основным акцентом — в синей панели это и есть «всё хорошо». */
+    --m-tone-ok: var(--v-acc);
+    --m-tone-err: var(--v-red);
+    --m-tone-off: var(--v-faint-text);
+}
+
+/* =========================================================================
+   Объявление 3 из 3 — Битрикс24 (оранжевый)
+   ========================================================================= */
+#bitrix {
+    --m-bg: var(--b-bar);
+    --m-bg-hover: var(--b-active);
+    --m-border: var(--b-acc-faint);
+    --m-border-hi: var(--b-acc-dim);
+
+    --m-veil: var(--b-bg);
+    --m-surface: var(--b-panel);
+
+    --m-text: var(--b-acc-dim);
+    --m-text-hi: var(--b-acc);
+    --m-text-faint: var(--b-faint-text);
+    --m-accent: var(--b-acc-hi);
+
+    --m-tone-idle: var(--b-acc-dim);
+    --m-tone-wait: var(--b-cyan);
+    --m-tone-work: var(--b-cyan);
+    /* Амбера у Битрикса нет: его собственный акцент И ЕСТЬ оранжевый, и роль
+       «внимание сюда» он играет во всей панели. */
+    --m-tone-warn: var(--b-acc);
+    --m-tone-live: var(--b-red);
+    --m-tone-ok: var(--b-green);
+    --m-tone-err: var(--b-red);
+    --m-tone-off: var(--b-faint-text);
+}
+
+/* =========================================================================
+   Кнопка
+   ========================================================================= */
+
+/* Инлайновый flex, а не текст: глиф и подпись — отдельные узлы, потому что
+   ПУЛЬСИРОВАТЬ ИМЕЕТ ПРАВО ТОЛЬКО ГЛИФ. Пульсация подписи с живым таймером
+   превратила бы строку в мигающую вывеску, а мигающий фон строки — в дефект
+   рендера.
+
+   `white-space: nowrap` обязателен: подпись меняется на таймер записи, и
+   перенос «1:” / “05» разорвал бы цифру пополам. */
+.meet-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+
+    background: var(--m-bg);
+    border: 1px solid var(--m-border);
+    border-radius: 3px;
+    color: var(--m-tone-idle);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 10px;
+    line-height: 1.2;
+    letter-spacing: 0.06em;
+    padding: 1px 6px;
+    white-space: nowrap;
+}
+
+/* Под курсором меняются подложка и рамка, но НЕ цвет текста: тон здесь несёт
+   состояние встречи («идёт запись» красная), и перекрашивать её на наведении
+   значило бы врать о состоянии ровно в тот момент, когда на кнопку смотрят. */
+.meet-btn:hover,
+.meet-btn:focus-visible {
+    background: var(--m-bg-hover);
+    border-color: var(--m-border-hi);
+    outline: none;
+}
+
+.meet-btn[data-meet-tone="idle"] { color: var(--m-tone-idle); }
+.meet-btn[data-meet-tone="wait"] { color: var(--m-tone-wait); }
+.meet-btn[data-meet-tone="work"] { color: var(--m-tone-work); }
+.meet-btn[data-meet-tone="warn"] { color: var(--m-tone-warn); }
+.meet-btn[data-meet-tone="live"] { color: var(--m-tone-live); }
+.meet-btn[data-meet-tone="ok"]   { color: var(--m-tone-ok); }
+.meet-btn[data-meet-tone="err"]  { color: var(--m-tone-err); }
+.meet-btn[data-meet-tone="off"]  { color: var(--m-tone-off); }
+
+/* Рамка у закреплённых состояний повторяет тон: закреплённая кнопка видна
+   всегда, и одной подложки мало, чтобы отличить «идёт запись» от «готово»
+   боковым зрением. */
+.meet-btn[data-meet-tone="live"],
+.meet-btn[data-meet-tone="warn"],
+.meet-btn[data-meet-tone="err"] {
+    border-color: currentColor;
+}
+
+.meet-glyph {
+    font-size: 11px;
+    line-height: 1;
+}
+
+/* Подпись бывает пустой (состояние без слова). Правило `[hidden]` обязано
+   стоять ЯВНО: у элемента со своим `display` атрибут `hidden` не работает —
+   этот дефект в проекте уже ловили на карточках медиа Битрикса. */
+.meet-label[hidden] { display: none; }
+
+/* Пульсирует ТОЛЬКО глиф и только там, где meet-row поставил `data-meet-pulse`
+   (идёт запись, вход, лобби). Прозрачностью, а не масштабом: масштаб дёргал бы
+   ширину кнопки, а она стоит вплотную к кнопке ответа. */
+@keyframes meet-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+}
+.meet-btn[data-meet-pulse] .meet-glyph {
+    animation: meet-pulse 1.6s ease-in-out infinite;
+}
+
+/* =========================================================================
+   Карточка встречи (попап)
+   =========================================================================
+
+   Разметку строит `js/messenger/meet-popup.js` — по экземпляру на панель,
+   последним потомком панели. Здесь только вид; ни одного правила «когда
+   показывать»: показ и скрытие — это атрибут `hidden` на корне, который ставит
+   модуль.
+
+   ⚠ У КАЖДОГО УЗЛА СО СВОИМ `display` ДОЛЖНО БЫТЬ ЯВНОЕ ПРАВИЛО `[hidden]`.
+   Атрибут `hidden` — это всего лишь `display: none` из таблицы браузера по
+   умолчанию, и любое наше `display: flex` его перебивает. Этот дефект в
+   проекте уже ловили дважды (карточки медиа Битрикса, подпись кнопки встречи),
+   поэтому такие правила стоят рядом с самим `display`, а не в конце файла. */
+
+.meet-popup {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    z-index: 6;
+    background: color-mix(in srgb, var(--m-veil) 82%, transparent);
+    backdrop-filter: blur(2px);
+}
+.meet-popup[hidden] { display: none; }
+
+.meet-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    max-width: 760px;
+    max-height: 100%;
+    padding: 12px 14px;
+    background: var(--m-surface);
+    border: 1px solid var(--m-border-hi);
+    border-radius: 4px;
+    box-shadow: 0 8px 32px color-mix(in srgb, var(--m-veil) 70%, transparent);
+    color: var(--m-text);
+    overflow: hidden;
+}
+
+/* ---------------------------------------------------------------- шапка --- */
+
+.meet-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+.meet-head-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--m-text-hi);
+    /* Название встречи бывает длиной в адрес комнаты: одна строка с
+       многоточием, иначе шапка растёт и съедает высоту расшифровки. */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.meet-head-platform {
+    color: var(--m-text-faint);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.meet-head-status {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+}
+.meet-close {
+    background: none;
+    border: none;
+    color: var(--m-text-faint);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1;
+    padding: 2px 4px;
+}
+.meet-close:hover,
+.meet-close:focus-visible {
+    color: var(--m-text-hi);
+    outline: none;
+}
+
+/* ------------------------------------------------------------------ мета -- */
+
+.meet-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    font-size: 11px;
+    color: var(--m-text-faint);
+}
+.meet-meta-item { white-space: nowrap; }
+.meet-meta-item[hidden] { display: none; }
+.meet-meta-value { color: var(--m-text); }
+
+/* ----------------------------------------------------------------- плеер -- */
+
+.meet-player {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background: var(--m-bg);
+    border: 1px solid var(--m-border);
+    border-radius: 3px;
+}
+.meet-player[hidden] { display: none; }
+.meet-audio {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 28px;
+}
+.meet-audio[hidden] { display: none; }
+.meet-player-note {
+    flex: 1 1 auto;
+    color: var(--m-text-faint);
+    font-size: 11px;
+}
+.meet-player-note[hidden] { display: none; }
+
+/* Скриншот «что видит бот». Своего `display` у картинки НЕТ намеренно: тогда
+   атрибут `hidden` работает на ней без отдельного правила. */
+.meet-shot {
+    max-width: 100%;
+    border: 1px solid var(--m-border);
+    border-radius: 3px;
+}
+
+/* --------------------------------------------------------------- вкладки -- */
+
+.meet-tabs {
+    display: flex;
+    gap: 2px;
+    border-bottom: 1px solid var(--m-border);
+}
+.meet-tab {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--m-text-faint);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    padding: 4px 10px;
+    text-transform: uppercase;
+}
+.meet-tab:hover,
+.meet-tab:focus-visible {
+    color: var(--m-text);
+    outline: none;
+}
+/* Активная вкладка отмечена И цветом, И подчёркиванием: одного цвета мало —
+   разница между `--m-text` и `--m-text-faint` намеренно небольшая. */
+.meet-tab[aria-selected="true"] {
+    color: var(--m-accent);
+    border-bottom-color: var(--m-accent);
+}
+
+.meet-panes {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+}
+.meet-pane {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.meet-pane[hidden] { display: none; }
+
+/* -------------------------------------------------------------- саммари --- */
+
+.meet-summary {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    font-size: 12px;
+}
+.meet-summary-error {
+    color: var(--m-tone-err);
+    font-size: 11px;
+}
+.meet-summary-error[hidden] { display: none; }
+
+/* ----------------------------------------------------------- расшифровка -- */
+
+.meet-search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.meet-search-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: var(--m-bg);
+    border: 1px solid var(--m-border);
+    border-radius: 3px;
+    color: var(--m-text);
+    font-family: inherit;
+    font-size: 11px;
+    padding: 3px 6px;
+}
+.meet-search-input:focus {
+    border-color: var(--m-border-hi);
+    outline: none;
+}
+.meet-search-count {
+    color: var(--m-text-faint);
+    font-size: 10px;
+    white-space: nowrap;
+}
+
+/* Потолок в 2000 строк — не оптимизация, а условие, при котором трёхчасовая
+   запись не кладёт вкладку. Строка о срезе видна всегда, когда срез случился:
+   молчаливо потерянное начало расшифровки читалось бы как потеря данных. */
+.meet-transcript-cap {
+    color: var(--m-tone-warn);
+    font-size: 10px;
+}
+.meet-transcript-cap[hidden] { display: none; }
+
+.meet-transcript {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    font-size: 12px;
+}
+.meet-seg {
+    display: flex;
+    gap: 6px;
+    padding: 1px 0;
+}
+.meet-seg[hidden] { display: none; }
+.meet-seg-time {
+    color: var(--m-text-faint);
+    flex: 0 0 auto;
+    font-size: 10px;
+    /* Метка времени — цифры разной ширины на моноширинном шрифте всё равно
+       выравниваются, но правое выравнивание держит колонку при `0:09` и
+       `1:09:44` разом. */
+    text-align: right;
+    width: 52px;
+}
+.meet-seg-name {
+    color: var(--m-text-hi);
+    flex: 0 0 auto;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.meet-seg-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    word-break: break-word;
+}
+/* Перекрытая речь: имя спикера у такого сегмента угадано, а не известно. */
+.meet-seg[data-meet-overlap] .meet-seg-name {
+    color: var(--m-tone-warn);
+}
+.meet-seg[data-meet-hit] .meet-seg-text {
+    color: var(--m-text-hi);
+}
+
+.meet-more {
+    align-self: center;
+    background: var(--m-bg);
+    border: 1px solid var(--m-border);
+    border-radius: 3px;
+    color: var(--m-text);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    padding: 2px 10px;
+}
+.meet-more[hidden] { display: none; }
+.meet-more:hover,
+.meet-more:focus-visible {
+    background: var(--m-bg-hover);
+    border-color: var(--m-border-hi);
+    outline: none;
+}
+
+/* ------------------------------------------------------------- участники -- */
+
+.meet-people {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.meet-person {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+}
+.meet-person-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.meet-person-name[hidden] { display: none; }
+.meet-person-spoke {
+    color: var(--m-text-faint);
+    font-size: 10px;
+    white-space: nowrap;
+}
+.meet-person-rename {
+    background: var(--m-bg);
+    border: 1px solid var(--m-border);
+    border-radius: 3px;
+    color: var(--m-text);
+    font-family: inherit;
+    font-size: 11px;
+    padding: 2px 6px;
+    width: 160px;
+}
+.meet-person-rename[hidden] { display: none; }
+.meet-person[data-meet-bot] .meet-person-name {
+    color: var(--m-text-faint);
+}
+
+/* -------------------------------------------------------------- действия -- */
+
+.meet-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-top: 2px;
+}
+.meet-act {
+    background: var(--m-bg);
+    border: 1px solid var(--m-border);
+    border-radius: 3px;
+    color: var(--m-text);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    padding: 3px 10px;
+    text-transform: uppercase;
+}
+.meet-act[hidden] { display: none; }
+.meet-act:hover,
+.meet-act:focus-visible {
+    background: var(--m-bg-hover);
+    border-color: var(--m-border-hi);
+    outline: none;
+}
+.meet-act:disabled {
+    color: var(--m-tone-off);
+    cursor: default;
+}
+/* Опасные действия названы тоном, а не только словом: «ОТМЕНИТЬ» выбрасывает
+   запись целиком, и промах по соседней кнопке стоит часа звука. */
+.meet-act[data-meet-danger] { color: var(--m-tone-err); }
+.meet-act[data-meet-primary] { color: var(--m-tone-ok); }
+
+.meet-error {
+    color: var(--m-tone-err);
+    font-size: 11px;
+}
+.meet-error[hidden] { display: none; }
+
+/* Уважение к настройке «меньше движения» — обязательная ветка: пульсация
+   рядом с текстом переписки мешает читать сильнее, чем помогает. Состояние
+   при этом не теряется: его несут глиф, подпись и цвет. */
+@media (prefers-reduced-motion: reduce) {
+    .meet-btn[data-meet-pulse] .meet-glyph {
+        animation: none;
+    }
+    .meet-btn {
+        transition: none;
+    }
+}

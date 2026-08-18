@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Мок-встреча F.O.R.G.E.</title>
+<!--
+  МОК-СТРАНИЦА ВСТРЕЧИ — ГЛАВНЫЙ ТЕСТОВЫЙ АКТИВ ПЛАГИНА.
+
+  Она изображает видеовстречу настолько точно, насколько это нужно боту:
+  петлевой RTCPeerConnection с удалёнными аудиодорожками, расписание речи с
+  НАМЕРЕННЫМ НАЛОЖЕНИЕМ, список участников и маркер активного спикера в DOM,
+  кнопки микрофона и камеры, маркер конца встречи.
+
+  Зачем она вообще есть. Весь пайплайн — инжект, три тапа захвата, VAD,
+  транспорт через CDP-биндинг, писатель WAV, атрибуция — отлаживается ЗДЕСЬ,
+  до всякой живой платформы. Обратный порядок означал бы отладку двух
+  неизвестных одновременно: своего кода и чужой вёрстки, которая к тому же
+  меняется без предупреждения. Здесь же всё детерминировано и занимает
+  секунды.
+
+  ДЕТЕРМИНИЗМ — не пожелание, а устройство. Расписание задаётся АУДИОЧАСАМИ
+  (`AudioContext.currentTime`), а не `setTimeout`: включение и выключение
+  осцилляторов ставится на абсолютные моменты `t0 + смещение`, то есть
+  сэмпл-точно. Окно бота стоит свёрнутым или за экраном, таймеры рендерера
+  Chrome троттлит до секунды — расписание на `setTimeout` разъехалось бы на
+  этом первым. DOM тоже обновляется от аудиочасов (интервал лишь опрашивает
+  их), поэтому троттлинг сдвигает подпись, но не ломает её.
+
+  Эталон таймлайна лежит рядом в expected.json. Правка расписания в этом
+  файле ОБЯЗАНА идти вместе с правкой expected.json — иначе e2e перестанет
+  что-либо проверять.
+-->
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; padding: 16px;
+    background: #14161a; color: #e6e8eb;
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  h1 { font-size: 18px; margin: 0 0 12px; }
+  .row { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+  .card { background: #1c1f26; border: 1px solid #2b303a; border-radius: 8px; padding: 12px; min-width: 240px; }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: #8b93a1; margin: 0 0 8px; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { padding: 4px 8px; border-radius: 6px; display: flex; justify-content: space-between; gap: 12px; }
+  li[data-speaking="true"] { background: #1f3a2c; color: #7ee2a8; }
+  button { font: inherit; background: #2b303a; color: #e6e8eb; border: 1px solid #3a414f; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  button[data-enabled="false"] { background: #3a2126; border-color: #5a2b33; color: #ff9aa6; }
+  input { font: inherit; background: #14161a; color: #e6e8eb; border: 1px solid #3a414f; border-radius: 6px; padding: 6px 10px; }
+  #meeting-ended { display: none; margin-top: 16px; padding: 12px; background: #2b2118; border: 1px solid #5a4326; border-radius: 8px; }
+  #meeting-ended[data-ended="true"] { display: block; }
+  #prejoin[hidden] { display: none; }
+  /*
+    ОБЯЗАТЕЛЬНО. У `#stage` есть свой `display: flex` из `.row`, и он
+    перебивает `display: none`, который браузер даёт атрибуту `[hidden]`.
+    Без этой строки панель встречи вместе с кнопкой «Выйти» остаётся видимой
+    ещё до входа — а бот определяет «я уже внутри» именно по кнопке выхода и
+    решил бы, что вошёл, не нажав ни одной кнопки. Настоящие площадки
+    устроены так же: пре-join и панель живут в одном документе.
+  */
+  #stage[hidden] { display: none; }
+  /* Та же ловушка `[hidden]`: у карточки свой `display` из `.card`. */
+  #join-audio-box[hidden] { display: none; }
+  #join-denied { margin-top: 16px; padding: 12px; background: #2b1818; border: 1px solid #5a2626; border-radius: 8px; color: #ff9aa6; }
+  #join-denied[hidden] { display: none; }
+  code { color: #9fb6ff; }
+  .clock { font-variant-numeric: tabular-nums; color: #8b93a1; }
+</style>
+</head>
+<body>
+
+<h1>Мок-встреча F.O.R.G.E. — <span data-testid="room-id" id="room-id"></span></h1>
+
+<!-- Интерстишал «Продолжить в браузере» + ввод имени + вход.
+     Ровно те три шага, которые бот проходит на живой платформе. -->
+<section id="prejoin" class="card" data-testid="prejoin">
+  <h2>Присоединиться</h2>
+  <p><button data-testid="continue-in-browser" id="continue-in-browser">Продолжить в браузере</button></p>
+  <p><input data-testid="name-input" id="name-input" placeholder="Ваше имя" value=""></p>
+  <p><button data-testid="join" id="join">Присоединиться</button></p>
+</section>
+
+<div class="row" id="stage" hidden>
+  <section class="card">
+    <h2>Участники (<span data-testid="participant-count" id="participant-count">0</span>)</h2>
+    <ul data-testid="participant-list" id="participant-list"></ul>
+  </section>
+
+  <section class="card">
+    <h2>Активный спикер</h2>
+    <p data-testid="active-speaker" id="active-speaker">—</p>
+    <p class="clock">t = <span data-testid="clock" id="clock">0</span> мс</p>
+  </section>
+
+  <section class="card">
+    <h2>Устройства</h2>
+    <p><button data-testid="mic-toggle" id="mic-toggle" data-enabled="true" aria-pressed="true">Микрофон включён</button></p>
+    <p><button data-testid="cam-toggle" id="cam-toggle" data-enabled="true" aria-pressed="true">Камера включена</button></p>
+    <p><button data-testid="leave" id="leave">Выйти</button></p>
+  </section>
+
+  <section class="card">
+    <h2>Дорожки</h2>
+    <p>режим: <code data-testid="mode" id="mode-label"></code></p>
+    <p>удалённых аудиодорожек: <code data-testid="track-count" id="track-count">0</code></p>
+  </section>
+</div>
+
+<!-- ОТКАЗ ВО ВХОДЕ (`?deny=1`). Обычный `div`, а не кнопка, — и это главное в
+     нём: живые площадки пишут такое именно текстом, поэтому кандидат к пробе
+     обязан быть `contains:`, а не `text:` (тот ищет только кликабельное). -->
+<div id="join-denied" data-testid="join-denied" hidden>Организатор отклонил ваш запрос на присоединение</div>
+
+<!-- ЗВУК ПО КНОПКЕ (`?audiogate=1`) — механика веб-клиента Zoom: пока по ней
+     не кликнули, дорожек нет вовсе, и записывать нечего. -->
+<div id="join-audio-box" class="card" hidden>
+  <p><button data-testid="join-audio" id="join-audio">Войти с использованием звука компьютера</button></p>
+</div>
+
+<div id="meeting-ended" data-testid="meeting-ended" data-ended="false">Встреча завершена</div>
+
+<script>
+"use strict";
+(function () {
+  // --- параметры --------------------------------------------------------
+  //
+  // mode      per-track | slots | mixed  — три режима SFU, которые бот обязан
+  //                                        различать в рантайме;
+  // autojoin  1 (по умолчанию) — страница входит сама; 0 — ждёт кликов, как
+  //           живая площадка: этим пользуется Ф4, проверяя вход;
+  // duration  длительность встречи, мс (по умолчанию 8000);
+  //
+  // Три параметра ниже добавлены фазами 8–10. Живых встреч Google Meet, Teams
+  // и Zoom у нас нет, но САМИ МЕХАНИЗМЫ, которые эти фазы принесли, проверить
+  // в настоящем браузере можно — и они проверяются здесь:
+  //
+  // deny      1 — вместо входа показывается отказ (Google Meet при ограниченном
+  //           доступе хоста отклоняет анонимную заявку сам). Маркер — обычный
+  //           `div`, как на живых площадках;
+  // audiogate 1 — дорожки НЕ создаются, пока не нажата «войти со звуком»
+  //           компьютера (веб-клиент Zoom без этого клика не имеет ни одного
+  //           источника звука);
+  // hotkeys   1 — микрофон и камера переключаются ТОЛЬКО с Ctrl+D и Ctrl+E, а
+  //           кнопки на них не реагируют вовсе (у Google Meet сочетания
+  //           стабильнее локализованных `aria-label`).
+  var params = new URLSearchParams(location.search);
+  var MODE = params.get("mode") || "per-track";
+  var AUTOJOIN = params.get("autojoin") !== "0";
+  var DURATION_MS = parseInt(params.get("duration") || "8000", 10);
+  var ROOM = params.get("room") || "mock-1234567890";
+  var DENY = params.get("deny") === "1";
+  var AUDIO_GATE = params.get("audiogate") === "1";
+  var HOTKEYS_ONLY = params.get("hotkeys") === "1";
+
+  document.getElementById("room-id").textContent = ROOM;
+  document.getElementById("mode-label").textContent = MODE;
+
+  // --- РАСПИСАНИЕ -------------------------------------------------------
+  //
+  // Единственный источник истины о том, кто когда говорит. Дублируется в
+  // expected.json, и это дублирование НАМЕРЕННОЕ: эталон обязан быть
+  // независимым от кода, иначе он проверял бы сам себя.
+  //
+  // Наложения (участки, где говорят двое) выписаны отдельным полем в
+  // expected.json — ради них пер-трековый захват и делается: в миксе
+  // наложенная речь неразделима, по дорожкам разбирается тривиально.
+  var SCHEDULES = {
+    // Трек на человека: три собеседника, три дорожки.
+    "per-track": {
+      participants: ["Алиса", "Борис", "Виктор"],
+      tracks: [
+        { hz: 220, speakers: [{ name: "Алиса",  from: 500,  to: 2000 },
+                              { name: "Алиса",  from: 3500, to: 5000 }] },
+        { hz: 330, speakers: [{ name: "Борис",  from: 1500, to: 2500 },
+                              { name: "Борис",  from: 4500, to: 5500 }] },
+        { hz: 440, speakers: [{ name: "Виктор", from: 6500, to: 8000 }] }
+      ]
+    },
+    // Слоты: собеседников шестеро, дорожек две, и КТО в дорожке — меняется.
+    // Ровно поэтому трекам в этом режиме верить нельзя.
+    "slots": {
+      participants: ["Алиса", "Борис", "Виктор", "Галина", "Дмитрий", "Елена"],
+      tracks: [
+        { hz: 220, speakers: [{ name: "Алиса",   from: 500,  to: 2500 },
+                              { name: "Галина",  from: 4500, to: 6000 }] },
+        { hz: 550, speakers: [{ name: "Борис",   from: 1500, to: 3000 },
+                              { name: "Дмитрий", from: 5000, to: 7000 }] }
+      ]
+    },
+    // Микс: одна дорожка, в ней СМЕШАНЫ несколько говорящих.
+    //
+    // ПАУЗЫ ЗДЕСЬ ДЛИННЕЕ HANGOVER'А VAD, И ЭТО НЕ СЛУЧАЙНОСТЬ. Пауза в
+    // 500 мс, стоявшая тут раньше, ровно равна `vad_hangover_ms`, то есть
+    // ровно тому промежутку, который детект речи ОБЯЗАН не считать концом
+    // реплики («пауза между словами — не конец»). Живой прогон это и показал:
+    // два интервала сливались в один, и падал не код, а противоречие внутри
+    // самого эталона. Паузы разведены до 1200 мс, чтобы стенд проверял
+    // детект, а не его настройку.
+    "mixed": {
+      participants: ["Алиса", "Борис", "Виктор"],
+      tracks: [
+        { hz: 880, mix: [
+            { hz: 880, name: "Алиса",  from: 500,  to: 2000 },
+            { hz: 990, name: "Борис",  from: 1500, to: 3000 },
+            { hz: 880, name: "Алиса",  from: 4200, to: 5600 },
+            { hz: 770, name: "Виктор", from: 6800, to: 8000 }
+          ] }
+      ]
+    }
+  };
+
+  var SCHEDULE = SCHEDULES[MODE];
+  if (!SCHEDULE) {
+    throw new Error("неизвестный режим мок-встречи: " + MODE);
+  }
+
+  // --- состояние, видимое снаружи ---------------------------------------
+  //
+  // Только для ТЕСТОВ. Инжектируемый скрипт бота этим не пользуется и
+  // пользоваться не имеет права: на живой площадке ничего подобного нет, и
+  // тап, опирающийся на такое поле, прошёл бы мок и провалился на Телемосте.
+  var mock = {
+    mode: MODE,
+    room: ROOM,
+    durationMs: DURATION_MS,
+    schedule: SCHEDULE,
+    joined: false,
+    ended: false,
+    t0: null,           // AudioContext.currentTime старта расписания
+    remoteTracks: [],   // id удалённых дорожек в порядке появления
+    micEnabled: true,
+    camEnabled: true,
+    displayName: "",
+    clicks: [],         // что нажимали — для проверки «бот не кликал сам»
+    // Фазы 8–10: чем именно переключили устройство. Тест обязан отличать
+    // «нажали кнопку» от «прислали Ctrl+D», иначе проверка сочетаний
+    // зеленела бы от обычного клика.
+    hotkeys: [],
+    audioJoined: !AUDIO_GATE,
+    denied: false
+  };
+  window.__mockMeeting = mock;
+
+  // --- DOM --------------------------------------------------------------
+  var listEl = document.getElementById("participant-list");
+  var countEl = document.getElementById("participant-count");
+  var activeEl = document.getElementById("active-speaker");
+  var clockEl = document.getElementById("clock");
+  var trackCountEl = document.getElementById("track-count");
+  var endedEl = document.getElementById("meeting-ended");
+  var stageEl = document.getElementById("stage");
+  var prejoinEl = document.getElementById("prejoin");
+  var deniedEl = document.getElementById("join-denied");
+  var audioBoxEl = document.getElementById("join-audio-box");
+
+  var itemByName = {};
+
+  function renderParticipants() {
+    listEl.textContent = "";
+    itemByName = {};
+    // Бот в списке присутствует — так же, как на живой встрече.
+    var names = ["F.O.R.G.E."].concat(SCHEDULE.participants);
+    names.forEach(function (name, i) {
+      var li = document.createElement("li");
+      li.setAttribute("data-testid", "participant");
+      li.setAttribute("data-participant-id", "p" + i);
+      li.setAttribute("data-speaking", "false");
+      var n = document.createElement("span");
+      n.setAttribute("data-testid", "participant-name");
+      n.textContent = name;
+      var s = document.createElement("span");
+      s.setAttribute("data-testid", "participant-state");
+      s.textContent = "";
+      li.appendChild(n);
+      li.appendChild(s);
+      listEl.appendChild(li);
+      itemByName[name] = li;
+    });
+    countEl.textContent = String(names.length);
+  }
+
+  /** Кто говорит в момент `ms` по расписанию. */
+  function speakersAt(ms) {
+    var out = [];
+    SCHEDULE.tracks.forEach(function (t) {
+      var slots = t.mix || t.speakers;
+      slots.forEach(function (s) {
+        if (ms >= s.from && ms < s.to && out.indexOf(s.name) === -1) {
+          out.push(s.name);
+        }
+      });
+    });
+    return out;
+  }
+
+  function paintSpeakers(ms) {
+    var speaking = speakersAt(ms);
+    Object.keys(itemByName).forEach(function (name) {
+      var on = speaking.indexOf(name) !== -1;
+      var li = itemByName[name];
+      li.setAttribute("data-speaking", on ? "true" : "false");
+      li.querySelector('[data-testid="participant-state"]').textContent = on ? "говорит" : "";
+    });
+    // Активным считается первый по расписанию — так же поступает живая
+    // площадка, у неё «активный спикер» тоже один.
+    activeEl.textContent = speaking.length ? speaking[0] : "—";
+    activeEl.setAttribute("data-speaking-count", String(speaking.length));
+  }
+
+  // --- звук и петлевое соединение ---------------------------------------
+  var ctx = null;
+  var pcSend = null;
+  var pcRecv = null;
+  var senderStreams = [];
+
+  /** Строит источник одной дорожки и возвращает её MediaStreamTrack. */
+  function buildTrack(spec) {
+    var dest = ctx.createMediaStreamDestination();
+    var slots = spec.mix || spec.speakers;
+    // Один осциллятор на КАЖДЫЙ интервал речи: так гейт получается ровным
+    // прямоугольником без хвостов от предыдущего интервала.
+    slots.forEach(function (s) {
+      var osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = s.hz || spec.hz;
+      var gain = ctx.createGain();
+      // Абсолютные моменты аудиочасов: сэмпл-точно и не зависит от таймеров.
+      gain.gain.setValueAtTime(0, 0);
+      osc.connect(gain);
+      gain.connect(dest);
+      spec._gates = spec._gates || [];
+      spec._gates.push({ gain: gain, from: s.from, to: s.to });
+      osc.start();
+      spec._oscs = spec._oscs || [];
+      spec._oscs.push(osc);
+    });
+    senderStreams.push(dest.stream);
+    return dest.stream.getAudioTracks()[0];
+  }
+
+  /** Ставит гейты на абсолютную ось аудиочасов. */
+  function armGates(t0) {
+    SCHEDULE.tracks.forEach(function (spec) {
+      (spec._gates || []).forEach(function (g) {
+        g.gain.gain.setValueAtTime(0, t0);
+        g.gain.gain.setValueAtTime(0.8, t0 + g.from / 1000);
+        g.gain.gain.setValueAtTime(0, t0 + g.to / 1000);
+      });
+    });
+  }
+
+  function connectLoopback(tracks) {
+    pcSend = new RTCPeerConnection();
+    pcRecv = new RTCPeerConnection();
+
+    pcSend.onicecandidate = function (e) {
+      if (e.candidate) { pcRecv.addIceCandidate(e.candidate); }
+    };
+    pcRecv.onicecandidate = function (e) {
+      if (e.candidate) { pcSend.addIceCandidate(e.candidate); }
+    };
+    pcRecv.addEventListener("track", function (e) {
+      mock.remoteTracks.push(e.track.id);
+      trackCountEl.textContent = String(mock.remoteTracks.length);
+      // Скрытый воспроизводящий элемент: без него у части браузеров
+      // MediaStreamAudioSourceNode от удалённого трека молчит. Бот делает то
+      // же самое своими руками — здесь это лишь воспроизводит условия живой
+      // площадки, которая обычно вешает поток на <audio>.
+      var el = document.createElement("audio");
+      el.autoplay = true;
+      el.muted = true;
+      el.setAttribute("data-testid", "remote-audio");
+      el.srcObject = e.streams[0] || new MediaStream([e.track]);
+      document.body.appendChild(el);
+    });
+
+    tracks.forEach(function (t, i) {
+      pcSend.addTrack(t, senderStreams[i]);
+    });
+
+    return pcSend.createOffer()
+      .then(function (offer) {
+        return pcSend.setLocalDescription(offer).then(function () {
+          return pcRecv.setRemoteDescription(offer);
+        });
+      })
+      .then(function () { return pcRecv.createAnswer(); })
+      .then(function (answer) {
+        return pcRecv.setLocalDescription(answer).then(function () {
+          return pcSend.setRemoteDescription(answer);
+        });
+      });
+  }
+
+  // --- ход встречи ------------------------------------------------------
+  var ticker = null;
+
+  function startMeeting() {
+    if (mock.joined) { return Promise.resolve(); }
+    // ОТКАЗ ВО ВХОДЕ. Показывается вместо встречи, и вход дальше не идёт
+    // никогда: живая площадка тоже не передумает, сколько ни жми.
+    if (DENY) {
+      mock.denied = true;
+      prejoinEl.hidden = true;
+      deniedEl.hidden = false;
+      return Promise.resolve();
+    }
+    mock.joined = true;
+    prejoinEl.hidden = true;
+    stageEl.hidden = false;
+    // ГЕЙТ ЗВУКА. Дорожек нет, пока не нажата кнопка: ровно так ведёт себя
+    // веб-клиент Zoom, и запись без этого клика вышла бы нулевой длины при
+    // полностью исправном боте.
+    if (AUDIO_GATE && !mock.audioJoined) {
+      audioBoxEl.hidden = false;
+      renderParticipants();
+      return Promise.resolve();
+    }
+    return startAudio();
+  }
+
+  /** Собственно звук: дорожки, расписание, часы. */
+  function startAudio() {
+    audioBoxEl.hidden = true;
+    renderParticipants();
+
+    // 48 кГц: столько же отдаёт живая площадка. Пересчёт в 16 кГц — работа
+    // инжектированного скрипта, и он обязан быть проверен именно на этом
+    // соотношении.
+    ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+    var tracks = SCHEDULE.tracks.map(buildTrack);
+
+    return connectLoopback(tracks).then(function () {
+      return ctx.resume ? ctx.resume() : null;
+    }).then(function () {
+      // Небольшой отступ от «сейчас»: гейт, поставленный в прошлое,
+      // применился бы мгновенно и съел бы начало первого интервала.
+      var t0 = ctx.currentTime + 0.15;
+      mock.t0 = t0;
+      armGates(t0);
+      mock.startedAtMs = Date.now();
+      // НАЧАЛО РАСПИСАНИЯ В UNIX-ВРЕМЕНИ — единственный способ свести две оси.
+      //
+      // Расписание страницы отсчитывается от `t0` аудиочасов, а запись бота —
+      // от момента, когда он захватил ПЕРВУЮ дорожку. Первое случается позже
+      // второго: дорожки появляются при согласовании соединения, а гейты
+      // ставятся с отступом в 150 мс от «сейчас». Разница — пара сотен
+      // миллисекунд, и на загруженной машине она растёт. Не вычти её тест —
+      // он сравнивал бы времена в разных началах координат и падал бы «от
+      // погоды», а не от дефекта.
+      mock.t0UnixMs = Date.now() + Math.round((t0 - ctx.currentTime) * 1000);
+
+      // DOM обновляется ОТ АУДИОЧАСОВ: интервал только опрашивает их, поэтому
+      // троттлинг таймеров свёрнутого окна сдвигает подпись, но не ломает
+      // соответствие расписанию.
+      ticker = setInterval(function () {
+        var ms = Math.max(0, Math.round((ctx.currentTime - t0) * 1000));
+        clockEl.textContent = String(ms);
+        paintSpeakers(ms);
+        if (ms >= DURATION_MS) { endMeeting(); }
+      }, 100);
+    });
+  }
+
+  function endMeeting() {
+    if (mock.ended) { return; }
+    mock.ended = true;
+    if (ticker) { clearInterval(ticker); ticker = null; }
+    // Три независимых сигнала конца встречи разом — ровно те, на которые
+    // опирается автовыход бота: дорожки кончились, маркер в DOM появился,
+    // соединение закрылось.
+    senderStreams.forEach(function (s) {
+      s.getTracks().forEach(function (t) { t.stop(); });
+    });
+    if (pcSend) { pcSend.close(); }
+    if (pcRecv) { pcRecv.close(); }
+    endedEl.setAttribute("data-ended", "true");
+    activeEl.textContent = "—";
+    document.title = "Встреча завершена";
+  }
+
+  // --- кнопки -----------------------------------------------------------
+  function note(what) { mock.clicks.push(what); }
+
+  document.getElementById("continue-in-browser").addEventListener("click", function () {
+    note("continue-in-browser");
+    this.disabled = true;
+  });
+  document.getElementById("name-input").addEventListener("input", function () {
+    mock.displayName = this.value;
+  });
+  document.getElementById("join").addEventListener("click", function () {
+    note("join");
+    startMeeting();
+  });
+  /** Перерисовывает кнопку устройства под текущее состояние. */
+  function paintDevice(id, on, onText, offText) {
+    var el = document.getElementById(id);
+    el.setAttribute("data-enabled", String(on));
+    el.setAttribute("aria-pressed", String(on));
+    el.textContent = on ? onText : offText;
+  }
+
+  function toggleMic(how) {
+    mock.micEnabled = !mock.micEnabled;
+    paintDevice("mic-toggle", mock.micEnabled, "Микрофон включён", "Микрофон выключен");
+    if (how === "hotkey") { mock.hotkeys.push("mic"); } else { note("mic-toggle"); }
+  }
+
+  function toggleCam(how) {
+    mock.camEnabled = !mock.camEnabled;
+    paintDevice("cam-toggle", mock.camEnabled, "Камера включена", "Камера выключена");
+    if (how === "hotkey") { mock.hotkeys.push("cam"); } else { note("cam-toggle"); }
+  }
+
+  document.getElementById("mic-toggle").addEventListener("click", function () {
+    // В режиме `hotkeys=1` кнопка ВИДНА (по ней читается состояние), но не
+    // работает: так проверяется, что устройство погасили именно сочетанием.
+    if (HOTKEYS_ONLY) { note("mic-toggle-ignored"); return; }
+    toggleMic("click");
+  });
+  document.getElementById("cam-toggle").addEventListener("click", function () {
+    if (HOTKEYS_ONLY) { note("cam-toggle-ignored"); return; }
+    toggleCam("click");
+  });
+  document.getElementById("join-audio").addEventListener("click", function () {
+    note("join-audio");
+    if (mock.audioJoined) { return; }
+    mock.audioJoined = true;
+    startAudio();
+  });
+
+  // СОЧЕТАНИЯ КЛАВИШ Google Meet. `isTrusted` здесь не проверяется намеренно:
+  // мок обязан принимать ровно то, что шлёт `Input.dispatchKeyEvent`, и не
+  // притворяться строже живой площадки.
+  document.addEventListener("keydown", function (e) {
+    if (!e.ctrlKey || e.altKey || e.metaKey) { return; }
+    var key = String(e.key || "").toLowerCase();
+    if (key === "d") { e.preventDefault(); toggleMic("hotkey"); }
+    if (key === "e") { e.preventDefault(); toggleCam("hotkey"); }
+  });
+  document.getElementById("leave").addEventListener("click", function () {
+    note("leave");
+    endMeeting();
+  });
+
+  mock.start = startMeeting;
+  mock.end = endMeeting;
+  // Аудиочасы наружу — ТОЛЬКО для тестов. Ими проверяется, что расписание
+  // реально идёт: остановившийся AudioContext даёт неподвижный `currentTime`,
+  // и без этого окна наружу такая поломка выглядела бы как «встреча тихая».
+  mock.audioClock = function () {
+    return ctx ? { currentTime: ctx.currentTime, state: ctx.state, t0: mock.t0 } : null;
+  };
+
+  if (AUTOJOIN) {
+    startMeeting();
+  }
+})();
+</script>
+</body>
+</html>

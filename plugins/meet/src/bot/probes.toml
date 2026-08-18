@@ -1,0 +1,512 @@
+# forge-meet: СЕЛЕКТОРЫ ПЛАТФОРМ — ДАННЫЕ, А НЕ КОД.
+#
+# Этот файл встроен в бинарь (`include_str!`) и переопределяется пользовательским
+# `~/.config/forge/meet.probes.toml`. Переопределение ПОЭЛЕМЕНТНОЕ: файл, где
+# написана одна проба, меняет только её и не отменяет остальные.
+#
+# Смысл всей затеи: вёрстка Телемоста, Meet и Teams меняется чаще, чем мы
+# выпускаем релизы, и починка бота обязана быть правкой TOML, а не пересборкой
+# бинаря. Живая проба Ф0 подтвердила необходимость прямо: классы плиток
+# Телемоста — CSS-модули с хешами (`item_NZ2DW`, `TextName_BOaIg`), которые
+# меняются при каждой пересборке их фронта.
+#
+# ДЕРЖАЩИЙ ВСЁ ИНВАРИАНТ: ЗАПИСЬ НЕ ЗАВИСИТ НИ ОТ ОДНОЙ ПРОБЫ ОТСЮДА.
+# Промахнулись все пробы разом — звук всё равно пишется, участники называются
+# «Участник N», а конец встречи ловится независимыми сигналами (все дорожки
+# `ended`, упавший target, ручной стоп, потолок длительности). Пробы влияют на
+# ИМЕНА и на удобство, а не на наличие записи.
+#
+# ## Синтаксис кандидата
+#
+# На каждую пробу — МАССИВ КАНДИДАТОВ, перебираемых по порядку до первого
+# попадания. Кандидат бывает четырёх видов:
+#
+#   "css селектор"        — обычный `querySelector`; подстрочные селекторы
+#                           (`[class*="newGridItem"]`) обязательны везде, где
+#                           площадка собрана на CSS-модулях;
+#   "text:Текст кнопки"   — первый КЛИКАБЕЛЬНЫЙ элемент (button, a, [role],
+#                           input[type=button|submit]), чей текст содержит
+#                           подстроку без учёта регистра. Надёжнее класса с
+#                           хешем сборки — именно так Ф0 советует жать
+#                           «Продолжить в браузере»;
+#   "contains:Фраза"      — САМЫЙ ГЛУБОКИЙ видимый элемент ЛЮБОГО вида, чей
+#                           текст содержит подстроку. Для МАРКЕРОВ (лобби,
+#                           конец встречи, отказ во входе): они почти всегда
+#                           обычные `div`, и `text:` не находил их НИКОГДА —
+#                           промах выглядел как «маркера на странице нет»;
+#   "attr:имя-атрибута"   — только для `participant_key_attr`: не селектор, а
+#                           имя атрибута, из которого берётся стабильный ключ
+#                           участника.
+#
+# Проба `post_call_url` — тоже не селекторы: это ПОДСТРОКИ АДРЕСА, появление
+# которых означает пост-звонковую страницу. Пробы `mic_toggle_hotkey` и
+# `cam_toggle_hotkey` — тоже не селекторы: это СОЧЕТАНИЯ КЛАВИШ вида `ctrl+d`.
+# Полный список «не селекторов» заморожен в `platforms.rs::NON_SELECTOR_PROBES`,
+# и страж «селектор не протёк в код захвата» ходит по имени пробы, а не по виду
+# строки.
+#
+# ## ПОМЕТКА «ЧЕРНОВИК» — ЭТО НЕ ОСТОРОЖНОСТЬ, А ФАКТ
+#
+# Живой пробой снят ТОЛЬКО Телемост. Селекторы Google Meet, Zoom и Teams
+# написаны по документации и памяти о вёрстке, встречи на этих площадках у нас
+# не было. Урок Ф4 прямой: селектор Телемоста, снятый ЖИВОЙ пробой, протух за
+# три дня (`continueInBrowserButton_-wew` → `Orb-Button`), и спас его только
+# текстовый кандидат. Поэтому:
+#
+#   * у неподтверждённых площадок ТЕКСТОВЫЕ кандидаты идут ПЕРВЫМИ везде, где
+#     текст стабилен, а классы и `aria-label` — следом, как подсказка глазам;
+#   * каждый неподтверждённый раздел помечен `# ЧЕРНОВИК`, и пометка снимается
+#     ЖИВОЙ ПРОБОЙ, а не рассуждением;
+#   * пробы, ошибка в которых МЕНЯЕТ ПОВЕДЕНИЕ, а не только имена
+#     (`leave_button`, `meeting_ended_marker`, `post_call_url`,
+#     `join_denied_marker`, `captcha_marker`), написаны предельно узко либо
+#     оставлены пустыми: ложное срабатывание любой из них выкидывает бота с
+#     живой встречи, а промах — стоит только имён.
+#
+# ## Чего здесь намеренно НЕТ
+#
+# Нет пробы «маркер того, что мы всё ещё во встрече». Сигнал по ОТСУТСТВИЮ
+# элемента опасен ровно тем, чем ценен файл: протухший селектор перестаёт
+# находиться навсегда, и бот немедленно решил бы, что встреча кончилась, — то
+# есть протухание вёрстки обрывало бы запись вместо деградации до «Участник N».
+# Все сигналы конца встречи здесь только ПОЛОЖИТЕЛЬНЫЕ.
+
+version = 1
+
+# --- Яндекс Телемост ---------------------------------------------------------
+#
+# Единственная платформа, снятая живой пробой (Ф0, встреча на 4 участника).
+# `data-testid` кнопок панели НЕ хешируются — это лучший вид селектора здесь.
+# Пометка «не проверено» стоит там, где Ф0 факта не добыла: эти строки и есть
+# первые кандидаты на правку без пересборки.
+[telemost]
+# Интерстишал показывается всегда.
+#
+# ТЕКСТ ПЕРВЫМ, И ЭТО ИЗМЕРЕНО. Класс `continueInBrowserButton_-wew`, снятый
+# живой пробой Ф0 в августе, к моменту фазы 4 УЖЕ ПРОТУХ: сегодня кнопка —
+# `Orb-Button` с `data-testid="orb-button"`, причём тот же `data-testid`
+# носят «Поддержка», «Частые вопросы» и «Скачать на телефон», то есть кликать
+# по нему нельзя. Сработал текстовый кандидат — ровно то, ради чего пробы
+# сделаны массивом и вынесены в TOML. Класс оставлен ниже как подсказка о том,
+# что искать глазами, когда сменится и текст.
+continue_in_browser = [
+    "text:Продолжить в браузере",
+    "text:Continue in browser",
+    "button.continueInBrowserButton_-wew",
+]
+# ГОСТЕВАЯ ВЕТКА pre-join. На залогиненном профиле поля нет вовсе (Ф0:
+# показывается карточка аккаунта), и это НЕ ошибка — адаптер просто пропускает
+# ввод имени. Ветка выбирается наличием поля, а не отдельной пробой: так
+# протухший «маркер залогиненности» не смог бы отправить бота не в ту ветку.
+name_input = [
+    "input[name=\"displayName\"]",
+    "input[placeholder*=\"мя\"]",
+    "input[type=\"text\"]",
+]
+join_button = [
+    "[data-testid=\"enter-conference-button\"]",
+    "text:Подключиться",
+    "text:Присоединиться",
+]
+# Микрофон и камера. Кнопка «включить» видна, когда устройство ВЫКЛЮЧЕНО, и
+# наоборот — поэтому состояние читается тем же набором проб, что и действие,
+# и отдельной пробы состояния не нужно.
+#
+# ЛОВУШКА Ф0: микрофон включается САМ при подключении. На пре-join он был
+# выключен, а после клика «Подключиться» в панели оказалась
+# `turn-off-mic-button`. Адаптер обязан гасить микрофон ПОВТОРНО после входа.
+mic_mute_button = ["[data-testid=\"turn-off-mic-button\"]"]
+mic_unmute_button = ["[data-testid=\"turn-on-mic-button\"]"]
+cam_disable_button = ["[data-testid=\"turn-off-camera-button\"]"]
+cam_enable_button = ["[data-testid=\"turn-on-camera-button\"]"]
+leave_button = [
+    "[data-testid=\"end-call-alt-button\"]",
+    "[data-testid=\"end-call-button\"]",
+]
+# Плитка участника и имя на ней. Классы — CSS-модули с хешами, поэтому только
+# подстрочно.
+participant = ["[class*=\"newGridItem\"]"]
+participant_name = ["[class*=\"participantName\"]", "[class*=\"TextName\"]"]
+# ИНДИКАТОР ГОВОРЯЩЕГО. Ф0: класс `rootStroke` появляется и исчезает на
+# `[class*="root"]` внутри плитки; за 20 секунд — 11 переключений у трёх
+# участников. Для Телемоста это ЕДИНСТВЕННЫЙ источник имени говорящего: режим
+# `Slots`, трека на участника нет.
+speaking_marker = ["[class*=\"rootStroke\"]"]
+participant_key_attr = ["attr:data-participant-id", "attr:data-id"]
+# Отдельного элемента «активный спикер» у Телемоста нет — он выводится из
+# плиток. Пустой массив это законное значение пробы, а не пропуск.
+active_speaker = []
+# Не проверено живьём: на пробе Ф0 встречу не доводили до конца.
+meeting_ended_marker = [
+    "contains:Конференция завершена",
+    "contains:Вы вышли из конференции",
+]
+# Пусто НАМЕРЕННО. Ошибочная подстрока здесь обрывала бы запись на ровном
+# месте, а сигналов конца и без неё пять. Проверив пост-звонковый адрес
+# живьём, его дописывают сюда — без пересборки.
+post_call_url = []
+lobby_marker = ["contains:Ожидайте", "contains:Организатор скоро вас впустит"]
+captcha_marker = [
+    "iframe[src*=\"captcha\"]",
+    "contains:Подтвердите, что вы не робот",
+]
+# Отказа во входе Ф0 у Телемоста не наблюдала, а выдумывать текст, по которому
+# бот бросит вход, нельзя. Пусто.
+join_denied_marker = []
+# Звук у Телемоста подключается сам — отдельной кнопки нет (в отличие от Zoom).
+join_audio_button = []
+# Сочетаний клавиш у Телемоста не измерено: кнопки панели с `data-testid`
+# работают, и слать вслепую переключатель незачем.
+mic_toggle_hotkey = []
+cam_toggle_hotkey = []
+
+# --- Мок-встреча -------------------------------------------------------------
+#
+# Набор для `tests/fixtures/mock-meeting/index.html`. Он же ДОКУМЕНТИРУЕТ
+# формат: всё, что умеет механизм проб, встречается здесь хотя бы раз.
+#
+# Обратите внимание на `speaking_marker`: у мока признак «говорит» висит на
+# САМОЙ плитке, а у Телемоста — на потомке. Поддержаны оба случая, и это не
+# случайность: на реальных площадках встречаются оба.
+[mock]
+continue_in_browser = ["[data-testid=\"continue-in-browser\"]", "text:Продолжить в браузере"]
+name_input = ["[data-testid=\"name-input\"]"]
+join_button = ["[data-testid=\"join\"]", "text:Присоединиться"]
+mic_mute_button = ["[data-testid=\"mic-toggle\"][data-enabled=\"true\"]"]
+mic_unmute_button = ["[data-testid=\"mic-toggle\"][data-enabled=\"false\"]"]
+cam_disable_button = ["[data-testid=\"cam-toggle\"][data-enabled=\"true\"]"]
+cam_enable_button = ["[data-testid=\"cam-toggle\"][data-enabled=\"false\"]"]
+leave_button = ["[data-testid=\"leave\"]"]
+participant = ["[data-testid=\"participant\"]"]
+participant_name = ["[data-testid=\"participant-name\"]"]
+speaking_marker = ["[data-speaking=\"true\"]"]
+participant_key_attr = ["attr:data-participant-id"]
+active_speaker = ["[data-testid=\"active-speaker\"]"]
+meeting_ended_marker = ["[data-testid=\"meeting-ended\"][data-ended=\"true\"]"]
+post_call_url = ["/after-call"]
+lobby_marker = []
+captcha_marker = []
+# Механизмы фаз 8–10 документируются и ПРОВЕРЯЮТСЯ ЖИВЬЁМ здесь, на моке:
+# настоящей встречи Meet, Teams и Zoom у нас нет, а механизм отказа во входе,
+# отдельной кнопки звука и горячих клавиш проверить в живом Chrome можно и
+# нужно. Мок включает их параметрами `deny=1`, `audiogate=1` и `hotkeys=1`.
+join_denied_marker = ["[data-testid=\"join-denied\"]"]
+join_audio_button = ["[data-testid=\"join-audio\"]"]
+# Ровно те сочетания, что у Google Meet, — чтобы на моке проверялся тот самый
+# путь, а не похожий.
+mic_toggle_hotkey = ["ctrl+d"]
+cam_toggle_hotkey = ["ctrl+e"]
+
+# --- Google Meet (фаза 8) ----- ЧЕРНОВИК, ЖИВОЙ ПРОБЫ НЕ БЫЛО ----------------
+#
+# Ни одна строка ниже не подтверждена живой встречей: аккаунта и встречи Google
+# Meet у нас нет, задача Ф0 «живая проба Meet/Zoom/Teams» не выполнена. Всё
+# написано по документации и вёрстке, которую Meet показывал раньше, и первая
+# же живая проба обязана это перепроверить — правкой ЭТОГО ФАЙЛА, без
+# пересборки.
+#
+# ЧТО У MEET СЧИТАЕТСЯ НАДЁЖНЫМ, А ЧТО НЕТ:
+#
+#   * `aria-label` ЛОКАЛИЗОВАН. У русского интерфейса там «Выключить
+#     микрофон», у английского «Turn off microphone» — поэтому обе формы
+#     перечислены, и обе могут промахнуться на третьем языке;
+#   * классы Meet — обфусцированный вывод сборщика (`IisKdb`, `zWGUib`), они
+#     меняются чаще всего и стоят последними;
+#   * `data-participant-id` — единственный атрибут Meet, который годами не
+#     менялся; на нём держится и список участников, и ключ;
+#   * ГОРЯЧИЕ КЛАВИШИ `Ctrl+D` и `Ctrl+E` стабильны годами и НЕ локализуются —
+#     поэтому микрофон и камера гасятся ими, а кнопки нужны лишь для ЧТЕНИЯ
+#     состояния. Вслепую сочетание не шлётся никогда: это переключатель, и на
+#     неизвестном состоянии он с равной вероятностью включил бы микрофон.
+#
+# ПРОДУКТОВОЕ ОГРАНИЧЕНИЕ, КОТОРОЕ НЕЛЬЗЯ СПРЯТАТЬ В ТАЙМАУТ: при ограниченном
+# доступе хоста Meet ОТКЛОНЯЕТ заявку анонимного участника автоматически, за
+# секунды, и никакое ожидание тут не поможет. Ради этого заведена проба
+# `join_denied_marker`: бот обязан сказать человеку правду («Meet не пускает
+# анонимов, включите постоянный профиль и войдите в аккаунт»), а не молчать до
+# истечения минуты.
+[meet]
+# Интерстишала у Meet нет: ссылка сразу открывает pre-join.
+continue_in_browser = []
+# Поле имени есть ТОЛЬКО у анонимного гостя. Его отсутствие = залогиненный
+# профиль (см. `persist_profile`), и это законная вторая ветка входа.
+name_input = [
+    "input[aria-label*=\"Your name\" i]",
+    "input[placeholder*=\"Your name\" i]",
+    "input[aria-label*=\"аше имя\"]",
+    "input[placeholder*=\"аше имя\"]",
+    "input[jsname=\"YPqjbf\"]",
+]
+# ТЕКСТ ПЕРВЫМ. «Ask to join» — анонимный гость, «Join now» — участник, которому
+# доступ уже разрешён; порядок именно такой, потому что бот по умолчанию гость.
+join_button = [
+    "text:Ask to join",
+    "text:Попросить о присоединении",
+    "text:Join now",
+    "text:Присоединиться сейчас",
+    "text:Присоединиться",
+]
+# Кнопки устройств нужны для ЧТЕНИЯ состояния; действие идёт горячей клавишей.
+# Подстрока берётся с начала (`^=`), а не абы где: «Turn off microphone» и
+# «Turn on microphone» отличаются одним словом в середине, и `*=\"microphone\"`
+# нашёл бы обе разом.
+mic_mute_button = [
+    "[aria-label^=\"Turn off microphone\" i]",
+    "[aria-label^=\"Выключить микрофон\" i]",
+    "[data-tooltip^=\"Turn off microphone\" i]",
+]
+mic_unmute_button = [
+    "[aria-label^=\"Turn on microphone\" i]",
+    "[aria-label^=\"Включить микрофон\" i]",
+    "[data-tooltip^=\"Turn on microphone\" i]",
+]
+cam_disable_button = [
+    "[aria-label^=\"Turn off camera\" i]",
+    "[aria-label^=\"Выключить камеру\" i]",
+    "[data-tooltip^=\"Turn off camera\" i]",
+]
+cam_enable_button = [
+    "[aria-label^=\"Turn on camera\" i]",
+    "[aria-label^=\"Включить камеру\" i]",
+    "[data-tooltip^=\"Turn on camera\" i]",
+]
+# ОПАСНАЯ ПРОБА: её срабатывание означает «мы уже внутри», и ложное попадание
+# заставило бы бота пропустить вход целиком. Поэтому только точные формы и
+# никаких «Выйти» — в шапке Google этим словом подписан выход из аккаунта.
+leave_button = [
+    "[aria-label^=\"Leave call\" i]",
+    "[aria-label^=\"Выйти из звонка\" i]",
+    "[aria-label^=\"Покинуть звонок\" i]",
+]
+# `data-participant-id` встречается и на плитке видео, и в списке людей —
+# участник может посчитаться дважды. Это безопасная сторона ошибки: лишние
+# участники мешают автовыходу «бот один», но не выкидывают бота с встречи, а
+# `ParticipantNamer` сводит их обратно по тому же ключу.
+participant = ["[data-participant-id]"]
+# Имя внутри плитки. Промах не страшен: `observe.js` возьмёт текст самой плитки.
+participant_name = ["[data-self-name]", "[class*=\"zWGUib\"]", "[class*=\"notranslate\"]"]
+# Индикатор речи Meet — анимированные полоски внутри плитки. Класс
+# обфусцирован, поэтому подстрочно и с запасом.
+speaking_marker = ["[data-is-speaking=\"true\"]", "[class*=\"IisKdb\"]"]
+participant_key_attr = ["attr:data-participant-id"]
+# Отдельного элемента «активный спикер» у Meet нет — он выводится из плиток.
+active_speaker = []
+# ОПАСНАЯ ПРОБА: ложное срабатывание обрывает живую запись. Только явные тексты
+# экрана после звонка.
+meeting_ended_marker = [
+    "contains:Return to home screen",
+    "contains:Вернуться на главный экран",
+    "contains:You've left the meeting",
+    "contains:Вы вышли из видеовстречи",
+]
+# Пусто НАМЕРЕННО: адрес Meet после выхода не меняется предсказуемо, а ошибка
+# здесь стоит записи.
+post_call_url = []
+lobby_marker = [
+    "contains:Asking to be let in",
+    "contains:Ожидание разрешения на присоединение",
+    "contains:Ожидайте, вас скоро впустят",
+]
+captcha_marker = []
+# ОТКАЗ ВО ВХОДЕ. Тексты Meet при отклонённой заявке. Проба ведёт к
+# `needs_human` с честным объяснением, а не к молчаливому таймауту.
+join_denied_marker = [
+    "contains:No one responded to your request to join",
+    "contains:Someone in the call denied your request to join",
+    "contains:You can't join this video call",
+    "contains:Никто не ответил на ваш запрос",
+    "contains:Вам отказано в доступе",
+]
+# Звук у Meet подключается сам.
+join_audio_button = []
+# ГЛАВНЫЙ ПУТЬ выключения устройств у Meet: сочетания не локализуются и не
+# меняются годами, в отличие от `aria-label`.
+mic_toggle_hotkey = ["ctrl+d"]
+cam_toggle_hotkey = ["ctrl+e"]
+
+# --- Zoom (фаза 10) ----------- ЧЕРНОВИК, ЖИВОЙ ПРОБЫ НЕ БЫЛО ----------------
+#
+# Ни одна строка не подтверждена живой встречей.
+#
+# Zoom особенный дважды:
+#
+#   1. ВХОДИТЬ НАДО В ВЕБ-КЛИЕНТ. Ссылка `zoom.us/j/<id>` ведёт на страницу
+#      «скачайте приложение», и кнопка «присоединиться из браузера» там спрятана
+#      за несколькими шагами. Поэтому адрес входа собирается отдельно
+#      (`providers::bot_entry_url` → `app.zoom.us/wc/join/<id>?pwd=…`), а
+#      `continue_in_browser` ниже — только запасной путь, если Zoom всё же
+#      показал промежуточную страницу.
+#   2. БЕЗ КЛИКА «ПОДКЛЮЧИТЬ ЗВУК» В СТРАНИЦЕ НЕТ ЗВУКА ВООБЩЕ. Не «тише», не
+#      «хуже», а ни одного источника — записывать было бы нечего. Ради этого и
+#      заведена проба `join_audio_button`.
+#
+# Ожидаемый путь захвата — зеркало Web Audio (тап 2): Zoom не отдаёт медиа через
+# WebRTC, а гоняет звук через DataChannel и декодирует в WASM. Проверить это
+# можно только живой встречей; до неё платформа честно помечена `audio = true`
+# в реестре, потому что обратное — тоже гипотеза, а не измерение.
+[zoom]
+continue_in_browser = [
+    "text:Join from Your Browser",
+    "text:Join from your browser",
+    "text:Войти из браузера",
+    "text:Подключиться из браузера",
+    "a[href*=\"/wc/join/\"]",
+]
+name_input = [
+    "#input-for-name",
+    "#inputname",
+    "input[aria-label*=\"Your Name\" i]",
+    "input[placeholder*=\"Your Name\" i]",
+    "input[placeholder*=\"мя\"]",
+]
+join_button = [
+    "text:Join Meeting",
+    "text:Войти в конференцию",
+    "#joinBtn",
+    "button.preview-join-button",
+    # Последним и НАМЕРЕННО: одно слово «Join» есть и в «Join Audio by
+    # Computer», и попади оно раньше — бот жал бы не ту кнопку.
+    "text:Join",
+]
+# `*=\"mute\"` НАШЁЛ БЫ И «Unmute» — отсюда `^=`. Это не придирка: перепутанные
+# местами кнопки микрофона означают бота, включившего микрофон вместо выключения.
+mic_mute_button = ["[aria-label^=\"Mute\" i]", "text:Mute"]
+mic_unmute_button = ["[aria-label^=\"Unmute\" i]", "text:Unmute"]
+cam_disable_button = ["[aria-label^=\"Stop Video\" i]", "text:Stop Video"]
+cam_enable_button = ["[aria-label^=\"Start Video\" i]", "text:Start Video"]
+# ОПАСНАЯ ПРОБА («мы внутри»): только кнопка нижней панели.
+leave_button = [
+    "[aria-label^=\"Leave\" i]",
+    "button.footer__leave-btn",
+    "[class*=\"footer__leave-btn\"]",
+]
+participant = ["[class*=\"participants-item__item-view\"]", "[class*=\"participants-li\"]"]
+participant_name = ["[class*=\"participants-item__display-name\"]"]
+speaking_marker = ["[class*=\"speaker-active\"]", "[class*=\"--speaking\"]"]
+participant_key_attr = ["attr:data-participant-id", "attr:data-id"]
+active_speaker = []
+# ОПАСНАЯ ПРОБА: только явный текст завершения хостом.
+meeting_ended_marker = [
+    "contains:This meeting has been ended by host",
+    "contains:Конференция завершена организатором",
+]
+post_call_url = []
+lobby_marker = [
+    "contains:Please wait, the meeting host will let you in soon",
+    "contains:Ожидайте, организатор скоро вас впустит",
+    "contains:waiting room",
+]
+captcha_marker = []
+join_denied_marker = [
+    "contains:The host has denied your request to join",
+    "contains:You have been removed from the meeting",
+    "contains:Организатор отклонил ваш запрос",
+]
+# БЕЗ ЭТОГО КЛИКА ЗАПИСЫВАТЬ НЕЧЕГО.
+join_audio_button = [
+    "text:Join Audio by Computer",
+    "text:Join with Computer Audio",
+    "text:Войти с использованием звука компьютера",
+    "text:Подключить звук компьютера",
+    "[class*=\"join-audio-by-voip__join-btn\"]",
+]
+# Сочетания веб-клиента Zoom. Черновик: не проверены, и потому не единственный
+# путь — кнопки перечислены выше и работают сами по себе.
+mic_toggle_hotkey = ["alt+a"]
+cam_toggle_hotkey = ["alt+v"]
+
+# --- Microsoft Teams (фаза 9) -- ЧЕРНОВИК, ЖИВОЙ ПРОБЫ НЕ БЫЛО ---------------
+#
+# Ни одна строка не подтверждена живой встречей.
+#
+# Особенности Teams, которые уже учтены КОДОМ, а не этим файлом:
+#
+#   * звонок живёт в OOPIF — инжект и наблюдение обязаны доезжать в дочерние
+#     цели (`Target.setAutoAttach`, `forge-cdp`);
+#   * ссылка несёт обязательный `?context=` (в нём тенант и организатор), а
+#     ссылка-лаунчер `/dl/launcher/launcher.html?url=…` прячет настоящий адрес
+#     в параметре `url` — оба случая разбирает `providers.rs`;
+#   * интерфейс проверяет `isTrusted`, поэтому клики идут
+#     `Input.dispatchMouseEvent`, а текст — `Input.insertText`;
+#   * АНОНИМНЫЙ ВХОД ПОЧТИ ВСЕГДА ПОПАДАЕТ В ЛОББИ, и ожидание там — это статус
+#     `waiting_admit`, а НЕ `needs_human`: человек в лобби ничего сделать не
+#     может, впускает организатор.
+[teams]
+continue_in_browser = [
+    "text:Continue on this browser",
+    "text:Продолжить в этом браузере",
+    "text:Use the web app instead",
+    "[data-tid=\"joinOnWeb\"]",
+]
+name_input = [
+    "input[data-tid=\"prejoin-display-name-input\"]",
+    "#displayName",
+    "input[placeholder*=\"name\" i]",
+    "input[placeholder*=\"мя\"]",
+]
+join_button = [
+    "text:Join now",
+    "text:Присоединиться сейчас",
+    "[data-tid=\"prejoin-join-button\"]",
+]
+# Снова `^=`: «Mute microphone» и «Unmute microphone» различаются приставкой.
+mic_mute_button = [
+    "[aria-label^=\"Mute\" i]",
+    "#microphone-button[aria-pressed=\"true\"]",
+    "[data-tid=\"toggle-mute\"][aria-pressed=\"true\"]",
+]
+mic_unmute_button = [
+    "[aria-label^=\"Unmute\" i]",
+    "#microphone-button[aria-pressed=\"false\"]",
+    "[data-tid=\"toggle-mute\"][aria-pressed=\"false\"]",
+]
+cam_disable_button = [
+    "[aria-label^=\"Turn camera off\" i]",
+    "#video-button[aria-pressed=\"true\"]",
+    "[data-tid=\"toggle-video\"][aria-pressed=\"true\"]",
+]
+cam_enable_button = [
+    "[aria-label^=\"Turn camera on\" i]",
+    "#video-button[aria-pressed=\"false\"]",
+    "[data-tid=\"toggle-video\"][aria-pressed=\"false\"]",
+]
+# ОПАСНАЯ ПРОБА («мы внутри»): только кнопка завершения звонка.
+leave_button = [
+    "[data-tid=\"hangup-main-btn\"]",
+    "#hangup-button",
+    "[data-tid=\"call-end\"]",
+]
+participant = [
+    "[data-tid=\"participant-item\"]",
+    "[data-tid=\"roster-participant\"]",
+    "[class*=\"roster-list-item\"]",
+]
+participant_name = ["[data-tid=\"participant-name\"]", "[class*=\"displayName\"]"]
+speaking_marker = ["[data-tid=\"voice-level-stream-outline\"]", "[class*=\"speaking\"]"]
+participant_key_attr = ["attr:data-tid-participant-id", "attr:data-mri", "attr:data-id"]
+active_speaker = []
+# ОПАСНАЯ ПРОБА.
+meeting_ended_marker = [
+    "contains:You left the meeting",
+    "contains:Вы вышли из собрания",
+    "contains:Calling ended",
+]
+post_call_url = []
+# Тексты лобби. Ожидание здесь может длиться минуты и НЕ считается зависанием.
+lobby_marker = [
+    "contains:Someone in the meeting should let you in soon",
+    "contains:We've let people know you're waiting",
+    "contains:Кто-нибудь скоро вас впустит",
+    "contains:Ожидание в зале ожидания",
+]
+captcha_marker = []
+join_denied_marker = [
+    "contains:Sorry, you were denied access to the meeting",
+    "contains:You were removed from the meeting",
+    "contains:Вам отказано в доступе к собранию",
+]
+join_audio_button = []
+# Документированные сочетания Teams. Черновик: работают только когда фокус в
+# окне звонка, поэтому кнопки выше остаются основным путём.
+mic_toggle_hotkey = ["ctrl+shift+m"]
+cam_toggle_hotkey = ["ctrl+shift+o"]

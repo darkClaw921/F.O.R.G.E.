@@ -73,6 +73,11 @@ pub struct ServerConfig {
     /// default). `None`/`Some(false)` ⇒ файл не настаивает.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bitrix: Option<bool>,
+    /// Opt-in плагин встреч из файла. `Some(true)` ⇒ включает плагин даже без
+    /// CLI-флага `--meet` (file-источник в цепочке CLI > file > env >
+    /// default). `None`/`Some(false)` ⇒ файл не настаивает.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meet: Option<bool>,
 }
 
 
@@ -115,6 +120,12 @@ pub struct EffectiveConfig {
     /// `/ws/bitrix` не регистрируются, кнопка вкладки во фронте остаётся
     /// скрытой (её гейт — 200 на `GET /api/bitrix/status`).
     pub bitrix_enabled: bool,
+    /// Opt-in плагин встреч (см. [`resolve`]). True ⇒ активирован через
+    /// `--meet` / `server_config.json` / env `DEVFORGE_MEET`. False (default)
+    /// ⇒ поведение байт-в-байт как раньше: роуты `/api/meet/*` и `/ws/meet`
+    /// не регистрируются, а `GET /api/meet/status` отдаёт 404 — это и есть
+    /// контракт фронтового гейта: кнопка встречи в лентах не рисуется вовсе.
+    pub meet_enabled: bool,
 }
 
 /// Имя env-переменной, включающей PWA-режим (низший приоритет после CLI и
@@ -132,6 +143,10 @@ pub const ENV_VK: &str = "DEVFORGE_VK";
 /// Имя env-переменной, включающей плагин Bitrix24 (низший приоритет после
 /// CLI и файла). Принимает те же truthy-значения, что и [`ENV_PWA`].
 pub const ENV_BITRIX: &str = "DEVFORGE_BITRIX";
+
+/// Имя env-переменной, включающей плагин встреч (низший приоритет после CLI
+/// и файла). Принимает те же truthy-значения, что и [`ENV_PWA`].
+pub const ENV_MEET: &str = "DEVFORGE_MEET";
 
 /// Парсинг truthy-значения env-флага: `1`/`true`/`yes`/`on` (любой регистр)
 /// ⇒ `true`; всё остальное ⇒ `false`.
@@ -334,6 +349,14 @@ pub fn resolve_with_env(
             .map(|v| env_flag_is_truthy(&v))
             .unwrap_or(false);
 
+    // Встречи opt-in: та же механика —
+    // CLI (--meet) > file (meet: true) > env (DEVFORGE_MEET) > default(false).
+    let meet_enabled = cli_opts.meet
+        || file_cfg.and_then(|f| f.meet).unwrap_or(false)
+        || lookup(ENV_MEET)
+            .map(|v| env_flag_is_truthy(&v))
+            .unwrap_or(false);
+
     EffectiveConfig {
         bind,
         port,
@@ -343,6 +366,7 @@ pub fn resolve_with_env(
         telegram_enabled,
         vk_enabled,
         bitrix_enabled,
+        meet_enabled,
     }
 }
 
@@ -1130,6 +1154,125 @@ mod tests {
     }
 
     /// `resolve` действительно читает процессное окружение — иначе
+    // --- плагин встреч ---------------------------------------------------
+
+    /// `--meet` и `DEVFORGE_MEET` обязаны давать ОДИН И ТОТ ЖЕ результат:
+    /// иначе `devforge run --meet` и запуск через окружение вели бы себя
+    /// по-разному, и разница вскрылась бы только у пользователя.
+    #[test]
+    fn meet_cli_and_env_agree() {
+        let no_env = |_: &str| None;
+        let cli = RunOptions {
+            meet: true,
+            ..RunOptions::default()
+        };
+        let via_cli = resolve_with_env(&cli, None, &no_env);
+
+        let env_meet = |key: &str| (key == ENV_MEET).then(|| "1".to_string());
+        let via_env = resolve_with_env(&RunOptions::default(), None, &env_meet);
+
+        assert!(via_cli.meet_enabled);
+        assert!(via_env.meet_enabled);
+        assert_eq!(via_cli.bind, via_env.bind);
+        assert_eq!(via_cli.port, via_env.port);
+        assert_eq!(via_cli.remote_mode, via_env.remote_mode);
+        assert_eq!(via_cli.pwa_enabled, via_env.pwa_enabled);
+        assert_eq!(via_cli.telegram_enabled, via_env.telegram_enabled);
+        assert_eq!(via_cli.vk_enabled, via_env.vk_enabled);
+        assert_eq!(via_cli.bitrix_enabled, via_env.bitrix_enabled);
+    }
+
+    #[test]
+    fn resolve_meet_default_false() {
+        let no_env = |_: &str| None;
+        assert!(!resolve_with_env(&RunOptions::default(), None, &no_env).meet_enabled);
+    }
+
+    /// Приоритет ровно как у существующих флагов: CLI > file > env > default.
+    #[test]
+    fn meet_priority_matches_the_other_plugins() {
+        let no_env = |_: &str| None;
+        let env_meet = |key: &str| (key == ENV_MEET).then(|| "1".to_string());
+
+        // file включает без CLI.
+        let file_true = ServerConfig {
+            meet: Some(true),
+            ..ServerConfig::default()
+        };
+        assert!(resolve_with_env(&RunOptions::default(), Some(&file_true), &no_env).meet_enabled);
+
+        // file: false не гасит CLI.
+        let file_false = ServerConfig {
+            meet: Some(false),
+            ..ServerConfig::default()
+        };
+        let cli = RunOptions {
+            meet: true,
+            ..RunOptions::default()
+        };
+        assert!(resolve_with_env(&cli, Some(&file_false), &no_env).meet_enabled);
+
+        // file: false без CLI и без env — выключено.
+        assert!(!resolve_with_env(&RunOptions::default(), Some(&file_false), &no_env).meet_enabled);
+
+        // env включает при пустых CLI и файле.
+        assert!(resolve_with_env(&RunOptions::default(), None, &env_meet).meet_enabled);
+
+        // Мусор в переменной не включает.
+        let junk = |key: &str| (key == ENV_MEET).then(|| "maybe".to_string());
+        assert!(!resolve_with_env(&RunOptions::default(), None, &junk).meet_enabled);
+    }
+
+    /// Ловит копипасту вида `meet_enabled = cli_opts.bitrix`.
+    #[test]
+    fn resolve_meet_is_independent_of_the_other_plugins() {
+        let no_env = |_: &str| None;
+        let only_meet = resolve_with_env(
+            &RunOptions {
+                meet: true,
+                ..RunOptions::default()
+            },
+            None,
+            &no_env,
+        );
+        assert!(only_meet.meet_enabled);
+        assert!(!only_meet.bitrix_enabled, "--meet не включает Bitrix24");
+        assert!(!only_meet.vk_enabled, "--meet не включает VK");
+        assert!(!only_meet.telegram_enabled, "--meet не включает Telegram");
+        assert!(!only_meet.pwa_enabled, "--meet не включает PWA");
+
+        let only_b24 = resolve_with_env(
+            &RunOptions {
+                bitrix: true,
+                ..RunOptions::default()
+            },
+            None,
+            &no_env,
+        );
+        assert!(!only_b24.meet_enabled, "--bitrix не включает плагин встреч");
+    }
+
+    /// Единственный тест, трогающий `DEVFORGE_MEET` глобально: без него
+    /// [`resolve_with_env`] проверял бы сам себя, а настоящее чтение
+    /// окружения в [`resolve`] осталось бы непокрытым. Окружение
+    /// восстанавливается.
+    #[test]
+    #[ignore = "мутирует глобальное окружение; запускать отдельно"]
+    fn resolve_reads_the_meet_variable_from_the_process_environment() {
+        let saved = std::env::var(ENV_MEET).ok();
+        std::env::set_var(ENV_MEET, "1");
+        assert!(
+            resolve(&RunOptions::default(), None).meet_enabled,
+            "resolve обязан читать DEVFORGE_MEET"
+        );
+        std::env::remove_var(ENV_MEET);
+        assert!(!resolve(&RunOptions::default(), None).meet_enabled);
+        match saved {
+            Some(v) => std::env::set_var(ENV_MEET, v),
+            None => std::env::remove_var(ENV_MEET),
+        }
+    }
+
     /// [`resolve_with_env`] проверял бы сам себя, а `DEVFORGE_BITRIX` не
     /// работал бы вовсе.
     ///
@@ -1316,6 +1459,7 @@ mod tests {
             telegram_enabled: false,
             vk_enabled: false,
             bitrix_enabled: false,
+            meet_enabled: false,
         };
         let got = finalize_token_at(&eff, &path);
         assert!(got.is_none(), "non-remote → no token");
@@ -1335,6 +1479,7 @@ mod tests {
             telegram_enabled: false,
             vk_enabled: false,
             bitrix_enabled: false,
+            meet_enabled: false,
         };
         let got = finalize_token_at(&eff, &path).expect("token preserved");
         assert_eq!(got, "existing-token");
@@ -1355,6 +1500,7 @@ mod tests {
             telegram_enabled: false,
             vk_enabled: false,
             bitrix_enabled: false,
+            meet_enabled: false,
         };
         let token = finalize_token_at(&eff, &path).expect("token generated");
         assert_eq!(token.len(), 64);
@@ -1389,6 +1535,7 @@ mod tests {
             telegram_enabled: false,
             vk_enabled: false,
             bitrix_enabled: false,
+            meet_enabled: false,
         };
         let token = finalize_token_at(&eff, &path).expect("token generated");
 

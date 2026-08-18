@@ -26,6 +26,11 @@
 // подгрузке, и ссылка на узел протухала бы после любого обновления. Класс
 // `tg-kb-cursor` навешивается на найденный по id узел при каждом перемещении.
 
+// Кнопку встречи ищет общий модуль — по `data-action`, а не по классу: тем же
+// способом, что и клавиатура Битрикса, и без второй копии правила поиска.
+import { MEET_POPUP_CLASS } from '../messenger/meet-popup.js';
+import { pressMeetButton } from '../messenger/meet-row.js';
+
 import { startReply } from './chat.js';
 import {
     actionForEvent, groupedRows, isEditableTarget, resolveBindings,
@@ -156,6 +161,16 @@ export function panelVisible() {
     // попапа (js/messenger/analysis-core.js), а не здесь.
     const analysis = el('tg-analysis');
     if (analysis && analysis.hidden === false) return false;
+    // Карточка встречи: в ней поле поиска по расшифровке и поле переименования
+    // участника — те самые `j`/`k`, которые vim-навигация иначе забрала бы себе.
+    //
+    // Ищется ПО КЛАССУ внутри панели, а не по id: узел создаётся кодом
+    // (js/messenger/meet-popup.js), в index.html его нет. Существующая проверка
+    // «открыта ли модалка» карточку тоже не увидит — класс `.modal-overlay` она
+    // не несёт НАМЕРЕННО: он тянет глобальные токены и `position: fixed`, что
+    // вырвало бы карточку из панели вместе со всей её палитрой.
+    const meet = p.querySelector('.' + MEET_POPUP_CLASS);
+    if (meet && meet.hidden === false) return false;
     return true;
 }
 
@@ -413,6 +428,25 @@ function jumpToQuote() {
     return true;
 }
 
+/**
+ * Карточка встречи для строки под курсором (Shift+M).
+ *
+ * Кнопку ищет ОБЩАЯ функция — по атрибуту `data-action`, а не по классу: тот
+ * же способ, которым обходит строку клавиатура Битрикса, и тот же атрибут, за
+ * который держатся e2e.
+ *
+ * `false` возвращается в трёх случаях, и все три означают «делать нечего»:
+ * курсора нет, ссылки в сообщении нет, плагин выключен (тогда кнопки нет
+ * вовсе). Ложное `true` съело бы Shift+M у остального интерфейса.
+ */
+function openMeetForCursor() {
+    const row = cursorMessageNode();
+    if (!row) return false;
+    if (!pressMeetButton(row)) return false;
+    setMessageCursor(row);
+    return true;
+}
+
 function copyCursorText() {
     const row = cursorMessageNode();
     if (!row || !row._tg || !row._tg.text) return false;
@@ -637,6 +671,7 @@ export function runAction(id) {
         case 'msg.quote': return jumpToQuote();
         case 'msg.copy': return copyCursorText();
         case 'msg.buttons': return focusButtons();
+        case 'msg.meet': return openMeetForCursor();
         case 'log.bottom': return scrollLogBottom();
         case 'log.older': return scrollLogBy(-1);
         case 'ui.attach': return clickById('tg-attach');

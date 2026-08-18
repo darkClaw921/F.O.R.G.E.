@@ -14,6 +14,14 @@
 // селектор контента, объект состояния, ветка в showTab, whitelist initialTab).
 // Это норма файла: добавление таба — механическая копия шести строк, а реестр
 // ради восьми вкладок был бы абстракцией дороже задачи.
+//
+// ДВЕ вкладки условные и рисуются не всегда: «Remote servers» (только в
+// remote-mode) и «Встречи» (только когда devforge запущен с `--meet`).
+// Признак включённости плагина встреч — meetEnabled() из js/meet/api.js: гейт
+// уже сходил на /api/meet/status один раз за загрузку страницы, и 404 там
+// означает «плагин выключен». Спрашивать сервер второй раз ради кнопки не
+// нужно, а рисовать вкладку всегда — значит показывать настройки того, чего в
+// сборке нет.
 
 import { state } from '../core/state.js';
 import { buildModalOverlay } from '../core/utils.js';
@@ -34,6 +42,11 @@ import {
 import { buildVisibilityForm } from './telegram-visibility-tab.js';
 import { buildVkVisibilityForm } from './vk-visibility-tab.js';
 import { buildBitrixVisibilityForm } from './bitrix-visibility-tab.js';
+import { buildMeetSettings } from './meet-tab.js';
+import {
+    meetEnabled, getMeetConfig, putMeetConfig, getMeetStatus, getModels, downloadModel,
+    recheckDeps,
+} from '../meet/api.js';
 
 export function openSettingsModal(initialTab) {
     const overlay = buildModalOverlay();
@@ -41,6 +54,15 @@ export function openSettingsModal(initialTab) {
     card.className = 'modal-card settings-modal';
     const remoteTabBtn = isRemoteMode()
         ? '<button type="button" class="modal-tab-btn" data-tab="remotes" role="tab">Remote servers</button>'
+        : '';
+    const meetTabBtn = meetEnabled()
+        ? '<button type="button" class="modal-tab-btn" data-tab="meet" role="tab">Встречи</button>'
+        : '';
+    const meetPanel = meetEnabled()
+        ? `<div class="modal-tab-panel" id="ps-panel-meet" data-panel="meet" hidden>
+            <h2>Встречи</h2>
+            <div class="meet-settings-content" id="ps-meet-content"></div>
+        </div>`
         : '';
     const remotePanel = isRemoteMode()
         ? `<div class="modal-tab-panel" id="ps-panel-remotes" data-panel="remotes" hidden>
@@ -88,6 +110,7 @@ export function openSettingsModal(initialTab) {
             <button type="button" class="modal-tab-btn" data-tab="telegram" role="tab">Telegram</button>
             <button type="button" class="modal-tab-btn" data-tab="vk" role="tab">VK</button>
             <button type="button" class="modal-tab-btn" data-tab="bitrix" role="tab">Битрикс24</button>
+            ${meetTabBtn}
             ${remoteTabBtn}
         </div>
         <div class="modal-tab-panel" id="ps-panel-notifications" data-panel="notifications">
@@ -130,6 +153,7 @@ export function openSettingsModal(initialTab) {
             <h2>Битрикс24</h2>
             <div class="bitrix-settings-content" id="ps-bitrix-content"></div>
         </div>
+        ${meetPanel}
         ${remotePanel}
         <div class="modal-actions">
             <button type="button" id="ps-close" class="primary">Close</button>
@@ -156,6 +180,7 @@ export function openSettingsModal(initialTab) {
     const $telegramContent = card.querySelector('#ps-telegram-content');
     const $vkContent = card.querySelector('#ps-vk-content');
     const $bitrixContent = card.querySelector('#ps-bitrix-content');
+    const $meetContent = card.querySelector('#ps-meet-content');
 
     // TODO behavior tab state: рендерим форму один раз при первом клике.
     // userSettings fetch выполняется лениво, если bootstrap-preload не успел
@@ -180,6 +205,9 @@ export function openSettingsModal(initialTab) {
         loaded: false,
     };
     const bitrixTabState = {
+        loaded: false,
+    };
+    const meetTabState = {
         loaded: false,
     };
 
@@ -346,6 +374,19 @@ export function openSettingsModal(initialTab) {
         $bitrixContent.appendChild(buildHotkeysForm(settingsArg, onSaved, B24_HOTKEYS_CONFIG));
     };
 
+    // Вкладка «Встречи»: настройки плагина forge-meet. В отличие от соседей
+    // она НЕ пользуется state.userSettings — у плагина свой файл конфига
+    // (`~/.config/forge/meet.toml`) и свои роуты, а сетевые вызовы приходят
+    // инъекцией, чтобы вкладка проверялась без браузера.
+    const renderMeetPanel = () => {
+        if (meetTabState.loaded || !$meetContent) return;
+        meetTabState.loaded = true;
+        $meetContent.textContent = 'Loading settings…';
+        void buildMeetSettings($meetContent, {
+            getMeetConfig, putMeetConfig, getMeetStatus, getModels, downloadModel, recheckDeps,
+        });
+    };
+
     const notifierState = {
         loaded: false,
     };
@@ -425,6 +466,9 @@ export function openSettingsModal(initialTab) {
         }
         if (name === 'bitrix') {
             renderBitrixPanel();
+        }
+        if (name === 'meet') {
+            renderMeetPanel();
         }
     };
     $tabBtns.forEach((btn) => {
@@ -555,7 +599,7 @@ export function openSettingsModal(initialTab) {
         });
     }
 
-    if (initialTab && (initialTab === 'notifications' || initialTab === 'themes' || initialTab === 'todo' || initialTab === 'echo' || initialTab === 'daily-summary' || initialTab === 'interface' || initialTab === 'telegram' || initialTab === 'vk' || initialTab === 'bitrix' || (initialTab === 'remotes' && isRemoteMode()))) {
+    if (initialTab && (initialTab === 'notifications' || initialTab === 'themes' || initialTab === 'todo' || initialTab === 'echo' || initialTab === 'daily-summary' || initialTab === 'interface' || initialTab === 'telegram' || initialTab === 'vk' || initialTab === 'bitrix' || (initialTab === 'meet' && meetEnabled()) || (initialTab === 'remotes' && isRemoteMode()))) {
         showTab(initialTab);
     }
 
