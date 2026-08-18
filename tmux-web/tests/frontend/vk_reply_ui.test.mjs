@@ -25,6 +25,12 @@ import {
     $log, $input, $prompt, $lightbox, $document,
     dispatch, flush, jsonRes, netCalls, setNet,
 } from './vk_dom_stub.mjs';
+// Страж CSS: селекторы берутся из настоящего css/vk.css и проверяются против
+// узла, который построил chat.js (см. css_probe.mjs — там объяснено, почему
+// обычный querySelector этот дефект не ловит).
+import {
+    anySelectorMatches, declares, readCss, ruleBody, selectorsWith, stripComments,
+} from './css_probe.mjs';
 
 const C = await import(new URL('../../static/js/vk/chat.js', import.meta.url).href);
 const S = await import(new URL('../../static/js/vk/state.js', import.meta.url).href);
@@ -168,17 +174,98 @@ ok(bar() === null, 'без выбора цели полосы в разметк�
 }
 
 // ---------------------------------------------------------------------------
+// 2a. Esc уступает ОКНУ поверх панели (forge-o0sdg)
+// ---------------------------------------------------------------------------
+//
+// Живой дефект: открыта карточка встречи, под ней поднята цитата ответа — одно
+// нажатие Esc закрывало карточку И снимало цитату, стирая набранный контекст.
+// Оба обработчика висели на ОДНОМ документе и защищались `stopPropagation()`,
+// который между слушателями одного узла не действует.
+//
+// Здесь карточка изображается настоящим слоем реестра `messenger/esc-stack.js`
+// — тем же механизмом, которым её регистрирует `meet-popup.js`.
+
+{
+    const ESC = await import(new URL('../../static/js/messenger/esc-stack.js', import.meta.url).href);
+    const card = { open: true, closes: 0 };
+    const off = ESC.registerEscLayer({
+        doc: $document,
+        name: 'meet-card-stub',
+        depth: ESC.ESC_DEPTH.MEET_CARD,
+        isOpen: () => card.open,
+        close: () => { card.open = false; card.closes += 1; },
+    });
+
+    dispatch($log, 'dblclick', { target: rowByCmid(1001) });
+    eq(R._debugReplyState().cmid, 1001, 'цель выбрана при открытой карточке');
+
+    dispatch($document, 'keydown', { key: 'Escape' });
+    eq(card.closes, 1, 'Esc закрыл карточку встречи — она верхнее окно');
+    eq(R._debugReplyState().cmid, 1001,
+        'и НЕ снял цитату: одно нажатие закрывает РОВНО ОДНО окно');
+
+    dispatch($document, 'keydown', { key: 'Escape' });
+    eq(R._debugReplyState().cmid, null, 'второе нажатие снимает цитату');
+
+    off();
+}
+
+// ---------------------------------------------------------------------------
 // 3. Стоп-лист двойного клика и кнопка «ответить»
 // ---------------------------------------------------------------------------
 
 {
     const row = rowByCmid(1001);
-    const btn = row.children.find((n) => n.className === 'vk-reply-btn');
+    // Кнопка ответа переехала внутрь ОБЁРТКИ действий строки
+    // (`span.vk-line-actions`): рядом с ней живёт кнопка встречи, и вне потока
+    // теперь обёртка, а не каждая кнопка по отдельности. Прямой перебор
+    // `row.children` её больше не находит — и это ровно та смена структуры, о
+    // которой обязан знать CSS (страж ниже).
+    const actionsBox = row.children[row.children.length - 1];
+    ok(actionsBox && actionsBox.className === 'vk-line-actions',
+        'последний потомок строки — обёртка действий (она вне потока)');
+    const btn = actionsBox.children.find((n) => n.classList.contains('vk-reply-btn'));
     ok(btn, 'у строки с cmid есть кнопка «ответить»');
     eq(btn.textContent, '↰', 'глиф кнопки');
     eq(btn.getAttribute('aria-label'), 'Ответить: durov', 'кнопка называет собеседника');
-    ok(row.children[row.children.length - 1] === btn,
-        'кнопка — последний потомок (она вне потока)');
+    ok(actionsBox.children[actionsBox.children.length - 1] === btn,
+        'ответ — последний в обёртке, то есть остался у правого края, где и был');
+
+    // ⚠ СТРАЖ P0. Раньше кнопку показывало правило с ДОЧЕРНИМ комбинатором
+    // (`.vk-line:hover > .vk-reply-btn`). После переезда в обёртку такое
+    // правило перестаёт совпадать, и кнопка исчезает МОЛЧА: ни ошибки в
+    // консоли, ни падения ассертов выше — узел-то на месте. Поэтому селекторы
+    // берутся ИЗ САМОГО css/vk.css и проверяются против настоящего узла.
+    {
+        const css = readCss(import.meta.url, '../../static/css/vk.css');
+        // Именно правила ОТ СТРОКИ: `.vk-reply-btn:focus-visible` совпадает с
+        // узлом всегда, каким бы ни был комбинатор, и включать его в проверку
+        // значило бы ослепить стража ровно к тому дефекту, ради которого он
+        // написан.
+        const show = selectorsWith(css, '.vk-reply-btn')
+            .filter((s) => s.includes('.vk-line') && (s.includes(':hover') || s.includes(':focus-within')));
+        ok(show.length >= 2, 'CSS: правила показа кнопки ответа при наведении на строку найдены');
+        ok(anySelectorMatches(show, btn),
+            'CSS-СТРАЖ: наведение на строку ПОКАЗЫВАЕТ кнопку ответа при нынешней структуре DOM'
+            + ' (верни дочерний комбинатор — и кнопка исчезнет молча)');
+        ok(!stripComments(css).includes('> .vk-reply-btn'),
+            'CSS: дочернего комбинатора у кнопки ответа не осталось');
+
+        const wrap = ruleBody(css, '.vk-line-actions');
+        ok(declares(wrap, 'position', 'absolute'), 'CSS: обёртка вне потока');
+        ok(declares(wrap, 'top') && declares(wrap, 'right') && declares(wrap, 'z-index'),
+            'CSS: top/right/z-index стоят на обёртке');
+        ok(declares(wrap, 'pointer-events', 'none'),
+            'CSS: обёртка не ловит клики — иначе её бокс перехватывал бы выделение текста');
+        ok(!declares(wrap, 'opacity'),
+            'CSS: прозрачности на обёртке НЕТ — группа композиции не дала бы закрепить кнопку встречи');
+        const btnRule = ruleBody(css, '.vk-reply-btn');
+        ok(!declares(btnRule, 'position'), 'CSS: у самой кнопки ответа позиционирования больше нет');
+        ok(declares(btnRule, 'opacity', '0') && declares(btnRule, 'pointer-events', 'none'),
+            'CSS: кнопка по-прежнему гасится сама (и остаётся в таб-порядке)');
+        const touch = selectorsWith(css, '.vk-reply-btn').filter((s) => s === '.vk-reply-btn');
+        ok(touch.length >= 2, 'CSS: правило @media (hover: none) осталось на самой кнопке');
+    }
 
     // Двойной клик ПО КНОПКЕ ответ не начинает: у неё свой обработчик.
     dispatch($log, 'dblclick', { target: btn });

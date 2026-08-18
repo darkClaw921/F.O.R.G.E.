@@ -43,6 +43,11 @@ globalThis.window.ForgeApp = { state: { userSettings } };
 const KEYS = await import(new URL('../../static/js/bitrix/keys.js', import.meta.url).href);
 const NAV = await import(new URL('../../static/js/bitrix/keynav.js', import.meta.url).href);
 const MAIN = await import(new URL('../../static/js/bitrix/main.js', import.meta.url).href);
+// Карточка встречи: её гейт живёт в panelVisible(), и проверять его надо
+// НАСТОЯЩИМ попапом — узел создаётся кодом, в разметке приложения его нет.
+const MEET_POPUP = await import(
+    new URL('../../static/js/messenger/meet-popup.js', import.meta.url).href
+);
 
 let failures = 0;
 let checks = 0;
@@ -204,6 +209,26 @@ function clearRows() {
     $login.hidden = false;
     ok(!NAV.b24OwnsKeyboard(), 'открыт оверлей подключения — клавиши принадлежат форме');
     $login.hidden = true;
+
+    // Карточка встречи. Без этой ветки vim-навигация забирает `j`/`k` у поля
+    // поиска по расшифровке и у поля переименования участника. Проверяется
+    // НАСТОЯЩИМ попапом: класс `.modal-overlay` он не несёт НАМЕРЕННО (тот
+    // тянет глобальные токены и position: fixed), поэтому существующая
+    // проверка модалки его не видит.
+    {
+        const popup = MEET_POPUP.createMeetPopup({
+            panel: 'bitrix', host: $panel, doc: $document,
+        });
+        ok(NAV.panelVisible(), 'встреча: закрытая карточка навигации не мешает');
+        popup.open({
+            key: 'bitrix|chat123|7', panel: 'bitrix', chatId: 'chat123', messageId: 7, state: null,
+        });
+        ok(!NAV.panelVisible(), 'встреча: открытая карточка = панель не готова');
+        ok(!NAV.b24OwnsKeyboard(), 'встреча: при открытой карточке владения нет');
+        popup.close();
+        ok(NAV.panelVisible(), 'встреча: закрытие карточки возвращает навигацию');
+        popup.teardown();
+    }
 
     userSettings.bitrix_hotkeys_enabled = false;
     ok(!NAV.b24OwnsKeyboard(), 'хоткеи выключены настройкой — клавиши не её');

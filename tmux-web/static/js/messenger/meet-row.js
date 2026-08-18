@@ -1,0 +1,590 @@
+// tmux-web — КНОПКА ВСТРЕЧИ в строке ленты. Одна на три панели.
+//
+// Модуль отвечает ровно за одно: рядом с сообщением, в котором нашлась ссылка
+// на встречу, появляется кнопка «подключиться и записать», и она показывает
+// СОСТОЯНИЕ этой встречи. Всё остальное живёт в соседях: детект — в
+// `meet-core.js`, кэш и транспорт — в `meet-store.js`, попап — в `meet/*`.
+//
+// ============================================================================
+// 1. ПОЧЕМУ ОДИН МОДУЛЬ, А НЕ ТРИ КНОПКИ В ТРЁХ ПАНЕЛЯХ
+// ============================================================================
+//
+// Состояний у встречи двенадцать плюс псевдостатус «можно записать», и у
+// каждого свой глиф, подпись, тон и правило закрепления. Три копии этой
+// таблицы разошлись бы на первой же правке — ровно так, как это уже случалось
+// с движком горячих клавиш (см. `messenger/hotkeys-core.js`). Панели
+// отличаются только тем, КУДА положить узел и КАК он называется в CSS, и это
+// два параметра, а не повод для копии.
+//
+// ============================================================================
+// 2. СОСТОЯНИЕ ЧИТАЕТСЯ СИНХРОННО, ПРЯМО В БИЛДЕРЕ СТРОКИ
+// ============================================================================
+//
+// `getMeetState()` из стора НИКОГДА не возвращает Promise: попадание в кэш
+// отдаётся сразу, промах ставится в очередь батча. Иначе каждая перерисовка
+// ленты (у Битрикса — на каждое входящее сообщение) рисовала бы кнопку
+// «пустой», а состояние приезжало бы следующим кадром: постоянное мигание,
+// которое читается как дефект рендера. Тест на это есть: две сборки строки
+// подряд при прогретом кэше обязаны дать один и тот же глиф.
+//
+// ============================================================================
+// 3. ЗАКРЕПЛЕНИЕ — АТРИБУТ НА СТРОКЕ. ЭТО НЕ СТИЛЬ, А ФИЗИКА
+// ============================================================================
+//
+// `opacity` на контейнере создаёт ГРУППУ КОМПОЗИЦИИ: потомок физически не
+// может быть непрозрачнее предка. Кнопки действий во всех трёх панелях живут
+// внутри контейнера, который до наведения погашен (у Битрикса это прямо
+// `.b24-line-actions { opacity: 0 }`), поэтому «закрепить видимой одну кнопку»
+// изнутри контейнера невозможно в принципе.
+//
+// Отсюда решение: закрепление вешается атрибутом `data-meet-pinned` НА СТРОКУ,
+// а CSS каждой панели показывает по нему свою кнопку встречи (и, у Битрикса,
+// гасит обратно соседние кнопки). Одинаково во всех трёх панелях.
+//
+// Закрепляются только НЕ-idle состояния: «можно записать» живёт по обычному
+// правилу наведения и не мозолит глаз, «идёт запись» и «готово» видны всегда.
+//
+// ============================================================================
+// 4. ТАЙМЕР ЗАПИСИ — ВЫЧИТАНИЕМ ОТ `startedAtMs`, ИНТЕРВАЛ ОДИН НА ДОКУМЕНТ
+// ============================================================================
+//
+// Инкрементный счётчик обнулялся бы при перезагрузке вкладки и разъезжался бы
+// после сна машины — то есть врал бы ровно тогда, когда на него смотрят.
+// Поэтому цифра всегда считается `elapsedMs(startedAtMs, now)`, а единственный
+// `setInterval` живёт в СТОРЕ (`refreshTicker`) и существует только пока есть
+// хотя бы одна активная встреча. Этот модуль на его кадры лишь подписан.
+//
+// Подписка ОДНА на модуль, а не на кнопку: перерисовка ленты создаёт сотни
+// узлов, и подписка на каждый превратила бы прокрутку в утечку. Перерисовка
+// идёт по зарегистрированным лентам (`registerMeetRoot`), которых физически
+// не больше трёх.
+
+import {
+    detectMeetInMessage,
+} from './meet-core.js';
+import {
+    STATUS_NONE, elapsedMs, getMeetState, meetEnabled, meetKey, subscribeMeet,
+} from './meet-store.js';
+
+// ==========================================================================
+// Контракт разметки
+// ==========================================================================
+
+/**
+ * Общий класс кнопки — по нему её находит перерисовка и красит `css/meet.css`.
+ *
+ * Второй класс у кнопки панельный (`tg-meet-btn`/`vk-meet-btn`/`b24-meet-btn`)
+ * — им панель управляет ВИДИМОСТЬЮ в своей палитре и своих правилах наведения.
+ * Разделение не косметическое: механика показа у панелей разная (у Телеграма и
+ * VK кнопка гасится сама, у Битрикса — вместе с контейнером), а вид общий.
+ */
+export const MEET_BTN_CLASS = 'meet-btn';
+
+/**
+ * Значение `data-action`, по которому кнопку находят клавиатура и e2e.
+ *
+ * У Битрикса это даёт хоткей вообще бесплатно: `rowActionButton(row, 'meet')`
+ * (bitrix/keynav.js) ищет кнопки строки именно по `data-action`.
+ */
+export const MEET_ACTION = 'meet';
+
+/** Атрибут закрепления. Ставится НА СТРОКУ — см. раздел 3 шапки. */
+export const MEET_PINNED_ATTR = 'meetPinned';
+
+/** Панель → префикс её классов. */
+const PANEL_PREFIX = { telegram: 'tg', vk: 'vk', bitrix: 'b24' };
+
+// ==========================================================================
+// Таблица состояний
+// ==========================================================================
+
+/**
+ * Как выглядит каждый статус.
+ *
+ * Поля:
+ *   • `glyph`  — один символ, он же единственное, что пульсирует;
+ *   • `label`  — короткая подпись (у `recording` её заменяет таймер);
+ *   • `tone`   — `data-meet-tone`, по нему `css/meet.css` берёт цвет;
+ *   • `pinned` — видна ли кнопка БЕЗ наведения;
+ *   • `pulse`  — пульсирует ли глиф;
+ *   • `title`  — подсказка и `aria-label`.
+ *
+ * Ключи — ДОСЛОВНО значения `MeetStatus::as_str` (`plugins/meet/src/status.rs`)
+ * плюс псевдостатус `none` («встречи нет, но мы это точно знаем»). Полнота
+ * таблицы проверяется контрактным тестом ПРОТИВ ИСХОДНИКА НА RUST: добавленный
+ * на бэкенде статус обязан сломать тест, а не молча нарисоваться пустой
+ * кнопкой.
+ */
+export const MEET_VIEWS = Object.freeze({
+    // Псевдостатус: записи нет. Единственное НЕ закреплённое состояние —
+    // «можно записать» не должно мозолить глаз на каждой ссылке в переписке.
+    [STATUS_NONE]: {
+        glyph: '⏺', label: 'ЗАПИСЬ', tone: 'idle', pinned: false, pulse: false,
+        title: 'Записать встречу',
+    },
+    queued: {
+        glyph: '◔', label: 'В ОЧЕРЕДИ', tone: 'wait', pinned: true, pulse: false,
+        title: 'Запись в очереди: свободного слота ещё нет',
+    },
+    launching: {
+        glyph: '◌', label: 'ЗАПУСК', tone: 'wait', pinned: true, pulse: true,
+        title: 'Запускается браузер бота',
+    },
+    joining: {
+        glyph: '◌', label: 'ВХОД', tone: 'wait', pinned: true, pulse: true,
+        title: 'Бот входит во встречу',
+    },
+    waiting_admit: {
+        glyph: '◍', label: 'ЛОББИ', tone: 'warn', pinned: true, pulse: true,
+        title: 'Бот ждёт, пока его впустят из лобби',
+    },
+    recording: {
+        // Подпись у этого статуса ЖИВАЯ — её заменяет таймер записи.
+        glyph: '⏺', label: '', tone: 'live', pinned: true, pulse: true,
+        title: 'Идёт запись встречи',
+    },
+    leaving: {
+        glyph: '◌', label: 'ВЫХОД', tone: 'wait', pinned: true, pulse: true,
+        title: 'Бот выходит из встречи и дописывает звук',
+    },
+    transcoding: {
+        glyph: '⧗', label: 'СВЕДЕНИЕ', tone: 'work', pinned: true, pulse: false,
+        title: 'Сводится звук встречи',
+    },
+    transcribing: {
+        glyph: '⧗', label: 'РАСШИФРОВКА', tone: 'work', pinned: true, pulse: false,
+        title: 'Идёт расшифровка записи',
+    },
+    summarizing: {
+        glyph: '⧗', label: 'САММАРИ', tone: 'work', pinned: true, pulse: false,
+        title: 'Считается саммари встречи',
+    },
+    ready: {
+        glyph: '✓', label: 'ГОТОВО', tone: 'ok', pinned: true, pulse: false,
+        title: 'Запись встречи готова',
+    },
+    failed: {
+        glyph: '✕', label: 'ОШИБКА', tone: 'err', pinned: true, pulse: false,
+        title: 'Записать встречу не удалось',
+    },
+    cancelled: {
+        glyph: '⨯', label: 'ОТМЕНА', tone: 'off', pinned: true, pulse: false,
+        title: 'Запись отменена',
+    },
+    // Ретенция удалила файлы. Вид ЗАКРЕПЛЁН, как и у остальных состояний с
+    // записью: не покажи мы его — строка вернулась бы к «можно записать», то
+    // есть предложила бы войти ботом в давно прошедшую встречу.
+    pruned: {
+        glyph: '⌫', label: 'ВЫЧИЩЕНО', tone: 'off', pinned: true, pulse: false,
+        title: 'Файлы записи вычищены по сроку хранения',
+    },
+});
+
+/**
+ * Саммари не получилось, а транскрипт есть.
+ *
+ * Отдельным ПРИЗНАКОМ, а не статусом: на бэкенде `summarizing → failed`
+ * запрещён таблицей переходов намеренно — час расшифровки не имеет права
+ * пропасть из-за неответившего саммаризатора. Значит встреча остаётся `ready`,
+ * и единственный след провала — `summary_status`.
+ */
+export const SUMMARY_FAILED = 'failed';
+
+// ==========================================================================
+// Внутреннее состояние модуля
+// ==========================================================================
+
+const local = {
+    /** Что делать по клику. Подставляет панель (Ф4 — попап карточки). */
+    open: null,
+    /** Ленты, которые надо перерисовывать по кадрам стора. Не больше трёх. */
+    roots: new Set(),
+    /** Отписка от стора. `null` = подписки нет (ни одной ленты не было). */
+    unsubscribe: null,
+    /** Часы — подменяются в тестах, чтобы не ждать реального времени. */
+    now: null,
+    /** Счётчики для тестов и диагностики. */
+    stats: { built: 0, painted: 0, opens: 0, repaints: 0 },
+};
+
+function nowMs() {
+    if (typeof local.now === 'function') return local.now();
+    return Date.now();
+}
+
+/**
+ * Подставить обработчик клика и (в тестах) часы.
+ *
+ * Клик ВСЕГДА открывает карточку встречи, даже в состоянии «можно записать»:
+ * бот входит в чужую встречу и его видят все участники, поэтому подтверждение
+ * здесь — функция, а не трение.
+ *
+ * @param {object} opts
+ * @param {(detail: object) => void} [opts.open]
+ * @param {() => number} [opts.now]
+ */
+export function configureMeetRow(opts) {
+    const o = opts || {};
+    if (typeof o.open === 'function') local.open = o.open;
+    if (typeof o.now === 'function') local.now = o.now;
+}
+
+/**
+ * Полный сброс — тесты и выгрузка страницы.
+ *
+ * Снимает подписку на стор: пережившая выгрузку подписка перерисовывала бы
+ * мёртвый DOM (тот же дефект уже ловили в панелях VK и Битрикса).
+ */
+export function resetMeetRow() {
+    if (local.unsubscribe) local.unsubscribe();
+    local.unsubscribe = null;
+    local.open = null;
+    local.roots.clear();
+    local.now = null;
+    local.stats = { built: 0, painted: 0, opens: 0, repaints: 0 };
+}
+
+// ==========================================================================
+// Регистрация ленты и подписка на стор
+// ==========================================================================
+
+/**
+ * Лента, кнопки которой надо перерисовывать по кадрам стора.
+ *
+ * Регистрируется ЛЕНТА, а не кнопка: строки создаются и умирают сотнями, и
+ * подписка на каждую превратила бы прокрутку в утечку. Лент физически три, и
+ * `Set` их дедуплицирует — повторный вызов при повторной инициализации панели
+ * ничего не стоит.
+ *
+ * Подписка на стор заводится ЛЕНИВО, при первой регистрации: страница без
+ * открытых панелей не подписана ни на что.
+ *
+ * @param {?object} node — контейнер ленты (`#tg-log` и его аналоги)
+ */
+export function registerMeetRoot(node) {
+    if (!node || typeof node.querySelectorAll !== 'function') return;
+    local.roots.add(node);
+    if (local.unsubscribe) return;
+    local.unsubscribe = subscribeMeet((ev) => {
+        if (!ev || !REPAINT_EVENTS.has(ev.type)) return;
+        repaintMeetButtons();
+    });
+}
+
+/**
+ * Кадры стора, на которые кнопка обязана перерисоваться.
+ *
+ * `tick` — живой таймер записи (раз в секунду, пока идёт хоть одна запись).
+ * `progress` и `transcript_delta` сюда НЕ входят: это содержимое попапа, а на
+ * кнопке они не видны — перерисовка по ним была бы работой вхолостую по
+ * несколько раз в секунду.
+ */
+const REPAINT_EVENTS = new Set(['states', 'meeting', 'snapshot', 'resync', 'tick']);
+
+/**
+ * Перерисовать кнопки во всех зарегистрированных лентах (или в указанной).
+ *
+ * @param {?object} [root] — если не задан, перерисовываются все ленты
+ * @returns {number} сколько кнопок перерисовано
+ */
+export function repaintMeetButtons(root) {
+    const roots = root ? [root] : Array.from(local.roots);
+    const at = nowMs();
+    let n = 0;
+    for (const host of roots) {
+        if (!host || typeof host.querySelectorAll !== 'function') continue;
+        for (const btn of Array.from(host.querySelectorAll('.' + MEET_BTN_CLASS))) {
+            paintButton(btn, at);
+            n += 1;
+        }
+    }
+    local.stats.repaints += 1;
+    return n;
+}
+
+// ==========================================================================
+// Кнопка
+// ==========================================================================
+
+/**
+ * Повесить кнопку встречи на строку ленты.
+ *
+ * ПЕРВОЙ СТРОКОЙ — выход при выключенном плагине: без `--meet` роутов нет
+ * вовсе, и функция обязана не стоить ничего (ни детекта, ни узла, ни очереди).
+ *
+ * @param {object} row — строка ленты; на неё вешается `data-meet-pinned`
+ * @param {object} ctx
+ * @param {string} ctx.panel — `telegram` | `vk` | `bitrix`
+ * @param {object} ctx.msg — MessageDto панели
+ * @param {string|number} ctx.chatId — идентификатор чата на проводе
+ * @param {number} [ctx.messageId] — по умолчанию `Number(msg.id)`
+ * @param {object} [ctx.container] — куда положить узел (по умолчанию строка)
+ * @param {string} [ctx.extraClass] — дополнительный класс панели (Битриксу им
+ *   кнопка объявляет себя действием строки — по нему её находит клавиатура)
+ * @param {object} [ctx.root] — лента, для перерисовки по кадрам стора
+ * @param {object} [ctx.doc] — документ (в тестах — фейковый)
+ * @param {(detail: object) => void} [ctx.onOpen] — обработчик клика
+ * @returns {?object} узел кнопки или null
+ */
+export function attachMeetButton(row, ctx) {
+    // Гейт. Плагин выключен — ни детекта, ни узла, ни очереди батча.
+    if (!meetEnabled()) return null;
+    if (!row || !ctx || typeof ctx !== 'object') return null;
+
+    const panel = String(ctx.panel || '').toLowerCase();
+    const prefix = PANEL_PREFIX[panel];
+    if (!prefix) return null;
+
+    const msg = ctx.msg;
+    const hit = detectMeetInMessage(msg, panel);
+    if (!hit) return null;
+
+    // ПЛАТФОРМА БЕЗ ЗВУКА — КНОПКИ НЕТ. `audio: false` в реестре означает не
+    // «пока не проверяли», а измеренный факт: с этой площадки мы звук забрать
+    // не умеем. Кандидат — Zoom с его WASM-пайплайном. Нарисованная кнопка
+    // обещала бы запись, которая гарантированно вышла бы пустой, и человек
+    // узнал бы об этом через полчаса после встречи. Молчаливое отсутствие
+    // кнопки честнее обещания, которое мы не выполним.
+    if (hit.audio === false) return null;
+
+    const messageId = Number.isFinite(ctx.messageId) ? Number(ctx.messageId) : Number(msg.id);
+    if (!Number.isFinite(messageId)) return null;
+    const chatId = ctx.chatId === undefined || ctx.chatId === null ? '' : String(ctx.chatId);
+    if (chatId === '') return null;
+
+    const doc = ctx.doc || (typeof document !== 'undefined' ? document : null);
+    if (!doc || typeof doc.createElement !== 'function') return null;
+
+    if (ctx.root) registerMeetRoot(ctx.root);
+
+    const key = meetKey(panel, chatId, messageId);
+    const btn = doc.createElement('button');
+    btn.type = 'button';
+    // Третий класс — по требованию панели. Битрикс просит `b24-line-btn`: его
+    // клавиатура обходит действия строки как `.b24-line-btn` с нужным
+    // `data-action`, и без этого класса кнопку встречи она бы не нашла. Вид от
+    // этого не меняется — css/meet.css импортируется после панелей и
+    // побеждает при равной специфичности.
+    const extra = typeof ctx.extraClass === 'string' && ctx.extraClass.trim()
+        ? ` ${ctx.extraClass.trim()}`
+        : '';
+    btn.className = `${MEET_BTN_CLASS} ${prefix}-meet-btn${extra}`;
+    btn.dataset.action = MEET_ACTION;
+    btn.dataset.meetKey = key;
+    // Локальная метка комнаты — ТОЛЬКО для диагностики и e2e. Идентичность
+    // комнаты (`url_key`) считает бэкенд по каноническому адресу; фронт её не
+    // вычисляет и не отправляет (см. шапку `meet-core.js`).
+    btn.dataset.meetLocal = hit.localKey;
+
+    const glyph = doc.createElement('span');
+    glyph.className = 'meet-glyph';
+    const label = doc.createElement('span');
+    label.className = 'meet-label';
+    btn.appendChild(glyph);
+    btn.appendChild(label);
+
+    // Всё, что нужно для перерисовки и для клика, живёт НА УЗЛЕ: перерисовка
+    // находит кнопки поиском по классу и не имеет другого способа узнать, к
+    // какой строке и какому сообщению они относятся. Тот же приём, что у
+    // `li._tg` в самих панелях.
+    btn._meet = {
+        key, row, glyph, label, panel, chatId, messageId,
+        meet: hit,
+        onOpen: typeof ctx.onOpen === 'function' ? ctx.onOpen : null,
+    };
+
+    btn.addEventListener('click', onMeetClick);
+
+    (ctx.container || row).appendChild(btn);
+    local.stats.built += 1;
+    paintButton(btn, nowMs());
+    return btn;
+}
+
+/**
+ * Клик по кнопке.
+ *
+ * `preventDefault` И `stopPropagation` — оба обязательны и не взаимозаменяемы:
+ * у ленты висят делегированные обработчики (двойной клик по строке начинает
+ * ответ, клик по цитате уводит к оригиналу), и без остановки всплытия клик по
+ * кнопке заодно дёргал бы их.
+ */
+function onMeetClick(e) {
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+    if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+    const node = (e && e.currentTarget) || (e && e.target) || null;
+    const info = node && node._meet ? node._meet : null;
+    if (!info) return;
+    const handler = info.onOpen || local.open;
+    if (typeof handler !== 'function') return;
+    local.stats.opens += 1;
+    handler({
+        key: info.key,
+        panel: info.panel,
+        chatId: info.chatId,
+        messageId: info.messageId,
+        meet: info.meet,
+        state: getMeetState(info.key),
+        row: info.row,
+        node,
+    });
+}
+
+/**
+ * Нарисовать кнопку по текущему состоянию из кэша.
+ *
+ * Состояние берётся СИНХРОННО: промах кэша ставится в очередь батча и
+ * возвращает `null`, который здесь читается как «можно записать». Именно
+ * поэтому повторная сборка строки при прогретом кэше даёт тот же глиф — стор
+ * отдаёт один и тот же замороженный объект.
+ *
+ * @param {object} btn
+ * @param {number} at — мс эпохи
+ */
+function paintButton(btn, at) {
+    const info = btn && btn._meet;
+    if (!info) return;
+    const state = getMeetState(info.key);
+    const view = meetViewFor(state, at);
+
+    btn.dataset.meetStatus = view.status;
+    btn.dataset.meetTone = view.tone;
+    if (view.pulse) btn.dataset.meetPulse = '1';
+    else delete btn.dataset.meetPulse;
+
+    info.glyph.textContent = view.glyph;
+    info.label.textContent = view.label;
+    // Подпись у кнопки бывает пустой (свёрнутая раскладка узкого экрана,
+    // состояние без слова) — тогда узел не должен занимать место в flex-ряду.
+    info.label.hidden = view.label === '';
+
+    // Подсказка мыши несёт живую цифру, а ПОДПИСЬ ДЛЯ СКРИНРИДЕРА — нет:
+    // `aria-label` у кнопки под фокусом перечитывается при изменении, и
+    // секундный таймер превратился бы в непрерывное бормотание. Скринридеру
+    // достаточно состояния, а длительность он получит, вернувшись на кнопку.
+    btn.title = `${view.title} · ${info.meet.title}`;
+    btn.setAttribute('aria-label', `${view.aria} · ${info.meet.title}`);
+
+    // ЗАКРЕПЛЕНИЕ — атрибутом НА СТРОКЕ (см. раздел 3 шапки).
+    const row = info.row;
+    if (row && row.dataset) {
+        if (view.pinned) row.dataset[MEET_PINNED_ATTR] = view.status;
+        else delete row.dataset[MEET_PINNED_ATTR];
+    }
+    local.stats.painted += 1;
+}
+
+// ==========================================================================
+// Чистая часть: состояние → внешний вид
+// ==========================================================================
+
+/**
+ * Внешний вид кнопки по записи состояния.
+ *
+ * Чистая функция без DOM — поэтому таблица статусов проверяется тестом без
+ * фейкового документа, а панели не могут разойтись в трактовке статуса.
+ *
+ * @param {?object} state — запись стора или null (кэш ещё пуст)
+ * @param {number} [at] — мс эпохи, для таймера записи
+ * @returns {{status: string, glyph: string, label: string, tone: string,
+ *            pinned: boolean, pulse: boolean, title: string, aria: string}}
+ *   `title` — подсказка мыши, она несёт живую длительность; `aria` — подпись
+ *   для скринридера, СТАБИЛЬНАЯ (см. `paintButton`).
+ */
+export function meetViewFor(state, at) {
+    const status = state && typeof state.status === 'string' ? state.status : STATUS_NONE;
+    const base = MEET_VIEWS[status] || MEET_VIEWS[STATUS_NONE];
+    const view = {
+        status,
+        glyph: base.glyph,
+        label: base.label,
+        tone: base.tone,
+        pinned: base.pinned,
+        pulse: base.pulse,
+        title: base.title,
+        aria: base.title,
+    };
+
+    // Идёт запись — вместо слова живая длительность. Считается ВЫЧИТАНИЕМ от
+    // `startedAtMs`: инкремент обнулялся бы при перезагрузке вкладки.
+    if (status === 'recording') {
+        const ms = elapsedMs(state ? state.startedAtMs : null, at);
+        view.label = formatMeetClock(ms);
+        view.title = `${base.title}: ${view.label}`;
+    }
+
+    // Готово, но саммари не получилось. Транскрипт при этом ЕСТЬ — на бэкенде
+    // переход `summarizing → failed` запрещён намеренно, поэтому статус
+    // остаётся `ready`, а провал виден только по `summary_status`. Молчать о
+    // нём нельзя: человек ждёт саммари и не понял бы, почему его нет.
+    if (status === 'ready' && state && state.summaryStatus === SUMMARY_FAILED) {
+        view.tone = 'warn';
+        view.title = 'Запись готова, саммари не получилось';
+        view.aria = view.title;
+    }
+
+    return view;
+}
+
+/**
+ * Длительность в подпись кнопки.
+ *
+ * До часа — `M:SS`, дальше `H:MM:SS`: постоянные ведущие нули (`0:07:12`)
+ * съедали бы ширину на строке, где кнопка и так висит поверх текста.
+ *
+ * @param {number} ms
+ * @returns {string}
+ */
+export function formatMeetClock(ms) {
+    const total = Math.max(0, Math.floor((Number.isFinite(ms) ? ms : 0) / 1000));
+    const s = total % 60;
+    const m = Math.floor(total / 60) % 60;
+    const h = Math.floor(total / 3600);
+    const ss = String(s).padStart(2, '0');
+    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${ss}`;
+    return `${m}:${ss}`;
+}
+
+/**
+ * Кнопка встречи в строке — для клавиатурной навигации панелей.
+ *
+ * Поиск по `data-action`, а не по классу: то же правило, по которому строку
+ * обходит `rowActionButton` у Битрикса, и тот же атрибут, за который держатся
+ * e2e-тесты. Класс — дело CSS и может смениться, атрибут — контракт.
+ *
+ * @param {?object} row
+ * @returns {?object}
+ */
+export function meetButtonOf(row) {
+    if (!row || typeof row.querySelectorAll !== 'function') return null;
+    const found = Array.from(row.querySelectorAll('button'))
+        .find((b) => b && b.dataset && b.dataset.action === MEET_ACTION);
+    return found || null;
+}
+
+/**
+ * Открыть карточку встречи для строки под курсором — общая ветка хоткея.
+ *
+ * Возвращает `false`, когда кнопки нет: плагин выключен, ссылки в сообщении
+ * нет или строка вообще не сообщение. Ложное `true` съело бы клавишу у
+ * остального интерфейса, ничего не сделав, — поэтому событие не поглощается.
+ *
+ * @param {?object} row
+ * @returns {boolean}
+ */
+export function pressMeetButton(row) {
+    const btn = meetButtonOf(row);
+    if (!btn || typeof btn.click !== 'function') return false;
+    btn.click();
+    return true;
+}
+
+/** Снимок для тестов и e2e (по образцу `_debugMeetStore`). */
+export function _debugMeetRow() {
+    return {
+        opener: typeof local.open === 'function',
+        roots: local.roots.size,
+        subscribed: local.unsubscribe !== null,
+        stats: Object.assign({}, local.stats),
+    };
+}

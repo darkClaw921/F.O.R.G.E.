@@ -25,7 +25,7 @@ use crate::cli;
 /// удаляется и старт продолжается (нормальный recovery после краша).
 ///
 /// Все опции (`--port`, `--remote`, `--bind`, `--token`, `--pwa`,
-/// `--telegram`, `--vk`, `--bitrix`) прокидываются в child-процесс
+/// `--telegram`, `--vk`, `--bitrix`, `--meet`) прокидываются в child-процесс
 /// `devforge run …`, чтобы он
 /// точно унаследовал режим, выбранный пользователем (сборка аргументов —
 /// [`build_daemon_args`]). Без этого `devforge start --remote` молча
@@ -65,6 +65,13 @@ pub fn build_daemon_args(port: u16, opts: &cli::RunOptions) -> Vec<String> {
     }
     if opts.bitrix {
         args.push("--bitrix".to_string());
+    }
+    // Плагин встреч. Пропуск ЭТОЙ строки — самая частая ошибка при добавлении
+    // фича-флага: он разбирается в `cli.rs`, попадает в `EffectiveConfig`,
+    // но до дочернего процесса не доезжает — и `devforge start --meet` молча
+    // поднимает сервер БЕЗ плагина, без единого сообщения о причине.
+    if opts.meet {
+        args.push("--meet".to_string());
     }
     args
 }
@@ -488,8 +495,30 @@ mod tests {
         );
     }
 
+    /// Тот же регресс-класс для `--meet`. Плагин встреч болезненнее
+    /// остальных: без проброса `devforge start --meet` поднял бы сервер без
+    /// роутов `/api/meet/*`, фронт получил бы 404 на `GET /api/meet/status`,
+    /// то есть ШТАТНЫЙ признак «плагин выключен», — и кнопка записи просто не
+    /// появилась бы, ничем не отличаясь от намеренно выключенной фичи.
+    #[test]
+    fn daemon_args_carry_meet() {
+        let opts = cli::RunOptions {
+            meet: true,
+            ..cli::RunOptions::default()
+        };
+        let args = build_daemon_args(7331, &opts);
+        assert!(args.iter().any(|a| a == "--meet"), "{args:?}");
+        assert!(
+            !args.iter().any(|a| a == "--bitrix" || a == "--vk" || a == "--telegram" || a == "--pwa"),
+            "лишних флагов быть не должно: {args:?}"
+        );
+    }
+
     #[test]
     fn daemon_args_carry_all_flags_together() {
+        // Поля перечислены ПОИМЁННО, без `..Default::default()`: новый флаг
+        // обязан сломать компиляцию этого теста и заставить автора дописать
+        // строку, а не проехать мимо проброса молча.
         let opts = cli::RunOptions {
             remote: true,
             bind: Some("0.0.0.0".into()),
@@ -498,6 +527,7 @@ mod tests {
             telegram: true,
             vk: true,
             bitrix: true,
+            meet: true,
             port: 9000,
         };
         let args = build_daemon_args(opts.port, &opts);
@@ -509,6 +539,7 @@ mod tests {
             "--telegram",
             "--vk",
             "--bitrix",
+            "--meet",
         ] {
             assert!(args.iter().any(|a| a == expected), "{expected} потерян: {args:?}");
         }

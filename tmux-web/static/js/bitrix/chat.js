@@ -63,6 +63,11 @@
 import {
     $b24CharCount, $b24Input, $b24Log, $b24Prompt, $b24PromptNote, $b24Send, $b24SessionHead,
 } from '../core/dom.js';
+// Кнопка встречи — общая на три панели (js/messenger/meet-row.js). При
+// выключенном плагине `attachMeetButton` выходит первой строкой и не стоит
+// ленте ничего: ни детекта, ни узла, ни запроса.
+import { topEscLayer } from '../messenger/esc-stack.js';
+import { attachMeetButton } from '../messenger/meet-row.js';
 import * as b24Api from './api.js';
 import { buildCards } from './attachments.js';
 import { buildKeyboard, initBotKeyboards } from './botkb.js';
@@ -306,6 +311,33 @@ export function buildLine(msg) {
     const actions = buildActions(msg, doc);
     if (actions) body.appendChild(actions);
     li.appendChild(body);
+
+    // Кнопка встречи — В ТОТ ЖЕ контейнер действий, что и остальные кнопки
+    // строки: обёртка Telegram и VK здесь не нужна, у Битрикса контейнер уже
+    // есть и селекторы у него через ПОТОМКА.
+    //
+    // Ставится ПОСЛЕ сборки строки, а не внутри `buildActions`: закрепление
+    // видимости вешается атрибутом на САМУ СТРОКУ (`opacity` контейнера
+    // создаёт группу композиции, и изнутри него закрепить одну кнопку
+    // невозможно), а строки на момент сборки действий ещё нет.
+    //
+    // Ветвление `buildActions` по `pending`/`deleted` намеренно НЕ трогаем:
+    // там кнопок нет вовсе, и это чужое поведение панели.
+    if (actions) {
+        attachMeetButton(li, {
+            panel: 'bitrix',
+            msg,
+            chatId: local.dialogId,
+            container: actions,
+            root: $b24Log,
+            doc,
+            // Кнопка объявляет себя действием строки — И ЭТО ВЕСЬ КОД, который
+            // понадобился для хоткея: `keynav.js::rowActionButton` обходит
+            // строку как `.b24-line-btn` и выбирает по `data-action`. Без
+            // класса клавиатура кнопку не нашла бы, хотя атрибут на месте.
+            extraClass: 'b24-line-btn',
+        });
+    }
 
     appendExtras(li, msg, doc);
     return li;
@@ -1637,9 +1669,19 @@ export function initChat(handlers = {}) {
         });
         // Esc выходит из режима ответа/правки. `keydown`, а не `keyup`: до
         // отпускания клавиши браузер успевает отдать фокус форме.
+        //
+        // Слоем реестра (`messenger/esc-stack.js`) этот обработчик стать не
+        // может: он живёт на ПОЛЕ ВВОДА и срабатывает только при фокусе в нём —
+        // Esc из ленты режим не снимает и снимать не должен. Поэтому он не
+        // регистрируется, а СПРАШИВАЕТ реестр: пока сверху открыто окно
+        // (карточка встречи, попап анализа), нажатие принадлежит ему. Без этой
+        // проверки одно нажатие закрывало карточку И снимало цитату, стирая
+        // набранный контекст ответа: событие с поля всплывает до документа, и
+        // остановить его на стороне окна невозможно (forge-o0sdg).
         $b24Input.addEventListener('keydown', (ev) => {
             if (!ev || ev.key !== 'Escape') return;
             if (!local.mode) return;
+            if (topEscLayer()) return;
             if (typeof ev.preventDefault === 'function') ev.preventDefault();
             cancelMode();
         });

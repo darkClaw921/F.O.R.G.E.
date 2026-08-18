@@ -343,6 +343,11 @@ const base = new URL('../../static/js/telegram/', import.meta.url).href;
 const keynav = await import(`${base}keynav.js`);
 const reply = await import(`${base}reply.js`);
 const { tgState } = await import(`${base}state.js`);
+// Карточка встречи: её гейт живёт в panelVisible(), и проверять его надо
+// НАСТОЯЩИМ попапом — узел создаётся кодом, в разметке приложения его нет.
+const meetPopup = await import(
+    new URL('../../static/js/messenger/meet-popup.js', import.meta.url).href
+);
 
 // ---------------------------------------------------------------------------
 // Мини-фреймворк
@@ -536,6 +541,31 @@ $panel.hidden = false;
 $login.hidden = false;
 eq(keynav.panelVisible(), false, 'гейт: открытый логин = панель не готова');
 $login.hidden = true;
+
+// Карточка встречи. Без этой ветки vim-навигация забирает `j`/`k` у поля
+// поиска по расшифровке и у поля переименования участника — искать в
+// расшифровке стало бы физически невозможно. Проверка идёт НАСТОЯЩИМ попапом:
+// он не несёт класс `.modal-overlay`, поэтому существующая проверка «открыта ли
+// модалка» его не видит, и «само» тут не заработает.
+{
+    const popup = meetPopup.createMeetPopup({ panel: 'telegram', host: $panel, doc: $document });
+    eq(keynav.panelVisible(), true, 'встреча: закрытая карточка навигации не мешает');
+
+    popup.open({ key: 'telegram|777000|7', panel: 'telegram', chatId: '777000', messageId: 7, state: null });
+    eq(keynav.panelVisible(), false, 'встреча: открытая карточка = панель не готова');
+    eq(keynav.telegramOwnsKeyboard(), false, 'встреча: при открытой карточке владения нет');
+    {
+        keynav.clearCursor();
+        const eDown = press('KeyJ', 'j');
+        eq(eDown.defaultPrevented, false, 'встреча: `j` не перехвачен — буква уходит в поиск');
+        const eUp = press('KeyK', 'k');
+        eq(eUp.defaultPrevented, false, 'встреча: `k` не перехвачен');
+    }
+
+    popup.close();
+    eq(keynav.panelVisible(), true, 'встреча: закрытие карточки возвращает навигацию');
+    popup.teardown();
+}
 
 activeElement = null;
 eq(keynav.telegramOwnsKeyboard(), true, 'гейт: фокус нигде — панель владеет');

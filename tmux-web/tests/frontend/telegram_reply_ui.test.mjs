@@ -332,6 +332,13 @@ globalThis.XMLHttpRequest = class XMLHttpRequest {
 // Модули
 // ---------------------------------------------------------------------------
 
+// Страж CSS: селекторы берутся из настоящего css/telegram.css и проверяются
+// против узла, который построил chat.js (см. css_probe.mjs — там объяснено,
+// почему обычный querySelector этот дефект не ловит).
+const {
+    anySelectorMatches, declares, readCss, ruleBody, selectorsWith, stripComments,
+} = await import('./css_probe.mjs');
+
 const base = new URL('../../static/js/telegram/', import.meta.url).href;
 const chat = await import(`${base}chat.js`);
 const upload = await import(`${base}upload.js`);
@@ -456,6 +463,34 @@ eq(chat._debugChatState().replyBarVisible, true, 'Esc: полоса ответа
 // приоритет отдан ему, а не полосе: оба слушателя висят на одном документе.
 eq($lightbox.hidden, true, 'Esc: закрылся лайтбокс — обработчики ответа его пропустили');
 
+// Окно ПОВЕРХ панели (карточка встречи) забирает Esc себе — forge-o0sdg.
+// Живой дефект: одно нажатие закрывало карточку И снимало цитату, стирая
+// набранный контекст ответа. Оба обработчика висели на ОДНОМ документе и
+// защищались `stopPropagation()`, который между слушателями одного узла не
+// действует. Карточка изображается НАСТОЯЩИМ слоем реестра
+// `messenger/esc-stack.js` — тем же, которым её регистрирует `meet-popup.js`.
+{
+    const ESC = await import(new URL('../../static/js/messenger/esc-stack.js', import.meta.url).href);
+    const card = { open: true, closes: 0 };
+    const off = ESC.registerEscLayer({
+        doc: $document,
+        name: 'meet-card-stub',
+        depth: ESC.ESC_DEPTH.MEET_CARD,
+        isOpen: () => card.open,
+        close: () => { card.open = false; card.closes += 1; },
+    });
+
+    eq(chat._debugChatState().replyToId, 7, 'карточка: цитата поднята до открытия окна');
+    esc();
+    eq(card.closes, 1, 'карточка: Esc закрыл её — она верхнее окно');
+    eq(chat._debugChatState().replyToId, 7,
+        'карточка: цитата УЦЕЛЕЛА — одно нажатие закрывает ровно одно окно');
+    esc();
+    eq(chat._debugChatState().replyToId, null, 'карточка: второе нажатие снимает цитату');
+    off();
+    chat.startReply(m7, dialog);
+}
+
 const focusBeforeCancel = $input.focusCount;
 dispatch(bar().querySelector('.tg-reply-cancel'), 'click', {});
 eq(chat._debugChatState().replyToId, null, '✕: цель снята кнопкой');
@@ -517,8 +552,58 @@ const replyBtn = row7.querySelector('.tg-reply-btn');
 ok(!!replyBtn, 'кнопка: у подтверждённой строки кнопка «ответить» есть');
 eq(replyBtn.tagName, 'button', 'кнопка: это button — значит доступна с клавиатуры и табом');
 eq(replyBtn.getAttribute('aria-label'), 'Ответить: sofia', 'кнопка: подписана для скринридера');
-ok(row7.children[row7.children.length - 1] === replyBtn,
-    'кнопка: последним потомком — она позиционируется абсолютно и в потоке рвала бы текст');
+
+// Структура изменилась: кнопка ответа переехала внутрь ОБЁРТКИ действий строки
+// (`span.tg-line-actions`) — рядом с ней живёт кнопка встречи, и вне потока
+// теперь обёртка, а не каждая кнопка по отдельности.
+const actionsBox = row7.children[row7.children.length - 1];
+ok(!!actionsBox && actionsBox.classList.contains('tg-line-actions'),
+    'кнопка: последним потомком строки — обёртка действий (она позиционируется абсолютно)');
+ok(replyBtn.parentNode === actionsBox, 'кнопка: ответ лежит ВНУТРИ обёртки');
+ok(actionsBox.children[actionsBox.children.length - 1] === replyBtn,
+    'кнопка: ответ — последний в обёртке, то есть остался у правого края, где и был');
+
+// ⚠ СТРАЖ P0. Раньше кнопку показывало правило с ДОЧЕРНИМ комбинатором
+// (`.tg-line:hover > .tg-reply-btn`). После переезда в обёртку такое правило
+// перестаёт совпадать, и кнопка исчезает МОЛЧА: ни ошибки в консоли, ни падения
+// ассертов выше — узел-то на месте. Поэтому селекторы берутся ИЗ САМОГО
+// css/telegram.css и проверяются против настоящего узла, собранного chat.js.
+{
+    const css = readCss(import.meta.url, '../../static/css/telegram.css');
+    // Именно правила ОТ СТРОКИ: `.tg-reply-btn:focus-visible` совпадает с узлом
+    // всегда, каким бы ни был комбинатор, и включать его в проверку значило бы
+    // сделать стража слепым ровно к тому дефекту, ради которого он написан.
+    const show = selectorsWith(css, '.tg-reply-btn')
+        .filter((s) => s.includes('.tg-line') && (s.includes(':hover') || s.includes(':focus-within')));
+    ok(show.length >= 2, 'CSS: правила показа кнопки ответа при наведении на строку найдены в файле');
+    ok(anySelectorMatches(show, replyBtn),
+        'CSS-СТРАЖ: наведение на строку ПОКАЗЫВАЕТ кнопку ответа при нынешней структуре DOM'
+        + ' (верни дочерний комбинатор — и кнопка исчезнет молча)');
+    ok(!stripComments(css).includes('> .tg-reply-btn'),
+        'CSS: дочернего комбинатора у кнопки ответа не осталось');
+
+    // Позиционирование переехало на обёртку целиком: два абсолюта с right:0
+    // накладывались бы друг на друга.
+    const wrap = ruleBody(css, '.tg-line-actions');
+    ok(declares(wrap, 'position', 'absolute'), 'CSS: обёртка вне потока');
+    ok(declares(wrap, 'top') && declares(wrap, 'right') && declares(wrap, 'z-index'),
+        'CSS: top/right/z-index стоят на обёртке');
+    ok(declares(wrap, 'pointer-events', 'none'),
+        'CSS: обёртка не ловит клики — иначе её бокс перехватывал бы выделение текста');
+    ok(!declares(wrap, 'opacity'),
+        'CSS: прозрачности на обёртке НЕТ — группа композиции не дала бы закрепить кнопку встречи');
+    const btnRule = ruleBody(css, '.tg-reply-btn');
+    ok(!declares(btnRule, 'position'), 'CSS: у самой кнопки ответа позиционирования больше нет');
+    ok(declares(btnRule, 'opacity', '0') && declares(btnRule, 'pointer-events', 'none'),
+        'CSS: кнопка по-прежнему гасится сама (и остаётся в таб-порядке)');
+
+    // Тач-устройства: hover там не наступает никогда, и правило видимости
+    // обязано остаться НА КНОПКАХ. Переехав на обёртку, оно создало бы группу
+    // композиции и погасило бы закреплённую кнопку встречи вместе с собой.
+    const touch = selectorsWith(css, '.tg-reply-btn').filter((s) => s === '.tg-reply-btn');
+    ok(touch.length >= 2, 'CSS: правило @media (hover: none) осталось на самой кнопке');
+}
+
 const btnEvent = dispatch(replyBtn, 'click', {});
 eq(chat._debugChatState().replyToId, 7, 'кнопка: клик выбирает цель');
 eq(btnEvent.propagationStopped, true, 'кнопка: клик не всплывает в делегированные обработчики ленты');

@@ -59,6 +59,11 @@
 // глобальный, второй нумерации внутри чата нет. Класс `b24-kb-cursor`
 // навешивается на найденный по id узел при каждом перемещении.
 
+// Класс карточки встречи — единственное, что нужно знать гейту видимости о
+// попапе (js/messenger/meet-popup.js). Кнопку строки клавиатура находит своим
+// `rowActionButton(row, 'meet')` и импорта для этого не требует.
+import { MEET_POPUP_CLASS } from '../messenger/meet-popup.js';
+
 import { inputMode } from './chat.js';
 import {
     actionForEvent, groupedRows, isEditableTarget, resolveBindings,
@@ -195,6 +200,16 @@ export function panelVisible() {
     // попапа (js/messenger/analysis-core.js), а не здесь.
     const analysis = el('b24-analysis');
     if (analysis && analysis.hidden === false) return false;
+    // Карточка встречи: в ней поле поиска по расшифровке и поле переименования
+    // участника — те самые `j`/`k`, которые vim-навигация иначе забрала бы себе.
+    //
+    // Ищется ПО КЛАССУ внутри панели, а не по id: узел создаётся кодом
+    // (js/messenger/meet-popup.js), в index.html его нет. Существующая проверка
+    // «открыта ли модалка» карточку тоже не увидит — класс `.modal-overlay` она
+    // не несёт НАМЕРЕННО: он тянет глобальные токены и `position: fixed`, что
+    // вырвало бы карточку из панели вместе со всей её палитрой.
+    const meet = p.querySelector('.' + MEET_POPUP_CLASS);
+    if (meet && meet.hidden === false) return false;
     return true;
 }
 
@@ -530,6 +545,32 @@ function pressRowAction(action, denied) {
     return true;
 }
 
+/**
+ * Карточка встречи для строки под курсором (Shift+M).
+ *
+ * Кнопку ищет ТОТ ЖЕ [`rowActionButton`] по `data-action` — ради этого
+ * meet-row и вешает атрибут, и ни строчки нового кода поиска здесь нет.
+ *
+ * Отличие от [`pressRowAction`] одно и оно принципиальное: отсутствие кнопки
+ * НЕ объясняется уведомлением и НЕ поглощает клавишу. У «ответить» и «лайк»
+ * невозможность — редкость и требует объяснения; сообщений БЕЗ ссылки на
+ * встречу в любом чате подавляющее большинство, и уведомление на каждое
+ * нажатие превратилось бы в шум. Плюс при выключенном плагине кнопки нет
+ * вовсе, и Shift+M обязана остаться свободной для остального интерфейса —
+ * ровно так же, как в Telegram и VK.
+ *
+ * @returns {boolean}
+ */
+function pressMeet() {
+    const row = cursorMessageNode();
+    if (!row) return false;
+    const btn = rowActionButton(row, 'meet');
+    if (!btn) return false;
+    setMessageCursor(row);
+    btn.click();
+    return true;
+}
+
 function copyCursorText() {
     const row = cursorMessageNode();
     const node = row && typeof row.querySelector === 'function' ? row.querySelector('.b24-line-text') : null;
@@ -807,6 +848,7 @@ export function runAction(id) {
         case 'msg.copy': return copyCursorText();
         case 'msg.buttons': return focusButtons();
         case 'msg.attachments': return focusAttachments();
+        case 'msg.meet': return pressMeet();
         case 'task.card': return focusTaskCard();
         case 'task.actions': return focusTaskActions();
         case 'log.bottom': return scrollLogBottom();

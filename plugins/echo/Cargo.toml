@@ -21,12 +21,19 @@ async-trait = { workspace = true }
 # от системного sqlite на target-машине. backup нужен для атомарных
 # snapshot'ов БД (используется в Phase 6 hardening). tokio-rusqlite даёт
 # async API поверх blocking rusqlite через worker-thread.
-rusqlite = { version = "0.31", features = ["bundled", "backup"] }
-tokio-rusqlite = "0.5"
+#
+# Версия и features объявлены в `[workspace.dependencies]` корневого
+# Cargo.toml — там же лежит разбор, почему второй SQLite в дереве роняет
+# процесс. Здесь версия намеренно НЕ повторяется: расхождение с соседним
+# потребителем (`forge-meet`) дало бы два `libsqlite3-sys`, и обнаружилось бы
+# это не ошибкой сборки, а падением в рантайме.
+rusqlite = { workspace = true }
+tokio-rusqlite = { workspace = true }
 
 # Embed миграций (plugins/echo/migrations/V*.sql) в бинарь — миграции
 # поедут вместе с devforge и применятся идемпотентно на старте.
-rust-embed = { version = "8", features = ["interpolate-folder-path"] }
+# Версия — из `[workspace.dependencies]` (общая с `devforge` и `forge-meet`).
+rust-embed = { workspace = true }
 
 # UUID v4 для генерации id записей в SQLite.
 uuid = { version = "1.23", features = ["v4"] }

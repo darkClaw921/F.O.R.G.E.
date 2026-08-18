@@ -58,6 +58,8 @@ globalThis.localStorage = {
 
 const CORE_URL = new URL('../../static/js/messenger/analysis-core.js', import.meta.url);
 const C = await import(CORE_URL.href);
+const STACK = await import(
+    new URL('../../static/js/messenger/esc-stack.js', import.meta.url).href);
 
 let failures = 0;
 let checks = 0;
@@ -172,22 +174,37 @@ eq(store.has('tg.analysis.collapsed'), false, 'сворачивание: чуж�
 eq(panelB.debugState().collapsed, false, 'сворачивание: вторая панель осталась развёрнутой');
 
 // ---------------------------------------------------------------------------
-// 4. teardown снимает слушатель ровно своей панели
+// 4. teardown снимает слой Esc ровно своей панели
 // ---------------------------------------------------------------------------
+//
+// ⚠ Считать слушатели `keydown` на документе тут больше нельзя, и это не
+// послабление, а суть исправления forge-o0sdg: Esc обрабатывает ОДИН слушатель
+// общего реестра (`messenger/esc-stack.js`) на все окна страницы. Пока два
+// попапа собственными слушателями делили документ, ни один из них не мог
+// оставить нажатие себе — `stopPropagation()` между слушателями одного узла не
+// действует, и одно нажатие закрывало два окна. Поэтому проверяется теперь
+// СОСТАВ РЕЕСТРА, а на документе слушатель ровно один при любом числе панелей.
 
-const escBefore = (docListeners.get('keydown') || []).length;
+const stackLayers = () => STACK._debugEscStack(globalThis.document).layers.map((l) => l.name);
+
+eq((docListeners.get('keydown') || []).length, 1,
+    'на документе ОДИН слушатель Esc — сколько бы попапов ни жило на странице');
+eq(stackLayers(), ['vk-analysis-popup', 'tg-analysis-popup'],
+    'обе панели зарегистрированы слоями реестра');
+
 panelA.teardown();
-eq((docListeners.get('keydown') || []).length, escBefore - 1,
-    'teardown: снят ровно один слушатель Esc');
+eq(stackLayers(), ['tg-analysis-popup'], 'teardown: снят слой ровно своей панели');
 eq(panelA.debugState().bound, false, 'teardown: панель считается развязанной');
 eq(panelA.debugState().dialogId, null, 'teardown: состояние беседы очищено');
 eq(panelB.debugState().bound, true, 'teardown: вторая панель не задета');
 
-// Повторный init второго слушателя не вешает.
+// Повторный init второго слоя не заводит.
 panelA.init({});
 panelA.init({});
-eq((docListeners.get('keydown') || []).length, escBefore,
-    'повторный init: слушатель ровно один');
+eq(stackLayers(), ['tg-analysis-popup', 'vk-analysis-popup'],
+    'повторный init: слой ровно один');
+eq((docListeners.get('keydown') || []).length, 1,
+    'повторный init: слушатель на документе по-прежнему один');
 
 // ---------------------------------------------------------------------------
 // 5. Мусорные кадры не роняют обработчики

@@ -62,6 +62,12 @@ import {
     initB24Gate, suspendB24, resumeB24, teardownB24,
 } from '../bitrix/main.js';
 import { initB24Theme, teardownB24Theme } from '../bitrix/theme.js';
+import * as meetApi from '../meet/api.js';
+import { initMeetGate } from '../meet/api.js';
+import {
+    connectMeetWs, suspendMeet, resumeMeet, teardownMeet,
+} from '../meet/ws.js';
+import { installMeetPopups, teardownMeetPopups } from '../messenger/meet-popup.js';
 
 // ----- side-effect global listeners (app.js:745-851) -----
 // Sidebar overlay click / Esc / Cmd+B hotkey + mqlMobile change.
@@ -250,6 +256,30 @@ export async function bootstrap() {
         console.warn('[bootstrap] initB24Gate failed', e);
     }
 
+    // Гейт плагина встреч: РОВНО ОДИН GET /api/meet/status за загрузку
+    // страницы. 404 = запущено без `--meet`, и тогда не происходит вообще
+    // ничего: кнопок нет, батчей нет, соединение не открывается, в консоль не
+    // пишется ни строчки. Своей кнопки в шапке у встреч нет — они живут внутри
+    // лент трёх мессенджеров, поэтому здесь только транспорт.
+    //
+    // Соединение поднимается ЗДЕСЬ, а не при открытии панели: индикатор записи
+    // обязан работать, когда человек нажал кнопку в Telegram и ушёл в терминал.
+    try {
+        initMeetGate()
+            .then((status) => {
+                if (!status) return;
+                connectMeetWs();
+                // Карточка встречи включается ЗДЕСЬ же и только при 200:
+                // `installMeetPopups` подставляет обработчик клика кнопке в
+                // лентах, а сами узлы создаются лениво, при первом клике в
+                // конкретной панели. Без `--meet` не создаётся ничего.
+                installMeetPopups({ api: meetApi });
+            })
+            .catch(() => { /* гейт не бросает; ловим на случай будущих правок */ });
+    } catch (e) {
+        console.warn('[bootstrap] initMeetGate failed', e);
+    }
+
     if (isRemoteMode()) {
         fetchRemoteServers().then(() => {
             loadActiveOriginFromStorage();
@@ -287,6 +317,10 @@ export async function bootstrap() {
         teardownVkTheme();
         teardownB24();
         teardownB24Theme();
+        teardownMeet();
+        // Слушатель Esc карточки живёт на документе и переживает уход страницы
+        // в bfcache — снимается явно, иначе выстрелит по мёртвому DOM.
+        teardownMeetPopups();
     });
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
@@ -301,6 +335,9 @@ export async function bootstrap() {
             suspendTelegram();
             suspendVk();
             suspendB24();
+            // WS встреч тоже постоянный и по той же причине: индикатор записи
+            // не привязан к активной вкладке.
+            suspendMeet();
         } else {
             fetchSessions();
             startPolling();
@@ -323,6 +360,8 @@ export async function bootstrap() {
             resumeTelegram();
             resumeVk();
             resumeB24();
+            // Плагин выключен — resumeMeet() выходит первой строкой.
+            resumeMeet();
         }
     });
 

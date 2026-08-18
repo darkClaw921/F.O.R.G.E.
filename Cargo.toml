@@ -2,10 +2,17 @@
 resolver = "2"
 members = [
     "tmux-web",
+    "plugins/atomic",
     "plugins/chat-analysis",
     "plugins/claude-runner",
     "plugins/echo",
     "plugins/echo-host-api",
+    # Листовой клиент Chrome DevTools Protocol — фундамент плагина forge-meet.
+    # Единственный потребитель — `plugins/meet`; ребро направлено только в эту
+    # сторону, чтобы подмена реализации CDP осталась работой внутри крейта.
+    "plugins/forge-cdp",
+    # Плагин видеовстреч: бот в Chrome, запись звука, расшифровка, саммари.
+    "plugins/meet",
     "plugins/telegram",
     "plugins/vk",
     "plugins/bitrix",
@@ -53,3 +60,61 @@ async-trait = "0.1"
 # upload/download без буферизации файла в памяти); rustls-tls — TLS без
 # OpenSSL, консистентно с tokio-tungstenite.
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+
+# --- SQLite и встраивание ассетов ------------------------------------------
+#
+# ВТОРОЙ SQLITE В ДЕРЕВЕ РОНЯЕТ ПРОЦЕСС. Это не теория: в `forge-telegram`
+# фича `sqlite-storage` притащила libsql со своей статически слинкованной
+# копией SQLite, символы `sqlite3_*` совпали, линковщик оставил ОДНУ
+# реализацию, и libsql упал по `assert_eq!` на
+# `sqlite3_config(SQLITE_CONFIG_SERIALIZED) == SQLITE_MISUSE(21)`, потому что
+# Echo уже вызвал `sqlite3_initialize()` на старте. Разбор — в шапке
+# `plugins/telegram/Cargo.toml`.
+#
+# Поэтому объявление поднято сюда — ровно по той же логике, что и `reqwest`
+# выше: единая точка версии делает вторую копию невозможной ПО ПОСТРОЕНИЮ, а
+# не по дисциплине. Новый потребитель (`forge-meet` с его 2000–4000 сегментов
+# на час встречи) пишет `rusqlite = { workspace = true }` и физически не может
+# промахнуться мимо версии; промах кончился бы не ошибкой сборки, а падением в
+# рантайме на первом же запросе.
+#
+# Features:
+#   - bundled — libsqlite3 собирается из исходников, от системного sqlite
+#     target-машины не зависим (важно для дистрибуции одним бинарём через brew);
+#   - backup — атомарные snapshot'ы БД (`forge-echo`, Phase 6 hardening).
+#
+# `default-features` НЕ отключаются: `rusqlite` по умолчанию не тянет ничего
+# лишнего, а отключение сломало бы `modern_sqlite`-зависимые вызовы.
+#
+# ГЕЙТ каждой фазы: `cargo tree -i libsqlite3-sys` показывает РОВНО ОДИН узел
+# (реальное имя пакета за `bundled`; `sqlite3-src` — это другой крейт, в нашем
+# дереве его нет).
+rusqlite = { version = "0.31", features = ["bundled", "backup"] }
+# Async-API поверх блокирующего rusqlite через worker-thread. Версия жёстко
+# связана с версией rusqlite (0.5.x ↔ rusqlite 0.31): расхождение дало бы два
+# rusqlite в дереве, то есть два SQLite.
+tokio-rusqlite = "0.5"
+
+# Встраивание каталога с ассетами в бинарь (`static/`, `migrations/`).
+# Поднято сюда потому, что потребителей уже трое (`devforge` — статика фронта,
+# `forge-echo` — миграции, `forge-meet` — миграции и inject-скрипты), а
+# расхождение мажорной версии между ними дало бы два rust-embed в дереве.
+# Feature `interpolate-folder-path` разрешает `$CARGO_MANIFEST_DIR` внутри
+# `#[folder = "..."]`, то есть путь резолвится относительно Cargo.toml ПАКЕТА,
+# а не workspace root — без него член workspace искал бы ассеты в чужом каталоге.
+rust-embed = { version = "8", features = ["interpolate-folder-path"] }
+
+# Атомарная запись приватного файла (`tmp` → `fsync` → `rename` → `0600`).
+# Единственный ВНУТРЕННИЙ крейт, поднятый в `[workspace.dependencies]`:
+# остальные (`forge-claude-runner`, `forge-chat-analysis`, `echo-host-api`)
+# подключаются относительным путём из манифестов членов.
+#
+# Причина исключения — число потребителей и их разнородность. Раннер Claude
+# нужен четырём плагинам-мессенджерам, а атомарная запись — ЛЮБОМУ коду,
+# который кладёт на диск файл с секретом или с данными о людях: конфиги трёх
+# мессенджеров, хранилище заметок, а дальше `forge-meet` с его manifest.json,
+# transcript.json, summary.md и chrome.pid. Один общий путь здесь означает,
+# что новый потребитель пишет `forge-atomic = { workspace = true }` и не может
+# промахнуться мимо каталога — а промах кончился бы не ошибкой сборки, а новой
+# копией `tmp+rename+chmod` с другими правами на файле.
+forge-atomic = { path = "plugins/atomic" }

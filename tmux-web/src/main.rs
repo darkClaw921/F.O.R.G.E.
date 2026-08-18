@@ -314,6 +314,10 @@ async fn main() -> anyhow::Result<()> {
     // Opt-in плагин Bitrix24 — та же схема: без флага `GET /api/bitrix/status`
     // отдаёт 404, и фронт по этому 404 держит кнопку вкладки скрытой.
     let bitrix_enabled = effective.bitrix_enabled;
+    // Opt-in плагин встреч — та же схема: без флага `GET /api/meet/status`
+    // отдаёт 404, и фронт по этому 404 не рисует кнопку встречи ни в одной из
+    // трёх лент.
+    let meet_enabled = effective.meet_enabled;
 
     // Инициализация логирования. По умолчанию: info для всего + debug для tmux_web.
     // Переопределяется переменной окружения RUST_LOG.
@@ -1003,6 +1007,39 @@ async fn main() -> anyhow::Result<()> {
         app
     };
 
+    // Плагин forge-meet — opt-in, флаг `--meet` / `DEVFORGE_MEET` /
+    // `server_config.json`. Стоит СРАЗУ ПОСЛЕ блока Bitrix24 и всё ещё ДО
+    // `.fallback(static_embed::serve_static)` и ДО `.layer(...)`. Порядок
+    // здесь — инвариант, а не стиль: регистрация после `.fallback` дала бы
+    // 404 на роуты плагина, после `.layer` — ДЫРУ В АВТОРИЗАЦИИ, потому что
+    // bearer_auth и csrf_guard покрывают только то, что зарегистрировано под
+    // ними.
+    //
+    // Ошибка init НЕ роняет сервер (как у Telegram, VK и Bitrix24): встречи —
+    // побочная вкладка, и сломанный `~/.config/forge/meet.toml` не должен
+    // мешать работать с терминалом. Логируем warn и стартуем без плагина —
+    // тогда `/api/meet/*` просто отсутствуют и отдают 404, а фронт не рисует
+    // кнопку. Использовать здесь `?` ЗАПРЕЩЕНО: он превратил бы опечатку в
+    // конфиге плагина в отказ всего devforge.
+    let mut meet_state: Option<std::sync::Arc<forge_meet::MeetState>> = None;
+    let app = if meet_enabled {
+        match forge_meet::init(forge_meet::MeetConfig::load()) {
+            Ok(state) => {
+                let app = forge_meet::register_routes(app, state.clone());
+                forge_meet::spawn_workers(&state).await;
+                tracing::info!("forge-meet: plugin registered");
+                meet_state = Some(state);
+                app
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "forge-meet: init failed, starting without plugin");
+                app
+            }
+        }
+    } else {
+        app
+    };
+
     let mut app = app
         // Embedded static fallback: serve_static резолвит "/" → index.html и
         // отдаёт остальные ассеты с правильным Content-Type из bytes-секции
@@ -1081,6 +1118,7 @@ async fn main() -> anyhow::Result<()> {
     let telegram_for_shutdown = telegram_state.clone();
     let vk_for_shutdown = vk_state.clone();
     let bitrix_for_shutdown = bitrix_state.clone();
+    let meet_for_shutdown = meet_state.clone();
     let history_for_shutdown = app_state.history.clone();
     let shutdown_signal = async move {
         wait_for_shutdown_signal().await;
@@ -1098,6 +1136,13 @@ async fn main() -> anyhow::Result<()> {
         // отсутствующем плагине всё равно нечем.
         if let Some(b24) = bitrix_for_shutdown {
             forge_bitrix::shutdown(&b24).await;
+        }
+        // Плагин встреч — РАНЬШЕ финального снимка истории: ему нужно успеть
+        // убить свой Chrome и дофлашить активные WAV. Снимок истории после
+        // этого никуда не денется, а сорок минут записи, оборванные на
+        // середине файла, — денутся.
+        if let Some(meet) = meet_for_shutdown {
+            forge_meet::shutdown(&meet).await;
         }
         // Финальный снимок истории сессий перед выходом — чтобы последнее
         // состояние активных сессий/окон попало в журнал, даже если до
