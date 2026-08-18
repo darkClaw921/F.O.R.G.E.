@@ -246,9 +246,11 @@ pub enum PromptKind {
 /// footer по словам в узком терминале, и без нормализации маркеры
 /// разрывались бы переносом.
 ///
-/// Порядок проверок значим: `Plan` и `Question` определяются по footer'у и
-/// проверяются первыми, потому что prompt плана тоже содержит нумерованные
-/// пункты и без раннего выхода мог бы совпасть с permission-веткой.
+/// Порядок проверок значим: `Plan` и `Question` проверяются первыми, потому
+/// что prompt плана тоже содержит нумерованные пункты и без раннего выхода
+/// совпал бы с permission-веткой. Plan ищется в двух редакциях — по маркерам
+/// меню (`attention::plan_menu_prompt`) и по старому footer'у `Enter to select
+/// · Tab/Arrow keys to navigate`.
 pub fn classify_prompt(pane: &str) -> Option<PromptKind> {
     // Гейт против «процитированного prompt'а» — см.
     // `attention::prompt_at_bottom`: маркеры меню, показанные в diff'е
@@ -257,6 +259,14 @@ pub fn classify_prompt(pane: &str) -> Option<PromptKind> {
         return None;
     }
     let norm = normalize_ws(pane);
+
+    // Нумерованный plan-prompt — ДО permission-веток: его меню (`❯ 1. Yes,
+    // and auto-accept edits` / `2. Yes, and manually approve edits` / `3. No,
+    // keep planning`) подходит под шаблон Permission3, и без раннего выхода
+    // воркер подтвердил бы план. См. `attention::plan_menu_prompt`.
+    if crate::attention::plan_menu_prompt(&norm) {
+        return Some(PromptKind::Plan);
+    }
 
     if norm.contains("Enter to select") {
         if norm.contains("Tab/Arrow keys to navigate") {
@@ -1108,6 +1118,79 @@ Claude in Chrome wants to navigate and take a screenshot on 109.172.47.224:4000
         assert_eq!(classify_prompt(pane), Some(PromptKind::AllowBroad));
         let s = settings(true, true, &[]);
         assert_eq!(decide(PromptKind::AllowBroad, pane, &s), Decision::Press("2"));
+    }
+
+    /// Живой кейс: под prompt'ом висит TODO-виджет Claude Code (`5 tasks (…)`
+    /// плюс пункты `◼`/`◻`), footer уезжает за окно гейта
+    /// `attention::prompt_at_bottom` — и классификатор молча возвращал `None`,
+    /// хотя `Do you want to proceed?` был на экране. Проверяем всю цепочку:
+    /// распознавание, решение и то, что суть запроса берётся из блока команды,
+    /// а не из списка задач.
+    #[test]
+    fn classifies_permission_under_todo_widget() {
+        let pane = "\
+Bash command
+  curl -s --max-time 10 https://api.telegram.org/bot$t/getMe
+  Verify bot tokens via Telegram getMe
+Do you want to proceed?
+❯ 1. Yes
+  2. No
+ Esc to cancel · Tab to amend · ctrl+e to explain
+
+  5 tasks (0 done, 1 in progress, 4 open)
+  ◼ Изучить репозитории anti_chaos и hormonal_bot
+  ◻ Подготовить сервер (Docker, базовые пакеты)
+  ◻ Развернуть anti_chaos бот (@antichaos_check_bot)
+  ◻ Развернуть hormonal_bot (@powercouplesyncbot)
+  ◻ Найти исходники HR-нумеролог бота (@HRnumerolog_bot)
+";
+        assert_eq!(classify_prompt(pane), Some(PromptKind::Permission2));
+        // Permission2: второй пункт — отказ, поэтому даже в broad-режиме «1».
+        assert_eq!(
+            decide(PromptKind::Permission2, pane, &settings(true, true, &[])),
+            Decision::Press("1")
+        );
+        assert!(extract_subject(pane).contains("getMe"));
+    }
+
+    /// Plan-prompt редакции 2.1.x (без footer'а `Enter to select`) обязан
+    /// классифицироваться как `Plan`, а не как permission: иначе воркер нажал
+    /// бы «Yes» и запустил бы план сам. Живой кейс — сессия с планом
+    /// «лёгкая CRM», которая заодно не горела оранжевым.
+    #[test]
+    fn numbered_plan_prompt_is_plan_not_permission() {
+        let pane = "\
+ Claude has written up a plan and is ready to execute. Would you like to proceed?
+
+ ❯ 1. Yes, and use auto mode
+   2. Yes, manually approve edits
+   3. Tell Claude what to change
+      shift+tab to approve with this feedback
+
+ ctrl+g to edit in Vim · ~/.claude/plans/stateful-frolicking-meadow.md
+";
+        assert_eq!(classify_prompt(pane), Some(PromptKind::Plan));
+        assert_eq!(
+            decide(PromptKind::Plan, pane, &settings(true, true, &[])),
+            Decision::Skip
+        );
+    }
+
+    /// Редакция `Ready to code?`: `2. Yes, …` + `3. No, keep planning`
+    /// подходит под шаблон Permission3 — до раннего выхода по плану воркер
+    /// нажал бы «2» (broad) и принял план.
+    #[test]
+    fn ready_to_code_plan_is_not_classified_as_permission3() {
+        let pane = "\
+Ready to code?
+
+Here is Claude's plan:
+  Переписать роутер на axum
+❯ 1. Yes, and auto-accept edits
+  2. Yes, and manually approve edits
+  3. No, keep planning
+";
+        assert_eq!(classify_prompt(pane), Some(PromptKind::Plan));
     }
 
     #[test]

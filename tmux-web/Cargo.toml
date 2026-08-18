@@ -1,6 +1,6 @@
 [package]
 name = "devforge"
-version = "0.1.65"
+version = "0.1.66"
 edition = "2021"
 description = "Web-viewer для tmux сессий через WebSocket + xterm.js"
 license = "MIT"
@@ -29,10 +29,12 @@ bytes = "1"
 notify = "6"
 uuid = { version = "1.23.1", features = ["v4"] }
 # Phase 1 (Embedded static) — встраиваем содержимое tmux-web/static/ в бинарь.
-# Feature interpolate-folder-path позволяет указывать $CARGO_MANIFEST_DIR в
-# #[folder = "..."], чтобы путь резолвился относительно Cargo.toml пакета,
-# а не workspace root.
-rust-embed = { version = "8", features = ["interpolate-folder-path"] }
+# Версия и feature interpolate-folder-path (резолв $CARGO_MANIFEST_DIR внутри
+# #[folder = "..."] относительно Cargo.toml ПАКЕТА, а не workspace root)
+# объявлены в `[workspace.dependencies]` корневого Cargo.toml: потребителей
+# трое (devforge, forge-echo, forge-meet), и расхождение мажорной версии дало
+# бы два rust-embed в дереве.
+rust-embed = { workspace = true }
 # Определение Content-Type по расширению файла (text/html, application/javascript,
 # text/css, image/*) при отдаче embedded ассетов через serve_static.
 mime_guess = "2"
@@ -96,6 +98,17 @@ forge-vk = { path = "../plugins/vk" }
 # `Router`, а auth покрывается порядком регистрации роутов (до
 # `.layer(auth_middleware)`).
 forge-bitrix = { path = "../plugins/bitrix" }
+# Плагин встреч (opt-in, флаг `--meet`) — бот в Chrome через CDP, запись
+# звука, расшифровка whisper.cpp и саммари. Подключается как path-dep в Cargo
+# workspace (member: plugins/meet). Отдельного `meet-host-api` НЕТ — по той же
+# причине, что у Telegram, VK и Bitrix24: плагину от хоста нужен только
+# `Router`, а auth покрывается порядком регистрации роутов (до
+# `.layer(auth_middleware)`).
+#
+# forge-cdp сюда НЕ подключается: единственный его потребитель — сам
+# forge-meet, и прямое ребро из бинаря сделало бы подмену реализации CDP
+# правкой в двух местах вместо одного.
+forge-meet = { path = "../plugins/meet" }
 # async-trait нужен в tmux-web потому что EchoHostAdapter имплементит
 # echo_host_api::HostApi (trait объявлен через #[async_trait]).
 async-trait = "0.1"

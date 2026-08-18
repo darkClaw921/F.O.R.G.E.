@@ -398,17 +398,19 @@ pub fn detect_claude_prompt(pane: &str) -> bool {
 ///
 /// Берутся последние 4 непустые строки: в узком терминале footer переносится
 /// по словам, и «Esc to cancel» может уехать со своей строки на соседнюю.
+/// Перед этим с конца срезается TODO-виджет ([`todo_widget_start`]) — он
+/// рисуется ПОД prompt'ом и иначе выталкивает footer за это окно.
+/// Набор искомых footer-фраз — [`BOTTOM_FOOTER_MARKERS`].
 pub(crate) fn prompt_at_bottom(pane: &str) -> bool {
-    let mut tail: Vec<&str> = pane
-        .lines()
-        .rev()
-        .filter(|l| !l.trim().is_empty())
-        .take(4)
-        .collect();
+    let lines: Vec<&str> = pane.lines().filter(|l| !l.trim().is_empty()).collect();
+    // Всё, что ниже начала TODO-виджета, — не часть prompt'а.
+    let end = todo_widget_start(&lines).unwrap_or(lines.len());
+    let mut tail: Vec<&str> = lines[..end].iter().rev().take(4).copied().collect();
     // Возвращаем исходный порядок строк: footer мог перенестись («… Esc to» /
     // «cancel»), и склейка в обратном порядке разорвала бы искомую фразу.
     tail.reverse();
-    if normalize_ws(&tail.join(" ")).contains("Esc to cancel") {
+    let joined = normalize_ws(&tail.join(" "));
+    if BOTTOM_FOOTER_MARKERS.iter().any(|m| joined.contains(m)) {
         return true;
     }
     // Chrome-форма: меню заканчивает панель. Пункт мог перенестись по словам,
@@ -422,6 +424,85 @@ pub(crate) fn prompt_at_bottom(pane: &str) -> bool {
             (Some(d), Some('.'), Some(' ')) if d.is_ascii_digit()
         )
     })
+}
+
+/// Footer-фразы, по которым [`prompt_at_bottom`] признаёт низ панели
+/// prompt'ом.
+///
+/// - `Esc to cancel` — permission, plan и question в формах с общим footer'ом;
+/// - `to edit in Vim` и `shift+tab to approve` — plan-prompt Claude Code 2.1.x
+///   (`ctrl+g to edit in Vim · ~/.claude/plans/<файл>.md`), у которого footer'а
+///   `Enter to select · Tab/Arrow keys to navigate · Esc to cancel` больше НЕТ.
+///   Без них панель с планом не признавалась нижней: последние строки — пункт
+///   `3. Tell Claude what to change`, подсказка `shift+tab …` и путь к файлу
+///   плана. Живой кейс — сессия с планом «лёгкая CRM», свечение не горело.
+///
+/// Chrome-форма (панель заканчивается самим меню) footer'а не имеет вовсе и
+/// разбирается отдельной веткой [`prompt_at_bottom`].
+const BOTTOM_FOOTER_MARKERS: &[&str] =
+    &["Esc to cancel", "to edit in Vim", "shift+tab to approve"];
+
+/// Максимум строк TODO-виджета, которые [`todo_widget_start`] готов срезать
+/// с конца панели.
+///
+/// Ограничение нужно, чтобы поиск заголовка не уходил вглубь истории вывода:
+/// список задач Claude Code показывает целиком, но панель высотой в экран
+/// физически не вмещает больше пары десятков пунктов, а всё, что глубже, —
+/// уже чужой текст.
+const TODO_WIDGET_MAX_LINES: usize = 24;
+
+/// Маркеры пунктов TODO-виджета: `◼` — задача в работе, `◻` — открытая,
+/// `☑`/`☐`/`✓`/`✔` — формы «сделано/не сделано» из соседних версий CLI.
+///
+/// `⏺` и `◯` в набор НЕ входят намеренно: `⏺` — маркер обычного сообщения
+/// ассистента в потоке вывода, и срезать такие строки означало бы принять
+/// УЖЕ ОТВЕЧЕННЫЙ prompt, оставшийся выше на экране, за активный.
+const TODO_ITEM_MARKERS: &[char] = &['◼', '◻', '☑', '☐', '✓', '✔'];
+
+/// Индекс первой строки TODO-виджета в хвосте `lines` (только непустые
+/// строки), либо `None` — виджета внизу нет.
+///
+/// Виджет — это заголовок вида `5 tasks (0 done, 1 in progress, 4 open)`,
+/// под которым идут только пункты с маркерами из [`TODO_ITEM_MARKERS`].
+/// Claude Code рисует его ПОД prompt'ом, из-за чего footer уезжает за окно
+/// из четырёх хвостовых строк и гейт [`prompt_at_bottom`] переставал
+/// признавать prompt нижним: авто-апрув молчал, свечение не загоралось
+/// (живой кейс — сессия с пятью задачами и висящим `Do you want to proceed?`).
+///
+/// Требование «под заголовком ТОЛЬКО пункты» и лимит
+/// [`TODO_WIDGET_MAX_LINES`] держат защиту от процитированного prompt'а: под
+/// цитатой в diff/логе всегда есть поле ввода и статус-бар (рамка `───`,
+/// `⏵⏵ auto mode on`), они под маркеры не подходят, срез не происходит и
+/// гейт по-прежнему отвечает `false`.
+fn todo_widget_start(lines: &[&str]) -> Option<usize> {
+    let mut items = 0usize;
+    for (offset, line) in lines.iter().rev().enumerate() {
+        if offset >= TODO_WIDGET_MAX_LINES {
+            return None;
+        }
+        let t = line.trim_start();
+        if t.starts_with(TODO_ITEM_MARKERS) {
+            items += 1;
+            continue;
+        }
+        // Заголовок засчитывается только вместе с пунктами: одинокая строка
+        // «5 tasks (…)» в выводе команды виджетом не является.
+        if items > 0 && is_todo_header(t) {
+            return Some(lines.len() - 1 - offset);
+        }
+        return None;
+    }
+    None
+}
+
+/// Заголовок TODO-виджета — строка, начинающаяся с числа и слова `task`
+/// (`5 tasks (0 done, 1 in progress, 4 open)`, `1 task (…)`).
+fn is_todo_header(trimmed: &str) -> bool {
+    let digits = trimmed
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .count();
+    digits > 0 && trimmed[digits..].trim_start().starts_with("task")
 }
 
 /// Схлопывает все последовательности whitespace (пробелы, табы, переносы
@@ -450,9 +531,44 @@ fn detect_permission_prompt(pane: &str) -> bool {
     false
 }
 
-/// Plan prompt (`ExitPlanMode`): footer с `Tab/Arrow keys to navigate`.
+/// Plan prompt (`ExitPlanMode`) в обеих известных редакциях: старой — footer
+/// `Enter to select · Tab/Arrow keys to navigate`, и нумерованной
+/// ([`plan_menu_prompt`]), у которой этого footer'а нет.
 fn detect_plan_prompt(pane: &str) -> bool {
-    pane.contains("Enter to select") && pane.contains("Tab/Arrow keys to navigate")
+    (pane.contains("Enter to select") && pane.contains("Tab/Arrow keys to navigate"))
+        || plan_menu_prompt(pane)
+}
+
+/// Маркеры нумерованного plan-prompt'а: заголовок либо любой пункт меню,
+/// каких нет ни у одной permission-формы.
+///
+/// `manually approve edits` и `auto-accept edits` — пункты «Yes, …» именно
+/// плана; `keep planning` — третий пункт редакции с `Ready to code?`;
+/// `use auto mode` — редакции 2.1.x. Статус-бар `⏵⏵ auto mode on (shift+tab to
+/// cycle)` под них не подходит — там `auto mode on`, а не `use auto mode`.
+const PLAN_MENU_MARKERS: &[&str] = &[
+    "written up a plan",
+    "Ready to code?",
+    "use auto mode",
+    "auto-accept edits",
+    "manually approve edits",
+    "keep planning",
+];
+
+/// Нумерованный plan-prompt: меню `❯ 1.` плюс маркер из
+/// [`PLAN_MENU_MARKERS`]. Принимает НОРМАЛИЗОВАННУЮ панель.
+///
+/// Отдельная функция, потому что её использует и
+/// `auto_approve::classify_prompt` — и использует ДО permission-веток.
+/// Это инвариант безопасности, а не косметика: в редакции с `Ready to code?`
+/// меню выглядит как `❯ 1. Yes, and auto-accept edits` / `2. Yes, and manually
+/// approve edits` / `3. No, keep planning`, то есть подходит под шаблон
+/// трёхопционного permission (`2. Yes,` + `3. No`). Пока plan опознавался
+/// ТОЛЬКО по footer'у `Enter to select · Tab/Arrow keys to navigate`, которого
+/// в новых редакциях нет, авто-апрув принял бы план за permission и нажал бы
+/// «Yes» — ровно то, что плану запрещено.
+pub(crate) fn plan_menu_prompt(norm: &str) -> bool {
+    norm.contains("❯ 1.") && PLAN_MENU_MARKERS.iter().any(|m| norm.contains(m))
 }
 
 /// Question prompt (`AskUserQuestion`): footer с `↑/↓ to navigate`.
@@ -600,10 +716,136 @@ Do you want to proceed?
     /// строк — гейт перестаёт признавать prompt нижним. Тест фиксирует
     /// известную границу: если такая раскладка встретится живьём, авто-апрув
     /// и свечение по ней не сработают, и лечится это расширением гейта, а не
-    /// правкой классификатора.
+    /// правкой классификатора. TODO-виджет из этой границы уже вынут — см.
+    /// [`bottom_gate_ignores_todo_widget_below_prompt`]; агентские `⏺`/`◯`
+    /// намеренно оставлены (см. [`TODO_ITEM_MARKERS`]).
     #[test]
     fn bottom_gate_stops_at_widgets_below_prompt() {
         let pane = format!("{PROMPT_FIXTURE}⏺ main\n◯ run-phase Фаза 1\n◯ e2e-writer тесты\n◯ security-audit\n");
+        assert!(!prompt_at_bottom(&pane));
+    }
+
+    /// Живой кейс: plan-prompt редакции 2.1.x. Footer'а `Enter to select ·
+    /// Tab/Arrow keys to navigate · Esc to cancel` у него нет — внизу пункт
+    /// меню, подсказка `shift+tab …` и путь к файлу плана, поэтому не
+    /// срабатывали ни гейт, ни детектор плана: сессия с планом «лёгкая CRM»
+    /// не горела оранжевым.
+    #[test]
+    fn detects_numbered_plan_prompt_without_footer() {
+        let pane = "\
+ ───────────────────────────────────────────────────────
+  Claude has written up a plan and is ready to execute. Would you like to proceed?
+
+  ❯ 1. Yes, and use auto mode
+    2. Yes, manually approve edits
+    3. Tell Claude what to change
+       shift+tab to approve with this feedback
+
+  ctrl+g to edit in Vim · ~/.claude/plans/stateful-frolicking-meadow.md
+";
+        assert!(prompt_at_bottom(pane));
+        assert!(detect_claude_prompt(pane));
+    }
+
+    /// Редакция `Ready to code?`: меню (`2. Yes, …` + `3. No, keep planning`)
+    /// подходит под шаблон трёхопционного permission — детектор обязан
+    /// признать его планом, иначе авто-апрув подтвердит план.
+    #[test]
+    fn detects_ready_to_code_plan_prompt() {
+        let pane = "\
+Ready to code?
+
+Here is Claude's plan:
+  Переписать роутер на axum
+❯ 1. Yes, and auto-accept edits
+  2. Yes, and manually approve edits
+  3. No, keep planning
+";
+        assert!(detect_claude_prompt(pane));
+        assert!(plan_menu_prompt(&normalize_ws(pane)));
+    }
+
+    /// Статус-бар обычной сессии содержит `auto mode on` — под маркер
+    /// `use auto mode` он подходить не должен, иначе любая панель с меню
+    /// выше по экрану считалась бы планом.
+    #[test]
+    fn auto_mode_status_bar_is_not_a_plan() {
+        let pane = "\
+❯ 1. Yes
+  2. No
+ Esc to cancel · Tab to amend · ctrl+e to explain
+  ~/proj │ master ✗ │ ⏵⏵ auto mode on (shift+tab to cycle) · ← 2 agents
+";
+        assert!(!plan_menu_prompt(&normalize_ws(pane)));
+    }
+
+    /// Живой кейс: под prompt'ом Claude Code рисует список задач, и footer
+    /// уезжает за окно из четырёх хвостовых строк — свечение не загоралось,
+    /// авто-апрув молчал, хотя `Do you want to proceed?` висел на экране.
+    #[test]
+    fn bottom_gate_ignores_todo_widget_below_prompt() {
+        let pane = "\
+Bash command
+  curl -s https://api.telegram.org/bot$t/getMe
+Do you want to proceed?
+❯ 1. Yes
+  2. No
+ Esc to cancel · Tab to amend · ctrl+e to explain
+
+  5 tasks (0 done, 1 in progress, 4 open)
+  ◼ Изучить репозитории anti_chaos и hormonal_bot
+  ◻ Подготовить сервер (Docker, базовые пакеты)
+  ◻ Развернуть anti_chaos бот (@antichaos_check_bot)
+  ◻ Развернуть hormonal_bot (@powercouplesyncbot)
+  ◻ Найти исходники HR-нумеролог бота (@HRnumerolog_bot)
+";
+        assert!(prompt_at_bottom(pane));
+        assert!(detect_claude_prompt(pane));
+    }
+
+    /// TODO-виджет под Chrome-prompt'ом (у него нет footer'а — панель
+    /// заканчивалась самим меню): после среза виджета внизу снова меню.
+    #[test]
+    fn bottom_gate_ignores_todo_widget_below_chrome_prompt() {
+        let pane = "\
+Claude in Chrome wants to navigate
+❯ 1. Allow
+  2. Deny (esc)
+  2 tasks (0 done, 1 in progress, 1 open)
+  ◼ Открыть отчёт
+  ◻ Снять скриншот
+";
+        assert!(prompt_at_bottom(pane));
+        assert!(detect_claude_prompt(pane));
+    }
+
+    /// Срез TODO-виджета не должен открывать дорогу процитированному
+    /// prompt'у: под цитатой остаются поле ввода и статус-бар, они виджетом
+    /// не являются — гейт обязан молчать.
+    #[test]
+    fn todo_widget_strip_keeps_quoted_prompt_rejected() {
+        let pane = "\
++❯ 1. Allow
++  2. Allow all actions on host for this session
+────────────────────────────────
+❯ покажи diff
+────────────────────────────────
+  ~/proj │ master ✗ │ ⏵⏵ auto mode on (shift+tab to cycle)
+  3 tasks (1 done, 1 in progress, 1 open)
+  ◼ Сделать diff
+  ◻ Проверить тесты
+";
+        assert!(!prompt_at_bottom(pane));
+        assert!(!detect_claude_prompt(pane));
+    }
+
+    /// Одинокая строка «N tasks (…)» в выводе команды — не виджет: без
+    /// пунктов под ней срез не срабатывает, и вывод не выдаёт себя за prompt.
+    #[test]
+    fn todo_header_without_items_is_not_a_widget() {
+        let pane = format!(
+            "{PROMPT_FIXTURE}$ ./report.sh\nbuilding report\nreport written\ndone\n5 tasks (0 done, 5 open)\n"
+        );
         assert!(!prompt_at_bottom(&pane));
     }
 
