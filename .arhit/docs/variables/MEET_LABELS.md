@@ -1,0 +1,3 @@
+# MEET_LABELS
+
+Разделы формы в порядке показа. `advanced: true` — под «Для продвинутых». */ export const MEET_GROUPS = [ { key: 'bot', title: 'Бот во встрече', advanced: false }, { key: 'transcribe', title: 'Расшифровка', advanced: false }, { key: 'summary', title: 'Саммари', advanced: false }, { key: 'timeouts', title: 'Автовыход', advanced: false }, { key: 'storage', title: 'Хранилище', advanced: false }, { key: 'limits', title: 'Параллелизм', advanced: true }, { key: 'vad', title: 'Пороги детектора речи (VAD)', advanced: true }, ]; /** Человеческие подписи полей. Ключ, которого здесь нет, подписывается собой.

@@ -1,0 +1,19 @@
+# forge-meet
+
+Плагин видеовстреч F.O.R.G.E. (крейт plugins/meet, пакет forge-meet, opt-in флаг --meet / DEVFORGE_MEET). Бот заходит в Яндекс Телемост, Google Meet, Zoom или Teams в СВОЁМ Chrome через CDP (крейт forge-cdp), пишет звук, следит, кто и когда говорит, и после встречи отдаёт расшифровку с именами спикеров и саммари, привязанные к тому же сообщению в чате, откуда пришла ссылка.
+
+ПОЧЕМУ САМОСТОЯТЕЛЬНЫЙ ПЛАГИН, А НЕ ОБЩИЙ КРЕЙТ С МЕССЕНДЖЕРАМИ. chat-analysis вынесен в общий крейт потому, что анализ это операция НАД СООБЩЕНИЯМИ мессенджера: ядру нужен транскрипт, собрать который умеет только плагин. У встречи такой зависимости нет ни по одному направлению — ссылку приносит фронт, имена участников берутся из самой встречи, а связь встреча-сообщение это непрозрачная тройка (plugin, chat_id, message_id) типа db::repo::SourceKey. Общий крейт дал бы трёхкратные роуты, WS-кадры, конфиг и базу ради фичи, в которой нет ничего мессенджер-специфичного. Чат-плагины на бэкенде НЕ ТРОГАЮТСЯ вовсе.
+
+ТОЧКИ ЖИЗНЕННОГО ЦИКЛА (tmux-web/src/main.rs, блок сразу после Bitrix24):
+- init(MeetConfig) -> Arc<MeetState> — СИНХРОННАЯ, только конструирование состояния в памяти. Не запускает процессов и не трогает файловую систему записей: закреплено тестами init_is_fast_and_spawns_no_processes (меряет время И считает собственные дочерние процессы) и init_does_not_touch_the_recordings_filesystem. Причина не формальная: whisper-cli --help на первом в жизни запуске тратит 12,5 секунды на ggml_metal_library_init (измерено в Ф0), и devforge столько не будет ждать биндинга порта.
+- register_routes(Router, Arc<MeetState>) -> Router — ОБЯЗАТЕЛЬНО до .fallback(...) и до .layer(auth_middleware) хоста. После fallback роуты дали бы 404, после layer — дыру в авторизации.
+- spawn_workers(&Arc<MeetState>) — здесь и только здесь ФС и процессы: открытие SQLite, миграции, прогрев тёплого индекса бейджей, затем reconcile_on_boot ПЕРВЫМ ДЕЛОМ. Сбой открытия базы не фатален: плагин живёт, /api/meet/status отвечает 200 с db_ready=false, остальные роуты дают 503 db_unavailable.
+- shutdown(&Arc<MeetState>) — cancel токена, hub.close() (уже выданные слоты остаются действительными, идущая запись обязана дофлашить WAV), затем по две секунды каждому воркеру выйти самому. Хост зовёт РАНЬШЕ финального снимка истории сессий.
+
+ОШИБКА init ДЛЯ ХОСТА НЕ ФАТАЛЬНА: main.rs использует match с веткой Err => warn. Оператор ? там запрещён — он превратил бы опечатку в ~/.config/forge/meet.toml в отказ всего devforge.
+
+СОСТАВ (Фаза 2): config.rs, state.rs, providers.rs, status.rs, error.rs, deps.rs, reconcile.rs, db/ (mod + repo из шести файлов), hub/, routes/, ws/ (mod + protocol), плюс заготовки bot/, ingest/, pipeline/, summary/, progress.rs, retention.rs, testing.rs. Модули providers, status, error, reconcile, deps, hub, bot, ingest, pipeline и ws::protocol НЕ ИМПОРТИРУЮТ axum и http — та же изоляция, что даёт листовой крейт, но без второго крейта с одним потребителем; на это есть построчный тест the_pure_modules_never_import_http.
+
+ЗАВИСИМОСТИ. rusqlite (bundled+backup), tokio-rusqlite и rust-embed берутся из [workspace.dependencies] корневого Cargo.toml — второй SQLite в дереве роняет процесс, и единая точка версии делает это невозможным по построению. url 2.5 уже в дереве через reqwest. Крейт regex НЕ подключён намеренно: link_regex в реестре платформ это строка ДЛЯ ФРОНТА, бэкенд её не компилирует. Гейты фазы: cargo tree -i openssl-sys пуст, cargo tree -i libsqlite3-sys показывает один узел, набор дублей cargo tree -d побайтово равен снятому до фазы (49 записей).
+
+ГЕРМЕТИЧНОСТЬ ТЕСТОВ ОБЯЗАТЕЛЬНА: FORGE_MEET_CONFIG_PATH, FORGE_MEET_CACHE_DIR и db_path во временном каталоге. Иначе cargo test открыл бы живую базу встреч пользователя, а reconcile_on_boot перевёл бы идущие прямо сейчас записи в failed.
