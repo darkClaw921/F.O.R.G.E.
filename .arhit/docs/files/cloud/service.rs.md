@@ -1,0 +1,3 @@
+# cloud/service.rs
+
+Служебные вызовы polza.ai (plugins/meet/src/cloud/service.rs): key_info (GET /key, бесплатно, лимиты ключа и маска label), balance (GET /balance, суммы строками, в рублях), models (GET /models, конверт data). Типы KeyInfo, Balance, ModelInfo, Pricing и фильтр filter_kind по типу модели (chat/stt). Главное правило: цена читается ТОЛЬКО из top_provider.pricing — поля pricing верхнего уровня у записей нет вовсе, и парсер, читающий верхний уровень, молча показал бы бесплатно; на это есть отдельный красный тест. Отсутствующие поля дают None (не знаю), а не ноль: ноль в остатке лимита выглядел бы исчерпанным ключом.

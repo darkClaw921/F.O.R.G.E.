@@ -345,6 +345,7 @@ mod tests {
             title: None,
             started_at_unix_ms: None,
             duration_ms: 10_000,
+            engine: "whisper.cpp".into(),
             model: "large-v3-turbo-q5_0".into(),
             language: "ru".into(),
             drift_scale: None,

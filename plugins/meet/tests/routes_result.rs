@@ -80,6 +80,11 @@ impl Stand {
             claude_cli_path: bin.join("claude"),
             summary_timeout_secs: 10,
             whisper_gate_poll_ms: 20,
+            // ЯВНО ЛОКАЛЬНЫЙ ПУТЬ: лестница проверок здесь про whisper,
+            // модель и Metal, а умолчание плагина — облако (Ф15). Облачную
+            // лестницу проверяет `the_dependency_ladder_follows_the_backend`.
+            stt_backend: forge_meet::config::SttBackend::Local,
+            summary_backend: forge_meet::config::SummaryBackend::Local,
             ..MeetConfig::default()
         };
         let state = MeetState::new(cfg);
@@ -504,6 +509,82 @@ async fn a_missing_model_has_its_own_code() {
         .await;
     assert_eq!(code, StatusCode::CONFLICT);
     assert_eq!(body["error"], "model_unavailable", "{body}");
+}
+
+/// **ЛЕСТНИЦА ЗАВИСИТ ОТ ВЫБРАННОГО ПУТИ, И ДЕГРАДАЦИЯ ИДЁТ В ОБЕ СТОРОНЫ.**
+///
+/// Та же машина, тот же отчёт проб — но в облачном режиме отсутствие whisper,
+/// модели и Metal перестаёт быть препятствием, а мешает отсутствие ключа. И
+/// наоборот: локальному пути отсутствие ключа не мешает НИЧЕМУ.
+#[tokio::test]
+async fn the_dependency_ladder_follows_the_backend() {
+    let s = Stand::ready().await;
+    // Чистая машина: whisper нет, модели нет, Metal нет — но ffmpeg есть.
+    {
+        let mut deps = s.state.deps.write().await;
+        deps.probed = true;
+        deps.whisper.found = Some(false);
+        deps.model_ready = false;
+        deps.gpu_metal = None;
+        deps.ffmpeg.found = Some(true);
+        deps.ffmpeg.path = Some("/bin/true".to_string());
+    }
+    let snapshot = s.state.deps_snapshot().await;
+
+    // Роутер на конфиге, отличающемся ТОЛЬКО переключателем и ключом: база,
+    // каталоги и отчёт проб те же самые.
+    async fn variant(
+        base: &Arc<MeetState>,
+        snapshot: forge_meet::deps::DepsReport,
+        cfg: MeetConfig,
+    ) -> axum::Router {
+        let db = base.db().unwrap();
+        let state = MeetState::new(cfg);
+        state.attach_db(db).unwrap();
+        *state.deps.write().await = snapshot;
+        forge_meet::register_routes(axum::Router::new(), state)
+    }
+    let ask = |app: axum::Router, id: String| async move {
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/meet/meetings/{id}/retry?from=transcribing"))
+                    .header("content-type", "application/json")
+                    .body(Body::from("{}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let code = resp.status();
+        let bytes = axum::body::to_bytes(resp.into_body(), 1 << 22).await.unwrap();
+        let json: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+        (code, json)
+    };
+
+    // 1. Облако с ключом: ни одного из трёх локальных требований не осталось.
+    let mut cfg = s.state.config.clone();
+    cfg.stt_backend = forge_meet::config::SttBackend::Cloud;
+    cfg.polza_api_key = forge_meet::cloud::SecretKey::new("pza_LADDERladderLADDER_test");
+    let (code, body) = ask(variant(&s.state, snapshot.clone(), cfg.clone()).await, s.id.clone()).await;
+    assert_ne!(
+        code,
+        StatusCode::CONFLICT,
+        "облаку не нужны ни whisper, ни модель, ни Metal: {body}"
+    );
+
+    // 2. Облако без ключа: отказ, но СВОИМ кодом — человек чинит ключ, а не
+    //    ставит полтора гигабайта весов.
+    cfg.polza_api_key = forge_meet::cloud::SecretKey::default();
+    let (code, body) = ask(variant(&s.state, snapshot.clone(), cfg.clone()).await, s.id.clone()).await;
+    assert_eq!(code, StatusCode::CONFLICT, "{body}");
+    assert_eq!(body["error"], "cloud_not_configured", "{body}");
+
+    // 3. Локальный путь без ключа: ключ ни при чём, жалоба про whisper.
+    cfg.stt_backend = forge_meet::config::SttBackend::Local;
+    let (code, body) = ask(variant(&s.state, snapshot.clone(), cfg).await, s.id.clone()).await;
+    assert_eq!(code, StatusCode::CONFLICT, "{body}");
+    assert_eq!(body["error"], "whisper_unavailable", "{body}");
 }
 
 /// Саммари, ВЫКЛЮЧЕННОЕ конфигом, отвечает своим кодом, а не молча ничего не

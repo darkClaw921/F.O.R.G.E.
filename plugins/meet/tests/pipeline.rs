@@ -150,6 +150,13 @@ impl Stand {
             // себе сам.
             // 60 по той же причине, что и whisper_timeout_secs выше.
             ffmpeg_timeout_secs: 60,
+            // ЯВНО ЛОКАЛЬНЫЙ ПУТЬ. Умолчание плагина — облако (Ф15), а этот
+            // файл целиком про локальный конвейер: whisper на Metal, семафор
+            // «строго один», гейт «не расшифровывать во время записи»,
+            // пер-трековая нарезка. Без явного значения все его тесты молча
+            // ушли бы в сеть.
+            stt_backend: forge_meet::config::SttBackend::Local,
+            summary_backend: forge_meet::config::SummaryBackend::Local,
             ..MeetConfig::default()
         };
         let state = MeetState::new(cfg);

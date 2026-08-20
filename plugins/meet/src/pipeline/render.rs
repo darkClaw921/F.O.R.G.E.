@@ -45,6 +45,20 @@ pub const TRANSCRIPT_VERSION: u32 = 1;
 /// прочитает как угодно, а «говорили одновременно» — однозначно.
 pub const OVERLAP_MARK: &str = "(говорили одновременно)";
 
+/// Движок расшифровки у записей, сделанных до появления поля `engine`.
+///
+/// Локальный путь был единственным на момент их создания, поэтому старое
+/// значение восстанавливается однозначно, а не угадывается.
+fn default_engine() -> String {
+    ENGINE_LOCAL.to_string()
+}
+
+/// Значение [`TranscriptMeta::engine`] для локального whisper.cpp.
+pub const ENGINE_LOCAL: &str = "whisper.cpp";
+
+/// Значение [`TranscriptMeta::engine`] для облачной расшифровки.
+pub const ENGINE_CLOUD: &str = "polza.ai";
+
 /// Шапка расшифровки — всё, что не зависит от сегментов.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TranscriptMeta {
@@ -57,6 +71,18 @@ pub struct TranscriptMeta {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub started_at_unix_ms: Option<i64>,
     pub duration_ms: i64,
+    /// Чем расшифровано: `whisper.cpp` у локального пути, `polza.ai` у
+    /// облачного.
+    ///
+    /// Поле существует потому, что `model` само по себе не отвечает на вопрос
+    /// «кто это сделал»: и у облака, и у локального движка модель — просто
+    /// строка. Пока движок не записывался, шапка расшифровки утверждала
+    /// «whisper.cpp» ВСЕГДА, включая облачные прогоны, а `model` брался из
+    /// `whisper_model` даже тогда, когда работало облако. То есть артефакт
+    /// врал о собственном происхождении, и по нему нельзя было отличить один
+    /// путь расшифровки от другого — ровно то, что требуется проверять.
+    #[serde(default = "default_engine")]
+    pub engine: String,
     pub model: String,
     pub language: String,
     /// Применённый множитель коррекции дрейфа. `None` — коррекции не было.
@@ -201,8 +227,8 @@ pub fn render_markdown(meta: &TranscriptMeta, paragraphs: &[AttributedSegment]) 
         human_duration(meta.duration_ms)
     ));
     out.push_str(&format!(
-        "- Расшифровка: whisper.cpp, модель {}, язык {}\n",
-        meta.model, meta.language
+        "- Расшифровка: {}, модель {}, язык {}\n",
+        meta.engine, meta.model, meta.language
     ));
 
     let speakers = speaker_order(paragraphs);
@@ -311,6 +337,7 @@ mod tests {
             title: Some("Планёрка".into()),
             started_at_unix_ms: Some(1_700_000_000_000),
             duration_ms: 3_723_000,
+            engine: "whisper.cpp".into(),
             model: "large-v3-turbo-q5_0".into(),
             language: "ru".into(),
             drift_scale: None,

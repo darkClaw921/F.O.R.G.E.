@@ -123,6 +123,14 @@ hit(
 hit('https://teams.live.com/meet/9312345678901?p=SeCrEtPass', 'teams', 'teams:9312345678901', 'Teams: личная ссылка teams.live.com');
 hit('https://teams.microsoft.us/l/meetup-join/19%3ameeting_X%40thread.v2/0', 'teams', 'teams:19:meeting_X@thread.v2', 'Teams: государственный контур .us');
 
+// AirLabs L.I.N.K. Комната снята с ЖИВОЙ встречи: /r/6b2-m7e-g9z.
+hit('https://vcc.airlabs.pro/r/6b2-m7e-g9z', 'vcc', 'vcc:6b2-m7e-g9z', 'AirLabs: живая ссылка комнаты');
+hit('http://vcc.airlabs.pro/r/6b2-m7e-g9z', 'vcc', 'vcc:6b2-m7e-g9z', 'AirLabs: http тоже ссылка');
+hit('https://vcc.airlabs.pro/r/6b2-m7e-g9z/', 'vcc', 'vcc:6b2-m7e-g9z', 'AirLabs: завершающий слэш');
+hit('https://VCC.AirLabs.PRO/r/6b2-m7e-g9z', 'vcc', 'vcc:6b2-m7e-g9z', 'AirLabs: ВЕРХНИЙ регистр хоста');
+hit('https://vcc.airlabs.pro/r/6b2-m7e-g9z?utm_source=tg#top', 'vcc', 'vcc:6b2-m7e-g9z', 'AirLabs: мусор в query и якорь не мешают');
+hit('https://demo.vcc.airlabs.pro/r/abc-123-x9z', 'vcc', 'vcc:abc-123-x9z', 'AirLabs: выделенный инстанс на поддомене');
+
 {
     const r = M.detectMeetUrl('https://telemost.yandex.ru/j/95149281991644?ncrnd=8812');
     ok(r !== null, 'Телемост: ncrnd не мешает детекту');
@@ -147,6 +155,11 @@ miss('https://evil.com#telemost.yandex.ru', 'ОБХОД 3: домен во фр�
 miss('https://evil.com/j/12345#https://telemost.yandex.ru/j/1', 'ОБХОД 3б: домен во фрагменте с правдоподобным путём');
 miss('https://telemost.yandex.ru@evil.com/j/1', 'ОБХОД 4: домен в userinfo (hostname = evil.com)');
 miss('https://meet.google.com@evil.com/abc-defg-hij', 'ОБХОД 4б: userinfo с доменом Meet');
+// Те же четыре обхода для AirLabs — площадка новая, а приёмы старые.
+miss('https://vcc.airlabs.pro.evil.com/r/6b2-m7e-g9z', 'ОБХОД 1в: поддомен-обманка vcc.airlabs.pro.evil.com');
+miss('https://evil.com/?u=https://vcc.airlabs.pro/r/6b2-m7e-g9z', 'ОБХОД 2в: домен AirLabs в query');
+miss('https://evil.com/#https://vcc.airlabs.pro/r/6b2-m7e-g9z', 'ОБХОД 3в: домен AirLabs во фрагменте');
+miss('https://vcc.airlabs.pro@evil.com/r/6b2-m7e-g9z', 'ОБХОД 4в: домен AirLabs в userinfo');
 
 // Схема — забота safeHref. Все формы одного и того же `javascript:`.
 miss('javascript:alert(1)//telemost.yandex.ru/j/1', 'СХЕМА: javascript:');
@@ -182,6 +195,14 @@ miss('https://meet.google.com/landing', 'ПУТЬ: страница Meet');
 miss('https://zoom.us/download', 'ПУТЬ: страница загрузки Zoom');
 miss('https://zoom.us/j/123', 'ПУТЬ: слишком короткий идентификатор Zoom');
 miss('https://teams.microsoft.com/', 'ПУТЬ: корень Teams');
+// Ровно на этот адрес AirLabs уводит ПОСЛЕ выхода из встречи.
+miss('https://vcc.airlabs.pro/', 'ПУТЬ: корень AirLabs — пост-звонковая страница');
+miss('https://vcc.airlabs.pro/r/', 'ПУТЬ: /r/ без кода комнаты');
+miss('https://vcc.airlabs.pro/r/6b2-m7e', 'ПУТЬ: код AirLabs из двух групп');
+miss('https://vcc.airlabs.pro/r/6B2-M7E-G9Z', 'ПУТЬ: код AirLabs в верхнем регистре');
+miss('https://vcc.airlabs.pro/redirect/r/6b2-m7e-g9z', 'ПУТЬ: незаякоренный шаблон совпал бы здесь');
+miss('https://notvcc.airlabs.pro/r/6b2-m7e-g9z', 'ХОСТ: notvcc.airlabs.pro не совпадает с суффиксом .vcc.airlabs.pro');
+miss('https://crm.airlabs.pro/r/6b2-m7e-g9z', 'ХОСТ: соседний сервис той же компании');
 
 // Мусор и края.
 miss('', 'КРАЙ: пустая строка');
@@ -376,10 +397,10 @@ miss(`https://telemost.yandex.ru/j/1234?x=${'a'.repeat(4096)}`, 'КРАЙ: ад�
     M.resetMeetPlatforms();
 }
 {
-    eq(M.meetPlatforms().map((p) => p.platform), ['telemost', 'meet', 'zoom', 'teams'], 'встроенный реестр — четыре платформы');
+    eq(M.meetPlatforms().map((p) => p.platform), ['telemost', 'meet', 'zoom', 'teams', 'vcc'], 'встроенный реестр — пять платформ');
     const copy = M.meetPlatforms();
     copy.length = 0;
-    eq(M.meetPlatforms().length, 4, 'meetPlatforms отдаёт копию, а не внутренний массив');
+    eq(M.meetPlatforms().length, 5, 'meetPlatforms отдаёт копию, а не внутренний массив');
     eq(M.MEET_PANELS, ['telegram', 'vk', 'bitrix'], 'список панелей закреплён');
 }
 
@@ -409,6 +430,12 @@ miss(`https://telemost.yandex.ru/j/1234?x=${'a'.repeat(4096)}`, 'КРАЙ: ад�
 {
     const msg = { id: 9, text: 'плановая встреча', media: null };
     eq(M.detectMeetInMessage(msg, 'telegram'), null, 'Telegram: текст без ссылки — не встреча');
+}
+{
+    // Новая площадка приходит теми же тремя источниками текста, что и все
+    // остальные, — иначе она детектилась бы в одной панели из трёх.
+    const msg = { id: 91, text: 'созвон https://vcc.airlabs.pro/r/6b2-m7e-g9z в 15:00', media: null };
+    eq(M.detectMeetInMessage(msg, 'telegram').localKey, 'vcc:6b2-m7e-g9z', 'Telegram: ссылка AirLabs в тексте');
 }
 
 // --- VK: msg.text ПЛЮС вложение-ссылка -----------------------------------
@@ -455,6 +482,14 @@ miss(`https://telemost.yandex.ru/j/1234?x=${'a'.repeat(4096)}`, 'КРАЙ: ад�
     const msg = { id: 15, text: '', attachments: [{ index: 0, kind: 'other', link_url: 'https://habr.com/ru/post/1' }] };
     eq(M.detectMeetInMessage(msg, 'vk'), null, 'VK: посторонняя ссылка во вложении — не встреча');
 }
+{
+    const msg = {
+        id: 151,
+        text: '',
+        attachments: [{ index: 0, kind: 'other', title: 'AirLabs L.I.N.K.', link_url: 'https://vcc.airlabs.pro/r/6b2-m7e-g9z' }],
+    };
+    eq(M.detectMeetInMessage(msg, 'vk').localKey, 'vcc:6b2-m7e-g9z', 'VK: ссылка AirLabs во вложении');
+}
 
 // --- Битрикс: обход segments ---------------------------------------------
 {
@@ -484,6 +519,15 @@ miss(`https://telemost.yandex.ru/j/1234?x=${'a'.repeat(4096)}`, 'КРАЙ: ад�
     // Превью выключено — ссылка приезжает обычным текстом.
     const segments = [{ kind: 'text', text: 'жми https://zoom.us/j/89123456789?pwd=q', value: null, children: [] }];
     const r = M.detectMeetInMessage({ id: 18, segments }, 'bitrix');
+    const vcc = M.detectMeetInMessage({
+        id: 181,
+        segments: [{
+            kind: 'url',
+            value: 'https://vcc.airlabs.pro/r/6b2-m7e-g9z',
+            children: [{ kind: 'text', text: 'созвон', value: null, children: [] }],
+        }],
+    }, 'bitrix');
+    eq(vcc && vcc.localKey, 'vcc:6b2-m7e-g9z', 'Битрикс: ссылка AirLabs в [URL=адрес]');
     eq(r && r.localKey, 'zoom:89123456789', 'Битрикс: голая ссылка в текстовом сегменте');
     eq(r.url, 'https://zoom.us/j/89123456789?pwd=q', 'Битрикс: пароль Zoom из текста сохранён');
 }

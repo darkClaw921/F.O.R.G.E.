@@ -283,7 +283,7 @@ function rustProviders(src) {
 const backendProviders = rustProviders(providersRs);
 const frontBuiltin = CORE.BUILTIN_MEET_PLATFORMS;
 
-ok('в providers.rs разобраны все четыре платформы', backendProviders.length === 4, `разобрано ${backendProviders.length}`);
+ok('в providers.rs разобраны все пять платформ', backendProviders.length === 5, `разобрано ${backendProviders.length}`);
 ok('разбор Rust не пустой (иначе сверка ниже зеленела бы впустую)',
     backendProviders.every((p) => p.hosts.length > 0 && p.paths.length > 0),
     JSON.stringify(backendProviders.map((p) => [p.platform, p.hosts.length, p.paths.length])));
@@ -338,11 +338,12 @@ eq('из проводных полей фронт не использует ро
     const applied = CORE.configureMeetPlatforms({ providers: backendProviders });
     eq('реестр бэкенда применяется ЦЕЛИКОМ, без поштучных потерь', applied.length, backendProviders.length,
         'первая редакция бэкенда теряла записи молча — ровно этот случай');
-    ok('и после этого ссылки четырёх платформ распознаются',
+    ok('и после этого ссылки пяти платформ распознаются',
         ['https://telemost.yandex.ru/j/60497752704486',
             'https://meet.google.com/abc-defg-hij',
             'https://us02web.zoom.us/j/89123456789',
-            'https://teams.live.com/meet/9312345678901'].every((u) => CORE.detectMeetUrl(u) !== null));
+            'https://teams.live.com/meet/9312345678901',
+            'https://vcc.airlabs.pro/r/6b2-m7e-g9z'].every((u) => CORE.detectMeetUrl(u) !== null));
     CORE.resetMeetPlatforms();
 }
 
@@ -579,7 +580,10 @@ eq('фронтовое имя этого псевдостатуса', STORE.STAT
         return [...body.matchAll(/^ {4}pub (\w+):/gm)].map((m) => m[1]);
     })();
     eq('поля ответа /api/meet/status', dtoFields,
-        ['enabled', 'db_ready', 'deps', 'limits', 'providers', 'active', 'config']);
+        // `cloud` — блок Ф15: настроен ли ключ (МАСКОЙ), живость ключа, остаток
+        // лимита и выбранные модели. Отдаётся всегда, в том числе когда обе
+        // стадии локальные.
+        ['enabled', 'db_ready', 'deps', 'limits', 'providers', 'active', 'config', 'cloud']);
 
     const apiSrc = read('../../static/js/meet/api.js');
     for (const f of ['enabled', 'providers']) {

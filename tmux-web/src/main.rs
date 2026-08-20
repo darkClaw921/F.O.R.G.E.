@@ -319,21 +319,34 @@ async fn main() -> anyhow::Result<()> {
     // трёх лент.
     let meet_enabled = effective.meet_enabled;
 
-    // Инициализация логирования. По умолчанию: info для всего + debug для tmux_web.
-    // Переопределяется переменной окружения RUST_LOG.
+    // Инициализация логирования. По умолчанию пишутся ТОЛЬКО ошибки.
     //
-    // Phase 6 (Echo) — если FORGE_ECHO_DEBUG=1 и RUST_LOG не задан явно,
-    // дополнительно включаем `forge_echo=debug` чтобы пользователь видел
-    // streaming-события Echo (prompt/usage/scheduler tick).
+    // Раньше умолчанием было `info,tmux_web=debug`, и на долгоживущем процессе
+    // это давало десятки гигабайт в терминал и в перехватывающие его файлы:
+    // watcher tmux тикает постоянно, у каждого плагина свой поток событий, а
+    // `debug` самого devforge печатает ещё и покадровую механику. Диагностика
+    // от этого не выигрывала — нужную строку в таком потоке всё равно ищут
+    // грепом, — а место кончалось.
+    //
+    // Всё, что было доступно раньше, доступно и сейчас через `RUST_LOG`,
+    // причём прицельно, а не залпом:
+    //
+    //     RUST_LOG=info                        общий ход работы
+    //     RUST_LOG=warn,forge_meet=debug       только плагин встреч, подробно
+    //     RUST_LOG=info,tmux_web=debug         прежнее поведение целиком
+    //
+    // `FORGE_ECHO_DEBUG=1` остаётся как было: он включает подробности Echo, не
+    // трогая остальные крейты, и работает только когда `RUST_LOG` не задан
+    // явно — иначе побеждает то, что человек написал руками.
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| {
             let echo_debug = std::env::var("FORGE_ECHO_DEBUG")
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(false);
             if echo_debug {
-                EnvFilter::new("info,tmux_web=debug,forge_echo=debug")
+                EnvFilter::new("error,forge_echo=debug")
             } else {
-                EnvFilter::new("info,tmux_web=debug")
+                EnvFilter::new("error")
             }
         }))
         .init();

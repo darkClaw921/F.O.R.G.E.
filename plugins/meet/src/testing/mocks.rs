@@ -190,6 +190,37 @@ pub fn mock_ffmpeg_hang(dir: &Path, name: &str, secs: u64) -> std::io::Result<Pa
     mock_hang(dir, name, secs)
 }
 
+/// ffmpeg, нарезающий окна для облачной расшифровки.
+///
+/// Пишет в выходной файл строку `ID3mock ss=<начало> t=<длительность>` —
+/// то есть окно, которое у него попросили. Это единственный способ проверить
+/// главный инвариант Ф14 БЕЗ настоящего кодека: локальный стенд читает эти
+/// значения из принятого файла и видит, какой длины кусок ему прислали. Стенд
+/// рвёт соединение на куске длиннее окна — ровно как живой polza.ai на 62-й
+/// секунде, — и тест доказывает, что запись режется ДО отправки, а не после
+/// отказа.
+pub fn mock_ffmpeg_window_slicer(dir: &Path, name: &str) -> std::io::Result<PathBuf> {
+    write_mock_bin(
+        dir,
+        name,
+        r#"SS=""
+T=""
+OUT=""
+prev=""
+for a in "$@"; do
+  case "$prev" in
+    -ss) SS="$a" ;;
+    -t) T="$a" ;;
+  esac
+  OUT="$a"
+  prev="$a"
+done
+printf 'ID3mock ss=%s t=%s' "$SS" "$T" > "$OUT"
+exit 0
+"#,
+    )
+}
+
 /// ffprobe, отвечающий заданной длительностью в секундах.
 pub fn mock_ffprobe(dir: &Path, name: &str, duration_secs: f64) -> std::io::Result<PathBuf> {
     write_mock_bin(dir, name, &format!("echo '{duration_secs}'\nexit 0\n"))

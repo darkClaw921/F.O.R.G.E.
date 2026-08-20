@@ -87,6 +87,8 @@ export const MEET_ROUTES = [
     { method: 'GET', path: '/api/meet/models', fn: 'getModels', phase: '5' },
     { method: 'POST', path: '/api/meet/models/:name/download', fn: 'downloadModel', phase: '5' },
     { method: 'DELETE', path: '/api/meet/models/:name', fn: 'deleteModel', phase: '5' },
+    { method: 'GET', path: '/api/meet/cloud/models', fn: 'getCloudModels', phase: '16' },
+    { method: 'GET', path: '/api/meet/cloud/balance', fn: 'getCloudBalance', phase: '16' },
     { method: 'GET', path: '/api/meet/config', fn: 'getMeetConfig', phase: '7' },
     { method: 'PUT', path: '/api/meet/config', fn: 'putMeetConfig', phase: '7' },
     { method: 'DELETE', path: '/api/meet/profile', fn: 'resetMeetProfile', phase: '8' },
@@ -301,6 +303,32 @@ export function downloadModel(name) {
  */
 export function deleteModel(name) {
     return call(`/api/meet/models/${seg(name)}`, jsonInit('DELETE', {}));
+}
+
+/**
+ * `GET /api/meet/cloud/models` — каталог облачных моделей, разложенный по
+ * стадиям: `{configured, stt: [...], chat: [...], total, error}`.
+ *
+ * ХОДИТ СЕРВЕР, А НЕ БРАУЗЕР. Каталог polza.ai требует `Authorization: Bearer
+ * pza_…`, и прямой запрос отсюда означал бы ключ в памяти страницы, в devtools
+ * и в кэше PWA. Наружу уезжают только идентификаторы и цены.
+ *
+ * Отказ облака приходит ПОЛЕМ `error` при статусе 200: вкладку настроек
+ * открывают именно тогда, когда что-то не работает.
+ */
+export function getCloudModels() {
+    return call('/api/meet/cloud/models');
+}
+
+/**
+ * `GET /api/meet/cloud/balance` — остаток В РУБЛЯХ и лимиты ключа.
+ *
+ * ОТДЕЛЬНЫМ запросом, а не полем `/api/meet/status`: статус гейтит панель
+ * плагина целиком, и второй сетевой вызов в чужой сервис внутри него подвесил
+ * бы панель вместе с polza.ai.
+ */
+export function getCloudBalance() {
+    return call('/api/meet/cloud/balance');
 }
 
 /** `GET /api/meet/config` — настройки плагина. */

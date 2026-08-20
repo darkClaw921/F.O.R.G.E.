@@ -34,6 +34,8 @@
 //! | GET    | `/api/meet/models`                        | Ф5 | список моделей whisper |
 //! | POST   | `/api/meet/models/:name/download`         | Ф5 | скачать модель — **только по явному действию** |
 //! | DELETE | `/api/meet/models/:name`                  | Ф5 | удалить модель с диска |
+//! | GET    | `/api/meet/cloud/models`                  | **Ф16** | каталог облачных моделей (`stt`/`chat`) с ценами; ключ наружу не уходит |
+//! | GET    | `/api/meet/cloud/balance`                 | **Ф16** | остаток средств в рублях и лимиты ключа |
 //! | GET    | `/api/meet/config`                        | **Ф7** | настройки плагина |
 //! | PUT    | `/api/meet/config`                        | **Ф7** | сохранить настройки |
 //! | DELETE | `/api/meet/profile`                       | **Ф8** | сбросить постоянный профиль браузера (живая сессия аккаунта) |
@@ -76,6 +78,7 @@
 //! сказать «whisper не установлен» — и пользователь чинил бы не то.
 
 pub mod audio;
+pub mod cloud;
 pub mod config;
 pub mod meetings;
 pub mod models;
@@ -136,6 +139,10 @@ pub fn build_router(state: Arc<MeetState>) -> Router {
         .route("/api/meet/models/:name/download", post(models::download))
         .route("/api/meet/models/:name", axum::routing::delete(models::remove))
         .route("/api/meet/deps/recheck", post(models::recheck))
+        // Каталог и баланс — ОТДЕЛЬНЫЕ роуты, а не поля `status`: это сетевые
+        // вызовы в чужой сервис, а `status` гейтит панель плагина целиком.
+        .route("/api/meet/cloud/models", get(cloud::models))
+        .route("/api/meet/cloud/balance", get(cloud::balance))
         .route(
             "/api/meet/config",
             get(config::get_config).put(config::put_config),
@@ -162,6 +169,51 @@ pub struct StatusConfigDto {
     pub audio_sample_rate: u32,
     pub summary_enabled: bool,
     pub cache_dir: String,
+    /// Где считается расшифровка: `cloud` | `local`.
+    pub stt_backend: &'static str,
+    /// Где считается саммари: `cloud` | `local`.
+    pub summary_backend: &'static str,
+}
+
+/// Облако глазами интерфейса.
+///
+/// **Ключа здесь нет ни в каком виде** — только маска; на это есть отдельный
+/// тест приватности (`tests/key_privacy.rs`).
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudStatusDto {
+    /// Настроено ли облако вообще (есть ключ).
+    pub configured: bool,
+    /// Маска ключа (`pza_RIcg••••••••Uzu4js`). Пусто — ключа нет.
+    pub key_mask: String,
+    /// Ключ задан переменной окружения: файлом его не перебить, и UI не
+    /// предлагает править.
+    pub env_locked: bool,
+    pub base_url: String,
+    pub stt_model: String,
+    pub summary_model: String,
+    /// Живость ключа и остаток лимита — из БЕСПЛАТНОГО `GET /key`.
+    ///
+    /// `None` означает ровно одно из двух: ключа нет (тогда `configured:
+    /// false`) либо облако не ответило (тогда непусто поле `error`).
+    ///
+    /// Поле `limit_reset` внутри осталось СТРОКОЙ: у живого ключа там
+    /// `monthly`, а не `daily`, как было записано в плане.
+    pub key: Option<crate::cloud::service::KeyInfo>,
+    /// Почему облако не ответило: машинный код плюс текст для человека.
+    ///
+    /// **ЭТО ПОЛЕ, А НЕ 500.** `status` — единственный роут, который никогда
+    /// не падает; недоступный polza.ai обязан быть строчкой в ответе, а не
+    /// отказом, который выключит панель плагина целиком.
+    pub error: Option<CloudErrorDto>,
+    /// Сколько секунд назад спрашивали. `None` — не спрашивали ни разу.
+    pub checked_secs_ago: Option<u64>,
+}
+
+/// Отказ облака в ответе статуса.
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudErrorDto {
+    pub code: &'static str,
+    pub message: String,
 }
 
 /// Тело `GET /api/meet/status`.
@@ -184,6 +236,10 @@ pub struct StatusDto {
     /// Встречи, занимающие слот записи прямо сейчас.
     pub active: Vec<MeetingRow>,
     pub config: StatusConfigDto,
+    /// Состояние облака. Отдаётся ВСЕГДА, даже когда обе стадии локальные:
+    /// «ключ настроен, но не используется» человек обязан видеть, иначе
+    /// переключатель в настройках выглядел бы сломанным.
+    pub cloud: CloudStatusDto,
 }
 
 /// `GET /api/meet/status` — **единственный роут, который никогда не падает.**
@@ -224,8 +280,39 @@ async fn status(State(state): State<Arc<MeetState>>) -> Json<StatusDto> {
             audio_sample_rate: state.config.audio_sample_rate,
             summary_enabled: state.config.summary_enabled,
             cache_dir: state.config.cache_dir.display().to_string(),
+            stt_backend: state.config.stt_backend.as_str(),
+            summary_backend: state.config.summary_backend.as_str(),
         },
+        cloud: cloud_status(&state).await,
     })
+}
+
+/// Облачный блок ответа `status`.
+///
+/// Собирается по тем же правилам, что и список активных встреч выше: любая
+/// неудача превращается в ПОЛЕ, а не в отказ роута. Сетевого вызова здесь
+/// может не быть вовсе — [`MeetState::cloud_probe`] кэширует ответ на минуту и
+/// молчит, когда ключа нет.
+async fn cloud_status(state: &Arc<MeetState>) -> CloudStatusDto {
+    let cfg = &state.config;
+    let probe = state.cloud_probe().await;
+    CloudStatusDto {
+        configured: cfg.cloud_configured(),
+        // МАСКА, А НЕ КЛЮЧ.
+        key_mask: cfg.polza_api_key.mask(),
+        env_locked: crate::config::env_locked("polza_api_key"),
+        base_url: cfg.cloud_base_url.clone(),
+        stt_model: cfg.cloud_stt_model.clone(),
+        summary_model: cfg.cloud_summary_model.clone(),
+        key: probe.as_ref().and_then(|p| p.key.clone()),
+        error: probe.as_ref().and_then(|p| {
+            p.error.as_ref().map(|(code, message)| CloudErrorDto {
+                code,
+                message: message.clone(),
+            })
+        }),
+        checked_secs_ago: probe.as_ref().map(|p| p.at.elapsed().as_secs()),
+    }
 }
 
 // --- GET /api/meet/badges ----------------------------------------------------
@@ -464,6 +551,87 @@ mod tests {
         assert_eq!(body["active"].as_array().unwrap().len(), 0);
     }
 
+    /// Облако НЕ НАСТРОЕНО — честное поле, а не 500 и не поход в сеть.
+    ///
+    /// Заодно это проверка герметичности: у конфига по умолчанию ключа нет,
+    /// значит `status` не имеет права никуда ходить, и тест не зависит от
+    /// доступности интернета на машине сборки.
+    #[tokio::test]
+    async fn status_says_the_cloud_is_not_configured_without_touching_the_network() {
+        let app = build_router(state_without_db());
+        let started = std::time::Instant::now();
+        let (code, body) = fetch(&app, "/api/meet/status").await;
+        assert_eq!(code, StatusCode::OK);
+        assert_eq!(body["cloud"]["configured"], false);
+        assert_eq!(body["cloud"]["key_mask"], "");
+        assert!(body["cloud"]["key"].is_null());
+        assert!(body["cloud"]["error"].is_null(), "{}", body["cloud"]);
+        assert!(
+            body["cloud"]["checked_secs_ago"].is_null(),
+            "без ключа спрашивать нечего и незачем"
+        );
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(1),
+            "роут ходил в сеть при ненастроенном облаке"
+        );
+
+        // Переключатели видны ВСЕГДА и по умолчанию оба облачные.
+        assert_eq!(body["config"]["stt_backend"], "cloud");
+        assert_eq!(body["config"]["summary_backend"], "cloud");
+        assert_eq!(body["cloud"]["stt_model"], crate::cloud::DEFAULT_STT_MODEL);
+        assert_eq!(
+            body["cloud"]["summary_model"],
+            crate::cloud::DEFAULT_SUMMARY_MODEL
+        );
+    }
+
+    /// **НЕДОСТУПНЫЙ POLZA.AI — ЭТО ПОЛЕ, А НЕ 500.**
+    ///
+    /// Ключ настоящий по форме, а адрес ведёт в закрытый порт: соединение
+    /// отвергается сразу. Роут обязан ответить 200, положить причину в
+    /// `cloud.error` и оставить ВСЕ ОСТАЛЬНЫЕ поля целыми — по ним человек и
+    /// узнаёт, что именно сломано.
+    #[tokio::test]
+    async fn an_unreachable_cloud_is_a_field_not_a_broken_route() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = crate::config::MeetConfig {
+            config_path: dir.path().join("meet.toml"),
+            cache_dir: dir.path().join("cache"),
+            db_path: dir.path().join("cache/meet.db"),
+            models_dir: dir.path().join("cache/models"),
+            // Порт 1 на loopback закрыт: отказ приходит немедленно, и тест не
+            // платит за него ни секундой ожидания.
+            cloud_base_url: "http://127.0.0.1:1/api/v1".to_string(),
+            polza_api_key: crate::cloud::SecretKey::new("pza_DEADdeadDEADdead_unreachable"),
+            ..crate::config::MeetConfig::default()
+        };
+        let app = build_router(MeetState::new(cfg));
+        let (code, body) = fetch(&app, "/api/meet/status").await;
+
+        assert_eq!(code, StatusCode::OK, "роут упал из-за чужого сервиса");
+        assert_eq!(body["cloud"]["configured"], true);
+        let err = &body["cloud"]["error"];
+        assert!(!err.is_null(), "отказ облака потерялся: {}", body["cloud"]);
+        assert!(
+            err["code"].as_str().unwrap().starts_with("cloud_"),
+            "код отказа не облачный: {err}"
+        );
+        assert!(body["cloud"]["key"].is_null());
+
+        // ОСТАЛЬНОЙ ОТВЕТ ЦЕЛ — ради него роут и существует.
+        assert_eq!(body["enabled"], true);
+        assert_eq!(body["deps"]["probed"], false);
+        assert!(body["providers"].as_array().unwrap().len() >= 4);
+        assert_eq!(body["limits"]["whisper"], 1);
+
+        // И маска вместо ключа.
+        let mask = body["cloud"]["key_mask"].as_str().unwrap();
+        assert!(mask.contains('•'), "{mask}");
+        assert!(!serde_json::to_string(&body)
+            .unwrap()
+            .contains("unreachable"));
+    }
+
     /// Реестр платформ приезжает с бэкенда: разметку браузер держит в кэше PWA
     /// неделями, и фронтовая константа протухла бы незаметно.
     #[tokio::test]
@@ -471,7 +639,14 @@ mod tests {
         let app = build_router(state_without_db());
         let (_, body) = fetch(&app, "/api/meet/status").await;
         let providers = body["providers"].as_array().unwrap();
-        assert_eq!(providers.len(), 4);
+        assert_eq!(providers.len(), crate::providers::PROVIDERS.len());
+        assert!(
+            providers
+                .iter()
+                .any(|p| p["platform"] == "vcc" && p["title"] == "AirLabs L.I.N.K."),
+            "новая платформа обязана доезжать до фронта — иначе она детектится, \
+             но в списке поддерживаемых её нет"
+        );
         for p in providers {
             assert!(!p["link_regex"].as_str().unwrap().is_empty());
             assert!(!p["hosts"].as_array().unwrap().is_empty());
@@ -696,7 +871,10 @@ mod tests {
     #[test]
     fn the_contract_table_and_the_router_agree_in_both_directions() {
         let table = table_rows();
-        assert!(table.len() >= 19, "таблица-контракт разобрана не полностью: {table:?}");
+        // Планка поднимается вместе с поверхностью: Ф16 добавила каталог
+        // облачных моделей и баланс. Разобранная не полностью таблица
+        // превратила бы сверку ниже в проверку куска.
+        assert!(table.len() >= 25, "таблица-контракт разобрана не полностью: {table:?}");
         let registered = registered_routes();
         assert!(!registered.is_empty(), "в build_router не нашлось ни одного пути");
 
@@ -735,6 +913,8 @@ mod tests {
         assert!(table.contains(&("GET".to_string(), "/api/meet/status".to_string())));
         assert!(table.contains(&("PATCH".to_string(), "/api/meet/meetings/:id/speakers".to_string())));
         assert!(table.contains(&("PUT".to_string(), "/api/meet/config".to_string())));
+        assert!(table.contains(&("GET".to_string(), "/api/meet/cloud/models".to_string())));
+        assert!(table.contains(&("GET".to_string(), "/api/meet/cloud/balance".to_string())));
 
         let registered = registered_routes();
         assert_eq!(

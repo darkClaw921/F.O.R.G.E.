@@ -383,12 +383,46 @@ pub async fn summarize(
             queue_position: None,
         });
     };
-    let opts = RunOptions {
-        cli_path: state.config.claude_cli_path.clone(),
-        timeout: Duration::from_secs(state.config.summary_timeout_secs),
-        cancel: cancel.clone(),
+    // **РАЗВИЛКА СТАДИИ: облако или локальный Claude CLI.**
+    //
+    // Развилка стоит ЗДЕСЬ, а не внутри [`generate`], и не выше по стеку:
+    //
+    // * выше — значит продублировать всё, что вокруг (слот и его очередь,
+    //   промпт, запись файла, `finish`), то есть завести второй способ
+    //   провалить саммари, который однажды разойдётся с первым;
+    // * внутри `generate` — значит потащить `MeetState` в функцию, которая
+    //   сегодня зависит только от промпта и опций, и потерять её тестируемость.
+    //
+    // Обе стороны отдают `Result<String, ProcError>` и зовут ОДИН И ТОТ ЖЕ
+    // `on_delta` через один и тот же [`DeltaCoalescer`] — поэтому фронт не
+    // переделывается: кадр `Progress { phase: Summarizing, done }` тот же
+    // самый.
+    let produced = if state.config.summary_backend.is_cloud() {
+        match crate::cloud::CloudClient::new(&state.config.cloud()) {
+            Ok(client) => {
+                let opts = crate::cloud::summary::ChatOptions {
+                    model: state.config.cloud_summary_model.clone(),
+                    // `summary_timeout_secs` здесь — потолок ПАУЗЫ между
+                    // кадрами, а не всего ответа: общий таймаут резал бы
+                    // длинное саммари тем чаще, чем лучше оно получалось, а
+                    // молчащий шлюз всё равно ловится этой же величиной.
+                    idle_timeout: Duration::from_secs(state.config.summary_timeout_secs),
+                    cancel: cancel.clone(),
+                };
+                crate::cloud::summary::generate(&client, &built, &opts, Some(&on_delta)).await
+            }
+            // Ключа нет — это отказ саммари, а не встречи: транскрипт уже на
+            // диске, и `finish` ниже доведёт встречу до `ready`.
+            Err(e) => Err(ProcError::from(e)),
+        }
+    } else {
+        let opts = RunOptions {
+            cli_path: state.config.claude_cli_path.clone(),
+            timeout: Duration::from_secs(state.config.summary_timeout_secs),
+            cancel: cancel.clone(),
+        };
+        generate(&built, &opts, Some(&on_delta)).await
     };
-    let produced = generate(&built, &opts, Some(&on_delta)).await;
     drop(slot);
 
     match produced {

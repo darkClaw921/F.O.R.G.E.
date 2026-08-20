@@ -585,7 +585,9 @@ async fn start_stage(
     let deps = state.deps_snapshot().await;
     let dep_blocker = match stage {
         Ok(Stage::Summarizing) => summary_blocker(state),
-        _ => deps.transcribe_blocker(),
+        // Чего не хватает — зависит от ВЫБРАННОГО пути: облаку не нужны ни
+        // whisper, ни модель на диске, ни Metal, зато нужен ключ.
+        _ => deps.transcribe_blocker_for(state.config.stt_backend, state.config.cloud_configured()),
     };
 
     let meeting = meetings::get(state, meeting_id).await.ok();
@@ -613,8 +615,17 @@ async fn start_stage(
 /// запуске и попадает в `summary_status = failed` вместе с хвостом stderr —
 /// то есть человек всё равно узнаёт причину, но не ценой ещё одного
 /// периодического процесса на старте devforge.
+/// В облачном режиме проба всё-таки есть, и она бесплатна: «ключа нет» видно
+/// БЕЗ единого сетевого вызова. Отсутствие ключа — не «попробуем и упадём», а
+/// заведомо известный отказ, и говорить о нём заранее честнее.
 fn summary_blocker(state: &Arc<MeetState>) -> Option<&'static str> {
-    (!state.config.summary_enabled).then_some("summary_disabled")
+    if !state.config.summary_enabled {
+        return Some("summary_disabled");
+    }
+    if state.config.summary_backend.is_cloud() && !state.config.cloud_configured() {
+        return Some("cloud_not_configured");
+    }
+    None
 }
 
 /// `POST /api/meet/meetings/:id/retry?from=` — повтор этапа.

@@ -111,6 +111,12 @@ pub struct ConfigDto {
     pub file_exists: bool,
     /// Разбирается ли файл. `false` — `PUT` откажется его трогать.
     pub file_parses: bool,
+    /// Права файла восьмеричной строкой (`600`). Пусто — файла нет либо
+    /// система не Unix.
+    pub file_mode: String,
+    /// Права шире `600`, а в файле может лежать ключ API. UI показывает это
+    /// предупреждением: наша собственная запись права чинит, чужая — нет.
+    pub file_world_readable: bool,
     pub fields: Vec<FieldDto>,
     pub readonly: ReadonlyDto,
     pub profile: ProfileDto,
@@ -157,6 +163,8 @@ pub fn describe(cfg: &MeetConfig) -> ConfigDto {
         config_path: cfg.config_path.display().to_string(),
         file_exists,
         file_parses,
+        file_mode: config::file_mode(&cfg.config_path),
+        file_world_readable: config::file_is_world_readable(&cfg.config_path),
         fields,
         readonly: ReadonlyDto {
             cache_dir: cfg.cache_dir.display().to_string(),
@@ -352,12 +360,25 @@ pub async fn put_config(
     let fixes = candidate.validate_and_fix();
 
     for key in &saved {
-        // В файл уходит ПОЧИНЕННОЕ значение, а не присланное: иначе на диске
-        // осталось бы `alone_timeout_secs = 0`, при каждом старте молча
-        // превращалось бы в 5, и человек читал бы в файле одно, а видел
-        // другое.
-        let fixed = config::editable_value(&candidate, key)
-            .ok_or_else(|| MeetError::Internal(format!("поле {key} не читается обратно")))?;
+        // СЕКРЕТ ПИШЕТСЯ ПРИСЛАННЫМ ЗНАЧЕНИЕМ, а не прочитанным обратно:
+        // `editable_value` у секрета намеренно отдаёт МАСКУ (иначе она уехала
+        // бы в ответ роута), и «починенное значение» здесь означало бы файл со
+        // строкой из точек вместо ключа.
+        let is_secret =
+            config::editable(key).is_some_and(|f| f.kind == config::FieldKind::Secret);
+        let fixed = if is_secret {
+            req.values
+                .get(key)
+                .cloned()
+                .ok_or_else(|| MeetError::Internal(format!("поле {key} потерялось")))?
+        } else {
+            // В файл уходит ПОЧИНЕННОЕ значение, а не присланное: иначе на
+            // диске осталось бы `alone_timeout_secs = 0`, при каждом старте
+            // молча превращалось бы в 5, и человек читал бы в файле одно, а
+            // видел другое.
+            config::editable_value(&candidate, key)
+                .ok_or_else(|| MeetError::Internal(format!("поле {key} не читается обратно")))?
+        };
         doc[key.as_str()] = json_to_toml(&fixed)?;
     }
 
@@ -373,6 +394,20 @@ pub async fn put_config(
         // `forge_atomic`, что у транскрипта и манифеста.
         forge_atomic::write_bytes_atomic(&path, doc.to_string().as_bytes())
             .map_err(|e| MeetError::Internal(format!("конфиг не сохранился: {e}")))?;
+        // 0600 ВСЕГДА, а не только когда в файле есть ключ: право проверяется
+        // на файле, а не на его содержимом, и «ключ добавили завтра» не должно
+        // означать «права остались вчерашние». Атомарная запись создаёт файл
+        // заново, поэтому права выставляются после КАЖДОЙ записи.
+        if let Err(e) = config::ensure_private_file(&path) {
+            // Не отказ: настройки уже сохранены, и терять их из-за прав
+            // нельзя. Но и молчать нельзя — в файле может лежать ключ.
+            tracing::warn!(
+                target: "forge_meet",
+                path = %path.display(),
+                error = %e,
+                "forge-meet: права 600 на конфиг не выставились"
+            );
+        }
     }
 
     tracing::info!(

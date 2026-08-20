@@ -612,7 +612,7 @@ dependencies = [
 
 [[package]]
 name = "devforge"
-version = "0.1.68"
+version = "0.1.70"
 dependencies = [
  "aes-gcm",
  "anyhow",

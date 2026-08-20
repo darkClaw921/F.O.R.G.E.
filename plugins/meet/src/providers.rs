@@ -66,18 +66,26 @@ pub enum Platform {
     GoogleMeet,
     Zoom,
     Teams,
+    /// `vcc.airlabs.pro` — AirLabs L.I.N.K., площадка на LiveKit. Вторая (после
+    /// Телемоста) платформа, снятая ЖИВОЙ пробой: комната на трёх участниках,
+    /// патч `RTCPeerConnection` до навигации. Отличие от всех остальных —
+    /// режим `PerParticipant` (трек = человек) и селекторы из публичного
+    /// контракта компонентов LiveKit (`data-lk-*`), а не CSS-модули с хешами
+    /// сборки.
+    Vcc,
 }
 
 impl Platform {
-    pub const ALL: [Platform; 4] = [
+    pub const ALL: [Platform; 5] = [
         Platform::Telemost,
         Platform::GoogleMeet,
         Platform::Zoom,
         Platform::Teams,
+        Platform::Vcc,
     ];
 
     /// Идентификатор платформы в проводных форматах: `url_key`, JSON роутов,
-    /// WS-кадры, `probes.toml`. Один и тот же во всех четырёх.
+    /// WS-кадры, `probes.toml`. Один и тот же во всех пяти.
     ///
     /// `meet`, а не `google_meet`: ровно эту строку использует
     /// `messenger/meet-core.js` в своём встроенном реестре. Реестр бэкенда
@@ -91,6 +99,7 @@ impl Platform {
             Self::GoogleMeet => "meet",
             Self::Zoom => "zoom",
             Self::Teams => "teams",
+            Self::Vcc => "vcc",
         }
     }
 
@@ -172,8 +181,8 @@ fn host_has_suffix(host: &str, suffix: &str) -> bool {
     suffix.starts_with('.') && host.len() > suffix.len() && host.ends_with(suffix)
 }
 
-/// Реестр четырёх платформ.
-pub const PROVIDERS: [Provider; 4] = [
+/// Реестр пяти платформ.
+pub const PROVIDERS: [Provider; 5] = [
     Provider {
         platform: Platform::Telemost,
         title: "Яндекс Телемост",
@@ -251,6 +260,31 @@ pub const PROVIDERS: [Provider; 4] = [
         link_regex: r"https?://teams\.(?:microsoft\.com|live\.com|microsoft\.us)/(?:l/meetup-join/|meet/)\S+",
         audio: true,
     },
+    Provider {
+        platform: Platform::Vcc,
+        title: "AirLabs L.I.N.K.",
+        hosts: &["vcc.airlabs.pro"],
+        // Суффикс, а не только точный хост: площадка корпоративная, и
+        // выделенный инстанс на поддомене — ожидаемая форма. Точка в начале
+        // образца обязательна ровно по той же причине, что и у Zoom: без неё
+        // `vcc.airlabs.pro` совпал бы с `notvcc.airlabs.pro`, а
+        // `vcc.airlabs.pro.evil.com` — вообще с чем угодно.
+        host_suffixes: &[".vcc.airlabs.pro"],
+        // Форма пути снята с живой комнаты: /r/6b2-m7e-g9z. Шаблон УЗКИЙ (три
+        // группы по три символа) намеренно: широкий `/r/(.+)` дал бы кнопку
+        // записи на любой странице раздела, а после выхода площадка уводит на
+        // `https://vcc.airlabs.pro/` — то есть встречей обязан считаться
+        // только полноценный код комнаты.
+        paths: &[r"/r/([a-z0-9]{3}-[a-z0-9]{3}-[a-z0-9]{3})"],
+        // Параметров входа у ссылки нет: код комнаты самодостаточен, имя
+        // участника вводится в пре-джойне.
+        keep_params: &[],
+        // Код комнаты в живой пробе строчный, и шаблон принимает только
+        // строчные символы — приводить нечего.
+        key_case: "preserve",
+        link_regex: r"https?://(?:[\w-]+\.)*vcc\.airlabs\.pro/r/[a-z0-9]{3}-[a-z0-9]{3}-[a-z0-9]{3}",
+        audio: true,
+    },
 ];
 
 /// Разобранная ссылка на встречу.
@@ -320,6 +354,7 @@ fn parse_meeting_url_inner(raw: &str, depth: u8) -> Option<MeetingLink> {
         Platform::GoogleMeet => meet_room(&segments)?,
         Platform::Zoom => zoom_room(&segments)?,
         Platform::Teams => teams_room(&segments)?,
+        Platform::Vcc => vcc_room(&segments)?,
     };
 
     // Хост канонизируется по-разному: у Zoom вендорный поддомен не входит в
@@ -553,6 +588,31 @@ fn teams_room(segments: &[String]) -> Option<(String, String)> {
     }
 }
 
+/// `vcc.airlabs.pro/r/<код>`, код вида `6b2-m7e-g9z`.
+///
+/// Три группы по три символа `[a-z0-9]` через дефис — форма снята с живой
+/// комнаты. Проверяется строго: адрес `https://vcc.airlabs.pro/` (именно на
+/// него площадка уводит ПОСЛЕ выхода из встречи) обязан встречей не считаться,
+/// иначе кнопка записи появлялась бы на лендинге, а бот шёл бы в никуда.
+fn vcc_room(segments: &[String]) -> Option<(String, String)> {
+    match segments {
+        [r, code] if r == "r" && is_vcc_code(code) => Some((code.clone(), format!("/r/{code}"))),
+        _ => None,
+    }
+}
+
+/// Код комнаты AirLabs: `^[a-z0-9]{3}-[a-z0-9]{3}-[a-z0-9]{3}$`.
+fn is_vcc_code(s: &str) -> bool {
+    let parts: Vec<&str> = s.split('-').collect();
+    parts.len() == 3
+        && parts.iter().all(|part| {
+            part.len() == 3
+                && part
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -567,10 +627,10 @@ mod tests {
         parse_meeting_url(raw).unwrap_or_else(|| panic!("ссылка обязана разбираться: {raw}"))
     }
 
-    // --- положительные кейсы: ~20 реальных форм четырёх платформ -----------
+    // --- положительные кейсы: ~20 реальных форм пяти платформ --------------
 
     #[test]
-    fn real_world_links_of_all_four_platforms_parse() {
+    fn real_world_links_of_all_five_platforms_parse() {
         let cases: &[(&str, Platform)] = &[
             // Телемост — форма из живой пробы Ф0.
             ("https://telemost.yandex.ru/j/60497752704486", Platform::Telemost),
@@ -602,6 +662,11 @@ mod tests {
                 Platform::Teams,
             ),
             ("https://teams.live.com/meet/9312345678901?p=abcDEF", Platform::Teams),
+            // AirLabs L.I.N.K. — форма из живой пробы Ф0 (комната 6b2-m7e-g9z).
+            ("https://vcc.airlabs.pro/r/6b2-m7e-g9z", Platform::Vcc),
+            ("http://vcc.airlabs.pro/r/6b2-m7e-g9z", Platform::Vcc),
+            // Выделенный инстанс на поддомене: суффикс сравнивается ОТ ТОЧКИ.
+            ("https://demo.vcc.airlabs.pro/r/abc-123-x9z", Platform::Vcc),
         ];
         assert!(cases.len() >= 20, "положительных кейсов должно быть около двадцати");
         for (raw, platform) in cases {
@@ -621,9 +686,14 @@ mod tests {
         assert_eq!(parse_meeting_url("https://meet.google.com.evil.com/abc-defg-hij"), None);
         assert_eq!(parse_meeting_url("https://zoom.us.evil.com/j/83123456789"), None);
         assert_eq!(parse_meeting_url("https://teams.microsoft.com.evil.com/meet/1"), None);
+        assert_eq!(parse_meeting_url("https://vcc.airlabs.pro.evil.com/r/6b2-m7e-g9z"), None);
         // И «похожий» домен без точки-разделителя.
         assert_eq!(parse_meeting_url("https://nottelemost.yandex.ru/j/1"), None);
         assert_eq!(parse_meeting_url("https://notzoom.us/j/83123456789"), None);
+        assert_eq!(parse_meeting_url("https://notvcc.airlabs.pro/r/6b2-m7e-g9z"), None);
+        // Соседний сервис той же компании: суффикса `.airlabs.pro` у нас нет
+        // намеренно — иначе сюда попал бы любой их поддомен.
+        assert_eq!(parse_meeting_url("https://crm.airlabs.pro/r/6b2-m7e-g9z"), None);
     }
 
     #[test]
@@ -636,6 +706,10 @@ mod tests {
             parse_meeting_url("https://evil.com/j/1?host=meet.google.com"),
             None
         );
+        assert_eq!(
+            parse_meeting_url("https://evil.com/?u=https://vcc.airlabs.pro/r/6b2-m7e-g9z"),
+            None
+        );
     }
 
     #[test]
@@ -645,6 +719,10 @@ mod tests {
             None
         );
         assert_eq!(parse_meeting_url("https://evil.com/#zoom.us/j/83123456789"), None);
+        assert_eq!(
+            parse_meeting_url("https://evil.com/#https://vcc.airlabs.pro/r/6b2-m7e-g9z"),
+            None
+        );
     }
 
     #[test]
@@ -682,6 +760,17 @@ mod tests {
             "https://zoom.us/download",
             "https://teams.microsoft.com/",
             "https://teams.microsoft.com/downloads",
+            // Ровно этот адрес площадка показывает ПОСЛЕ выхода из встречи
+            // (измерено живой пробой) — встречей он быть не имеет права.
+            "https://vcc.airlabs.pro/",
+            "https://vcc.airlabs.pro/r/",
+            // Код не той формы: короче, длиннее, с верхним регистром, с
+            // недопустимым символом.
+            "https://vcc.airlabs.pro/r/6b2-m7e",
+            "https://vcc.airlabs.pro/r/6b2-m7e-g9z-x1y",
+            "https://vcc.airlabs.pro/r/6B2-M7E-G9Z",
+            "https://vcc.airlabs.pro/r/6b2-m7e-g9",
+            "https://vcc.airlabs.pro/r/6b2_m7e_g9z",
         ] {
             assert_eq!(parse_meeting_url(raw), None, "{raw}");
         }
@@ -912,6 +1001,33 @@ mod tests {
         // Образец без точки не считается суффиксом вовсе: иначе `zoom.us`
         // совпал бы с `notzoom.us`.
         assert!(!host_has_suffix("us02web.zoom.us", "zoom.us"));
+        assert!(host_has_suffix("demo.vcc.airlabs.pro", ".vcc.airlabs.pro"));
+        assert!(!host_has_suffix("notvcc.airlabs.pro", ".vcc.airlabs.pro"));
+        assert!(!host_has_suffix("vcc.airlabs.pro.evil.com", ".vcc.airlabs.pro"));
+    }
+
+    /// Идентичность комнаты AirLabs и её канонический адрес.
+    #[test]
+    fn a_vcc_room_keeps_one_identity_across_the_forms_it_is_shared_in() {
+        let plain = link("https://vcc.airlabs.pro/r/6b2-m7e-g9z");
+        assert_eq!(plain.platform, Platform::Vcc);
+        assert_eq!(plain.room_id, "6b2-m7e-g9z");
+        assert_eq!(plain.url_key, "vcc:vcc.airlabs.pro/6b2-m7e-g9z");
+        assert_eq!(plain.canonical_url, "https://vcc.airlabs.pro/r/6b2-m7e-g9z");
+        // Мусор в query, фрагмент, хвостовой слеш и регистр хоста одну встречу
+        // в две не превращают.
+        for raw in [
+            "https://vcc.airlabs.pro/r/6b2-m7e-g9z?utm_source=tg",
+            "https://vcc.airlabs.pro/r/6b2-m7e-g9z#anchor",
+            "https://vcc.airlabs.pro/r/6b2-m7e-g9z/",
+            "https://VCC.AirLabs.pro/r/6b2-m7e-g9z",
+        ] {
+            assert_eq!(key(raw), plain.url_key, "{raw}");
+        }
+        // Разные комнаты — разные ключи; бот на этой площадке идёт по
+        // каноническому адресу, отдельного адреса веб-клиента у неё нет.
+        assert_ne!(key("https://vcc.airlabs.pro/r/6b2-m7e-g9y"), plain.url_key);
+        assert_eq!(bot_entry_url(&plain), plain.canonical_url);
     }
 
     /// Реестр уезжает наружу целиком, поэтому обязан сериализоваться.
@@ -963,7 +1079,7 @@ mod tests {
     #[test]
     fn the_platform_ids_match_the_frontend_registry() {
         let ids: Vec<&str> = Platform::ALL.iter().map(|p| p.as_str()).collect();
-        assert_eq!(ids, vec!["telemost", "meet", "zoom", "teams"]);
+        assert_eq!(ids, vec!["telemost", "meet", "zoom", "teams", "vcc"]);
     }
 
     /// У платформы обязана быть ОДНА строковая форма.

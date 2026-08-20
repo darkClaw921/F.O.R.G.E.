@@ -1,6 +1,6 @@
 {
   "root": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E.",
-  "generatedAt": "2026-08-18T16:17:10.234Z",
+  "generatedAt": "2026-08-20T09:31:48.487Z",
   "nodes": [
     {
       "id": "tmux-web/static/app.js",
@@ -12388,6 +12388,8 @@
         "getModels",
         "downloadModel",
         "deleteModel",
+        "getCloudModels",
+        "getCloudBalance",
         "getMeetConfig",
         "putMeetConfig",
         "resetMeetProfile",
@@ -12404,7 +12406,7 @@
           "name": "seg",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 97,
+          "line": 99,
           "signature": "seg(v)",
           "docComment": "Кодирование сегмента пути. Идентификатор встречи — UUID, но правило одно.",
           "exports": []
@@ -12414,7 +12416,7 @@
           "name": "getMeetStatus",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 113,
+          "line": 115,
           "signature": "getMeetStatus()",
           "docComment": "`GET /api/meet/status` — единственный роут, который никогда не падает.\n\n200 отдаётся даже когда нет ни одного внешнего бинаря: именно этим ответом\nпользователь узнаёт, ЧЕГО не хватает. 404 означает «плагин выключен» — и\nэто единственный способ узнать про выключенный плагин, потому что без флага\n`--meet` роутов нет вовсе.",
           "exports": [
@@ -12426,7 +12428,7 @@
           "name": "fetchBadgeRange",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 125,
+          "line": 127,
           "signature": "fetchBadgeRange(q)",
           "docComment": "`GET /api/meet/badges` — батч состояний для ленты.\n\nПараметры ДИАПАЗОННЫЕ (`min_id`/`max_id`), а не список id: так задуман роут,\nи именно поэтому N+1 на ленте физически не возникает.",
           "exports": [
@@ -12438,7 +12440,7 @@
           "name": "startMeeting",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 149,
+          "line": 151,
           "signature": "startMeeting(payload)",
           "docComment": "`POST /api/meet/meetings` — старт записи.\n\nНа сервер уезжает КАНОНИЧЕСКИЙ АДРЕС (`url`) и непрозрачная тройка-источник.\nИдентичность комнаты (`url_key`) считает бэкенд, разбирая этот адрес заново;\nфронт её не вычисляет и не отправляет — см. `messenger/meet-core.js`.",
           "exports": [
@@ -12450,7 +12452,7 @@
           "name": "stopMeeting",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 154,
+          "line": 156,
           "signature": "stopMeeting(id)",
           "docComment": "`POST /api/meet/meetings/:id/stop` — «встреча кончилась, обработай».",
           "exports": [
@@ -12462,7 +12464,7 @@
           "name": "cancelMeeting",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 159,
+          "line": 161,
           "signature": "cancelMeeting(id)",
           "docComment": "`POST /api/meet/meetings/:id/cancel` — «прерви и выброси».",
           "exports": [
@@ -12474,7 +12476,7 @@
           "name": "confirmMeeting",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 170,
+          "line": 172,
           "signature": "confirmMeeting(id)",
           "docComment": "`POST /api/meet/meetings/:id/confirm` — «я внутри, пиши».\n\nАссистированный вход: капчу, логин и лобби мы не обходим — окно бота\nпоказывается человеку, он доводит вход руками и подтверждает этой кнопкой.\nОтвет такой же, как у `stop`/`cancel`: `{meeting_id, status}`.",
           "exports": [
@@ -12486,7 +12488,7 @@
           "name": "showMeetingWindow",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 175,
+          "line": 177,
           "signature": "showMeetingWindow(id)",
           "docComment": "`POST /api/meet/meetings/:id/show-window` — показать окно бота человеку.",
           "exports": [
@@ -12498,7 +12500,7 @@
           "name": "fetchMeetingScreenshot",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 188,
+          "line": 190,
           "signature": "fetchMeetingScreenshot(id)",
           "docComment": "`GET /api/meet/meetings/:id/screenshot` — «что видит бот», PNG.\n\nЧерез `fetch`+`blob:`, а не через `<img src>`: у тега нет Bearer-токена, и в\nremote-mode картинка просто не загрузилась бы. Тот же приём, что у медиа в\nTelegram/VK/Битриксе.",
           "exports": [
@@ -12510,7 +12512,7 @@
           "name": "getMeeting",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 197,
+          "line": 199,
           "signature": "getMeeting(id)",
           "docComment": "`GET /api/meet/meetings/:id` — карточка встречи.",
           "exports": [
@@ -12522,7 +12524,7 @@
           "name": "getTranscript",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 208,
+          "line": 210,
           "signature": "getTranscript(id, opts)",
           "docComment": "`GET /api/meet/meetings/:id/transcript` — расшифровка страницами.\n\nВиртуализации в попапе нет (час встречи это 600–1200 реплик, лента рутинно\nдержит 500+ строк), поэтому пагинация здесь — не оптимизация, а способ не\nположить вкладку на трёхчасовой записи.",
           "exports": [
@@ -12534,7 +12536,7 @@
           "name": "patchSpeakers",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 218,
+          "line": 220,
           "signature": "patchSpeakers(id, payload)",
           "docComment": "`PATCH /api/meet/meetings/:id/speakers` — ручное переименование участника.",
           "exports": [
@@ -12546,7 +12548,7 @@
           "name": "getSummary",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 230,
+          "line": 232,
           "signature": "getSummary(id)",
           "docComment": "`GET /api/meet/meetings/:id/summary` — саммари встречи.\n\nОтсутствие текста — НЕ 404: ответ приходит с `status` (`none` / `pending` /\n`ready` / `failed`) и `text: null`. «Саммари выключено» и «саммари не\nполучилось» карточка показывает по-разному, и различить их можно только по\nстатусу.",
           "exports": [
@@ -12558,7 +12560,7 @@
           "name": "regenerateSummary",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 243,
+          "line": 245,
           "signature": "regenerateSummary(id)",
           "docComment": "`POST /api/meet/meetings/:id/summary` — пересчитать саммари поверх готовой\nрасшифровки.\n\nРовно то же, что `retryMeeting(id, 'summarizing')`: у операции два имени,\nпотому что пересчёт саммари — самостоятельное действие в карточке, а не\nчастный случай повтора этапа. Кнопка «ПЕРЕСЧИТАТЬ САММАРИ» ходит через\n`retryMeeting`, этот вызов оставлен как явное имя для внешних клиентов.",
           "exports": [
@@ -12570,7 +12572,7 @@
           "name": "fetchMeetingAudio",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 265,
+          "line": 267,
           "signature": "fetchMeetingAudio(id, opts)",
           "docComment": "`GET /api/meet/meetings/:id/audio` — архивный микс либо один трек.\n\nТоже через blob: у `<audio>` нет Bearer-токена. Роут при этом отвечает\nчестным Range (206/416/HEAD) — правильное поведение эндпоинта не зависит от\nтого, кто его дёргает.\n\n`track` — НЕОБЯЗАТЕЛЬНЫЙ параметр запроса, а не отдельный роут: адрес тот же,\nменяется только выборка файла на сервере (`raw/track-N.wav` вместо\n`audio.m4a`). Им пользуется вкладка участников («послушать Участника 2») —\nбез пер-трекового звука ручное именование спикеров было бы тупиком.\nРеализовано в Ф7; номер дорожки сервер разбирает в целое и собирает путь сам,\nпоэтому обход каталога через этот параметр невозможен.",
           "exports": [
@@ -12582,7 +12584,7 @@
           "name": "retryMeeting",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 272,
+          "line": 274,
           "signature": "retryMeeting(id, from)",
           "docComment": "`POST /api/meet/meetings/:id/retry?from=` — повтор этапа.",
           "exports": [
@@ -12594,7 +12596,7 @@
           "name": "getModels",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 282,
+          "line": 284,
           "signature": "getModels()",
           "docComment": "`GET /api/meet/models` — список моделей whisper.",
           "exports": [
@@ -12606,7 +12608,7 @@
           "name": "downloadModel",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 292,
+          "line": 294,
           "signature": "downloadModel(name)",
           "docComment": "`POST /api/meet/models/:name/download` — скачать модель.\n\nТОЛЬКО по явному действию пользователя: полтора гигабайта не качаются\n«на всякий случай» при открытии вкладки.",
           "exports": [
@@ -12618,7 +12620,7 @@
           "name": "deleteModel",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 302,
+          "line": 304,
           "signature": "deleteModel(name)",
           "docComment": "`DELETE /api/meet/models/:name` — удалить модель с диска.\n\nПолтора гигабайта на диске — заметная величина, и убрать их пользователь\nдолжен уметь оттуда же, откуда качал, а не руками из `~/.forge/meet/models`.",
           "exports": [
@@ -12626,11 +12628,35 @@
           ]
         },
         {
+          "id": "tmux-web/static/js/meet/api.js:getCloudModels",
+          "name": "getCloudModels",
+          "type": "function",
+          "path": "tmux-web/static/js/meet/api.js",
+          "line": 319,
+          "signature": "getCloudModels()",
+          "docComment": "`GET /api/meet/cloud/models` — каталог облачных моделей, разложенный по\nстадиям: `{configured, stt: [...], chat: [...], total, error}`.\n\nХОДИТ СЕРВЕР, А НЕ БРАУЗЕР. Каталог polza.ai требует `Authorization: Bearer\npza_…`, и прямой запрос отсюда означал бы ключ в памяти страницы, в devtools\nи в кэше PWA. Наружу уезжают только идентификаторы и цены.\n\nОтказ облака приходит ПОЛЕМ `error` при статусе 200: вкладку настроек\nоткрывают именно тогда, когда что-то не работает.",
+          "exports": [
+            "getCloudModels"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/meet/api.js:getCloudBalance",
+          "name": "getCloudBalance",
+          "type": "function",
+          "path": "tmux-web/static/js/meet/api.js",
+          "line": 330,
+          "signature": "getCloudBalance()",
+          "docComment": "`GET /api/meet/cloud/balance` — остаток В РУБЛЯХ и лимиты ключа.\n\nОТДЕЛЬНЫМ запросом, а не полем `/api/meet/status`: статус гейтит панель\nплагина целиком, и второй сетевой вызов в чужой сервис внутри него подвесил\nбы панель вместе с polza.ai.",
+          "exports": [
+            "getCloudBalance"
+          ]
+        },
+        {
           "id": "tmux-web/static/js/meet/api.js:getMeetConfig",
           "name": "getMeetConfig",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 307,
+          "line": 335,
           "signature": "getMeetConfig()",
           "docComment": "`GET /api/meet/config` — настройки плагина.",
           "exports": [
@@ -12642,7 +12668,7 @@
           "name": "putMeetConfig",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 312,
+          "line": 340,
           "signature": "putMeetConfig(payload)",
           "docComment": "`PUT /api/meet/config` — сохранить настройки.",
           "exports": [
@@ -12654,7 +12680,7 @@
           "name": "resetMeetProfile",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 326,
+          "line": 354,
           "signature": "resetMeetProfile()",
           "docComment": "`DELETE /api/meet/profile` — сбросить постоянный профиль браузера.\n\nВ каталоге профиля лежит ЖИВАЯ СЕССИЯ аккаунта, под которым бот входит во\nвстречи, поэтому у сброса отдельный адрес, а не поле в `PUT /config`:\nудаление чужих учётных данных — действие, и уехать заодно с правкой имени\nбота оно не должно.\n\n409 `busy` — идёт запись: профиль сейчас занят живым Chrome.",
           "exports": [
@@ -12666,7 +12692,7 @@
           "name": "recheckDeps",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 331,
+          "line": 359,
           "signature": "recheckDeps()",
           "docComment": "`POST /api/meet/deps/recheck` — перепроверить внешние бинари.",
           "exports": [
@@ -12678,7 +12704,7 @@
           "name": "fetchBinary",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 341,
+          "line": 369,
           "signature": "fetchBinary(path)",
           "docComment": "Общий путь для двоичных ответов (PNG, аудио).\n\nКонверт ошибок разбирается тем же `parseErrorEnvelope`, что и у JSON: сервер\nотвечает ошибкой в JSON даже на роуте, который в успехе отдаёт байты.",
           "exports": []
@@ -12688,7 +12714,7 @@
           "name": "initMeetGate",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 375,
+          "line": 403,
           "signature": "initMeetGate()",
           "docComment": "Спросить сервер один раз за загрузку страницы и включить всё остальное.\n\nИдемпотентен: повторный вызов отдаёт то же обещание и НЕ делает второго\nзапроса.",
           "exports": [
@@ -12700,7 +12726,7 @@
           "name": "meetStatusSnapshot",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 412,
+          "line": 440,
           "signature": "meetStatusSnapshot()",
           "docComment": "Последний ответ `/api/meet/status` (null, пока гейт не прошёл).",
           "exports": [
@@ -12712,7 +12738,7 @@
           "name": "meetGateRequests",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 417,
+          "line": 445,
           "signature": "meetGateRequests()",
           "docComment": "Сколько раз гейт реально сходил на сервер. Только для тестов и e2e.",
           "exports": [
@@ -12724,7 +12750,7 @@
           "name": "resetMeetGate",
           "type": "function",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 427,
+          "line": 455,
           "signature": "resetMeetGate()",
           "docComment": "Полный откат гейта — ТОЛЬКО для тестов.\n\nВ браузере этого пути нет: «плагин выключен» обязано быть решением на всю\nзагрузку страницы, иначе появился бы способ включить кнопки задним числом.",
           "exports": [
@@ -12756,7 +12782,7 @@
           "name": "gate",
           "type": "variable",
           "path": "tmux-web/static/js/meet/api.js",
-          "line": 358,
+          "line": 386,
           "exports": []
         }
       ]
@@ -14126,7 +14152,7 @@
           "name": "configureMeetPlatforms",
           "type": "function",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 290,
+          "line": 309,
           "signature": "configureMeetPlatforms(list)",
           "docComment": "Подменить реестр платформ ответом `GET /api/meet/status`.\n\nМусорный или пустой список НЕ обнуляет детект, а возвращает встроенный\nнабор: «бэкенд ответил чем-то странным» не должно означать «кнопка встречи\nисчезла везде». Записи без хостов или без шаблонов пути отбрасываются\nпоштучно — одна сломанная платформа не уносит остальные три.\n\nПринимается либо сам массив `providers`, либо тело ответа целиком (поле\n`providers`). Второго имени обёртки нет: `platforms` из первой редакции\nубрано вместе с остальной терпимостью к написанию.",
           "exports": [
@@ -14138,7 +14164,7 @@
           "name": "resetMeetPlatforms",
           "type": "function",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 300,
+          "line": 319,
           "signature": "resetMeetPlatforms()",
           "docComment": "Вернуть встроенный реестр обратно (тесты и выключение плагина).",
           "exports": [
@@ -14150,7 +14176,7 @@
           "name": "meetPlatforms",
           "type": "function",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 309,
+          "line": 328,
           "signature": "meetPlatforms()",
           "docComment": "Действующий реестр — только для чтения (копия массива).",
           "exports": [
@@ -14162,7 +14188,7 @@
           "name": "normalizePlatforms",
           "type": "function",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 325,
+          "line": 344,
           "signature": "normalizePlatforms(list)",
           "docComment": "Приведение записей реестра к одной внутренней форме плюс КОМПИЛЯЦИЯ\nшаблонов пути.\n\nКомпиляция здесь, а не в горячем пути детекта: `new RegExp` на каждое\nсообщение ленты — это лишняя работа на каждом кадре прокрутки. Битый шаблон\n(бэкенд собран другой версией) не роняет вызов, а выбрасывается: пусть\nраспознаётся меньше форм ссылок, чем падает вся панель.",
           "exports": []
@@ -14172,7 +14198,7 @@
           "name": "detectMeetUrl",
           "type": "function",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 402,
+          "line": 421,
           "signature": "detectMeetUrl(raw)",
           "docComment": "Разобрать строку как ссылку на встречу.\n\nПорядок проверок принципиален и читается сверху вниз как лестница доверия:\n\n  1. длина                — ограничитель раньше любого разбора;\n  2. `safeHref`           — схема (`http:`/`https:`), общая с рендером\n                            Markdown; `javascript:` и относительные умирают\n                            здесь;\n  3. `hostname`           — точное равенство или суффикс от точки;\n  4. шаблон пути          — заякоренный, с группой-идентификатором;\n  5. нормализация         — белый список параметров, без userinfo и якоря.",
           "exports": [
@@ -14184,7 +14210,7 @@
           "name": "isMeetUrl",
           "type": "function",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 458,
+          "line": 477,
           "signature": "isMeetUrl(raw)",
           "docComment": "Есть ли в строке ссылка на встречу (без сборки результата).",
           "exports": [
@@ -14196,7 +14222,7 @@
           "name": "launcherTarget",
           "type": "function",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 480,
+          "line": 499,
           "signature": "launcherTarget(url)",
           "docComment": "Настоящий адрес встречи внутри ссылки-лаунчера Teams.\n\nTeams рассылает `…/dl/launcher/launcher.html?url=%2F_%23%2Fl%2Fmeetup-join%2F…`,\nгде внутренний адрес бывает и абсолютным, и относительным, а путь встречи\nиногда лежит ПОСЛЕ РЕШЁТКИ (`/_#/l/meetup-join/…`) — в такой форме `URL`\nсчитает его якорем, и путь остался бы `/_`.\n\nХост берётся только у самого лаунчера, а хост внутренней ссылки обязан снова\nоказаться хостом Teams: параметр `url` приходит из того же чужого сообщения,\nчто и всё остальное, и доверия ему ровно столько же.",
           "exports": []
@@ -14206,7 +14232,7 @@
           "name": "isTeamsHost",
           "type": "function",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 508,
+          "line": 527,
           "signature": "isTeamsHost(host)",
           "docComment": "Хост принадлежит Teams по ДЕЙСТВУЮЩЕМУ реестру, а не по своему списку.",
           "exports": []
@@ -14216,7 +14242,7 @@
           "name": "hostMatches",
           "type": "function",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 526,
+          "line": 545,
           "signature": "hostMatches(host, p)",
           "docComment": "Хост принадлежит платформе?\n\nЕДИНСТВЕННОЕ место, где решается «наша это встреча или чужой сайт».\nРавенство — полное; суффикс — обязательно с точкой в начале, поэтому\n`telemost.yandex.ru.evil.com` не совпадёт ни с одним хостом (у него\nпоследний ярлык `com`), а `us02web.zoom.us` совпадёт с `.zoom.us`.",
           "exports": []
@@ -14226,7 +14252,7 @@
           "name": "matchPath",
           "type": "function",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 547,
+          "line": 566,
           "signature": "matchPath(pathname, p)",
           "docComment": "Путь против шаблонов платформы; результат — идентификатор комнаты.\n\nПроцентное кодирование раскрывается: `19%3ameeting_X%40thread.v2` и\n`19%3Ameeting_X%40thread.v2` — один и тот же тред Teams, и ключ у них обязан\nбыть один. Нераскрываемая последовательность остаётся как есть.",
           "exports": []
@@ -14236,7 +14262,7 @@
           "name": "canonicalUrl",
           "type": "function",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 579,
+          "line": 598,
           "signature": "canonicalUrl(url, host, p)",
           "docComment": "Канонический адрес встречи.\n\nЧто уходит: `username`/`password` (в ссылке на встречу их не бывает, зато\nбывают в подделке), якорь, все параметры вне белого списка, завершающий слэш\nпути и завершающая точка хоста.\n\nЧто остаётся: схема, хост с портом, путь, разрешённые параметры В ПОРЯДКЕ\nОБЪЯВЛЕНИЯ в реестре — благодаря этому две записи одной встречи с разным\nпорядком query дают побайтово одинаковый адрес.",
           "exports": []
@@ -14246,7 +14272,7 @@
           "name": "normalizeHost",
           "type": "function",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 616,
+          "line": 635,
           "signature": "normalizeHost(raw)",
           "docComment": "Хост к сравнимому виду: нижний регистр и БЕЗ завершающей точки.\n\nЗавершающая точка — не мелочь: `telemost.yandex.ru.` это валидное полное имя,\nкоторое конструктор URL сохраняет как есть, и без обрезки точное равенство\nпромахнулось бы. Обратная сторона (`evil.com.` вдруг совпадёт) невозможна:\nобрезка убирает только последний символ, ярлыки не меняются.",
           "exports": []
@@ -14256,7 +14282,7 @@
           "name": "collectUrlsFromText",
           "type": "function",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 653,
+          "line": 672,
           "signature": "collectUrlsFromText(text)",
           "docComment": "Адреса из свободного текста в порядке появления.\n\nОтсечение хвостовой пунктуации обязательно: «созвон https://telemost.yandex.ru/j/1.»\nбез него даёт путь `/j/1.`, шаблон не совпадает, кнопка не появляется — и\nвыглядит это как «иногда не работает». Скобка срезается только непарная:\nу Teams `context` бывает в скобках, и внутри адреса они законны.",
           "exports": [
@@ -14268,7 +14294,7 @@
           "name": "trimUrlTail",
           "type": "function",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 674,
+          "line": 693,
           "signature": "trimUrlTail(token)",
           "docComment": "Срезать хвост, не принадлежащий адресу.",
           "exports": []
@@ -14278,7 +14304,7 @@
           "name": "collectUrlsFromSegments",
           "type": "function",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 718,
+          "line": 737,
           "signature": "collectUrlsFromSegments(segments, depth = 0, acc = [])",
           "docComment": "Адреса из дерева BB-сегментов Битрикса — в порядке обхода.\n\nПОЧЕМУ НЕ `segmentsText()`. Она возвращает `inner || value`, то есть у\n`[URL=https://telemost.yandex.ru/j/1]созвон[/URL]` отдаст «созвон», а адрес\nпотеряется совсем. Здесь наоборот: у сегмента `url` берётся сначала `value`,\nа потом содержимое — потому что вторая живая форма портала прямо\nпротивоположна первой. Когда `URL_PREVIEW: \"Y\"` оборачивает голую ссылку,\nполучается `[URL]https://…[/URL]`: атрибута НЕТ, адрес лежит текстом внутри\n(см. bbcode.rs::a_bare_url_wrapped_by_the_portal_keeps_its_address).\nОбе формы встречаются в одном чате.\n\nТекстовые сегменты тоже просматриваются: с выключенным превью портал не\nоборачивает ссылку ничем, и она приезжает обычным текстом.\n\nОграничитель глубины — как у `renderSegments`: дерево приходит от портала.",
           "exports": [
@@ -14290,7 +14316,7 @@
           "name": "attachmentUrl",
           "type": "function",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 753,
+          "line": 772,
           "signature": "attachmentUrl(att)",
           "docComment": "Адрес вложения-ссылки.\n\nДве формы, и обе живые:\n- нормализованный `MediaDto` бэкенда — вид у него `other` (см.\n  `attach.rs`: сырой тип `link` схлопывается в `other`), а адрес лежит в\n  `link_url`. ЭТО ОСНОВНАЯ ФОРМА, и она не совпадает с буквой плана, где\n  написано `kind === 'link'`;\n- сырое вложение VK (`type: 'link'`, адрес в `link.url`) — так приезжают\n  кадры WS, собранные предыдущей версией плагина.",
           "exports": []
@@ -14300,7 +14326,7 @@
           "name": "attachmentSource",
           "type": "function",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 776,
+          "line": 795,
           "signature": "attachmentSource(msg)",
           "docComment": "Вложения сообщения в любой из поддерживаемых форм.\n\nПовторяет `attachmentSource` из vk/attachments.js намеренно: тянуть сюда\nимпорт панели VK ради трёх строк значило бы, что общий слой мессенджеров\nзависит от конкретного плагина.",
           "exports": []
@@ -14310,7 +14336,7 @@
           "name": "messageUrlCandidates",
           "type": "function",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 797,
+          "line": 816,
           "signature": "messageUrlCandidates(msg, panel)",
           "docComment": "Все адреса-кандидаты сообщения — в том порядке, в каком их видит человек.",
           "exports": [
@@ -14322,7 +14348,7 @@
           "name": "detectMeetInMessage",
           "type": "function",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 845,
+          "line": 864,
           "signature": "detectMeetInMessage(msg, panel)",
           "docComment": "Первая встреча в сообщении.\n\nПЕРВАЯ, а не «лучшая»: сообщение с двумя ссылками — редкость, а выбор между\nними по какому-нибудь приоритету платформ был бы для человека\nнепредсказуемым. Порядок обхода — порядок в сообщении: текст, затем\nвложения (VK), либо порядок сегментов (Битрикс).",
           "exports": [
@@ -14334,7 +14360,7 @@
           "name": "detectAllMeetsInMessage",
           "type": "function",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 860,
+          "line": 879,
           "signature": "detectAllMeetsInMessage(msg, panel)",
           "docComment": "Все встречи сообщения без дублей по ключу — для попапа и отладки.",
           "exports": [
@@ -14346,7 +14372,7 @@
           "name": "strOr",
           "type": "function",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 878,
+          "line": 897,
           "signature": "strOr(v, fallback)",
           "docComment": "Непустая строка или запасное значение.",
           "exports": []
@@ -14356,7 +14382,7 @@
           "name": "strList",
           "type": "function",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 885,
+          "line": 904,
           "signature": "strList(v)",
           "docComment": "Массив непустых строк из чего угодно.",
           "exports": []
@@ -14367,7 +14393,7 @@
           "type": "variable",
           "path": "tmux-web/static/js/messenger/meet-core.js",
           "line": 163,
-          "docComment": "Потолок длины одного адреса-кандидата.\n\nВсё длиннее — не ссылка на встречу, а либо data-подобная простыня, либо\nпопытка нагрузить разбор. Реальный максимум среди четырёх платформ — ссылка\nTeams с `context`, и она укладывается в ~400 символов.",
+          "docComment": "Потолок длины одного адреса-кандидата.\n\nВсё длиннее — не ссылка на встречу, а либо data-подобная простыня, либо\nпопытка нагрузить разбор. Реальный максимум среди платформ реестра — ссылка\nTeams с `context`, и она укладывается в ~400 символов.",
           "exports": []
         },
         {
@@ -14413,7 +14439,7 @@
           "name": "platforms",
           "type": "variable",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 273,
+          "line": 292,
           "docComment": "Действующий реестр. Заменяется целиком через `configureMeetPlatforms`.",
           "exports": []
         },
@@ -14422,7 +14448,7 @@
           "name": "TEAMS_LAUNCHER_PATH",
           "type": "variable",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 463,
+          "line": 482,
           "docComment": "Путь ссылки-лаунчера Teams. Сравнивается целиком, без учёта регистра.",
           "exports": []
         },
@@ -14431,7 +14457,7 @@
           "name": "URL_TOKEN_RE",
           "type": "variable",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 634,
+          "line": 653,
           "docComment": "Регулярка ищет ТОЛЬКО кандидатов, а не решает, встреча ли это.\n\nРешение принимает `detectMeetUrl` по хосту. Поэтому здесь допустима широкая\nформа: «`http(s)://` и всё до пробела или разметочной скобки». Пропустить\nлишнее не опасно, пропустить нужное — опасно.",
           "exports": []
         },
@@ -14440,7 +14466,7 @@
           "name": "TRAILING_PUNCT",
           "type": "variable",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 637,
+          "line": 656,
           "docComment": "Хвостовая пунктуация, приклеенная к адресу концом фразы.",
           "exports": []
         },
@@ -14449,7 +14475,7 @@
           "name": "TRAILING_PAIRS",
           "type": "variable",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 640,
+          "line": 659,
           "docComment": "Парные хвосты: срезаются, только если открывающего в адресе не было.",
           "exports": []
         },
@@ -14458,7 +14484,7 @@
           "name": "MEET_PANELS",
           "type": "variable",
           "path": "tmux-web/static/js/messenger/meet-core.js",
-          "line": 787,
+          "line": 806,
           "docComment": "Панели, у которых источник текста описан поимённо.",
           "exports": [
             "MEET_PANELS"
@@ -18045,22 +18071,131 @@
       "type": "file",
       "path": "tmux-web/static/js/settings/meet-tab.js",
       "exports": [
+        "backendNote",
+        "formatRub",
+        "modelPrice",
+        "modelOptionLabel",
+        "sttModelNote",
+        "summaryCostEstimate",
+        "summaryModelNote",
+        "balanceLine",
         "formatBytes",
         "deviceBadge",
         "depLine",
         "buildMeetSettings",
+        "cloudCatalogueFor",
         "MEET_GROUPS",
         "MEET_LABELS",
+        "BACKEND_LABELS",
+        "KEY_MASK_CHAR",
+        "HOUR_PROMPT_TOKENS",
+        "HOUR_COMPLETION_TOKENS",
         "WINDOW_MODE_LABELS",
         "DEP_HINTS"
       ],
       "children": [
         {
+          "id": "tmux-web/static/js/settings/meet-tab.js:backendNote",
+          "name": "backendNote",
+          "type": "function",
+          "path": "tmux-web/static/js/settings/meet-tab.js",
+          "line": 124,
+          "signature": "backendNote(key, value, ctx)",
+          "docComment": "Что означает выбранная стадия ПРЯМО СЕЙЧАС, с учётом окружения.\n\nОтдельная чистая функция, потому что это единственное место, где «облако» и\n«локально» превращаются в проверяемое обещание: облако без ключа и локальная\nрасшифровка без Metal одинаково НЕ ЗАПУСТЯТСЯ, и узнать об этом человек\nобязан у переключателя, а не из упавшей встречи через час.",
+          "exports": [
+            "backendNote"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/settings/meet-tab.js:formatRub",
+          "name": "formatRub",
+          "type": "function",
+          "path": "tmux-web/static/js/settings/meet-tab.js",
+          "line": 194,
+          "signature": "formatRub(n)",
+          "docComment": "Сумма в рублях. Валюта у polza.ai одна, и подписывать её обязательно: «461»\nбез знака читается как доллары.",
+          "exports": [
+            "formatRub"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/settings/meet-tab.js:modelPrice",
+          "name": "modelPrice",
+          "type": "function",
+          "path": "tmux-web/static/js/settings/meet-tab.js",
+          "line": 212,
+          "signature": "modelPrice(m)",
+          "docComment": "Цена модели человеческой строкой.\n\n**Отсутствие цены — это «цену не отдали», а НЕ «бесплатно».** Наивный разбор\nкаталога читает `pricing` верхнего уровня, где у всех записей пусто, и молча\nпоказывает ноль; узнают об этом по счёту в конце месяца. Здесь цена приходит\nготовой из `top_provider.pricing` (разбирает бэкенд), а пустое значение\nназывает себя вслух.",
+          "exports": [
+            "modelPrice"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/settings/meet-tab.js:modelOptionLabel",
+          "name": "modelOptionLabel",
+          "type": "function",
+          "path": "tmux-web/static/js/settings/meet-tab.js",
+          "line": 229,
+          "signature": "modelOptionLabel(m)",
+          "docComment": "Подпись строки каталога: имя, цена и метка непригодности.",
+          "exports": [
+            "modelOptionLabel"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/settings/meet-tab.js:sttModelNote",
+          "name": "sttModelNote",
+          "type": "function",
+          "path": "tmux-web/static/js/settings/meet-tab.js",
+          "line": 242,
+          "signature": "sttModelNote(m)",
+          "docComment": "Пригодность облачной модели расшифровки.\n\nОграничение сервиса, а не наше: таймкоды даёт ОДНА модель. Флаг `timestamps`\nприезжает с бэкенда (`crate::cloud::stt_gives_timestamps`), чтобы имя\nпригодной модели не появилось во фронте третьей копией.",
+          "exports": [
+            "sttModelNote"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/settings/meet-tab.js:summaryCostEstimate",
+          "name": "summaryCostEstimate",
+          "type": "function",
+          "path": "tmux-web/static/js/settings/meet-tab.js",
+          "line": 274,
+          "signature": "summaryCostEstimate(m)",
+          "docComment": "Во что обойдётся саммари часовой встречи выбранной моделью, рублей.\n\n`null` — цены нет, и выдумывать её нельзя: «бесплатно» здесь было бы враньём.",
+          "exports": [
+            "summaryCostEstimate"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/settings/meet-tab.js:summaryModelNote",
+          "name": "summaryModelNote",
+          "type": "function",
+          "path": "tmux-web/static/js/settings/meet-tab.js",
+          "line": 286,
+          "signature": "summaryModelNote(m)",
+          "docComment": "Подпись модели саммари: контекст и цена часовой встречи.",
+          "exports": [
+            "summaryModelNote"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/settings/meet-tab.js:balanceLine",
+          "name": "balanceLine",
+          "type": "function",
+          "path": "tmux-web/static/js/settings/meet-tab.js",
+          "line": 318,
+          "signature": "balanceLine(dto)",
+          "docComment": "Остаток средств и лимита ключа одной строкой.",
+          "exports": [
+            "balanceLine"
+          ]
+        },
+        {
           "id": "tmux-web/static/js/settings/meet-tab.js:formatBytes",
           "name": "formatBytes",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 95,
+          "line": 356,
           "signature": "formatBytes(n)",
           "docComment": "Человеческий размер.",
           "exports": [
@@ -18072,7 +18207,7 @@
           "name": "deviceBadge",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 116,
+          "line": 377,
           "signature": "deviceBadge(deps)",
           "docComment": "Состояние вычислителя: на чём пойдёт расшифровка.\n\nВозвращает `{ tone, text }`, где `tone` — `ok` | `warn` | `wait`. Отдельной\nчистой функцией, потому что это ЕДИНСТВЕННОЕ место, где правило проекта\n«только GPU» превращается в текст для человека, и проверять его надо без\nDOM.",
           "exports": [
@@ -18084,7 +18219,7 @@
           "name": "depLine",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 135,
+          "line": 396,
           "signature": "depLine(name, dep, hint)",
           "docComment": "Строка состояния одного внешнего бинаря — с подсказкой, что ставить.",
           "exports": [
@@ -18096,7 +18231,7 @@
           "name": "el",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 157,
+          "line": 418,
           "signature": "el(tag, cls, text)",
           "exports": []
         },
@@ -18105,7 +18240,7 @@
           "name": "statusLine",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 165,
+          "line": 426,
           "signature": "statusLine(host, { tone, text })",
           "docComment": "Строка состояния с тоном.",
           "exports": []
@@ -18115,7 +18250,7 @@
           "name": "buildMeetSettings",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 180,
+          "line": 441,
           "signature": "buildMeetSettings(host, deps)",
           "docComment": "Рисует вкладку.",
           "exports": [
@@ -18127,9 +18262,19 @@
           "name": "buildProfileBlock",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 391,
+          "line": 666,
           "signature": "buildProfileBlock(profile, api, refs)",
           "docComment": "Блок постоянного профиля браузера: предупреждение, права, кнопка сброса.\n\n# Почему предупреждение приходит С СЕРВЕРА\n\nПотому что оно описывает СВОЙСТВО ХРАНЕНИЯ, а не интерфейс: что именно\nлежит в каталоге, знает бэкенд, и написанный здесь свой текст разъехался бы\nс фактическим поведением в первый же день, когда поведение изменится.\n\n# Почему кнопка видна и при выключенной настройке\n\nПотому что каталог мог остаться от прежней настройки. «Выключил галку, а\nсессия Google так и лежит на диске» — ровно то молчаливое расхождение,\nкоторого плагин избегает везде.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/settings/meet-tab.js:buildCloudBlock",
+          "name": "buildCloudBlock",
+          "type": "function",
+          "path": "tmux-web/static/js/settings/meet-tab.js",
+          "line": 731,
+          "signature": "buildCloudBlock(fs, api, refs)",
+          "docComment": "Хвост раздела «Облако»: остаток средств и состояние каталога моделей.\n\n# Почему баланс приезжает ОТДЕЛЬНЫМ запросом и позже формы\n\nПотому что это второй поход в чужой сервис. В `GET /api/meet/status` его\nнамеренно нет: статус гейтит панель плагина, и подвисший polza.ai выключил\nбы встречи целиком. Здесь тот же принцип на уровне вкладки: форма уже\nнарисована и работает, а строка остатка дозаполняется, когда ответ придёт.\nОтказ — строчка, а не сломанная вкладка.",
           "exports": []
         },
         {
@@ -18137,17 +18282,29 @@
           "name": "buildModelRow",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 446,
+          "line": 774,
           "signature": "buildModelRow(m, models, api, refs)",
           "docComment": "Строка модели: имя, вес, состояние, кнопка скачать/удалить.",
           "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/settings/meet-tab.js:cloudCatalogueFor",
+          "name": "cloudCatalogueFor",
+          "type": "function",
+          "path": "tmux-web/static/js/settings/meet-tab.js",
+          "line": 822,
+          "signature": "cloudCatalogueFor(key, catalogue)",
+          "docComment": "Список моделей каталога для поля — либо `null`, если списка нет.\n\nСтадии смотрят в РАЗНЫЕ списки: расшифровка в `stt`, саммари в `chat`.\nСмешанный список предлагал бы выбрать генератор картинок саммаризатором.",
+          "exports": [
+            "cloudCatalogueFor"
+          ]
         },
         {
           "id": "tmux-web/static/js/settings/meet-tab.js:buildField",
           "name": "buildField",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 489,
+          "line": 831,
           "signature": "buildField(f, refs)",
           "docComment": "Одно поле настроек.",
           "exports": []
@@ -18157,7 +18314,7 @@
           "name": "collect",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 546,
+          "line": 966,
           "signature": "collect(refs)",
           "docComment": "Собирает ИЗМЕНЁННЫЕ значения полей.",
           "exports": []
@@ -18167,7 +18324,7 @@
           "name": "applySaved",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 565,
+          "line": 992,
           "signature": "applySaved(refs, config)",
           "docComment": "Обновляет форму ответом сервера, чтобы «изменённых полей» не осталось.",
           "exports": []
@@ -18177,7 +18334,7 @@
           "name": "errText",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 575,
+          "line": 1002,
           "signature": "errText(e)",
           "exports": []
         },
@@ -18197,10 +18354,53 @@
           "name": "MEET_LABELS",
           "type": "variable",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 60,
+          "line": 61,
           "docComment": "Человеческие подписи полей. Ключ, которого здесь нет, подписывается собой.",
           "exports": [
             "MEET_LABELS"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/settings/meet-tab.js:BACKEND_LABELS",
+          "name": "BACKEND_LABELS",
+          "type": "variable",
+          "path": "tmux-web/static/js/settings/meet-tab.js",
+          "line": 95,
+          "docComment": "Подписи переключателей стадий.",
+          "exports": [
+            "BACKEND_LABELS"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/settings/meet-tab.js:KEY_MASK_CHAR",
+          "name": "KEY_MASK_CHAR",
+          "type": "variable",
+          "path": "tmux-web/static/js/settings/meet-tab.js",
+          "line": 109,
+          "docComment": "Символ маски ключа.\n\nТот же, что `crate::cloud::MASK_CHAR` в бэкенде. Здесь он нужен ровно затем,\nчтобы НЕ ОТПРАВИТЬ МАСКУ ОБРАТНО: `GET` отдаёт ключ только маской, и форма,\nкоторая вернёт её в `PUT`, получит 400 (бэкенд узнаёт свою маску и\nотказывается принимать её за ключ) либо, не будь той проверки, затёрла бы\nнастоящий ключ строкой из точек.",
+          "exports": [
+            "KEY_MASK_CHAR"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/settings/meet-tab.js:HOUR_PROMPT_TOKENS",
+          "name": "HOUR_PROMPT_TOKENS",
+          "type": "variable",
+          "path": "tmux-web/static/js/settings/meet-tab.js",
+          "line": 266,
+          "docComment": "Токенов во входе и выходе саммари часовой встречи — для оценки стоимости.",
+          "exports": [
+            "HOUR_PROMPT_TOKENS"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/settings/meet-tab.js:HOUR_COMPLETION_TOKENS",
+          "name": "HOUR_COMPLETION_TOKENS",
+          "type": "variable",
+          "path": "tmux-web/static/js/settings/meet-tab.js",
+          "line": 267,
+          "exports": [
+            "HOUR_COMPLETION_TOKENS"
           ]
         },
         {
@@ -18208,7 +18408,7 @@
           "name": "WINDOW_MODE_LABELS",
           "type": "variable",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 87,
+          "line": 348,
           "docComment": "Подписи режимов окна.",
           "exports": [
             "WINDOW_MODE_LABELS"
@@ -18219,7 +18419,7 @@
           "name": "DEP_HINTS",
           "type": "variable",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 150,
+          "line": 411,
           "docComment": "Что именно ставить, если бинаря нет.",
           "exports": [
             "DEP_HINTS"

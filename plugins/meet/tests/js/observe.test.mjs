@@ -181,6 +181,26 @@ const MOCK_PROBES = {
     post_call_url: ["/after-call"]
 };
 
+/** Плитка LiveKit (vcc.airlabs.pro): имя на ВЛОЖЕННОМ узле, признаки атрибутами. */
+function livekitTile(name, { local = false, speaking = false } = {}) {
+    return el("div", {
+        class: "lk-participant-tile",
+        "data-lk-local-participant": String(local),
+        "data-lk-speaking": String(speaking)
+    }, [
+        el("span", { "data-lk-participant-name": name }, [], name)
+    ]);
+}
+
+const VCC_PROBES = {
+    participant: [".lk-participant-tile"],
+    participant_name: ["[data-lk-participant-name]"],
+    local_participant_marker: ["[data-lk-local-participant=\"true\"]"],
+    speaking_marker: ["[data-lk-speaking=\"true\"]"],
+    participant_key_attr: [],
+    active_speaker: []
+};
+
 const TELEMOST_PROBES = {
     participant: ["[class*=\"newGridItem\"]"],
     participant_name: ["[class*=\"participantName\"]", "[class*=\"TextName\"]"],
@@ -299,6 +319,38 @@ test("участники Телемоста: маркер речи в ПОТОМ
     assert.equal(got[0].speaking, true, "обводка rootStroke на потомке не увидена");
     assert.equal(got[1].speaking, false);
     assert.equal(got[0].key, null, "у Телемоста стабильного идентификатора плитки нет");
+});
+
+test("СВОЯ ПЛИТКА ВЫЧИТАЕТСЯ: бот не участник самому себе", () => {
+    const doc = el("body", {}, [
+        livekitTile("F.O.R.G.E. бот", { local: true }),
+        livekitTile("Алиса Тестова", { speaking: true }),
+        livekitTile("Борис Пробин")
+    ]);
+    const got = forgeReadParticipants(doc, VCC_PROBES);
+    assert.deepEqual(got.map(p => p.name), ["Алиса Тестова", "Борис Пробин"],
+        "плитка бота попала в список участников");
+    assert.equal(got[0].speaking, true);
+    assert.equal(got[0].key, null, "SID участника в DOM не выставлен — ключ берётся именем в Rust");
+});
+
+test("пустая проба своей плитки НИЧЕГО не вычитает: у прочих площадок список прежний", () => {
+    const doc = el("body", {}, [mockTile("p0", "F.O.R.G.E.", false), mockTile("p1", "Алиса", true)]);
+    assert.equal(forgeReadParticipants(doc, MOCK_PROBES).length, 2);
+    assert.equal(forgeReadParticipants(doc, { ...MOCK_PROBES, local_participant_marker: [] }).length, 2);
+});
+
+test("протухшая проба своей плитки не обнуляет список участников", () => {
+    // Худший случай механизма: LiveKit переименовал атрибут. Вычитать станет
+    // нечего — и это ровно та деградация, которая допустима: бот снова
+    // попадёт в собственный список, но остальные участники не пропадут.
+    const doc = el("body", {}, [
+        livekitTile("F.O.R.G.E. бот", { local: true }),
+        livekitTile("Алиса Тестова")
+    ]);
+    const rotten = { ...VCC_PROBES, local_participant_marker: ["[data-lk-нет-такого=\"true\"]"] };
+    assert.deepEqual(forgeReadParticipants(doc, rotten).map(p => p.name),
+        ["F.O.R.G.E. бот", "Алиса Тестова"]);
 });
 
 test("протухшая проба имени не обнуляет список: имя берётся текстом плитки", () => {

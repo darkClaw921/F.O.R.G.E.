@@ -53,6 +53,42 @@ use crate::error::MeetError;
 use crate::hub::MeetHub;
 use crate::ws::protocol::{Limits, MeetServerMsg};
 
+/// Сколько живёт результат опроса облака.
+///
+/// Минута — компромисс между «панель показывает свежий остаток лимита» и «одна
+/// открытая вкладка не превращается в поток запросов к чужому сервису».
+/// Опрашивается бесплатный `GET /key`, и всё же: панель дёргает статус в фоне,
+/// а вкладок бывает несколько.
+pub const CLOUD_PROBE_TTL: Duration = Duration::from_secs(60);
+
+/// Потолок опроса облака ВНУТРИ `GET /api/meet/status`.
+///
+/// **Короткий намеренно.** `status` — единственный роут, который никогда не
+/// падает, и он же гейтит весь плагин на фронте (`meetEnabled` определяется
+/// по его ответу). Повисший polza.ai не имеет права подвесить панель: три
+/// секунды — это «сервис жив, но задумался», а всё, что дольше, честнее
+/// показать полем ошибки и обновить в следующий раз.
+pub const CLOUD_PROBE_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// Результат последнего опроса облака.
+#[derive(Debug, Clone)]
+pub struct CloudProbe {
+    /// Когда опрашивали.
+    pub at: std::time::Instant,
+    /// Ответ `GET /key`. `None` — не ответил.
+    pub key: Option<crate::cloud::service::KeyInfo>,
+    /// Код и текст отказа. `None` — отказа не было.
+    pub error: Option<(&'static str, String)>,
+}
+
+impl CloudProbe {
+    /// Протух ли результат.
+    #[must_use]
+    pub fn stale(&self) -> bool {
+        self.at.elapsed() >= CLOUD_PROBE_TTL
+    }
+}
+
 /// Ёмкость broadcast-канала. Столько же, сколько у остальных плагинов.
 ///
 /// При переполнении подписчик получает `Lagged`, а мы шлём ему `Resync` —
@@ -97,6 +133,13 @@ pub struct MeetState {
     /// сеанса записи к этому моменту уже нет — он закончился вместе с
     /// браузером.
     jobs: RwLock<HashMap<String, CancellationToken>>,
+    /// Последний ответ облака на бесплатный `GET /key` и когда он получен.
+    ///
+    /// Кэш живёт в состоянии, а не в роуте, по одной причине: `GET
+    /// /api/meet/status` дёргает панель плагина — часто и в фоне. Без кэша
+    /// каждый его вызов означал бы поход в сеть, а недоступный polza.ai
+    /// превращал бы панель в подвисшую.
+    cloud_probe: RwLock<Option<CloudProbe>>,
     pub workers: Mutex<Vec<JoinHandle<()>>>,
     pub shutdown: CancellationToken,
     /// Период heartbeat-пинга WS.
@@ -145,6 +188,7 @@ impl MeetState {
             model_source: std::sync::RwLock::new(Arc::new(crate::models::HttpModelSource)),
             downloading: RwLock::new(std::collections::HashSet::new()),
             jobs: RwLock::new(HashMap::new()),
+            cloud_probe: RwLock::new(None),
             workers: Mutex::new(Vec::new()),
             shutdown: CancellationToken::new(),
             ws_heartbeat,
@@ -358,6 +402,73 @@ impl MeetState {
     /// Текущий отчёт о зависимостях.
     pub async fn deps_snapshot(&self) -> DepsReport {
         self.deps.read().await.clone()
+    }
+
+    /// Спрашивает облако о живости ключа — **не чаще раза в
+    /// [`CLOUD_PROBE_TTL`] и не дольше [`CLOUD_PROBE_TIMEOUT`]**.
+    ///
+    /// # Не возвращает `Result` НАМЕРЕННО
+    ///
+    /// Единственный вызывающий — `GET /api/meet/status`, роут, который никогда
+    /// не падает. Недоступный polza.ai здесь обязан стать ПОЛЕМ со статусом
+    /// ошибки, а не ошибкой роута: панель плагина гейтится этим ответом, и
+    /// 500 из-за чужого сервиса выключил бы плагин целиком.
+    ///
+    /// Опрашивается бесплатный `GET /key`: он не тратит ни копейки и сразу
+    /// показывает остаток лимита. `GET /balance` сюда не ставится — это ещё
+    /// один сетевой вызов ради числа, которое нужно не всегда.
+    ///
+    /// `None` возвращается, когда спрашивать нечего: ключа нет.
+    pub async fn cloud_probe(&self) -> Option<CloudProbe> {
+        if !self.config.cloud_configured() {
+            return None;
+        }
+        if let Some(p) = self.cloud_probe.read().await.clone() {
+            if !p.stale() {
+                return Some(p);
+            }
+        }
+
+        let probe = match crate::cloud::CloudClient::new(&self.config.cloud()) {
+            Ok(client) => {
+                // Потолок ставится ДВАЖДЫ: свой на вызове и общий снаружи.
+                // Внутренний ограничивает запрос, внешний — всё остальное,
+                // включая разрешение имени и рукопожатие TLS.
+                let call = client.key_info(CLOUD_PROBE_TIMEOUT);
+                match tokio::time::timeout(CLOUD_PROBE_TIMEOUT, call).await {
+                    Ok(Ok(info)) => CloudProbe {
+                        at: std::time::Instant::now(),
+                        key: Some(info),
+                        error: None,
+                    },
+                    Ok(Err(e)) => CloudProbe {
+                        at: std::time::Instant::now(),
+                        key: None,
+                        error: Some((e.code(), e.message())),
+                    },
+                    // Свой потолок сработал раньше чужого: полем, а не
+                    // зависшим роутом.
+                    Err(_) => CloudProbe {
+                        at: std::time::Instant::now(),
+                        key: None,
+                        error: Some((
+                            "cloud_timeout",
+                            format!(
+                                "polza.ai не ответил за {} с",
+                                CLOUD_PROBE_TIMEOUT.as_secs()
+                            ),
+                        )),
+                    },
+                }
+            }
+            Err(e) => CloudProbe {
+                at: std::time::Instant::now(),
+                key: None,
+                error: Some((e.code(), e.message())),
+            },
+        };
+        *self.cloud_probe.write().await = Some(probe.clone());
+        Some(probe)
     }
 
     /// Регистрирует фонового воркера для последующего graceful shutdown.

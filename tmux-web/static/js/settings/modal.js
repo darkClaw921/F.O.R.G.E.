@@ -45,7 +45,7 @@ import { buildBitrixVisibilityForm } from './bitrix-visibility-tab.js';
 import { buildMeetSettings } from './meet-tab.js';
 import {
     meetEnabled, getMeetConfig, putMeetConfig, getMeetStatus, getModels, downloadModel,
-    recheckDeps,
+    recheckDeps, getCloudModels, getCloudBalance, resetMeetProfile,
 } from '../meet/api.js';
 
 export function openSettingsModal(initialTab) {
@@ -382,8 +382,13 @@ export function openSettingsModal(initialTab) {
         if (meetTabState.loaded || !$meetContent) return;
         meetTabState.loaded = true;
         $meetContent.textContent = 'Loading settings…';
+        // Список обязан покрывать ВСЕ `api.*`, которые зовёт meet-tab.js:
+        // отсутствующее имя вкладка переживает молча (`typeof … !== 'function'`
+        // — ветка деградации), и живьём это выглядело как «Остаток:
+        // неизвестен» при полностью исправном роуте баланса.
         void buildMeetSettings($meetContent, {
             getMeetConfig, putMeetConfig, getMeetStatus, getModels, downloadModel, recheckDeps,
+            getCloudModels, getCloudBalance, resetMeetProfile,
         });
     };
 

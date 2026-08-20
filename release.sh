@@ -63,12 +63,34 @@ CARGO_LOCK="Cargo.lock"
 # разных действий от человека, и общее «нет доступа» отправляет чинить
 # то, что не сломано.
 aur_reachable() {
-    local out rc
-    out=$(GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=15" \
-        git ls-remote "ssh://aur@aur.archlinux.org/devforge.git" 2>&1) && rc=0 || rc=$?
-    if [ "${rc}" = "0" ]; then
-        return 0
-    fi
+    local out rc attempt=1 max=6 delay=15
+    # ПОВТОРЫ, а не одна попытка. AUR троттлит частые подключения и рвёт их
+    # на этапе обмена версиями: `kex_exchange_identification: Connection reset
+    # by peer`. Это НЕ отказ доступа и НЕ техобслуживание — соседняя попытка
+    # проходит. На релизе v0.1.69 одна попытка сорвалась, публикация в AUR
+    # была пропущена, хотя сервис работал.
+    #
+    # Бюджет 15+30+60+120+240 = ~7,5 минуты, а не 75 секунд: после серии
+    # подключений AUR блокирует источник НАДОЛГО (проверено — рвётся даже
+    # соединение без BatchMode, при живом TCP на порту 22). Короткий бюджет
+    # лишь тратит попытки и продлевает блокировку.
+    while :; do
+        out=$(GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=15" \
+            git ls-remote "ssh://aur@aur.archlinux.org/devforge.git" 2>&1) && rc=0 || rc=$?
+        if [ "${rc}" = "0" ]; then
+            return 0
+        fi
+        if printf '%s' "${out}" \
+            | grep -qi "connection reset\|kex_exchange_identification\|closed by remote host\|timed out\|broken pipe" \
+            && [ "${attempt}" -lt "${max}" ]; then
+            echo "    AUR сбросил соединение (попытка ${attempt}/${max}), повтор через ${delay}s..." >&2
+            sleep "${delay}"
+            delay=$(( delay * 2 ))
+            attempt=$(( attempt + 1 ))
+            continue
+        fi
+        break
+    done
     if printf '%s' "${out}" | grep -qi "maintenance\|is down"; then
         echo "    причина: сам aur.archlinux.org недоступен (техобслуживание)." >&2
         echo "            Ключ и ~/.ssh/config здесь ни при чём — чинить нечего," >&2
@@ -78,6 +100,10 @@ aur_reachable() {
         echo "            Проверьте ~/.ssh/config (Host aur.archlinux.org →" >&2
         echo "            IdentityFile ~/.ssh/aur_devforge) и что публичная часть" >&2
         echo "            добавлена в профиль на aur.archlinux.org." >&2
+    elif printf '%s' "${out}" | grep -qi "connection reset\|kex_exchange_identification\|closed by remote host"; then
+        echo "    причина: AUR рвал соединение все ${max} попыток (троттлинг)." >&2
+        echo "            Сервис жив, ключ ни при чём. Догнать позже:" >&2
+        echo "            AUR_ONLY=1 ./release.sh <version>" >&2
     else
         echo "    причина: не удалось связаться с AUR." >&2
         printf '            %s\n' "${out}" | head -3 >&2

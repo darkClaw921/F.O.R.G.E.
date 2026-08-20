@@ -237,7 +237,7 @@ impl DepsReport {
         (!self.can_record()).then_some("chrome_unavailable")
     }
 
-    /// Код ошибки для лестницы 409, если расшифровать нельзя.
+    /// Код ошибки для лестницы 409, если расшифровать нельзя ЛОКАЛЬНО.
     pub fn transcribe_blocker(&self) -> Option<&'static str> {
         if !self.whisper.is_ready() {
             Some("whisper_unavailable")
@@ -248,6 +248,39 @@ impl DepsReport {
         } else {
             None
         }
+    }
+
+    /// Что мешает расшифровать ВЫБРАННЫМ путём.
+    ///
+    /// # Деградация работает в ОБЕ стороны
+    ///
+    /// В облачном режиме отсутствие `whisper-cli`, весов на диске (1,6 ГБ) и
+    /// Metal перестаёт быть препятствием: ни одно из трёх облаку не нужно, и
+    /// отказ по ним был бы отказом по требованию, которого никто не
+    /// предъявлял. В локальном режиме ровно так же ничему не мешает отсутствие
+    /// ключа polza.ai.
+    ///
+    /// Единственная внешняя зависимость облачного пути — `ffmpeg`: запись
+    /// режется на окна и сжимается в mp3 НАШЕЙ стороной (сырой WAV роняет их
+    /// шлюз с `Maximum call stack size exceeded`, а предел сервиса — около 60
+    /// секунд ПО СТЕНЕ на запрос).
+    pub fn transcribe_blocker_for(
+        &self,
+        backend: crate::config::SttBackend,
+        cloud_configured: bool,
+    ) -> Option<&'static str> {
+        if backend.is_local() {
+            return self.transcribe_blocker();
+        }
+        if !cloud_configured {
+            return Some("cloud_not_configured");
+        }
+        // До первой пробы не мешаем — по той же причине, что и у записи:
+        // «ещё не смотрели» не равно «ничего нет».
+        if self.probed && !self.ffmpeg.is_ready() {
+            return Some("ffmpeg_unavailable");
+        }
+        None
     }
 }
 

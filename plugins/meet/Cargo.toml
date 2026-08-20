@@ -84,7 +84,14 @@ uuid = { version = "1.23", features = ["v4"] }
 # остаётся неотменяемым, и инвариант «openssl в дереве нет» держится
 # построением, а не дисциплиной (разбор — в шапке корневого Cargo.toml).
 # Новых узлов не добавляет: reqwest уже тянут devforge и forge-vk.
-reqwest = { workspace = true }
+#
+# `multipart` нужна облачной расшифровке (Ф14): `POST /audio/transcriptions`
+# принимает файл только формой. Feature ДОБАВЛЯЕТСЯ к объявлению workspace, а
+# не подменяет его: `default-features = false` остаётся неотменяемым, TLS
+# по-прежнему rustls. Новых узлов в дерево не приносит — ровно ту же feature
+# уже включает `forge-vk`, `mime_guess` за ней уже в дереве, и гейты
+# `cargo tree -d` / `cargo tree -i openssl-sys` остаются пустыми.
+reqwest = { workspace = true, features = ["multipart"] }
 
 # Контрольная сумма скачанной модели. Хэши взяты из `x-linked-etag`
 # HuggingFace (у LFS-файлов это SHA-256 содержимого) и сверены с локальной

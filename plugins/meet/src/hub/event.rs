@@ -169,6 +169,21 @@ pub enum MeetEvent {
         /// который начинается позже нуля, и это же значение потом становится
         /// `adelay` в ffmpeg.
         start_offset_ms: u64,
+        /// `msid` потока, в котором дорожка приехала. **Ось привязки трека к
+        /// человеку на уровне WebRTC**, первая ступень каскада
+        /// [`crate::bot::BindingStage::Msid`].
+        ///
+        /// `None` — площадка связь не раскрывает, и это норма: у Телемоста
+        /// `msid` не связан с конкретным человеком вовсе (измерено Ф0).
+        /// У LiveKit (vcc.airlabs.pro) он имеет вид
+        /// `PA_<sid участника>|TR_<sid дорожки>` — человеческого имени там
+        /// нет, но ДВЕ дорожки одного человека узнаются по общей части `PA_*`,
+        /// и это ровно та устойчивость, которой не даёт корреляция.
+        ///
+        /// Поле необязательное и не сериализуется, когда его нет: журналы,
+        /// записанные до Ф13, обязаны читаться прежним разбором.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        msid: Option<String>,
     },
 
     /// Трек закончился.
@@ -459,6 +474,7 @@ mod tests {
                 track_id: "a".into(),
                 idx: 0,
                 start_offset_ms: 0,
+                msid: None,
             },
             MeetEvent::SpeechStarted { track_id: "a".into(), at_ms: 500 },
             MeetEvent::SpeechEnded { track_id: "a".into(), at_ms: 1_500 },
@@ -566,6 +582,7 @@ mod tests {
                 track_id: String::new(),
                 idx: 0,
                 start_offset_ms: 0,
+                msid: None,
             },
             MeetEvent::TrackEnded {
                 track_id: String::new(),
@@ -624,6 +641,43 @@ mod tests {
             assert!(r.keeps_files(), "{}", r.as_str());
         }
         assert!(!StopReason::UserCancel.keeps_files());
+    }
+
+    /// `msid` УЕЗЖАЕТ В ЖУРНАЛ ПОД ИМЕНЕМ `msid` — и не появляется, когда его
+    /// нет.
+    ///
+    /// Имя ключа заморожено не из вкуса: разбор журнала
+    /// (`pipeline::run::timeline_from_journal`) ищет в данных события ровно
+    /// `msid`, и переименование поля тихо оборвало бы первую ступень каскада
+    /// привязки. Отсутствие ключа при `None` так же существенно: журналы,
+    /// записанные до Ф13, обязаны читаться прежним разбором, а `"msid": null`
+    /// в них не встречается.
+    #[test]
+    fn the_msid_reaches_the_journal_under_its_frozen_name() {
+        let with = MeetEvent::TrackAdded {
+            track_id: "a".into(),
+            idx: 0,
+            start_offset_ms: 0,
+            msid: Some("PA_alice|TR_mic".into()),
+        };
+        let json = serde_json::to_value(&with).unwrap();
+        assert_eq!(json["msid"], "PA_alice|TR_mic");
+        assert_eq!(json["event"], "track_added");
+
+        let without = MeetEvent::TrackAdded {
+            track_id: "a".into(),
+            idx: 0,
+            start_offset_ms: 0,
+            msid: None,
+        };
+        let json = serde_json::to_value(&without).unwrap();
+        assert!(json.get("msid").is_none(), "пустая связь не имеет права ехать в журнал");
+
+        // И обратно: событие без ключа читается, как читалось до Ф13.
+        let old = serde_json::json!({
+            "event": "track_added", "track_id": "a", "idx": 0, "start_offset_ms": 0
+        });
+        assert_eq!(serde_json::from_value::<MeetEvent>(old).unwrap(), without);
     }
 
     #[test]

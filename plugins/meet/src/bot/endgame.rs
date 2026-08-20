@@ -344,6 +344,48 @@ mod tests {
         assert_eq!(watch.observe(10, signals), Some(StopReason::BrowserGone));
     }
 
+    /// ПЛОЩАДКА БЕЗ ПОСТ-ЗВОНКОВОГО АДРЕСА ЗАКАНЧИВАЕТ ВСТРЕЧУ ВСЁ РАВНО.
+    ///
+    /// У vcc.airlabs.pro проба `post_call_url` ПУСТА, и это решение, а не
+    /// недосмотр: после выхода адрес становится `https://vcc.airlabs.pro/`,
+    /// то есть от адреса комнаты `…/r/<код>` отличается ОТСУТСТВИЕМ пути, а
+    /// проба работает по НАЛИЧИЮ подстроки. Любая подстрока совпала бы и с
+    /// самой встречей — бот выходил бы сразу после входа.
+    ///
+    /// Значит `post_call` у этой площадки НАВСЕГДА `false`, и проверять надо
+    /// ровно одно: что оставшиеся сигналы доводят встречу до конца
+    /// поодиночке. Замер Ф13 показал, какие именно срабатывают живьём: после
+    /// клика «Покинуть» страница уходит на лендинг — дорожки кончаются
+    /// (`AllTracksEnded`), список участников пустеет (`Alone`), а мёртвая
+    /// комната отдаёт маркер «Встреча завершена» (`DomEnded`).
+    #[test]
+    fn a_platform_without_a_post_call_url_still_ends_the_meeting() {
+        let vcc = |s: EndSignals| EndSignals {
+            post_call: false,
+            ..s
+        };
+        // 1. Маркер конца встречи — единственный сигнал от вёрстки.
+        let mut watch = EndWatch::new(fast());
+        assert_eq!(
+            watch.observe(10, vcc(EndSignals { dom_ended: true, ..alive() })),
+            Some(StopReason::DomEnded)
+        );
+        // 2. Дорожки кончились — вёрстки не касается вовсе.
+        let mut watch = EndWatch::new(fast());
+        assert_eq!(
+            watch.observe(10, vcc(EndSignals { tracks_live: 0, ..alive() })),
+            Some(StopReason::AllTracksEnded)
+        );
+        // 3. Бот остался один: страница ушла на лендинг, плиток нет.
+        let mut watch = EndWatch::new(fast());
+        let alone = vcc(EndSignals { others: 0, speaking: false, ..alive() });
+        assert_eq!(watch.observe(0, alone), None);
+        assert_eq!(watch.observe(100, alone), Some(StopReason::Alone));
+        // 4. И потолок длительности — на случай, когда молчат все три.
+        let mut watch = EndWatch::new(fast());
+        assert_eq!(watch.observe(1_000, vcc(alive())), Some(StopReason::MaxDuration));
+    }
+
     /// До первой дорожки «все дорожки кончились» не срабатывает.
     #[test]
     fn no_tracks_yet_is_not_all_tracks_ended() {

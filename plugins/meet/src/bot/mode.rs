@@ -193,12 +193,53 @@ mod tests {
             (4, 5,  true,  true,  TrackMode::Mixed,          "CSRC перевешивает соотношение дорожек"),
             (0, 3,  true,  false, TrackMode::Unknown,        "дорожек нет — судить не о чем"),
             (2, 0,  true,  false, TrackMode::PerParticipant, "DOM-проба протухла: участников не видно, треки есть"),
+            // vcc.airlabs.pro, ЗАМЕР Ф13: бот + двое собеседников, три
+            // удалённых аудиодорожки (mid=0, mid=1 и ГЛУХОЙ СЛОТ mid=2 без
+            // потока и с `muted = true`), `getContributingSources()` пуст на
+            // всех трёх. Лишняя дорожка тянет наблюдение В СТОРОНУ слотов —
+            // и именно поэтому кейс стоит здесь: `SLOT_TRACKS_MAX = 4`, и
+            // строка доказывает, что запас про слоты не съедает площадку,
+            // где трек РЕАЛЬНО равен человеку.
+            (3, 3,  true,  false, TrackMode::PerParticipant, "vcc: двое собеседников, две живые дорожки плюс глухой слот"),
+            (2, 3,  true,  false, TrackMode::PerParticipant, "vcc без глухого слота — ответ обязан не измениться"),
+            (2, 2,  true,  false, TrackMode::PerParticipant, "vcc один на один плюс глухой слот"),
+            (4, 4,  true,  false, TrackMode::PerParticipant, "vcc втроём: три дорожки плюс глухой слот, всё ещё трек = человек"),
         ];
         for &(tracks, participants, mid, csrc, want, why) in cases {
             assert_eq!(
                 mode(tracks, participants, mid, csrc),
                 want,
                 "{tracks} треков / {participants} участников / mid={mid} / csrc={csrc}: {why}"
+            );
+        }
+    }
+
+    /// ГЛУХОЙ СЛОТ НЕ МЕНЯЕТ ОТВЕТА.
+    ///
+    /// Живой замер на vcc.airlabs.pro: LiveKit держит про запас лишний
+    /// удалённый аудиотрансивер — дорожка есть, потока у неё нет
+    /// (`streams: []`), `track.muted` остаётся `true` всю встречу, к
+    /// `<audio>` она не привязана. Считать её участником нельзя, но и
+    /// вычитать из наблюдения тоже нечем: с точки зрения `getReceivers()` она
+    /// такая же дорожка, как остальные.
+    ///
+    /// Поэтому детект обязан выдержать ЛИШНЮЮ дорожку в любую сторону — и
+    /// именно это проверяется парой «с слотом / без слота» на одинаковом
+    /// числе людей.
+    #[test]
+    fn a_deaf_spare_slot_never_turns_per_participant_into_slots() {
+        for people in 2..=6usize {
+            let live = people - 1;
+            let without = mode(live, people, true, false);
+            let with_spare = mode(live + 1, people, true, false);
+            assert_eq!(
+                without,
+                TrackMode::PerParticipant,
+                "{people} участников, {live} дорожек"
+            );
+            assert_eq!(
+                with_spare, without,
+                "{people} участников: глухой слот изменил вердикт"
             );
         }
     }

@@ -67,6 +67,11 @@ impl Stand {
             // Секунды здесь никому не нужны: моки отвечают мгновенно, а тест
             // зависания не должен стоить десяти минут на каждом прогоне.
             summary_timeout_secs: 10,
+            // ЯВНО ЛОКАЛЬНЫЙ ПУТЬ: весь файл — про запуск Claude CLI (промпт
+            // через stdin, хвост stderr, таймаут, очередь слотов), а умолчание
+            // плагина — облако (Ф15). Облачное саммари проверяет
+            // `tests/pipeline_cloud.rs`.
+            summary_backend: forge_meet::config::SummaryBackend::Local,
             ..MeetConfig::default()
         };
         let state = MeetState::new(cfg);

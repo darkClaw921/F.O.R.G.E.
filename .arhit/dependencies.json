@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-18T16:17:16.021Z",
+  "generatedAt": "2026-08-20T09:31:53.072Z",
   "dependencies": [
     {
       "from": "tmux-web/static/command-dock.js",
@@ -30579,6 +30579,20 @@
       "from": "tmux-web/static/js/meet/api.js",
       "to": "tmux-web/static/js/meet/api.js",
       "type": "call",
+      "fromElement": "getCloudModels",
+      "toElement": "call"
+    },
+    {
+      "from": "tmux-web/static/js/meet/api.js",
+      "to": "tmux-web/static/js/meet/api.js",
+      "type": "call",
+      "fromElement": "getCloudBalance",
+      "toElement": "call"
+    },
+    {
+      "from": "tmux-web/static/js/meet/api.js",
+      "to": "tmux-web/static/js/meet/api.js",
+      "type": "call",
       "fromElement": "getMeetConfig",
       "toElement": "call"
     },
@@ -50870,6 +50884,244 @@
       "from": "tmux-web/static/js/settings/meet-tab.js",
       "to": "tmux-web/static/js/settings/meet-tab.js",
       "type": "call",
+      "fromElement": "formatRub",
+      "toElement": "Number"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "formatRub",
+      "toElement": "Number.isFinite"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "formatRub",
+      "toElement": "Math.abs"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "formatRub",
+      "toElement": "Math.abs"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "formatRub",
+      "toElement": "v.toFixed"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "modelPrice",
+      "toElement": "formatRub"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "modelPrice",
+      "toElement": "parts.push"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "modelPrice",
+      "toElement": "formatRub"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "modelPrice",
+      "toElement": "parts.push"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "modelPrice",
+      "toElement": "formatRub"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "modelPrice",
+      "toElement": "parts.join"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "modelOptionLabel",
+      "toElement": "modelPrice"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "summaryCostEstimate",
+      "toElement": "Number"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "summaryCostEstimate",
+      "toElement": "Number"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "summaryCostEstimate",
+      "toElement": "Number.isFinite"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "summaryCostEstimate",
+      "toElement": "Number.isFinite"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "summaryCostEstimate",
+      "toElement": "Number.isFinite"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "summaryCostEstimate",
+      "toElement": "Number.isFinite"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "summaryModelNote",
+      "toElement": "summaryCostEstimate"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "summaryModelNote",
+      "toElement": "Number"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "summaryModelNote",
+      "toElement": "Number.isFinite"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "summaryModelNote",
+      "toElement": "parts.push"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "summaryModelNote",
+      "toElement": "ctx.toLocaleString"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "summaryModelNote",
+      "toElement": "parts.push"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "summaryModelNote",
+      "toElement": "formatRub"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "summaryModelNote",
+      "toElement": "parts.join"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "balanceLine",
+      "toElement": "parts.push"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "balanceLine",
+      "toElement": "formatRub"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "balanceLine",
+      "toElement": "formatRub"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "balanceLine",
+      "toElement": "formatRub"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "balanceLine",
+      "toElement": "parts.push"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "balanceLine",
+      "toElement": "formatRub"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "balanceLine",
+      "toElement": "Number"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "balanceLine",
+      "toElement": "parts.join"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
       "fromElement": "formatBytes",
       "toElement": "Number"
     },
@@ -50949,6 +51201,13 @@
       "type": "call",
       "fromElement": "buildMeetSettings",
       "toElement": "api.getModels"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildMeetSettings",
+      "toElement": "api.getCloudModels"
     },
     {
       "from": "tmux-web/static/js/settings/meet-tab.js",
@@ -51319,6 +51578,13 @@
       "to": "tmux-web/static/js/settings/meet-tab.js",
       "type": "call",
       "fromElement": "buildMeetSettings",
+      "toElement": "buildCloudBlock"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildMeetSettings",
       "toElement": "host.appendChild"
     },
     {
@@ -51640,6 +51906,97 @@
       "from": "tmux-web/static/js/settings/meet-tab.js",
       "to": "tmux-web/static/js/settings/meet-tab.js",
       "type": "call",
+      "fromElement": "buildCloudBlock",
+      "toElement": "statusLine"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildCloudBlock",
+      "toElement": "statusLine"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildCloudBlock",
+      "toElement": "Number.isFinite"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildCloudBlock",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildCloudBlock",
+      "toElement": "el"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildCloudBlock",
+      "toElement": "statusLine"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildCloudBlock",
+      "toElement": "balanceLine"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildCloudBlock",
+      "toElement": "paint"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildCloudBlock",
+      "toElement": "paint"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildCloudBlock",
+      "toElement": "balanceLine"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildCloudBlock",
+      "toElement": "api.getCloudBalance"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildCloudBlock",
+      "toElement": "paint"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildCloudBlock",
+      "toElement": "errText"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
       "fromElement": "buildModelRow",
       "toElement": "el"
     },
@@ -51745,8 +52102,183 @@
       "from": "tmux-web/static/js/settings/meet-tab.js",
       "to": "tmux-web/static/js/settings/meet-tab.js",
       "type": "call",
+      "fromElement": "cloudCatalogueFor",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
       "fromElement": "buildField",
       "toElement": "el"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "cloudCatalogueFor"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "el"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "row.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "document.createTextNode"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "cloudList.some"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "input.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "document.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "modelOptionLabel"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "input.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "row.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "wrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "el"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "cloudList.find"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "sttModelNote"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "summaryModelNote"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "paint"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "input.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "wrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "refs.modelNotes.set"
     },
     {
       "from": "tmux-web/static/js/settings/meet-tab.js",
@@ -51921,6 +52453,69 @@
       "to": "tmux-web/static/js/settings/meet-tab.js",
       "type": "call",
       "fromElement": "buildField",
+      "toElement": "el"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "backendNote"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "paint"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "input.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "wrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "refs.backendNotes.set"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "wrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
+      "toElement": "el"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "buildField",
       "toElement": "wrap.appendChild"
     },
     {
@@ -51985,6 +52580,13 @@
       "type": "call",
       "fromElement": "collect",
       "toElement": "Number.isFinite"
+    },
+    {
+      "from": "tmux-web/static/js/settings/meet-tab.js",
+      "to": "tmux-web/static/js/settings/meet-tab.js",
+      "type": "call",
+      "fromElement": "collect",
+      "toElement": "String"
     },
     {
       "from": "tmux-web/static/js/settings/meet-tab.js",
@@ -52180,6 +52782,24 @@
       "to": "tmux-web/static/js/meet/api.js",
       "type": "import",
       "toElement": "recheckDeps"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/meet/api.js",
+      "type": "import",
+      "toElement": "getCloudModels"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/meet/api.js",
+      "type": "import",
+      "toElement": "getCloudBalance"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/meet/api.js",
+      "type": "import",
+      "toElement": "resetMeetProfile"
     },
     {
       "from": "tmux-web/static/js/settings/modal.js",
