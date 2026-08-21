@@ -1,0 +1,3 @@
+# choose_route
+
+Таблица гейта стадий forge-meet (plugins/meet/src/deps.rs): по заказанному пути и блокировкам обеих сторон возвращает StagePlan (route + fallback_reason) либо Err(код заказанного пути). Восемь строк: отказ только когда не работает ни один путь; иначе берётся второй путь с видимым откатом. Заведено по инциденту forge-0s0l5 (умолчание cloud без ключа хоронило встречи при полностью готовом локальном whisper). Используется DepsReport::plan_transcribe и plan_summary; события журнала — StagePlan::stt_event/summary_event, текст — fallback_note. Подробности: страница forge-meet-gate-degradation.

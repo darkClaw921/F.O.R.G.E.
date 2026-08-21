@@ -540,6 +540,31 @@ async fn apply_event(
         MeetEvent::RecordingStarted { .. } => {
             let _ = meetings::set_status(state, id, MeetStatus::Recording, Some("audio_started")).await;
         }
+        MeetEvent::MediaWarning { code, detail, .. } => {
+            // Предупреждение обязано пережить процесс: в файловом журнале оно
+            // уже есть, но его читают post factum, а строка `meeting_events`
+            // видна в карточке — то есть человеку, ПОКА ВСТРЕЧА ИДЁТ и её ещё
+            // можно спасти. Статус не меняется: запись продолжается.
+            let _ = crate::db::repo::events::note(
+                state,
+                id,
+                MeetStatus::Recording.as_str(),
+                code,
+                Some(detail),
+            )
+            .await;
+            state.broadcast_event(MeetServerMsg::Error {
+                meeting_id: Some(id.clone()),
+                code: code.clone(),
+                message: detail.clone(),
+            });
+            tracing::warn!(
+                target: "forge_meet",
+                meeting_id = %id,
+                code = %code,
+                "forge-meet: {detail}"
+            );
+        }
         MeetEvent::RecordingStopped { reason, .. } => return Some(*reason),
         _ => {}
     }

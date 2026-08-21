@@ -162,6 +162,16 @@ pub fn prompts_path() -> PathBuf {
     }
 }
 
+/// Путь файла пользовательских настроек хоста
+/// (`~/.forge/user_settings.json`).
+///
+/// Строится ядром ([`forge_voice::prefs::default_path`]), а не здесь: тот же
+/// путь строит хост в `tmux-web/src/main.rs`, и третье написание означало бы,
+/// что плагин читает файл, которого никто не пишет.
+pub fn user_settings_path() -> PathBuf {
+    forge_voice::prefs::default_path()
+}
+
 /// Дефолтный путь бинаря Claude CLI (`$HOME/.local/bin/claude`).
 ///
 /// Тот же дефолт, что у `forge_echo::config` и `forge_vk::config`: все они
@@ -247,6 +257,19 @@ pub struct TelegramConfig {
     /// тем же файлом даже если env поменяли на лету.
     #[serde(skip, default = "prompts_path")]
     pub prompts_path: PathBuf,
+    /// Файл пользовательских настроек хоста (`~/.forge/user_settings.json`).
+    ///
+    /// Плагин его только ЧИТАЕТ: оттуда берутся тумблер «Автоматически
+    /// разбирать новые аудиосообщения» и белый список видимости чатов
+    /// (`forge_voice::prefs`, [`crate::voice_auto`]). Своего канала настроек
+    /// у плагина нет — зависимость на `AppState` ради одного булева значения
+    /// сломала бы границу плагина.
+    ///
+    /// Из TOML НЕ читается и хранится отдельным полем по той же причине, что
+    /// [`Self::prompts_path`]: тест указывает свой tempdir и не может задеть
+    /// настоящие настройки пользователя.
+    #[serde(skip, default = "user_settings_path")]
+    pub user_settings_path: PathBuf,
 
     /// Путь бинаря Claude CLI, которым запускается анализ.
     ///
@@ -286,6 +309,7 @@ impl Default for TelegramConfig {
             catch_up: default_catch_up(),
             update_queue_limit: default_update_queue_limit(),
             prompts_path: prompts_path(),
+            user_settings_path: user_settings_path(),
             claude_cli_path: default_claude_cli_path(),
             analysis_timeout_secs: default_analysis_timeout_secs(),
             analysis_max_chars: default_analysis_max_chars(),

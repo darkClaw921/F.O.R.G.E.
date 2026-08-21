@@ -85,6 +85,8 @@ pub mod progress;
 pub mod recent_sync;
 pub mod routes;
 pub mod state;
+pub mod voice;
+pub mod voice_auto;
 pub mod tasks;
 pub mod ws;
 

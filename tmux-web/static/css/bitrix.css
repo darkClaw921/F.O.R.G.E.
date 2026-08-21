@@ -943,6 +943,23 @@
     color: var(--b-acc-dim);
     font-size: 16px;
 }
+/* Звуковая дорожка голосового: настоящая огибающая из DTO, а пока её нет —
+   детерминированная заглушка (js/messenger/waveform-core.js). Размеры те же,
+   что у .vk-media-wave и .tg-media-wave: одна запись обязана выглядеть
+   одинаково во всех трёх панелях. */
+.b24-media-wave {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 40px;
+    padding: 12px;
+}
+.b24-media-wave span {
+    display: block;
+    width: 3px;
+    background: var(--b-acc-dim);
+    border-radius: 1px;
+}
 /* [hidden] задаётся ЯВНО: у элементов со своим `display` атрибут сам по себе не
    работает — правило браузера `[hidden]{display:none}` проигрывает по
    специфичности собственному `display` этих классов. */
@@ -2298,4 +2315,121 @@
     }
     .b24-task-card.b24-task-card-open::after { content: "▴"; }
     .b24-task-card { position: relative; }
+}
+
+/* ==========================================================================
+   РАСШИФРОВКА ГОЛОСОВОГО (ГС-Ф5)
+
+   Разметку строит ОБЩИЙ на три панели модуль
+   js/messenger/voice-transcript-core.js, поэтому суффиксы классов здесь те же,
+   что у соседних панелей, — меняется только префикс. Цвета берутся ТОЛЬКО из
+   токенов панели: тогда светлая тема и контраст достаются даром, ровно как у
+   остальных карточек медиа.
+   ========================================================================== */
+.b24-voice {
+    border-top: 1px solid var(--b-acc-faint);
+    padding: 4px 8px 6px 8px;
+    font-size: 10px;
+    color: var(--b-acc-dim);
+}
+/* [hidden] задаётся ЯВНО: у узлов со своим `display` (свёрнутый текст —
+   `-webkit-box`, полоса — `block`) атрибут сам по себе не действует. */
+.b24-voice [hidden] {
+    display: none !important;
+}
+.b24-voice-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+.b24-voice-label {
+    flex: 0 0 auto;
+    letter-spacing: 0.1em;
+    color: var(--b-acc);
+}
+.b24-voice-status {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* Причина отказа длиннее строки состояния и переносится: обрезать её
+   многоточием значит спрятать ровно то, ради чего её показывают. */
+.b24-voice[data-voice-state="error"] .b24-voice-status {
+    color: var(--b-red);
+    white-space: normal;
+}
+.b24-voice-progress {
+    display: block;
+    height: 3px;
+    margin-top: 4px;
+    border-radius: 2px;
+    background: var(--b-acc-faint);
+    overflow: hidden;
+}
+.b24-voice-bar {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: var(--b-acc);
+    transition: width 0.12s linear;
+}
+/* Сама расшифровка — обычный текст сообщения: тот же кегль, те же переносы.
+   `pre-wrap` сохраняет абзацы движка, `anywhere` не даёт длинному слову
+   (ссылке, номеру) раздвинуть карточку. */
+.b24-voice-text {
+    margin-top: 4px;
+    color: var(--b-acc-hi);
+    font-size: 12px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+/* Сворачивание РИСОВАННОЕ: в DOM всегда полный текст, обрезает только CSS —
+   иначе «показать полностью» требовало бы второго запроса. */
+.b24-voice-text-collapsed {
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.b24-voice-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 4px;
+}
+.b24-voice-run,
+.b24-voice-toggle {
+    flex: 0 0 auto;
+    background: transparent;
+    border: 1px solid var(--b-acc-faint);
+    border-radius: 3px;
+    color: var(--b-acc-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    padding: 2px 6px;
+}
+.b24-voice-run:hover:not(:disabled),
+.b24-voice-toggle:hover {
+    color: var(--b-acc);
+    border-color: var(--b-acc-dim);
+}
+.b24-voice-run:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+/* Обе кнопки достижимы табом, и рамка фокуса обязана быть видна: без неё
+   клавиатурная навигация по ленте слепнет. */
+.b24-voice-run:focus-visible,
+.b24-voice-toggle:focus-visible {
+    outline: 1px solid var(--b-acc);
+    outline-offset: 1px;
+}
+@media (prefers-reduced-motion: reduce) {
+    .b24-voice-bar {
+        transition: none;
+    }
 }

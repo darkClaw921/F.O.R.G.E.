@@ -397,8 +397,48 @@ pub async fn summarize(
     // `on_delta` через один и тот же [`DeltaCoalescer`] — поэтому фронт не
     // переделывается: кадр `Progress { phase: Summarizing, done }` тот же
     // самый.
-    let produced = if state.config.summary_backend.is_cloud() {
-        match crate::cloud::CloudClient::new(&state.config.cloud()) {
+    //
+    // Сторону выбирает ГЕЙТ ([`crate::deps::plan_summary`]), а не конфиг
+    // напрямую: заказанная сторона может быть нерабочей (нет ключа облака либо
+    // нет Claude CLI), и тогда берётся вторая. Отказ остаётся только на
+    // случай, когда не работает ни одна.
+    let plan = crate::deps::plan_summary(
+        state.config.summary_backend,
+        state.config.summary_enabled,
+        state.config.cloud_configured(),
+        &state.config.claude_cli_path,
+    );
+    // ОТКАТ ВИДЕН: событие журнала пишется ДО прогона, чтобы человек увидел
+    // подмену стороны даже если сам прогон потом провалится.
+    if let Ok(p) = &plan {
+        if let (Some(code), Some(note)) = (p.summary_event(), p.fallback_note()) {
+            let _ = repo::events::note(
+                state,
+                meeting_id,
+                MeetStatus::Summarizing.as_str(),
+                code,
+                Some(&note),
+            )
+            .await;
+            tracing::warn!(
+                target: "forge_meet",
+                meeting_id = %meeting_id,
+                "forge-meet: саммари — {note}"
+            );
+        }
+    }
+    let produced = match plan {
+        // Ни одной рабочей стороны — это отказ САММАРИ, а не встречи:
+        // транскрипт уже на диске, и `finish` ниже доведёт встречу до `ready`.
+        Err(code) => Err(ProcError::new(
+            code,
+            format!(
+                "саммари недоступно: {code} — {}",
+                crate::deps::blocker_hint(code)
+            ),
+            "",
+        )),
+        Ok(p) if p.route.is_cloud() => match crate::cloud::CloudClient::new(&state.config.cloud()) {
             Ok(client) => {
                 let opts = crate::cloud::summary::ChatOptions {
                     model: state.config.cloud_summary_model.clone(),
@@ -411,17 +451,16 @@ pub async fn summarize(
                 };
                 crate::cloud::summary::generate(&client, &built, &opts, Some(&on_delta)).await
             }
-            // Ключа нет — это отказ саммари, а не встречи: транскрипт уже на
-            // диске, и `finish` ниже доведёт встречу до `ready`.
             Err(e) => Err(ProcError::from(e)),
+        },
+        Ok(_) => {
+            let opts = RunOptions {
+                cli_path: state.config.claude_cli_path.clone(),
+                timeout: Duration::from_secs(state.config.summary_timeout_secs),
+                cancel: cancel.clone(),
+            };
+            generate(&built, &opts, Some(&on_delta)).await
         }
-    } else {
-        let opts = RunOptions {
-            cli_path: state.config.claude_cli_path.clone(),
-            timeout: Duration::from_secs(state.config.summary_timeout_secs),
-            cancel: cancel.clone(),
-        };
-        generate(&built, &opts, Some(&on_delta)).await
     };
     drop(slot);
 

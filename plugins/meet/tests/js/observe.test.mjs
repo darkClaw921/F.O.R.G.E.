@@ -182,18 +182,28 @@ const MOCK_PROBES = {
 };
 
 /** Плитка LiveKit (vcc.airlabs.pro): имя на ВЛОЖЕННОМ узле, признаки атрибутами. */
-function livekitTile(name, { local = false, speaking = false } = {}) {
+function livekitTile(name, { local = false, speaking = false, source = "camera" } = {}) {
     return el("div", {
         class: "lk-participant-tile",
         "data-lk-local-participant": String(local),
-        "data-lk-speaking": String(speaking)
+        "data-lk-speaking": String(speaking),
+        "data-lk-source": source
     }, [
         el("span", { "data-lk-participant-name": name }, [], name)
     ]);
 }
 
+/**
+ * ПЛИТКА ДЕМОНСТРАЦИИ ЭКРАНА — не человек, но по классу неотличима от него.
+ * Всё снято живой пробой: имя с суффиксом «'s screen», источник `screen_share`,
+ * и индикатор речи встаёт на ней ОДНОВРЕМЕННО с плиткой камеры хозяина.
+ */
+function livekitScreenTile(owner, { speaking = false } = {}) {
+    return livekitTile(`${owner}'s screen`, { speaking, source: "screen_share" });
+}
+
 const VCC_PROBES = {
-    participant: [".lk-participant-tile"],
+    participant: [".lk-participant-tile[data-lk-source=\"camera\"]"],
     participant_name: ["[data-lk-participant-name]"],
     local_participant_marker: ["[data-lk-local-participant=\"true\"]"],
     speaking_marker: ["[data-lk-speaking=\"true\"]"],
@@ -332,6 +342,37 @@ test("СВОЯ ПЛИТКА ВЫЧИТАЕТСЯ: бот не участник �
         "плитка бота попала в список участников");
     assert.equal(got[0].speaking, true);
     assert.equal(got[0].key, null, "SID участника в DOM не выставлен — ключ берётся именем в Rust");
+});
+
+test("ДЕМОНСТРАЦИЯ ЭКРАНА НЕ УЧАСТНИК: плитка screen_share не попадает в список", () => {
+    // Живая встреча пользователя: в списке участников оказались «Игорь Г's
+    // screen» и «Игорь's screen», а в расшифровке 15 реплик из 78 были
+    // подписаны экраном. Плитка трансляции стоит в DOM РАНЬШЕ плитки камеры
+    // хозяина — порядок здесь такой же, как живьём.
+    const doc = el("body", {}, [
+        livekitTile("F.O.R.G.E. бот", { local: true }),
+        livekitScreenTile("Игорь", { speaking: true }),
+        livekitTile("Игорь", { speaking: true }),
+        livekitTile("Пётр Демонстратор")
+    ]);
+    const got = forgeReadParticipants(doc, VCC_PROBES);
+    assert.deepEqual(got.map(p => p.name), ["Игорь", "Пётр Демонстратор"],
+        "трансляция экрана посчиталась человеком");
+    assert.equal(got.filter(p => p.name.includes("'s screen")).length, 0);
+});
+
+test("активным спикером становится человек, а не его экран", () => {
+    // У площадки проба активного спикера сужена тем же атрибутом, но
+    // крошечный DOM не умеет `:not(...)`, поэтому здесь проверяется ЗАПАСНОЙ
+    // путь: элемента активного спикера нет, и имя берётся у говорящей плитки
+    // из списка участников. Список экрана уже не содержит — значит и активным
+    // спикером он стать не может.
+    const doc = el("body", {}, [
+        livekitScreenTile("Игорь", { speaking: true }),
+        livekitTile("Игорь", { speaking: true })
+    ]);
+    const parts = forgeReadParticipants(doc, VCC_PROBES);
+    assert.equal(forgeReadActiveSpeaker(doc, VCC_PROBES, parts), "Игорь");
 });
 
 test("пустая проба своей плитки НИЧЕГО не вычитает: у прочих площадок список прежний", () => {

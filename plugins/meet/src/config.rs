@@ -193,6 +193,22 @@ pub const DEFAULT_SPEAKER_SECOND_SHARE: f64 = 0.25;
 /// применяется линейная коррекция, мс.
 pub const DEFAULT_DRIFT_THRESHOLD_MS: u64 = 1_000;
 
+/// Пиковая громкость сведённого аудио, ниже которой запись считается пустой,
+/// dBFS.
+///
+/// ГЕЙТ ТИШИНЫ. Живые данные, на которых подобран порог: у встречи, где
+/// медиа-канал не поднялся, все дорожки дали `mean_volume = max_volume =
+/// -91,0 dB` — это пол 16-битной сетки, то есть буквально нули; у встреч с
+/// настоящей речью дорожки давали -23,5 и -31,5 dB. Разрыв в шестьдесят
+/// децибел, поэтому порог посередине промахнуться не может.
+///
+/// Мерится ПИК, а не среднее: встреча, где прозвучала одна фраза за час, имеет
+/// низкое среднее при высоком пике, и ронять её нельзя.
+///
+/// Значение ниже -91 dB ВЫКЛЮЧАЕТ гейт: цифровая тишина перестаёт быть ниже
+/// порога, и провалить проверку не может уже ничто.
+pub const DEFAULT_SILENCE_GATE_DBFS: f64 = -60.0;
+
 /// Окно корреляции «VAD дорожки ↔ DOM-индикатор говорящего», секунды.
 ///
 /// Третья ступень каскада привязки имён ([`crate::bot::attrib`]) сравнивает
@@ -729,6 +745,8 @@ pub struct MeetConfig {
     pub speaker_second_share: f64,
     /// Порог применения линейной коррекции дрейфа, мс.
     pub drift_threshold_ms: u64,
+    /// Пик сведённого аудио, ниже которого запись признаётся пустой, dBFS.
+    pub silence_gate_dbfs: f64,
     /// Окно корреляции таймлайнов при привязке имён, секунды.
     pub speaker_correlation_window_secs: u64,
     /// Порог принятия назначения при корреляции.
@@ -810,6 +828,7 @@ impl Default for MeetConfig {
             speaker_min_confidence: DEFAULT_SPEAKER_MIN_CONFIDENCE,
             speaker_second_share: DEFAULT_SPEAKER_SECOND_SHARE,
             drift_threshold_ms: DEFAULT_DRIFT_THRESHOLD_MS,
+            silence_gate_dbfs: DEFAULT_SILENCE_GATE_DBFS,
             speaker_correlation_window_secs: DEFAULT_SPEAKER_CORRELATION_WINDOW_SECS,
             speaker_correlation_min_score: DEFAULT_SPEAKER_CORRELATION_MIN_SCORE,
             speaker_correlation_min_margin: DEFAULT_SPEAKER_CORRELATION_MIN_MARGIN,
@@ -882,6 +901,7 @@ pub const KNOWN_KEYS: &[&str] = &[
     "speaker_min_confidence",
     "speaker_second_share",
     "drift_threshold_ms",
+    "silence_gate_dbfs",
     "speaker_correlation_window_secs",
     "speaker_correlation_min_score",
     "speaker_correlation_min_margin",
@@ -959,6 +979,7 @@ struct FileConfig {
     speaker_min_confidence: Option<f64>,
     speaker_second_share: Option<f64>,
     drift_threshold_ms: Option<u64>,
+    silence_gate_dbfs: Option<f64>,
     speaker_correlation_window_secs: Option<u64>,
     speaker_correlation_min_score: Option<f64>,
     speaker_correlation_min_margin: Option<f64>,
@@ -1321,6 +1342,9 @@ impl MeetConfig {
         if let Some(v) = f.drift_threshold_ms {
             self.drift_threshold_ms = v;
         }
+        if let Some(v) = f.silence_gate_dbfs {
+            self.silence_gate_dbfs = v;
+        }
         if let Some(v) = f.speaker_correlation_window_secs {
             self.speaker_correlation_window_secs = v;
         }
@@ -1403,6 +1427,9 @@ impl MeetConfig {
         }
         if let Some(v) = env_parse("FORGE_MEET_VAD_HANGOVER_MS") {
             self.vad_hangover_ms = v;
+        }
+        if let Some(v) = env_parse("FORGE_MEET_SILENCE_GATE_DBFS") {
+            self.silence_gate_dbfs = v;
         }
 
         if let Some(v) = env_parse("FORGE_MEET_MAX_RECORDINGS") {
@@ -1625,6 +1652,10 @@ impl MeetConfig {
         clamp!(speaker_min_confidence, 0.0, 1.0);
         clamp!(speaker_second_share, 0.0, 1.0);
         cap!(drift_threshold_ms, 60_000);
+        // Ноль сверху — это полная шкала: пик выше неё физически невозможен, и
+        // такой порог означал бы «провалить любую встречу». Снизу -120 dB
+        // оставляет запас под выключение гейта (ниже -91 dB он бездействует).
+        clamp!(silence_gate_dbfs, -120.0, 0.0);
 
         clamp!(max_concurrent_recordings, 1, 8);
         clamp!(max_concurrent_summaries, 1, 8);
@@ -1850,6 +1881,7 @@ pub const EDITABLE: &[EditableField] = &[
     EditableField { key: "vad_off_db", kind: FieldKind::Float, env: "FORGE_MEET_VAD_OFF_DB", group: "vad", choices: &[], min: Some(0.5), max: Some(60.0) },
     EditableField { key: "vad_confirm_ms", kind: FieldKind::Int, env: "FORGE_MEET_VAD_CONFIRM_MS", group: "vad", choices: &[], min: Some(10.0), max: Some(2000.0) },
     EditableField { key: "vad_hangover_ms", kind: FieldKind::Int, env: "FORGE_MEET_VAD_HANGOVER_MS", group: "vad", choices: &[], min: Some(50.0), max: Some(5000.0) },
+    EditableField { key: "silence_gate_dbfs", kind: FieldKind::Float, env: "FORGE_MEET_SILENCE_GATE_DBFS", group: "vad", choices: &[], min: Some(-120.0), max: Some(0.0) },
 
     EditableField { key: "max_concurrent_recordings", kind: FieldKind::Int, env: "FORGE_MEET_MAX_RECORDINGS", group: "limits", choices: &[], min: Some(1.0), max: Some(8.0) },
     EditableField { key: "max_concurrent_summaries", kind: FieldKind::Int, env: "FORGE_MEET_MAX_SUMMARIES", group: "limits", choices: &[], min: Some(1.0), max: Some(8.0) },
@@ -1933,6 +1965,7 @@ pub fn editable_value(cfg: &MeetConfig, key: &str) -> Option<serde_json::Value> 
         "vad_off_db" => json!(cfg.vad_off_db),
         "vad_confirm_ms" => json!(cfg.vad_confirm_ms),
         "vad_hangover_ms" => json!(cfg.vad_hangover_ms),
+        "silence_gate_dbfs" => json!(cfg.silence_gate_dbfs),
         "max_concurrent_recordings" => json!(cfg.max_concurrent_recordings),
         "max_concurrent_summaries" => json!(cfg.max_concurrent_summaries),
         "max_cache_bytes" => json!(cfg.max_cache_bytes),
@@ -2019,6 +2052,7 @@ impl MeetConfig {
             "vad_off_db" => self.vad_off_db = as_f64()? as f32,
             "vad_confirm_ms" => self.vad_confirm_ms = as_u64()?,
             "vad_hangover_ms" => self.vad_hangover_ms = as_u64()?,
+            "silence_gate_dbfs" => self.silence_gate_dbfs = as_f64()?,
             "max_concurrent_recordings" => self.max_concurrent_recordings = as_u64()? as usize,
             "max_concurrent_summaries" => self.max_concurrent_summaries = as_u64()? as usize,
             "max_cache_bytes" => self.max_cache_bytes = as_u64()?,
@@ -2085,6 +2119,7 @@ speaker_merge_gap_ms = 500
 speaker_min_confidence = 0.7
 speaker_second_share = 0.3
 drift_threshold_ms = 2000
+silence_gate_dbfs = -55.5
 speaker_correlation_window_secs = 120
 speaker_correlation_min_score = 0.8
 speaker_correlation_min_margin = 0.2
@@ -2228,6 +2263,7 @@ cloud_stt_window_secs = 45
         assert_eq!(cfg.salvage_min_secs, 20);
         // Пороги каскада привязки имён — тоже поля файла, а не константы: их
         // подбирают на живых записях, и правка не должна требовать пересборки.
+        assert_eq!(cfg.silence_gate_dbfs, -55.5);
         assert_eq!(cfg.speaker_correlation_window_secs, 120);
         assert_eq!(cfg.speaker_correlation_min_score, 0.8);
         assert_eq!(cfg.speaker_correlation_min_margin, 0.2);

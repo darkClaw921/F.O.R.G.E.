@@ -547,6 +547,41 @@ function findByField(refs, key) {
         'локальное саммари ничего не требует от облака');
     eq(TAB.backendNote('stt_backend', 'cloud', { cloud: cloudBlock() }).tone, 'ok',
         'настроенное облако — спокойный тон');
+
+    // ⚠ ОТКАТ ГЕЙТА ВИДЕН У ПЕРЕКЛЮЧАТЕЛЯ (forge-0s0l5).
+    //
+    // Заказано облако, ключа нет, локальный whisper готов — бэкенд не
+    // отказывает, а считает локально. Молча это хуже отказа: человек думал бы,
+    // что платит за облако.
+    const fell = TAB.backendNote('stt_backend', 'cloud', {
+        cloud: cloudBlock({ configured: false }),
+        config: {
+            stt_backend: 'cloud',
+            stt_effective: 'local',
+            stt_fallback_reason: 'cloud_not_configured',
+        },
+    });
+    eq(fell.tone, 'warn', 'подмена движка — предупреждение');
+    ok(/считается локально/i.test(fell.text), 'сказано, чем считается НА САМОМ ДЕЛЕ', fell.text);
+    ok(/ключ API не задан/i.test(fell.text), 'и почему', fell.text);
+
+    // Обратная сторона: заказано локально, whisper нет, ключ есть.
+    const up = TAB.backendNote('summary_backend', 'local', {
+        cloud: cloudBlock(),
+        config: {
+            summary_backend: 'local',
+            summary_effective: 'cloud',
+            summary_fallback_reason: 'claude_cli_unavailable',
+        },
+    });
+    eq(up.tone, 'warn', 'уход в платное облако обязан быть виден');
+    ok(/Claude CLI не найден/.test(up.text), 'с причиной', up.text);
+
+    // Без отката подсказка прежняя: лишнего шума у исправной установки нет.
+    eq(TAB.backendNote('stt_backend', 'cloud', {
+        cloud: cloudBlock(),
+        config: { stt_backend: 'cloud', stt_effective: 'cloud', stt_fallback_reason: null },
+    }).tone, 'ok', 'заказанный путь работает — предупреждать не о чем');
 }
 
 {

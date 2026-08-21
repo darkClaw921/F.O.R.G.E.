@@ -1,0 +1,3 @@
+# plan_summary
+
+plugins/meet/src/deps.rs: выбор стороны саммари по таблице choose_route. Аргументы: backend (SummaryBackend), enabled, cloud_configured, claude_cli_path. summary_disabled проверяется ДО таблицы — выключенное саммари ничем не подменяется. Локальная сторона считается рабочей, если файл Claude CLI найден (summary_local_blocker: путь как есть либо одноимённый бинарь в PATH, без запуска процесса), облачная — если есть ключ. Зовут: summary::summarize (перед развилкой прогона), routes::meetings::summary_blocker (лестница 409), routes::status (поля summary_effective/summary_fallback_reason/summary_blocker).

@@ -124,6 +124,81 @@ pub enum TgServerMsg {
         /// Всего байт, если размер известен заранее.
         total: Option<u64>,
     },
+    /// Расшифровка голосового началась (голосовые-Ф3).
+    ///
+    /// Четвёрка кадров `voice_transcribe_*` стоит сразу за `download_progress`:
+    /// расшифровка продолжает жизненный цикл вложения, который начинается его
+    /// скачиванием. Состав и имена полей ОБЯЗАНЫ совпадать с VK и Bitrix — на
+    /// этом держится общий фронт-модуль (Ф5), один на три мессенджера.
+    VoiceTranscribeStarted {
+        /// Идентификатор прогона.
+        run_id: String,
+        /// Диалог (строкой).
+        dialog_id: String,
+        /// Сообщение с голосовым.
+        message_id: i32,
+        /// Номер вложения; у Telegram всегда `0` — вложение одно.
+        index: u8,
+        /// `local` | `cloud`: человек имеет право знать, ушло ли голосовое в
+        /// чужое облако, ДО того, как оно туда ушло.
+        engine: String,
+    },
+    /// Прогресс расшифровки, проценты.
+    ///
+    /// КОАЛЕСЦИРОВАН в [`TgVoiceSink`]: whisper печатает прогресс десятками
+    /// строк в секунду, и слать каждую значило бы переполнить broadcast, то
+    /// есть получить `Lagged` и [`TgServerMsg::Resync`] посреди расшифровки.
+    VoiceTranscribeDelta {
+        /// Идентификатор прогона.
+        run_id: String,
+        /// Диалог (строкой).
+        dialog_id: String,
+        /// Сообщение с голосовым.
+        message_id: i32,
+        /// Номер вложения; всегда `0`.
+        index: u8,
+        /// Проценты `0..=100`.
+        percent: u8,
+    },
+    /// Расшифровка готова; текст уже лежит в сторе.
+    VoiceTranscribeDone {
+        /// Идентификатор прогона.
+        run_id: String,
+        /// Диалог (строкой).
+        dialog_id: String,
+        /// Сообщение с голосовым.
+        message_id: i32,
+        /// Номер вложения; всегда `0`.
+        index: u8,
+        /// Текст расшифровки целиком.
+        text: String,
+        /// Язык, как его назвал движок; пустая строка — не назвал.
+        language: String,
+        /// Каким движком получено.
+        engine: String,
+        /// Длительность записи, мс.
+        duration_ms: i64,
+    },
+    /// Расшифровка не удалась.
+    ///
+    /// `code` отдельно от текста: по нему фронт различает случаи
+    /// (`metal_unavailable` — «включите облако или почините GPU»,
+    /// `voice_no_key` — «введите ключ»), и разбирать это из русской фразы он не
+    /// должен.
+    VoiceTranscribeError {
+        /// Идентификатор прогона.
+        run_id: String,
+        /// Диалог (строкой).
+        dialog_id: String,
+        /// Сообщение с голосовым.
+        message_id: i32,
+        /// Номер вложения; всегда `0`.
+        index: u8,
+        /// Машинный код отказа (`forge_voice::VoiceError::code`).
+        code: String,
+        /// Человеческий текст с хвостом stderr.
+        message: String,
+    },
     /// Настройки уведомлений диалога изменились (mute/unmute — в т.ч. с
     /// другого устройства). Фронт обновляет `muted` у строки диалога, не
     /// перечитывая список.
@@ -319,6 +394,132 @@ pub enum TgClientMsg {
     Pong,
 }
 
+/// На сколько процентов должна вырасти полоса, чтобы уехал новый кадр.
+///
+/// Пять: у голосового на минуту это два десятка кадров вместо сотен, а на глаз
+/// полоса всё равно движется непрерывно. Ноль означал бы кадр на каждую строку
+/// stderr whisper'а — то есть переполнение broadcast и `Resync` посреди
+/// расшифровки.
+pub const VOICE_PROGRESS_STEP: u8 = 5;
+
+/// Приёмник кадров расшифровки для ядра ([`forge_voice::VoiceSink`]).
+///
+/// Близнец [`TgAnalysisSink`] и живёт рядом по той же причине: ядро
+/// `forge-voice` не знает ни [`TgServerMsg`], ни broadcast'а, а перевод в наш
+/// кадр обязан лежать там же, где объявлен сам кадр.
+///
+/// Коалесцинг прогресса ведётся ПО ПРОГОНУ (`run_id`), а не одним счётчиком на
+/// приёмник: при потолке параллелизма больше единицы два прогона перемешали бы
+/// проценты, и полоса каждого дёргалась бы назад.
+#[derive(Debug, Clone)]
+pub struct TgVoiceSink {
+    tx: tokio::sync::broadcast::Sender<TgServerEvent>,
+    /// Последний ОТПРАВЛЕННЫЙ процент каждого идущего прогона.
+    sent: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, u8>>>,
+}
+
+impl TgVoiceSink {
+    /// Оборачивает broadcast-канал состояния.
+    #[must_use]
+    pub fn new(tx: tokio::sync::broadcast::Sender<TgServerEvent>) -> Self {
+        Self {
+            tx,
+            sent: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        }
+    }
+
+    /// Координаты вложения из ключа ядра.
+    ///
+    /// `message_id` в ядре — строка (у трёх мессенджеров он разного типа), а в
+    /// кадре Telegram это `i32`. Неразбираемое значение даёт `0`, а не панику:
+    /// ключ собирается из проверенного `CacheKey`, но кадр — не то место, где
+    /// стоит падать.
+    fn coords(key: &forge_voice::VoiceKey) -> (String, i32, u8) {
+        (
+            key.peer.clone(),
+            key.message_id.parse().unwrap_or(0),
+            key.index,
+        )
+    }
+
+    /// Забыть прогон: он кончился.
+    fn forget(&self, run_id: &str) {
+        if let Ok(mut map) = self.sent.lock() {
+            map.remove(run_id);
+        }
+    }
+}
+
+impl forge_voice::VoiceSink for TgVoiceSink {
+    fn started(&self, run_id: &str, key: &forge_voice::VoiceKey, engine: &str) {
+        let (dialog_id, message_id, index) = Self::coords(key);
+        if let Ok(mut map) = self.sent.lock() {
+            map.insert(run_id.to_string(), 0);
+        }
+        let _ = self.tx.send(TgServerMsg::VoiceTranscribeStarted {
+            run_id: run_id.to_string(),
+            dialog_id,
+            message_id,
+            index,
+            engine: engine.to_string(),
+        });
+    }
+
+    fn progress(&self, run_id: &str, key: &forge_voice::VoiceKey, percent: u8) {
+        let percent = percent.min(100);
+        {
+            let Ok(mut map) = self.sent.lock() else { return };
+            let last = map.get(run_id).copied().unwrap_or(0);
+            // Сотня уезжает всегда: на ней фронт гасит полосу.
+            if percent < 100 && percent < last.saturating_add(VOICE_PROGRESS_STEP) {
+                return;
+            }
+            map.insert(run_id.to_string(), percent);
+        }
+        let (dialog_id, message_id, index) = Self::coords(key);
+        let _ = self.tx.send(TgServerMsg::VoiceTranscribeDelta {
+            run_id: run_id.to_string(),
+            dialog_id,
+            message_id,
+            index,
+            percent,
+        });
+    }
+
+    fn error(&self, run_id: &str, key: &forge_voice::VoiceKey, code: &str, message: &str) {
+        self.forget(run_id);
+        let (dialog_id, message_id, index) = Self::coords(key);
+        let _ = self.tx.send(TgServerMsg::VoiceTranscribeError {
+            run_id: run_id.to_string(),
+            dialog_id,
+            message_id,
+            index,
+            code: code.to_string(),
+            message: message.to_string(),
+        });
+    }
+
+    fn done(
+        &self,
+        run_id: &str,
+        key: &forge_voice::VoiceKey,
+        transcript: &forge_voice::Transcript,
+    ) {
+        self.forget(run_id);
+        let (dialog_id, message_id, index) = Self::coords(key);
+        let _ = self.tx.send(TgServerMsg::VoiceTranscribeDone {
+            run_id: run_id.to_string(),
+            dialog_id,
+            message_id,
+            index,
+            text: transcript.text.clone(),
+            language: transcript.language.clone(),
+            engine: transcript.engine.as_str().to_string(),
+            duration_ms: transcript.duration_ms,
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -385,6 +586,38 @@ mod tests {
                 kind: "full".into(),
                 received: 10,
                 total: None,
+            },
+            TgServerMsg::VoiceTranscribeStarted {
+                run_id: "voice-1".into(),
+                dialog_id: "-1001234".into(),
+                message_id: 7,
+                index: 0,
+                engine: "cloud".into(),
+            },
+            TgServerMsg::VoiceTranscribeDelta {
+                run_id: "voice-1".into(),
+                dialog_id: "-1001234".into(),
+                message_id: 7,
+                index: 0,
+                percent: 40,
+            },
+            TgServerMsg::VoiceTranscribeDone {
+                run_id: "voice-1".into(),
+                dialog_id: "-1001234".into(),
+                message_id: 7,
+                index: 0,
+                text: "привет, это голосовое".into(),
+                language: "ru".into(),
+                engine: "cloud".into(),
+                duration_ms: 4200,
+            },
+            TgServerMsg::VoiceTranscribeError {
+                run_id: "voice-1".into(),
+                dialog_id: "-1001234".into(),
+                message_id: 7,
+                index: 0,
+                code: "metal_unavailable".into(),
+                message: "whisper не подтвердил Metal".into(),
             },
             TgServerMsg::NotifySettings {
                 dialog_id: "123".into(),
@@ -549,6 +782,10 @@ mod tests {
             "read",
             "upload_progress",
             "download_progress",
+            "voice_transcribe_started",
+            "voice_transcribe_delta",
+            "voice_transcribe_done",
+            "voice_transcribe_error",
             "notify_settings",
             "notify_defaults_changed",
             "folders_changed",
@@ -624,6 +861,10 @@ mod tests {
             TgServerMsg::Read { .. } => "read",
             TgServerMsg::UploadProgress { .. } => "upload_progress",
             TgServerMsg::DownloadProgress { .. } => "download_progress",
+            TgServerMsg::VoiceTranscribeStarted { .. } => "voice_transcribe_started",
+            TgServerMsg::VoiceTranscribeDelta { .. } => "voice_transcribe_delta",
+            TgServerMsg::VoiceTranscribeDone { .. } => "voice_transcribe_done",
+            TgServerMsg::VoiceTranscribeError { .. } => "voice_transcribe_error",
             TgServerMsg::NotifySettings { .. } => "notify_settings",
             TgServerMsg::NotifyDefaultsChanged { .. } => "notify_defaults_changed",
             TgServerMsg::FoldersChanged => "folders_changed",
@@ -652,6 +893,10 @@ mod tests {
             "read",
             "upload_progress",
             "download_progress",
+            "voice_transcribe_started",
+            "voice_transcribe_delta",
+            "voice_transcribe_done",
+            "voice_transcribe_error",
             "notify_settings",
             "notify_defaults_changed",
             "folders_changed",

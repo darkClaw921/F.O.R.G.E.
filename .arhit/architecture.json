@@ -1,6 +1,6 @@
 {
   "root": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E.",
-  "generatedAt": "2026-08-20T09:31:48.487Z",
+  "generatedAt": "2026-08-21T13:45:06.312Z",
   "nodes": [
     {
       "id": "tmux-web/static/app.js",
@@ -479,6 +479,10 @@
         "clearThread",
         "startAnalysis",
         "cancelAnalysis",
+        "transcribeVoice",
+        "getVoiceTranscript",
+        "getVoiceSettings",
+        "setVoiceSettings",
         "PATHS"
       ],
       "children": [
@@ -487,7 +491,7 @@
           "name": "getStatus",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 128,
+          "line": 138,
           "signature": "getStatus()",
           "docComment": "`GET /api/bitrix/status` — снимок состояния плагина.\n\n404 означает «плагин выключен» (запущен devforge без `--bitrix`) и штатно\nприводит к ошибке, которую гейт кнопки вкладки глотает.",
           "exports": [
@@ -499,7 +503,7 @@
           "name": "loginWebhook",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 145,
+          "line": 155,
           "signature": "loginWebhook(webhook)",
           "docComment": "`POST /api/bitrix/login/webhook` — подключить портал.\n\nТЕЛО СОДЕРЖИТ СЕКРЕТ. Значение приходит аргументом, никуда не копируется и\nпосле вызова живёт только в поле ввода — которое очищается сразу после\nуспеха (см. js/bitrix/login.js).\n\nПринимаются три формы: полный адрес с именем метода, адрес без метода, с\nхвостовым слэшем и без. Разбирает их СЕРВЕР.",
           "exports": [
@@ -511,7 +515,7 @@
           "name": "logout",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 158,
+          "line": 168,
           "signature": "logout()",
           "docComment": "`POST /api/bitrix/logout` — отвязать портал.\n\nСтирает вебхук ТОЛЬКО в этом devforge: отозвать входящий вебхук через REST\nневозможно, на портале он продолжает действовать. Об этом обязан сказать UI\n(текст приходит с сервера полем `logout_hint` в `/status`).",
           "exports": [
@@ -523,7 +527,7 @@
           "name": "getFilters",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 172,
+          "line": 182,
           "signature": "getFilters()",
           "docComment": "`GET /api/bitrix/filters` — директории колонки и счётчики непрочитанного.\n\nДиректорий четыре и они статичны (`~/all`, `~/chats`, `~/tasks`,\n`~/unread` — Р2); переменная часть — счётчики. После холодного старта\nсервер отвечает из снимка, не обращаясь к порталу (Р3), поэтому вызов\nдёшев и его не нужно экономить.",
           "exports": [
@@ -535,7 +539,7 @@
           "name": "getDialogs",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 186,
+          "line": 196,
           "signature": "getDialogs(params = {})",
           "docComment": "`GET /api/bitrix/dialogs?limit&offset&filter` — страница списка диалогов.\n\nПараметры собираются здесь, а не строкой у вызывающего: `URLSearchParams`\nкодирует значения, а ручная склейка рано или поздно уедет с неэкранированным\nзначением директории.",
           "exports": [
@@ -547,7 +551,7 @@
           "name": "seg",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 196,
+          "line": 206,
           "signature": "seg(value)",
           "docComment": "Кодирует сегмент пути: `dialog_id` — это чужая строка (`chat7`, `19`, `sg12`).",
           "exports": []
@@ -557,7 +561,7 @@
           "name": "withSeg",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 208,
+          "line": 218,
           "signature": "withSeg(template, placeholder, value)",
           "docComment": "Подставляет значение в шаблон пути (`:id`, `:mid`).",
           "exports": []
@@ -567,7 +571,7 @@
           "name": "getMessages",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 229,
+          "line": 239,
           "signature": "getMessages(dialogId, opts = {})",
           "docComment": "`GET /api/bitrix/dialogs/:id/messages?limit&before_id&after_id` — страница\nистории.\n\nНаправления взаимоисключающие: `beforeId` листает ВВЕРХ (строго старее),\n`afterId` догружает НИЗ (строго новее). Сервер отдаёт страницу ВСЕГДА по\nвозрастанию `id`, каким бы порядком её ни прислал портал, — фронт про два\nпорядка портала не знает вовсе.\n\n`limit` сервер клампит потолком платформы (50) молча: просить больше можно,\nполучить — нельзя.",
           "exports": [
@@ -579,7 +583,7 @@
           "name": "getMessage",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 250,
+          "line": 260,
           "signature": "getMessage(dialogId, messageId)",
           "docComment": "`GET /api/bitrix/messages/:mid?dialog_id=…` — одно сообщение.\n\nДиалог обязателен: метода «дай сообщение по идентификатору» у портала нет\nвовсе, и сервер достаёт его страницей на одну строку. Нужен догрузке\nrealtime (Ф7) — перезагружать из-за одного события всю ленту расточительно.",
           "exports": [
@@ -591,7 +595,7 @@
           "name": "sendMessage",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 278,
+          "line": 288,
           "signature": "sendMessage(dialogId, payload = {})",
           "docComment": "`POST /api/bitrix/dialogs/:id/messages` — отправить текст.\n\nАВТОПОВТОРОВ НЕТ И БЫТЬ НЕ МОЖЕТ (Р9): у `im.message.add` нет\nдедуп-идентификатора, поэтому повтор после обрыва — это второе сообщение у\nсобеседника, а не то же самое. Транспортный отказ приезжает как `503\nnot_connected`, и повтор инициирует ТОЛЬКО пользователь кнопкой на строке.\n\nЦитата ответа (Р10) собирается на сервере из `replyAuthor`/`replyText`:\nформат обязан быть один на все вкладки и все версии кэшированных модулей.\n\n`uploadId` (Ф9) превращает вызов в отправку ФАЙЛА: сервер зовёт\n`im.v2.File.upload`, который заливает файл и отправляет сообщение одним\nвызовом, а `text` становится подписью и может быть пустым. Отдельного роута\nу файла нет намеренно — иначе у отправки было бы два пути с двумя копиями\nдедупа и рассылки. Идентификатор ОДНОРАЗОВЫЙ: сервер потребляет его до\nзаливки, поэтому повтор с тем же значением даёт `409 invalid_state`, а не\nвторой файл в чате.",
           "exports": [
@@ -603,7 +607,7 @@
           "name": "editMessage",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 303,
+          "line": 313,
           "signature": "editMessage(dialogId, messageId, text)",
           "docComment": "`PATCH /api/bitrix/messages/:mid` — изменить текст сообщения.\n\nПустой текст сервер ОТВЕРГАЕТ (400): у портала пустой `MESSAGE` удаляет\nсообщение, а удаление живёт на своей кнопке с подтверждением.\n\n`dialogId` обязателен — им сервер перечитывает строку после правки (метку\n`edited` ставит портал, и подделать её нечем).",
           "exports": [
@@ -615,7 +619,7 @@
           "name": "deleteMessage",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 318,
+          "line": 328,
           "signature": "deleteMessage(messageId)",
           "docComment": "`DELETE /api/bitrix/messages/:mid` — удалить сообщение.\n\nДиалог не нужен: портал адресует метод одним идентификатором сообщения.",
           "exports": [
@@ -627,7 +631,7 @@
           "name": "likeMessage",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 334,
+          "line": 344,
           "signature": "likeMessage(dialogId, messageId, action)",
           "docComment": "`POST /api/bitrix/messages/:mid/like` — «лайк».\n\nЕДИНСТВЕННАЯ доступная вебхуку реакция: эмодзи у платформы нет вовсе, и UI\nне должен предлагать выбор, которого не существует. Метод переключающий —\n`action` по умолчанию `auto`.",
           "exports": [
@@ -639,7 +643,7 @@
           "name": "sendCommand",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 351,
+          "line": 361,
           "signature": "sendCommand(messageId, payload)",
           "docComment": "`POST /api/bitrix/messages/:mid/command` — выполнить команду бота (кнопка\nклавиатуры вида `COMMAND`, forge-zw3d).\n\nПоля дословно те, что уже приехали фронту в `ButtonDto` — сервер их не\nзапоминает по сообщению, поэтому кнопка отдаёт их обратно.",
           "exports": [
@@ -651,7 +655,7 @@
           "name": "markRead",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 369,
+          "line": 379,
           "signature": "markRead(dialogId, messageId)",
           "docComment": "`POST /api/bitrix/dialogs/:id/read` — отметить прочитанным.\n\nСервер троттлит вызов окном 800 мс на диалог и отвечает `{sent: false}` на\nподавленные — это НЕ ошибка. Фронт троттлит своим таймером тоже (незачем\nгонять сеть впустую), но полагаться только на него нельзя: панель бывает\nоткрыта в нескольких вкладках.",
           "exports": [
@@ -663,7 +667,7 @@
           "name": "markUnread",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 385,
+          "line": 395,
           "signature": "markUnread(dialogId, messageId)",
           "docComment": "`POST /api/bitrix/dialogs/:id/unread` — пометить непрочитанным.\n\n`messageId` ОБЯЗАТЕЛЕН: портал отвергает вызов без него, и сервер до сети\nтакой запрос не пропускает (400 `invalid_input`).",
           "exports": [
@@ -675,7 +679,7 @@
           "name": "sendTyping",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 401,
+          "line": 411,
           "signature": "sendTyping(dialogId)",
           "docComment": "`POST /api/bitrix/dialogs/:id/typing` — «печатает…».\n\nОдносторонний индикатор: ВХОДЯЩИХ событий набора текста платформа вебхуку не\nприсылает, поэтому чужое «печатает» в панели не появляется никогда.",
           "exports": [
@@ -687,7 +691,7 @@
           "name": "pinDialog",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 412,
+          "line": 422,
           "signature": "pinDialog(dialogId, pinned = true)",
           "docComment": "`POST /api/bitrix/dialogs/:id/pin` — закрепить или открепить диалог (Р14).",
           "exports": [
@@ -699,7 +703,7 @@
           "name": "hideDialog",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 425,
+          "line": 435,
           "signature": "hideDialog(dialogId)",
           "docComment": "`POST /api/bitrix/dialogs/:id/hide` — скрыть диалог из списка (Р14).\n\nОбратной операции у портала нет: диалог вернётся сам, от первого же нового\nсообщения. Поэтому подтверждение обязательно.",
           "exports": [
@@ -711,7 +715,7 @@
           "name": "getTasks",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 448,
+          "line": 458,
           "signature": "getTasks(params = {})",
           "docComment": "`GET /api/bitrix/tasks?filter&start` — страница задач.\n\nСтраница ФИКСИРОВАНА платформой: пятьдесят записей, листается смещением\n`start = (N-1)*50`. Параметра `limit` нет вовсе — просить его бессмысленно.\n\n`filter` — пресет (`all|mine|active|expired|closed`), а не сырой фильтр\nпортала: у того есть псевдополе `STATUS`, которое молча возвращает НОЛЬ\nзаписей, и подпускать фронт к сборке фильтра означало бы однажды получить\nпустую директорию без единой ошибки.",
           "exports": [
@@ -723,7 +727,7 @@
           "name": "getTask",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 473,
+          "line": 483,
           "signature": "getTask(taskId)",
           "docComment": "`GET /api/bitrix/tasks/:id` — карточка задачи.\n\nНесёт `dialog_id` ленты, срок, статус и — главное — `actions`: набор\nдействий, разрешённых порталом ПРЯМО СЕЙЧАС. Он динамичен и меняется вместе\nсо статусом, поэтому карточка перезапрашивается после каждого действия.\n\n`dialog_id === null` означает «у задачи ещё нет чата» (Р20) — ветка\nобязательная, а не редкая.",
           "exports": [
@@ -735,7 +739,7 @@
           "name": "getTaskCounters",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 487,
+          "line": 497,
           "signature": "getTaskCounters()",
           "docComment": "`GET /api/bitrix/tasks/counters` — счётчики задач.\n\nДВА независимых семейства одним ответом: состояние задач (`expired`,\n`new_comments`, `mentioned`) и непрочитанные СООБЩЕНИЯ чатов задач\n(`unread`). Складывать их нельзя: сложенный бейдж не обнулить ни чтением\nленты, ни закрытием задачи.",
           "exports": [
@@ -747,7 +751,7 @@
           "name": "taskAction",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 508,
+          "line": 518,
           "signature": "taskAction(taskId, action)",
           "docComment": "`POST /api/bitrix/tasks/:id/:action` — действие над задачей.\n\nКлюч действия берётся ИЗ КАРТОЧКИ (`task.actions`), а не из списка во\nфронте: матрица прав динамична и приезжает с портала. Действие, которого в\nматрице нет, сервер отвергает `409 invalid_state` — это НЕ сбой, а признак\nтого, что кнопка на экране устарела (статус мог поменяться в чужом\nбраузере), и карточку надо перечитать.\n\nОтвет несёт СВЕЖУЮ карточку (матрица уже другая) и `dialog_id`, чью ленту\nнадо перезапросить: портал пишет в чат задачи системное сообщение о смене\nстатуса.",
           "exports": [
@@ -759,7 +763,7 @@
           "name": "mediaUrl",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 530,
+          "line": 540,
           "signature": "mediaUrl(dialogId, messageId, index)",
           "docComment": "Адрес прокси вложения.\n\nЕДИНСТВЕННЫЙ адрес, по которому панель получает байты файла. Прямых ссылок\nпортала (`urlDownload`, `urlShow`, `unifiedLink`) в DTO нет вовсе — они и не\nработают без сессионной куки, — а `downloadUrl` из `im.v2.File.download`\nсодержит код вебхука и до браузера не доезжает никогда.",
           "exports": [
@@ -771,7 +775,7 @@
           "name": "avatarUrl",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 539,
+          "line": 549,
           "signature": "avatarUrl(userId)",
           "docComment": "Адрес прокси аватара сотрудника (Р6).",
           "exports": [
@@ -783,7 +787,7 @@
           "name": "fetchBytes",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 556,
+          "line": 566,
           "signature": "fetchBytes(path)",
           "docComment": "Сырой `Response` вложения — для прогресса через `body.getReader()`.\n\nВозвращает именно `Response`, а не тело: разбирать поток обязан вызывающий,\nиначе прогресс скачивания посчитать не из чего.\n\nОшибочный статус превращается в `Error` с полем `.code` из конверта — тем же\nразборщиком, что и у остальных роутов панели: решения принимаются по коду, а\nне по HTTP-статусу и не по тексту.",
           "exports": [
@@ -795,7 +799,7 @@
           "name": "getChatPrompt",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 603,
+          "line": 613,
           "signature": "getChatPrompt(dialogId)",
           "docComment": "`GET /api/bitrix/dialogs/:id/prompt` — заметка пользователя к чату.\n\n`max_chars` приходит С СЕРВЕРА и не зашивается в JS: счётчик символов в\ntextarea обязан совпадать с лимитом, по которому сервер реально режет, —\nиначе пользователь допишет фразу, которая молча пропадёт.\n\nОтсутствие заметки — это `{prompt: '', updated_at: null}`, а НЕ 404: «нет\nзаметки» и «пустая заметка» на этом роуте одно состояние.",
           "exports": [
@@ -807,7 +811,7 @@
           "name": "putChatPrompt",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 618,
+          "line": 628,
           "signature": "putChatPrompt(dialogId, prompt)",
           "docComment": "`PUT /api/bitrix/dialogs/:id/prompt` — сохранить заметку.\n\nПустая строка СТИРАЕТ заметку, и это единственный способ её стереть:\nотдельного DELETE нет. Тело обязано присутствовать всегда — отсутствующий\nили битый JSON сервер считает `400 invalid_input`, а не «стереть».",
           "exports": [
@@ -819,7 +823,7 @@
           "name": "getSavedAnalysis",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 645,
+          "line": 655,
           "signature": "getSavedAnalysis(dialogId)",
           "docComment": "`GET /api/bitrix/dialogs/:id/analysis` — последний СОХРАНЁННЫЙ разбор.\n\nЛежит в локальном файле, поэтому роут отвечает 200 и при отвязанном вебхуке:\nпопап показывает прошлый разбор даже когда выгрузить новую историю нечем.\n\n«Разбора нет» — это `{text: '', updated_at: null, last_message_id: null}`, а\nНЕ 404: попап открывают и до первого запуска, и ошибка в этом месте была бы\nвраньём о нормальном состоянии.\n\n`thread` ВСЕГДА массив: сервер отдаёт `[]` там, где вопросов не задавали, а\nпотребитель (ядро попапа) обходит его циклом и не обязан помнить, что поля\nможет не быть вовсе (старый бэкенд, кэш PWA со старым фронтом).\nНормализация здесь, а не у потребителя: точка входа данных одна.",
           "exports": [
@@ -831,7 +835,7 @@
           "name": "clearSavedAnalysis",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 668,
+          "line": 678,
           "signature": "clearSavedAnalysis(dialogId)",
           "docComment": "`DELETE /api/bitrix/dialogs/:id/analysis` — стереть сохранённый разбор.\n\nЗаметку чата НЕ трогает: в попапе это две разные кнопки и в хранилище две\nразные величины. `{cleared: false}` — не ошибка, а «стирать было нечего»\n(две вкладки нажали подряд).",
           "exports": [
@@ -843,7 +847,7 @@
           "name": "clearThread",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 683,
+          "line": 693,
           "signature": "clearThread(dialogId)",
           "docComment": "`DELETE /api/bitrix/dialogs/:id/analysis/thread` — стереть ТОЛЬКО тред.\n\nОтдельный путь, а не `?thread=1` у общего DELETE: так разведение кнопок\nстановится буквальным — CLEAR ✕ и CLEAR Q&A бьют в РАЗНЫЕ адреса и не могут\nстереть чужое. Ни разбор, ни заметку чата не трогает. `{cleared: false}` —\nне ошибка, а «стирать было нечего».",
           "exports": [
@@ -855,7 +859,7 @@
           "name": "startAnalysis",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 719,
+          "line": 729,
           "signature": "startAnalysis(dialogId, opts)",
           "docComment": "`POST /api/bitrix/dialogs/:id/analysis` — запустить разбор или задать вопрос.\n\nОтвет приходит СРАЗУ, в момент запуска процесса: текст модели едет кадрами\n`analysis_delta` по /ws/bitrix, финал — `analysis_done`. Держать HTTP\nоткрытым на всю генерацию нельзя, её оборвёт любой прокси между браузером и\ndevforge.\n\n`attached: true` означает, что нового процесса не запускалось — мы\nподключились к уже идущему run'у (вторая вкладка, повторный клик).\n\nТРИ вида запуска (`kind`):\n- `analyze` — полный разбор выгруженной истории;\n- `ask` — вопрос по той же истории (сохранённый разбор не трогает);\n- `refresh` — дочитать только сообщения новее сохранённого разбора и\n  вернуть ОБНОВЛЁННЫЙ ЦЕЛЬНЫЙ разбор, который заменит прошлый.\n\nДВА исхода `refresh`, о которых обязан знать вызывающий:\n- сохранённого разбора нет ⇒ `400 invalid_input` (сначала полный разбор);\n- новых сообщений нет ⇒ `200 {run_id: null, no_new_messages: true}`. Это\n  штатный ответ, а не ошибка: модель не запускалась, кадров не будет, и\n  ждать их нельзя — попап навсегда остался бы в «идёт разбор».\n\nНеобязательные поля НЕ отправляются вовсе, если их нет: сервер отличает\nотсутствующий `depth` (взять значение по умолчанию) от переданного.",
           "exports": [
@@ -867,7 +871,7 @@
           "name": "cancelAnalysis",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 746,
+          "line": 756,
           "signature": "cancelAnalysis(dialogId, runId)",
           "docComment": "`POST /api/bitrix/dialogs/:id/analysis/cancel` — остановить идущий разбор.\n\n`runId` необязателен: без него сервер гасит тот run, что идёт по этому чату.\nИменно так кнопка «стоп» продолжает работать после перезагрузки вкладки,\nпотерявшей `run_id`.\n\n`{cancelled: false}` — не ошибка: гасить было нечего (run уже закончился).",
           "exports": [
@@ -875,11 +879,69 @@
           ]
         },
         {
+          "id": "tmux-web/static/js/bitrix/api.js:voicePath",
+          "name": "voicePath",
+          "type": "function",
+          "path": "tmux-web/static/js/bitrix/api.js",
+          "line": 767,
+          "signature": "voicePath(template, dialogId, messageId, index)",
+          "docComment": "Подставляет все три сегмента адреса вложения.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/bitrix/api.js:transcribeVoice",
+          "name": "transcribeVoice",
+          "type": "function",
+          "path": "tmux-web/static/js/bitrix/api.js",
+          "line": 795,
+          "signature": "transcribeVoice(dialogId, messageId, index, opts)",
+          "docComment": "POST /api/bitrix/voice/:dialog/:mid/:index/transcribe — запустить расшифровку.\n\nОтвет приходит СРАЗУ: сама расшифровка идёт секунды или минуты, а прогресс\nедет кадрами `voice_transcribe_*` по /ws/bitrix.\n\nТРИ исхода: `{ready: true, text}` — уже посчитано (движок не запускался);\n`{run_id, attached: false}` — прогон запущен; `{run_id, attached: true}` —\nрасшифровка этого вложения уже идёт (вторая вкладка, повторный клик).\n\nРешать по `err.code`, а не по тексту: `voice_not_audio`, `voice_too_long`,\n`voice_no_ffmpeg`, `voice_no_whisper`, `voice_no_model`, `voice_no_key`,\n`voice_busy`, `metal_unavailable`.",
+          "exports": [
+            "transcribeVoice"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/bitrix/api.js:getVoiceTranscript",
+          "name": "getVoiceTranscript",
+          "type": "function",
+          "path": "tmux-web/static/js/bitrix/api.js",
+          "line": 815,
+          "signature": "getVoiceTranscript(dialogId, messageId, index)",
+          "docComment": "GET /api/bitrix/voice/:dialog/:mid/:index/transcript — готовая расшифровка.\n\nРасшифровки нет — это `{ready: false}` с пустым текстом, а НЕ ошибка. Ни\nодного обращения к порталу: ответ читается из локального файла, поэтому\nработает и при исчерпанном лимите запросов.",
+          "exports": [
+            "getVoiceTranscript"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/bitrix/api.js:getVoiceSettings",
+          "name": "getVoiceSettings",
+          "type": "function",
+          "path": "tmux-web/static/js/bitrix/api.js",
+          "line": 834,
+          "signature": "getVoiceSettings()",
+          "docComment": "GET /api/bitrix/voice/settings — каким движком расшифровываются голосовые.\n\nНастройка ОБЩАЯ для всех мессенджеров: она живёт в `voice.toml` рядом с\nключом polza.ai, а не в `user_settings.json`. Поэтому три панели читают её\nсвоими роутами, но видят одно и то же значение.\n\nКлюч облака НИКОГДА не приходит — только признак `cloud_key_set`.\n`warning` (если он есть) объясняет, чего выбранному движку не хватает:\n`voice_no_key`, `voice_no_model`, `voice_no_whisper`, `voice_no_ffmpeg`.\n\nЛогина в мессенджере роут НЕ требует: движок настраивают до входа.",
+          "exports": [
+            "getVoiceSettings"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/bitrix/api.js:setVoiceSettings",
+          "name": "setVoiceSettings",
+          "type": "function",
+          "path": "tmux-web/static/js/bitrix/api.js",
+          "line": 847,
+          "signature": "setVoiceSettings(engine)",
+          "docComment": "PUT /api/bitrix/voice/settings — переключить движок расшифровки.\n\nВыбор СОХРАНЯЕТСЯ, даже если движок сейчас нерабочий: в ответе тогда придёт\n`warning`. Отказ приходит только на чужое слово (`400 invalid_input`).",
+          "exports": [
+            "setVoiceSettings"
+          ]
+        },
+        {
           "id": "tmux-web/static/js/bitrix/api.js:call",
           "name": "call",
           "type": "variable",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 74,
+          "line": 78,
           "docComment": "Единственная точка выхода модуля в сеть.",
           "exports": []
         },
@@ -888,7 +950,7 @@
           "name": "PATHS",
           "type": "variable",
           "path": "tmux-web/static/js/bitrix/api.js",
-          "line": 77,
+          "line": 81,
           "docComment": "Пути роутов — единственное место, где они записаны во фронте.",
           "exports": [
             "PATHS"
@@ -916,7 +978,7 @@
           "name": "mediaGlyph",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/attachments.js",
-          "line": 42,
+          "line": 43,
           "signature": "mediaGlyph(kind)",
           "docComment": "Глиф вида вложения — им подписывается карточка-заглушка.",
           "exports": [
@@ -928,7 +990,7 @@
           "name": "mediaLabel",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/attachments.js",
-          "line": 62,
+          "line": 63,
           "signature": "mediaLabel(media)",
           "docComment": "Строка описания вложения: `forge_probe.txt · 500 Б · файл`.\n\nИмя может отсутствовать (дескриптор файла не приехал в ответе) — тогда\nподписью становится вид: «файл без имени» честнее, чем пустая карточка.",
           "exports": [
@@ -940,7 +1002,7 @@
           "name": "buildMediaCard",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/attachments.js",
-          "line": 98,
+          "line": 99,
           "signature": "buildMediaCard(media, doc = globalThis.document, msg = null)",
           "docComment": "Карточка одного вложения — ЧИСТАЯ РАЗМЕТКА, без единого обработчика.\n\n# Почему построение и поведение разнесены\n\nЗдесь только узлы: ни `addEventListener`, ни `fetch`, ни `objectURL`. Всё\nэто живёт в `js/bitrix/media.js`, который находит готовые узлы по классам и\nнавешивает на них поведение. Разделение не косметическое — оно позволяет\nпроверять разметку карточки в голом Node с крошечным фейком документа\n(`bitrix_bbcode.test.mjs`), где нет ни `addEventListener`, ни `URL`.\n\n# Превью строится только у картинок\n\nОтдельного «маленького файла» у портала нет: `im.v2.File.download` отдаёт\nОРИГИНАЛ, а `mediaUrl.preview[\"250\"]` без сессионной куки не работает.\nПоэтому `<img>` заводится ровно там, где его действительно есть чем\nнаполнить, — у `kind === 'image'` с доступным файлом. Атрибут `src` при\nпостроении НЕ ставится: байты приезжают лениво и только через прокси.",
           "exports": [
@@ -952,7 +1014,7 @@
           "name": "metaLine",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/attachments.js",
-          "line": 188,
+          "line": 203,
           "signature": "metaLine(media)",
           "docComment": "Строка метаданных карточки: `500 Б · файл`.\n\nОтдельно от [`mediaLabel`], потому что имя файла уехало в свою строку: у\nдлинного имени и у метаданных разное поведение при переносе.",
           "exports": []
@@ -962,7 +1024,7 @@
           "name": "buildMediaList",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/attachments.js",
-          "line": 204,
+          "line": 219,
           "signature": "buildMediaList(list, doc = globalThis.document, msg = null)",
           "docComment": "Все вложения сообщения одним контейнером.",
           "exports": [
@@ -974,7 +1036,7 @@
           "name": "buildBlock",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/attachments.js",
-          "line": 220,
+          "line": 235,
           "signature": "buildBlock(block, doc)",
           "docComment": "Блок карточки `ATTACH`.",
           "exports": []
@@ -984,7 +1046,7 @@
           "name": "buildCards",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/attachments.js",
-          "line": 299,
+          "line": 314,
           "signature": "buildCards(list, doc = globalThis.document)",
           "docComment": "Карточки `params.ATTACH` одного сообщения.",
           "exports": [
@@ -996,7 +1058,7 @@
           "name": "MAX_CARDS",
           "type": "variable",
           "path": "tmux-web/static/js/bitrix/attachments.js",
-          "line": 36,
+          "line": 37,
           "docComment": "Сколько карточек рисуется под одним сообщением.",
           "exports": [
             "MAX_CARDS"
@@ -1007,7 +1069,7 @@
           "name": "MAX_GRID_ROWS",
           "type": "variable",
           "path": "tmux-web/static/js/bitrix/attachments.js",
-          "line": 39,
+          "line": 40,
           "docComment": "Сколько строк `GRID` показывается в одной карточке.",
           "exports": [
             "MAX_GRID_ROWS"
@@ -4126,7 +4188,8 @@
         "_debugState",
         "STATUS_PATH",
         "TOAST_THROTTLE_MS",
-        "TOAST_PREFIX"
+        "TOAST_PREFIX",
+        "VOICE_FRAME_EVENT"
       ],
       "children": [
         {
@@ -4134,7 +4197,7 @@
           "name": "setToggleVisible",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/main.js",
-          "line": 117,
+          "line": 118,
           "signature": "setToggleVisible(visible)",
           "docComment": "Показать/скрыть кнопку вкладки.",
           "exports": []
@@ -4144,7 +4207,7 @@
           "name": "setUnreadBadge",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/main.js",
-          "line": 126,
+          "line": 127,
           "signature": "setUnreadBadge(count)",
           "docComment": "Приватная запись в бейдж. Публичный путь ровно один — recomputeUnread().",
           "exports": []
@@ -4154,7 +4217,7 @@
           "name": "recomputeUnread",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/main.js",
-          "line": 151,
+          "line": 152,
           "signature": "recomputeUnread()",
           "docComment": "ЕДИНСТВЕННАЯ точка пересчёта бейджа непрочитанного.\n\nИсточник — серверные счётчики (`counters`), а не сумма по загруженной\nстранице списка: у портала три независимых счётчика плюс уведомления, и\nскладывать их на клиенте по видимым строкам означало бы показывать\nзаниженное число до первой прокрутки.\n\nС Фазы 11 здесь же будет учитываться белый список чатов: при ДЕЙСТВУЮЩЕМ\nфильтре серверный `total` игнорируется целиком — расщепить готовое число на\nвидимую и скрытую части нечем.",
           "exports": [
@@ -4166,7 +4229,7 @@
           "name": "publishFilterContract",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/main.js",
-          "line": 176,
+          "line": 177,
           "signature": "publishFilterContract()",
           "docComment": "Контракт для формы настроек: применить изменения белого списка СРАЗУ.\n\nПубликуется как `window.ForgeApp.b24Filter` (Р1) — форма настроек не может\nимпортировать ES-модуль панели.",
           "exports": [
@@ -4178,7 +4241,7 @@
           "name": "setMode",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/main.js",
-          "line": 196,
+          "line": 197,
           "signature": "setMode(mode)",
           "docComment": "ОДНА функция ставит обе индикации связи: бейдж в статусбаре и класс на\ntitlebar. Две отдельные точки записи разъехались бы при первом же\nреконнекте.",
           "exports": [
@@ -4190,7 +4253,7 @@
           "name": "applyLoginState",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/main.js",
-          "line": 221,
+          "line": 222,
           "signature": "applyLoginState(dto)",
           "docComment": "ОДНА точка на три источника состояния подключения: ответ `/status`, ответ\nPOST'ов подключения и кадр `login_state` из WS. Идемпотентна.\n\nДелится ровно надвое: здесь — состояние вкладки (данные аккаунта, бейдж,\nметка связи), в `js/bitrix/login.js` — сам оверлей. Разделение не\nкосметическое: оверлей знает про блокировку формы и обратный отсчёт, а\nпанель — про кэш медиа и счётчики, и смешение этих забот в одной функции\nозначало бы, что при каждом снапшоте `/status` форма моргает.",
           "exports": [
@@ -4202,7 +4265,7 @@
           "name": "onB24Tab",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/main.js",
-          "line": 260,
+          "line": 261,
           "signature": "onB24Tab()",
           "docComment": "Открыта ли сейчас вкладка Битрикс24.\n\nСвоего роутера у панели нет — источник истины `$b24.hidden`, которым\nуправляет tabs.js.",
           "exports": []
@@ -4212,7 +4275,7 @@
           "name": "maybeToast",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/main.js",
-          "line": 286,
+          "line": 287,
           "signature": "maybeToast(frame)",
           "docComment": "Всплывающее уведомление о входящем сообщении (Ф7).\n\nГейты, все обязательны:\n\n- **сообщение чужое** — своё исходящее не всплывает никогда;\n- **диалог не заглушён** — источник истины поле `muted` КАДРА, а не локальный\n  список: сервер знает `chat.mute_list`, а во фронте загружена только\n  страница списка, и заглушённый чат может быть за её пределами;\n- **диалог проходит белый список** (Ф11) — иначе тост звал бы туда, чего нет\n  в колонке;\n- **это не открытая лента при открытой вкладке** — пользователь и так на неё\n  смотрит;\n- **окно тишины [`TOAST_THROTTLE_MS`]** на диалог — поток сообщений не должен\n  заливать экран.\n\nКанал общий с Echo/Telegram/VK (`#echo-toasts`): четвёртого стека\nуведомлений в проекте не заводится.",
           "exports": [
@@ -4224,7 +4287,7 @@
           "name": "resyncPanel",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/main.js",
-          "line": 331,
+          "line": 332,
           "signature": "resyncPanel()",
           "docComment": "ПОЛНОЕ восстановление состояния панели.\n\nЗовётся по кадру `resync` (сервер: подписчик отстал — Р19 — либо курсор\nсобытий протух — Р18) и после КАЖДОГО переподключения сокета.\n\nИменно полное, а не «догрузить хвост»: обрыв означает, что мы не знаем, что\nименно пропустили. Пропущенным могло быть удаление или правка, а их «догрузка\nснизу» не приносит по определению — она видит только НОВЫЕ сообщения.",
           "exports": [
@@ -4236,7 +4299,7 @@
           "name": "buildHandlers",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/main.js",
-          "line": 345,
+          "line": 346,
           "signature": "buildHandlers()",
           "docComment": "Карта обработчиков WS-кадров. Собирается ОДИН раз.\n\nЗаглушки стоят даже для кадров, которых платформа не присылает НИКОГДА\n(`typing`, `read`) и которые начнут приходить только в следующих фазах\n(`task_update`, прогресс медиа): без них ws.js писал бы `no handler` в\nконсоль на каждое событие портала.",
           "exports": [
@@ -4248,7 +4311,7 @@
           "name": "initB24Gate",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/main.js",
-          "line": 514,
+          "line": 524,
           "signature": "initB24Gate()",
           "docComment": "Гейт кнопки Ⓑ по состоянию плагина на сервере.\n\nВызывается один раз из bootstrap. Ошибка/404 — штатный случай «плагин\nвыключен»: кнопка остаётся скрытой, ничего не логируем.",
           "exports": [
@@ -4260,7 +4323,7 @@
           "name": "initB24",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/main.js",
-          "line": 569,
+          "line": 579,
           "signature": "initB24()",
           "docComment": "Инициализация панели — на каждом входе на вкладку, идемпотентна.\n\nПорядок навески слушателей станет значимым с Фазы 4 (колонка → лента →\nмедиа → загрузки → хоткеи); сейчас навешивать нечего, кроме гарантии, что\nповторный вход не удваивает обработчики.",
           "exports": [
@@ -4272,7 +4335,7 @@
           "name": "showNotice",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/main.js",
-          "line": 668,
+          "line": 678,
           "signature": "showNotice(text)",
           "docComment": "Короткое уведомление от клавиатурной навигации («Скопировано», «У этого\nсообщения нет вложений»).\n\nКанал общий с тостами панели (`js/echo/notifications.js`), но БЕЗ префикса\n«Б24 · »: это ответ на собственное нажатие пользователя, а не событие\nпортала, и подписывать его именем панели значило бы делать вид, что пришло\nуведомление извне.",
           "exports": []
@@ -4282,7 +4345,7 @@
           "name": "loadPanelData",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/main.js",
-          "line": 679,
+          "line": 689,
           "signature": "loadPanelData()",
           "docComment": "Загружает данные панели: список диалогов и директории.\n\nОдин вход на три источника (вход на вкладку, успешное подключение,\nвозвращение из фона): иначе каждый из них обзавёлся бы своей парой вызовов,\nи они разъехались бы по составу.",
           "exports": [
@@ -4294,7 +4357,7 @@
           "name": "suspendB24",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/main.js",
-          "line": 694,
+          "line": 704,
           "signature": "suspendB24()",
           "docComment": "Уход страницы в фон: сокет закрываем. Бейджа всё равно не видно, а сервер\nпо исчезновению подписчиков уводит опрос портала в idle-каденс (Р4) —\nбюджет 2 rps не тратится впустую.",
           "exports": [
@@ -4306,7 +4369,7 @@
           "name": "resumeB24",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/main.js",
-          "line": 709,
+          "line": 719,
           "signature": "resumeB24()",
           "docComment": "Возврат страницы из фона: поднимаем сокет обратно.\n\nДогонять состояние здесь НЕ НУЖНО и нельзя: пока вкладка была в фоне, сокет\nбыл закрыт и события прошли мимо — ровно тот случай, который обрабатывает\n`open`-обработчик (он видит ПЕРЕоткрытие и зовёт `resyncPanel`). Второй\nвызов загрузки здесь означал бы два одинаковых запроса списка подряд, то\nесть двойную трату бюджета портала на каждое переключение вкладки браузера.",
           "exports": [
@@ -4318,7 +4381,7 @@
           "name": "teardownB24",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/main.js",
-          "line": 715,
+          "line": 725,
           "signature": "teardownB24()",
           "docComment": "beforeunload: рвём соединение и отпускаем objectURL'ы медиа.",
           "exports": [
@@ -4330,7 +4393,7 @@
           "name": "_debugState",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/main.js",
-          "line": 769,
+          "line": 779,
           "signature": "_debugState()",
           "docComment": "Агрегат отладочных снимков ВСЕХ модулей панели — контракт для e2e.\n\nЗАЧЕМ ОН ЕСТЬ. Playwright обязан проверять состояние панели, не разбирая\nвёрстку: тест, который ищет третий `li` в четвёртом `div`, ломается от любой\nкосметической правки и перестаёт что-либо значить. Поэтому каждый модуль\nотдаёт свой `_debug*`, а здесь они складываются в одну картину, которой\nхватает на все сценарии `e2e/tests/ui/bitrix-ui.spec.ts`.\n\nСЕКРЕТА ЗДЕСЬ НЕТ И БЫТЬ НЕ МОЖЕТ. Вебхук — это ВЕСЬ URL целиком\n(`https://<портал>/rest/<user_id>/<code>/`), он живёт только в\n`~/.config/forge/bitrix.toml` на сервере и во фронт не приезжает вовсе: даже\n`login.js::_debugLogin` отдаёт лишь состояние автомата и длину поля ввода.\nСторож — `bitrix_keys.test.mjs`, который сериализует результат целиком и\nищет в нём признаки секрета.\n\nПоля верхнего уровня — состояние точки сборки; вложенные объекты именуются\nпо модулям, чтобы тест читался как `state.dialogs.rows`, а не как\n`state.rows2`.",
           "exports": [
@@ -4338,11 +4401,21 @@
           ]
         },
         {
+          "id": "tmux-web/static/js/bitrix/main.js:emitVoiceFrame",
+          "name": "emitVoiceFrame",
+          "type": "function",
+          "path": "tmux-web/static/js/bitrix/main.js",
+          "line": 833,
+          "signature": "emitVoiceFrame(phase, evt)",
+          "docComment": "Перекладывает кадр расшифровки в DOM-событие панели.",
+          "exports": []
+        },
+        {
           "id": "tmux-web/static/js/bitrix/main.js:STATUS_PATH",
           "name": "STATUS_PATH",
           "type": "variable",
           "path": "tmux-web/static/js/bitrix/main.js",
-          "line": 84,
+          "line": 85,
           "docComment": "Путь гейта — реэкспорт из `js/bitrix/api.js`, где живёт вся таблица роутов.\n\nОставлен именем модуля ради обратной совместимости: на него ссылались\nфаза 1 и её тесты, а второе место с этой строкой — второй шанс разъехаться\nс шапкой `plugins/bitrix/src/routes/mod.rs`.",
           "exports": [
             "STATUS_PATH"
@@ -4353,7 +4426,7 @@
           "name": "TOAST_THROTTLE_MS",
           "type": "variable",
           "path": "tmux-web/static/js/bitrix/main.js",
-          "line": 92,
+          "line": 93,
           "docComment": "Окно тишины между тостами ОДНОГО диалога, мс.\n\nБез него активный чат заливает экран стеком уведомлений: события приходят\nпачками по несколько штук за цикл опроса.",
           "exports": [
             "TOAST_THROTTLE_MS"
@@ -4364,7 +4437,7 @@
           "name": "TOAST_PREFIX",
           "type": "variable",
           "path": "tmux-web/static/js/bitrix/main.js",
-          "line": 95,
+          "line": 96,
           "docComment": "Префикс заголовка тоста — по нему видно, чья это панель.",
           "exports": [
             "TOAST_PREFIX"
@@ -4375,8 +4448,19 @@
           "name": "local",
           "type": "variable",
           "path": "tmux-web/static/js/bitrix/main.js",
-          "line": 97,
+          "line": 98,
           "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/bitrix/main.js:VOICE_FRAME_EVENT",
+          "name": "VOICE_FRAME_EVENT",
+          "type": "variable",
+          "path": "tmux-web/static/js/bitrix/main.js",
+          "line": 830,
+          "docComment": "Имя DOM-события, которым панель отдаёт кадры расшифровки наружу.\n\nОдно на все четыре кадра: вид кадра лежит в `detail.phase`. По форме\nсовпадает с `vk:voice-transcribe` и `telegram:voice-transcribe` — общий\nмодуль ГС-Ф5 подписывается на все три одинаковым кодом.\n\nОбъявлено в `js/bitrix/media.js` — там же, где карточка, которая на него\nподписывается: этот файл импортирует media.js, и обратный импорт замкнул бы\nцикл. Здесь имя только переэкспортируется.",
+          "exports": [
+            "VOICE_FRAME_EVENT"
+          ]
         }
       ]
     },
@@ -4405,7 +4489,9 @@
         "stepLightbox",
         "closeLightbox",
         "teardownMedia",
-        "_debugMediaState"
+        "_debugMediaState",
+        "VOICE_FRAME_EVENT",
+        "voiceTranscript"
       ],
       "children": [
         {
@@ -4413,7 +4499,7 @@
           "name": "loadMedia",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 99,
+          "line": 125,
           "signature": "loadMedia(key, path, onNetProgress)",
           "docComment": "Грузит медиа по готовому пути прокси и возвращает objectURL.\n\nДедупликация ДВУХУРОВНЕВАЯ: готовый URL берётся из `b24State.mediaCache`, а\nнезавершённая загрузка — из `local.loads`. Второй уровень важен не меньше\nпервого: без него два клика по OPEN дали бы две параллельные загрузки одного\nфайла (сервер бы их схлопнул своим дедупом, но браузер честно скачал бы\nдважды).",
           "exports": [
@@ -4425,7 +4511,7 @@
           "name": "downloadBlobUrl",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 125,
+          "line": 151,
           "signature": "downloadBlobUrl(path, onNetProgress)",
           "docComment": "`fetch` → чтение тела с прогрессом → `Blob` → `objectURL`.\n\nЕсли поток недоступен (старый браузер, прокси без streaming), честно падаем\nна `response.blob()`: прогресса тогда нет, но файл загрузится.",
           "exports": []
@@ -4435,7 +4521,7 @@
           "name": "revokeDialogMedia",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 163,
+          "line": 189,
           "signature": "revokeDialogMedia()",
           "docComment": "Освобождает objectURL'ы ВЛОЖЕНИЙ (аватары остаются).\n\nЗовётся при смене диалога. Аватары не трогаются намеренно: они общие для всей\nпанели и переиспользуются в колонке, в ленте и в шапке — отзывать их на\nкаждом клике по списку значило бы качать те же лица заново.",
           "exports": [
@@ -4447,7 +4533,7 @@
           "name": "dropMessageMedia",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 191,
+          "line": 217,
           "signature": "dropMessageMedia(dialogId, messageId)",
           "docComment": "Сбрасывает objectURL'ы одного сообщения (ВСЕ его вложения).\n\nНужен на `message_update`/`message_delete`: сервер в этот момент\nинвалидирует свой файловый кэш (`media_cache::invalidate`), и держать во\nвкладке старую картинку значило бы показывать то, чего на портале больше нет.\n\nОбходятся все известные ключи сообщения по РЕЕСТРУ КАРТОЧЕК, а не по\n«сколько было вложений»: правка могла заменить список, и старую длину\nспросить уже негде.",
           "exports": [
@@ -4459,7 +4545,7 @@
           "name": "resetMediaCards",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 206,
+          "line": 232,
           "signature": "resetMediaCards()",
           "docComment": "Забывает карточки (перед перерисовкой ленты).",
           "exports": [
@@ -4471,7 +4557,7 @@
           "name": "attachAvatar",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 232,
+          "line": 258,
           "signature": "attachAvatar(img, userId)",
           "docComment": "Подставляет аватар сотрудника в готовый `<img>` через прокси.\n\n`img.src` получает `blob:`-адрес, а не путь `/api/bitrix/media/avatar/…`:\nпрямой путь не пронёс бы `Authorization: Bearer` в remote-mode. Отказ (404 —\nфото у сотрудника нет) прячет картинку, и остаётся кружок с инициалами на\nфирменном цвете портала: это штатная ветка, а не ошибка.",
           "exports": [
@@ -4483,7 +4569,7 @@
           "name": "renderMediaGroup",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 259,
+          "line": 285,
           "signature": "renderMediaGroup(msg)",
           "docComment": "Собирает контейнер карточек сообщения и оживляет их.\n\nВозвращает готовый узел либо `null`, если вложений нет. Разметку строит\n`attachments.js`; здесь — реестр контроллеров, ленивые превью и обработчики.",
           "exports": [
@@ -4495,7 +4581,7 @@
           "name": "walkNodes",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 288,
+          "line": 320,
           "signature": "walkNodes(root, out = [])",
           "docComment": "Все узлы поддерева в порядке обхода.\n\nОбход руками, а не `querySelectorAll`, ровно по одной причине: этот же код\nобязан работать под крошечным фейком документа во фронт-тестах, где из всего\nDOM есть `createElement`, `appendChild` и `childNodes`. Настоящий селектор\nпотребовал бы либо jsdom в зависимостях, либо второй ветки «а если это тест»\n— и то, и другое хуже пятистрочного обхода.",
           "exports": []
@@ -4505,7 +4591,7 @@
           "name": "hasClass",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 296,
+          "line": 328,
           "signature": "hasClass(node, cls)",
           "docComment": "Есть ли у узла класс.",
           "exports": []
@@ -4515,7 +4601,7 @@
           "name": "pick",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 301,
+          "line": 333,
           "signature": "pick(root, cls)",
           "docComment": "Первый узел поддерева с указанным классом.",
           "exports": []
@@ -4525,7 +4611,7 @@
           "name": "pickAll",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 306,
+          "line": 338,
           "signature": "pickAll(root, cls)",
           "docComment": "Все узлы поддерева с указанным классом.",
           "exports": []
@@ -4535,7 +4621,7 @@
           "name": "on",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 311,
+          "line": 343,
           "signature": "on(node, type, fn)",
           "docComment": "Подписка, переживающая узел без обработчиков (фейковый документ тестов).",
           "exports": []
@@ -4545,7 +4631,7 @@
           "name": "wireCard",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 324,
+          "line": 356,
           "signature": "wireCard(el, media, dialogId, messageId, group)",
           "docComment": "Навешивает поведение на одну карточку.",
           "exports": []
@@ -4555,7 +4641,7 @@
           "name": "observeThumb",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 387,
+          "line": 419,
           "signature": "observeThumb(ctl)",
           "docComment": "Ставит карточку под наблюдение: превью грузится, когда она подъезжает к\nвьюпорту.\n\nБез `IntersectionObserver` (очень старый браузер) грузим сразу: лучше лишние\nзапросы, чем пустые карточки.",
           "exports": []
@@ -4565,7 +4651,7 @@
           "name": "ensureThumb",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 417,
+          "line": 449,
           "signature": "ensureThumb(ctl)",
           "docComment": "Грузит превью один раз.\n\nОтдельного «маленького файла» у портала нет (`im.v2.File.download` отдаёт\nоригинал), поэтому превью картинки — это и есть её полный файл. Именно\nпоэтому оно и грузится ЛЕНИВО: на ленте с десятком фотографий разница между\n«сразу» и «когда видно» — это разница между полусотней мегабайт и одним\nэкраном.",
           "exports": []
@@ -4575,7 +4661,7 @@
           "name": "setProgress",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 440,
+          "line": 472,
           "signature": "setProgress(ctl, leg, received, total)",
           "docComment": "Показывает полосу с подписью. `leg` — `B24` (портал → сервер) или `NET`.",
           "exports": []
@@ -4585,7 +4671,7 @@
           "name": "clearProgress",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 451,
+          "line": 483,
           "signature": "clearProgress(ctl)",
           "docComment": "Убирает полосу и ставит «✓».",
           "exports": []
@@ -4595,7 +4681,7 @@
           "name": "markError",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 466,
+          "line": 498,
           "signature": "markError(ctl, err, retry)",
           "docComment": "Ошибка загрузки.\n\nРешение принимается по КОДУ контракта, а не по тексту: `no_media` — повтор\nбессмыслен (файла нет), `flood_wait` — показываем, сколько ждать, остальное —\nкнопка повтора.",
           "exports": []
@@ -4605,7 +4691,7 @@
           "name": "onDownloadProgress",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 510,
+          "line": 542,
           "signature": "onDownloadProgress(evt)",
           "docComment": "Кадр WS `download_progress` — «сервер тянет файл из портала».\n\nКарточка ищется по ключу `<dialog>/<message>/<index>`, который сервер\nприсылает целиком (`media_cache::CacheKey::id`). ИНДЕКС обязателен: без него\nпрогресс второго файла сообщения прилетал бы в карточку первого. События о\nмедиа, которого нет на экране (другой диалог, страница истории выше), молча\nигнорируются.",
           "exports": [
@@ -4617,7 +4703,7 @@
           "name": "withFile",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 532,
+          "line": 564,
           "signature": "withFile(ctl, done, onFail)",
           "docComment": "Грузит файл с прогрессом и передаёт objectURL в колбэк.\n\nЕдинственная точка запуска «тяжёлой» загрузки: и лайтбокс, и плеер, и SAVE\nходят через неё, поэтому прогресс и обработка ошибок везде одинаковы.\n\n`onFail` нужен вызывающим со СВОИМ индикатором: лайтбокс показывает\n«загрузка…» в подписи и без этого колбэка остался бы «загружающимся»\nнавсегда, хотя загрузка уже провалилась.",
           "exports": []
@@ -4627,7 +4713,7 @@
           "name": "openMedia",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 559,
+          "line": 591,
           "signature": "openMedia(ctl)",
           "docComment": "OPEN: смысл зависит от вида вложения.\n\n- изображение → лайтбокс (с галереей по вложениям сообщения);\n- аудио/голосовое/видео/кружок → плеер внутри карточки;\n- документ и всё прочее → blob в новой вкладке; заблокировали popup — падаем\n  на SAVE.\n\nВнешних адресов ни в одной ветке нет: страницы-плеера у портала не\nсуществует вовсе (`player_url` в DTO всегда `null`), поэтому и открывать\nнечего, кроме собственного blob'а.",
           "exports": [
@@ -4639,7 +4725,7 @@
           "name": "saveMedia",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 587,
+          "line": 619,
           "signature": "saveMedia(ctl)",
           "docComment": "SAVE: файл → `<a download>` → click.\n\nobjectURL НЕ revoke'ается: он лежит в `b24State.mediaCache` и будет\nпереиспользован (например, лайтбоксом), а освободится при смене диалога.\nИмя санитизируется — `download` браузеры трактуют как подсказку ПУТИ.",
           "exports": [
@@ -4651,7 +4737,7 @@
           "name": "isPlayerClick",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 604,
+          "line": 636,
           "signature": "isPlayerClick(target)",
           "docComment": "Клик пришёл изнутри плеера (нативные controls)?",
           "exports": [
@@ -4663,7 +4749,7 @@
           "name": "resolveCardClick",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 622,
+          "line": 654,
           "signature": "resolveCardClick(key, activeKey, fromPlayer)",
           "docComment": "Что делать при клике, запускающем воспроизведение.\n\nЧистая функция — единственная точка истины для «пересоздавать ли плеер»:\n`ignore` — клик из controls активного плеера; `toggle` — плеер этой карточки\nуже открыт, значит play/pause без пересоздания и с сохранением позиции;\n`start` — плеера нет или он на другой карточке.",
           "exports": [
@@ -4675,7 +4761,7 @@
           "name": "stopPlayer",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 629,
+          "line": 661,
           "signature": "stopPlayer()",
           "docComment": "Останавливает и снимает активный плеер.",
           "exports": [
@@ -4687,7 +4773,7 @@
           "name": "ensurePlayerEsc",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 642,
+          "line": 674,
           "signature": "ensurePlayerEsc()",
           "docComment": "Esc останавливает активный плеер (навешивается лениво, один раз).",
           "exports": []
@@ -4697,7 +4783,7 @@
           "name": "playInCard",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 665,
+          "line": 697,
           "signature": "playInCard(ctl)",
           "docComment": "Плеер прямо в карточке (аудио, голосовое, видео, кружок).\n\nОдновременно играет РОВНО один: старт на другой карточке гасит предыдущий —\nиначе два голосовых из одного сообщения перекрикивают друг друга. Повторный\nклик по ТОЙ ЖЕ карточке не пересоздаёт элемент, а переключает play/pause с\nсохранением позиции.",
           "exports": [
@@ -4709,7 +4795,7 @@
           "name": "togglePlayback",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 725,
+          "line": 757,
           "signature": "togglePlayback(el)",
           "docComment": "play/pause существующего элемента: позиция воспроизведения сохраняется.",
           "exports": []
@@ -4719,7 +4805,7 @@
           "name": "initMedia",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 739,
+          "line": 771,
           "signature": "initMedia()",
           "docComment": "Навешивает обработчики лайтбокса (идемпотентно).",
           "exports": [
@@ -4731,7 +4817,7 @@
           "name": "trapFocus",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 767,
+          "line": 799,
           "signature": "trapFocus(e)",
           "docComment": "Держит фокус внутри лайтбокса (доступность).",
           "exports": []
@@ -4741,7 +4827,7 @@
           "name": "galleryOf",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 792,
+          "line": 824,
           "signature": "galleryOf(ctl)",
           "docComment": "Картиночные вложения ОДНОГО сообщения — это и есть галерея.\n\nХодить по всей ленте нельзя: «следующее фото» означает следующее в ЭТОМ\nсообщении, а не в переписке. Непросматриваемые виды (документ, голосовое) из\nгалереи выпадают — листать их лайтбоксом нечем.",
           "exports": [
@@ -4753,7 +4839,7 @@
           "name": "openLightbox",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 803,
+          "line": 835,
           "signature": "openLightbox(ctl)",
           "docComment": "Открывает изображение поверх панели.",
           "exports": [
@@ -4765,7 +4851,7 @@
           "name": "stepLightbox",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 825,
+          "line": 857,
           "signature": "stepLightbox(delta)",
           "docComment": "Сдвигает галерею на `delta` позиций.\n\nГраницы НЕ зациклены намеренно: «следующее» за последним фото — это ничего, а\nпрыжок в начало читается как сбой. Кнопки на границах выключаются, поэтому\nмышью в упор не упрёшься вовсе.",
           "exports": [
@@ -4777,7 +4863,7 @@
           "name": "showAt",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 835,
+          "line": 867,
           "signature": "showAt(pos)",
           "docComment": "Показывает вложение галереи по позиции.",
           "exports": []
@@ -4787,7 +4873,7 @@
           "name": "closeLightbox",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 872,
+          "line": 904,
           "signature": "closeLightbox()",
           "docComment": "Закрывает лайтбокс и возвращает фокус на карточку.",
           "exports": [
@@ -4799,7 +4885,7 @@
           "name": "teardownMedia",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 889,
+          "line": 921,
           "signature": "teardownMedia()",
           "docComment": "Полная очистка (logout, teardown вкладки) — включая аватары.",
           "exports": [
@@ -4811,7 +4897,7 @@
           "name": "_debugMediaState",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 903,
+          "line": 935,
           "signature": "_debugMediaState()",
           "docComment": "Снимок состояния для e2e и диагностики.",
           "exports": [
@@ -4823,16 +4909,38 @@
           "name": "OBSERVER_MARGIN",
           "type": "variable",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 58,
+          "line": 59,
           "docComment": "Запас в пикселях, при котором карточка считается «почти видимой».",
           "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/bitrix/media.js:VOICE_FRAME_EVENT",
+          "name": "VOICE_FRAME_EVENT",
+          "type": "variable",
+          "path": "tmux-web/static/js/bitrix/media.js",
+          "line": 68,
+          "docComment": "Имя DOM-события, которым панель отдаёт кадры расшифровки наружу.\n\nОбъявлено ЗДЕСЬ, а не в `main.js`, хотя рассылает кадры именно он: карточку\nоживляет этот файл, а `main.js` импортирует его — обратный импорт замкнул бы\nцикл. `main.js` берёт имя отсюда и переэкспортирует.",
+          "exports": [
+            "VOICE_FRAME_EVENT"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/bitrix/media.js:voiceTranscript",
+          "name": "voiceTranscript",
+          "type": "variable",
+          "path": "tmux-web/static/js/bitrix/media.js",
+          "line": 79,
+          "docComment": "Текст расшифровки под голосовым — ОБЩИЙ модуль на три панели.\n\nЖивёт в media.js, а не в `attachments.js`, где строится сама разметка\nкарточки, и это не случайность: `attachments.js` не делает ни одного запроса\nи не вешает ни одного обработчика — ровно поэтому он проверяется в голом\nNode. Расшифровка же и запрашивает, и слушает; её место здесь, рядом с\nостальным «оживлением» карточек.",
+          "exports": [
+            "voiceTranscript"
+          ]
         },
         {
           "id": "tmux-web/static/js/bitrix/media.js:local",
           "name": "local",
           "type": "variable",
           "path": "tmux-web/static/js/bitrix/media.js",
-          "line": 60,
+          "line": 86,
           "exports": []
         }
       ]
@@ -6213,7 +6321,7 @@
           "name": "urlFor",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/ws.js",
-          "line": 63,
+          "line": 69,
           "signature": "urlFor()",
           "docComment": "Адрес соединения с токеном в query (WebSocket не умеет заголовки).",
           "exports": []
@@ -6223,7 +6331,7 @@
           "name": "callHandler",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/ws.js",
-          "line": 69,
+          "line": 75,
           "signature": "callHandler(name, arg)",
           "docComment": "Зовёт обработчик панели, не давая его исключению порвать соединение.",
           "exports": []
@@ -6233,7 +6341,7 @@
           "name": "onFrame",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/ws.js",
-          "line": 80,
+          "line": 86,
           "signature": "onFrame(msg)",
           "docComment": "Раскладывает кадр по обработчикам панели.",
           "exports": []
@@ -6243,7 +6351,7 @@
           "name": "ensureClient",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/ws.js",
-          "line": 101,
+          "line": 107,
           "signature": "ensureClient()",
           "exports": []
         },
@@ -6252,7 +6360,7 @@
           "name": "connectB24Ws",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/ws.js",
-          "line": 135,
+          "line": 141,
           "signature": "connectB24Ws(handlers)",
           "docComment": "Открыть (или переиспользовать) соединение.\n\nИдемпотентен: при живом сокете только обновляет handlers. Это важно, потому\nчто connect зовут из нескольких точек (гейт при загрузке страницы,\napplyLoginState после успешного подключения, возврат вкладки из фона), и\nпорядок между ними не определён.",
           "exports": [
@@ -6264,7 +6372,7 @@
           "name": "disconnectB24Ws",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/ws.js",
-          "line": 149,
+          "line": 155,
           "signature": "disconnectB24Ws()",
           "docComment": "Закрыть соединение без реконнекта.\n\nВызывается на visibilitychange:hidden (скрытую вкладку держать сокетом\nнезачем — бейджа всё равно не видно; заодно сервер уводит опрос портала в\nidle-каденс, Р4) и на beforeunload.",
           "exports": [
@@ -6276,7 +6384,7 @@
           "name": "isB24WsOpen",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/ws.js",
-          "line": 156,
+          "line": 162,
           "signature": "isB24WsOpen()",
           "docComment": "Открыто ли соединение прямо сейчас.",
           "exports": [
@@ -6288,7 +6396,7 @@
           "name": "_debugWsState",
           "type": "function",
           "path": "tmux-web/static/js/bitrix/ws.js",
-          "line": 161,
+          "line": 167,
           "signature": "_debugWsState()",
           "docComment": "Снимок состояния для e2e/диагностики.",
           "exports": [
@@ -6333,7 +6441,7 @@
           "name": "local",
           "type": "variable",
           "path": "tmux-web/static/js/bitrix/ws.js",
-          "line": 55,
+          "line": 61,
           "exports": []
         }
       ]
@@ -15810,6 +15918,324 @@
       ]
     },
     {
+      "id": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "name": "voice-transcript-core.js",
+      "type": "file",
+      "path": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "exports": [
+        "transcriptKey",
+        "isAudioKind",
+        "needsCollapse",
+        "errorText",
+        "createVoiceTranscript",
+        "COLLAPSE_CHARS",
+        "EAGER_FETCH_BUDGET",
+        "AUDIO_KINDS",
+        "ERROR_TEXT",
+        "ERROR_FALLBACK"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/messenger/voice-transcript-core.js:transcriptKey",
+          "name": "transcriptKey",
+          "type": "function",
+          "path": "tmux-web/static/js/messenger/voice-transcript-core.js",
+          "line": 152,
+          "signature": "transcriptKey(plugin, dialogId, messageId, index)",
+          "docComment": "Ключ вложения.\n\nПлагин входит в ключ первым: две панели на одной странице легко дают\nодинаковую тройку (беседа «1», сообщение «1», вложение 0), и без имени\nплагина кадр Telegram дорисовал бы карточку VK.",
+          "exports": [
+            "transcriptKey"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/messenger/voice-transcript-core.js:isAudioKind",
+          "name": "isAudioKind",
+          "type": "function",
+          "path": "tmux-web/static/js/messenger/voice-transcript-core.js",
+          "line": 158,
+          "signature": "isAudioKind(kind)",
+          "docComment": "Бывает ли у такого вложения расшифровка.",
+          "exports": [
+            "isAudioKind"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/messenger/voice-transcript-core.js:needsCollapse",
+          "name": "needsCollapse",
+          "type": "function",
+          "path": "tmux-web/static/js/messenger/voice-transcript-core.js",
+          "line": 163,
+          "signature": "needsCollapse(text)",
+          "docComment": "Надо ли сворачивать этот текст.",
+          "exports": [
+            "needsCollapse"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/messenger/voice-transcript-core.js:errorText",
+          "name": "errorText",
+          "type": "function",
+          "path": "tmux-web/static/js/messenger/voice-transcript-core.js",
+          "line": 168,
+          "signature": "errorText(code)",
+          "docComment": "Человеческая причина отказа по коду.",
+          "exports": [
+            "errorText"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/messenger/voice-transcript-core.js:runningLabel",
+          "name": "runningLabel",
+          "type": "function",
+          "path": "tmux-web/static/js/messenger/voice-transcript-core.js",
+          "line": 174,
+          "signature": "runningLabel(state)",
+          "docComment": "Подпись строки состояния для `running`.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/messenger/voice-transcript-core.js:readyLabel",
+          "name": "readyLabel",
+          "type": "function",
+          "path": "tmux-web/static/js/messenger/voice-transcript-core.js",
+          "line": 181,
+          "signature": "readyLabel(state)",
+          "docComment": "Подпись строки состояния для `ready`.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/messenger/voice-transcript-core.js:blankState",
+          "name": "blankState",
+          "type": "function",
+          "path": "tmux-web/static/js/messenger/voice-transcript-core.js",
+          "line": 191,
+          "signature": "blankState()",
+          "docComment": "Пустое состояние ключа.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/messenger/voice-transcript-core.js:setClass",
+          "name": "setClass",
+          "type": "function",
+          "path": "tmux-web/static/js/messenger/voice-transcript-core.js",
+          "line": 214,
+          "signature": "setClass(node, cls, on)",
+          "docComment": "Ставит/снимает класс без `classList`.\n\n`classList` есть не во всех фейковых документах панелей (карточки Bitrix\nстроятся на документе из десяти строк), а расходиться с ними модулю нельзя:\nтогда одна из трёх панелей осталась бы без теста разметки.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/messenger/voice-transcript-core.js:attr",
+          "name": "attr",
+          "type": "function",
+          "path": "tmux-web/static/js/messenger/voice-transcript-core.js",
+          "line": 223,
+          "signature": "attr(node, name, value)",
+          "docComment": "`setAttribute`, если документ его умеет.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/messenger/voice-transcript-core.js:createVoiceTranscript",
+          "name": "createVoiceTranscript",
+          "type": "function",
+          "path": "tmux-web/static/js/messenger/voice-transcript-core.js",
+          "line": 240,
+          "signature": "createVoiceTranscript(opts)",
+          "docComment": "Фабрика карточки расшифровки для одной панели.\n\nВсё состояние — в замыкании: две панели на одной странице обязаны быть слепы\nдруг к другу (тот же довод, что у `createAnalysisPanel`).",
+          "exports": [
+            "createVoiceTranscript"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/messenger/voice-transcript-core.js:COLLAPSE_CHARS",
+          "name": "COLLAPSE_CHARS",
+          "type": "variable",
+          "path": "tmux-web/static/js/messenger/voice-transcript-core.js",
+          "line": 99,
+          "docComment": "Сколько символов текста показываем несвёрнутым.\n\nПятнадцатиминутное голосовое — это лист текста, и развёрнутым он выдавливает\nиз ленты всё остальное. Порог выбран так, чтобы обычное «ага, буду в семь»\nне сворачивалось никогда.",
+          "exports": [
+            "COLLAPSE_CHARS"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/messenger/voice-transcript-core.js:EAGER_FETCH_BUDGET",
+          "name": "EAGER_FETCH_BUDGET",
+          "type": "variable",
+          "path": "tmux-web/static/js/messenger/voice-transcript-core.js",
+          "line": 105,
+          "docComment": "Потолок запросов готового текста на одну пачку отрисовки — там, где нет\n`IntersectionObserver`.",
+          "exports": [
+            "EAGER_FETCH_BUDGET"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/messenger/voice-transcript-core.js:AUDIO_KINDS",
+          "name": "AUDIO_KINDS",
+          "type": "variable",
+          "path": "tmux-web/static/js/messenger/voice-transcript-core.js",
+          "line": 108,
+          "docComment": "Виды вложений, у которых бывает расшифровка (лексика трёх панелей).",
+          "exports": [
+            "AUDIO_KINDS"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/messenger/voice-transcript-core.js:ERROR_TEXT",
+          "name": "ERROR_TEXT",
+          "type": "variable",
+          "path": "tmux-web/static/js/messenger/voice-transcript-core.js",
+          "line": 118,
+          "docComment": "Человеческие причины отказа ПО КОДУ.\n\nТексты кадра `voice_transcribe_error` сюда не попадают вовсе: в них хвост\nstderr движка, пути до бинарей и обрывки конфигурации. Человеку в ленте это\nне нужно, а показывать пути и тем более следы ключей — прямой вред. Коды —\nконтракт `forge_voice::VoiceError::code`.",
+          "exports": [
+            "ERROR_TEXT"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/messenger/voice-transcript-core.js:ERROR_FALLBACK",
+          "name": "ERROR_FALLBACK",
+          "type": "variable",
+          "path": "tmux-web/static/js/messenger/voice-transcript-core.js",
+          "line": 134,
+          "docComment": "Причина отказа, когда код неизвестен или его нет вовсе.",
+          "exports": [
+            "ERROR_FALLBACK"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/messenger/voice-transcript-core.js:ENGINE_LABEL",
+          "name": "ENGINE_LABEL",
+          "type": "variable",
+          "path": "tmux-web/static/js/messenger/voice-transcript-core.js",
+          "line": 137,
+          "docComment": "Подписи движков — те же два слова, что во вкладке настроек.",
+          "exports": []
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/messenger/waveform-core.js",
+      "name": "waveform-core.js",
+      "type": "file",
+      "path": "tmux-web/static/js/messenger/waveform-core.js",
+      "exports": [
+        "noiseSeed",
+        "realHeights",
+        "noiseHeights",
+        "waveHeights",
+        "buildWave",
+        "hasRealWaveform",
+        "WAVE_BARS",
+        "WAVE_MIN_PX",
+        "WAVE_RANGE_PX"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/messenger/waveform-core.js:noiseSeed",
+          "name": "noiseSeed",
+          "type": "function",
+          "path": "tmux-web/static/js/messenger/waveform-core.js",
+          "line": 47,
+          "signature": "noiseSeed(messageId, index = null)",
+          "docComment": "«Соль» детерминированного шума.\n\n`index` пропускают панели, у которых вложение в сообщении одно (Telegram):\nподмешивать в соль ноль означало бы изменить рисунок всех уже нарисованных\nзаглушек, а они у пользователя перед глазами каждый день.",
+          "exports": [
+            "noiseSeed"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/messenger/waveform-core.js:realHeights",
+          "name": "realHeights",
+          "type": "function",
+          "path": "tmux-web/static/js/messenger/waveform-core.js",
+          "line": 64,
+          "signature": "realHeights(waveform)",
+          "docComment": "Высоты столбиков настоящей огибающей, пиксели.\n\nНормализация — ПО МАКСИМУМУ САМОГО МАССИВА, а не по потолку шкалы: тихая\nзапись иначе рисовалась бы полоской у самого низа карточки. Прореживание\nшагом `ceil(len / WAVE_BARS)` — массив бывает и в двести отсчётов, а\nстолбиков в карточке сорок.",
+          "exports": [
+            "realHeights"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/messenger/waveform-core.js:noiseHeights",
+          "name": "noiseHeights",
+          "type": "function",
+          "path": "tmux-web/static/js/messenger/waveform-core.js",
+          "line": 85,
+          "signature": "noiseHeights(seed)",
+          "docComment": "Высоты столбиков заглушки, пиксели.\n\nxorshift32 от соли: одна и та же карточка всегда даёт одну и ту же картинку,\nразные — разные.",
+          "exports": [
+            "noiseHeights"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/messenger/waveform-core.js:waveHeights",
+          "name": "waveHeights",
+          "type": "function",
+          "path": "tmux-web/static/js/messenger/waveform-core.js",
+          "line": 106,
+          "signature": "waveHeights(waveform, seed)",
+          "docComment": "Высоты столбиков карточки: настоящая огибающая, если она есть, иначе шум.\n\nЧистая функция — на ней и держатся тесты рендера: проверять высоты честнее,\nчем ходить по узлам.",
+          "exports": [
+            "waveHeights"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/messenger/waveform-core.js:buildWave",
+          "name": "buildWave",
+          "type": "function",
+          "path": "tmux-web/static/js/messenger/waveform-core.js",
+          "line": 121,
+          "signature": "buildWave({ waveform, seed = 1, className, doc = globalThis.document })",
+          "docComment": "Готовый узел волны.",
+          "exports": [
+            "buildWave"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/messenger/waveform-core.js:hasRealWaveform",
+          "name": "hasRealWaveform",
+          "type": "function",
+          "path": "tmux-web/static/js/messenger/waveform-core.js",
+          "line": 136,
+          "signature": "hasRealWaveform(media)",
+          "docComment": "Есть ли у вложения настоящая огибающая (а не заглушка).",
+          "exports": [
+            "hasRealWaveform"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/messenger/waveform-core.js:WAVE_BARS",
+          "name": "WAVE_BARS",
+          "type": "variable",
+          "path": "tmux-web/static/js/messenger/waveform-core.js",
+          "line": 28,
+          "docComment": "Сколько столбиков рисуем: и в шуме, и в прореженной настоящей волне.",
+          "exports": [
+            "WAVE_BARS"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/messenger/waveform-core.js:WAVE_MIN_PX",
+          "name": "WAVE_MIN_PX",
+          "type": "variable",
+          "path": "tmux-web/static/js/messenger/waveform-core.js",
+          "line": 31,
+          "docComment": "Высота самого тихого столбика, пиксели (нулевой высоты не бывает).",
+          "exports": [
+            "WAVE_MIN_PX"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/messenger/waveform-core.js:WAVE_RANGE_PX",
+          "name": "WAVE_RANGE_PX",
+          "type": "variable",
+          "path": "tmux-web/static/js/messenger/waveform-core.js",
+          "line": 34,
+          "docComment": "Насколько самый громкий столбик выше самого тихого, пиксели.",
+          "exports": [
+            "WAVE_RANGE_PX"
+          ]
+        }
+      ]
+    },
+    {
       "id": "tmux-web/static/js/messenger/ws-core.js",
       "name": "ws-core.js",
       "type": "file",
@@ -18087,6 +18513,7 @@
         "MEET_GROUPS",
         "MEET_LABELS",
         "BACKEND_LABELS",
+        "BLOCKER_LABELS",
         "KEY_MASK_CHAR",
         "HOUR_PROMPT_TOKENS",
         "HOUR_COMPLETION_TOKENS",
@@ -18099,7 +18526,7 @@
           "name": "backendNote",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 124,
+          "line": 139,
           "signature": "backendNote(key, value, ctx)",
           "docComment": "Что означает выбранная стадия ПРЯМО СЕЙЧАС, с учётом окружения.\n\nОтдельная чистая функция, потому что это единственное место, где «облако» и\n«локально» превращаются в проверяемое обещание: облако без ключа и локальная\nрасшифровка без Metal одинаково НЕ ЗАПУСТЯТСЯ, и узнать об этом человек\nобязан у переключателя, а не из упавшей встречи через час.",
           "exports": [
@@ -18111,7 +18538,7 @@
           "name": "formatRub",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 194,
+          "line": 229,
           "signature": "formatRub(n)",
           "docComment": "Сумма в рублях. Валюта у polza.ai одна, и подписывать её обязательно: «461»\nбез знака читается как доллары.",
           "exports": [
@@ -18123,7 +18550,7 @@
           "name": "modelPrice",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 212,
+          "line": 247,
           "signature": "modelPrice(m)",
           "docComment": "Цена модели человеческой строкой.\n\n**Отсутствие цены — это «цену не отдали», а НЕ «бесплатно».** Наивный разбор\nкаталога читает `pricing` верхнего уровня, где у всех записей пусто, и молча\nпоказывает ноль; узнают об этом по счёту в конце месяца. Здесь цена приходит\nготовой из `top_provider.pricing` (разбирает бэкенд), а пустое значение\nназывает себя вслух.",
           "exports": [
@@ -18135,7 +18562,7 @@
           "name": "modelOptionLabel",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 229,
+          "line": 264,
           "signature": "modelOptionLabel(m)",
           "docComment": "Подпись строки каталога: имя, цена и метка непригодности.",
           "exports": [
@@ -18147,7 +18574,7 @@
           "name": "sttModelNote",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 242,
+          "line": 277,
           "signature": "sttModelNote(m)",
           "docComment": "Пригодность облачной модели расшифровки.\n\nОграничение сервиса, а не наше: таймкоды даёт ОДНА модель. Флаг `timestamps`\nприезжает с бэкенда (`crate::cloud::stt_gives_timestamps`), чтобы имя\nпригодной модели не появилось во фронте третьей копией.",
           "exports": [
@@ -18159,7 +18586,7 @@
           "name": "summaryCostEstimate",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 274,
+          "line": 309,
           "signature": "summaryCostEstimate(m)",
           "docComment": "Во что обойдётся саммари часовой встречи выбранной моделью, рублей.\n\n`null` — цены нет, и выдумывать её нельзя: «бесплатно» здесь было бы враньём.",
           "exports": [
@@ -18171,7 +18598,7 @@
           "name": "summaryModelNote",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 286,
+          "line": 321,
           "signature": "summaryModelNote(m)",
           "docComment": "Подпись модели саммари: контекст и цена часовой встречи.",
           "exports": [
@@ -18183,7 +18610,7 @@
           "name": "balanceLine",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 318,
+          "line": 353,
           "signature": "balanceLine(dto)",
           "docComment": "Остаток средств и лимита ключа одной строкой.",
           "exports": [
@@ -18195,7 +18622,7 @@
           "name": "formatBytes",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 356,
+          "line": 391,
           "signature": "formatBytes(n)",
           "docComment": "Человеческий размер.",
           "exports": [
@@ -18207,7 +18634,7 @@
           "name": "deviceBadge",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 377,
+          "line": 412,
           "signature": "deviceBadge(deps)",
           "docComment": "Состояние вычислителя: на чём пойдёт расшифровка.\n\nВозвращает `{ tone, text }`, где `tone` — `ok` | `warn` | `wait`. Отдельной\nчистой функцией, потому что это ЕДИНСТВЕННОЕ место, где правило проекта\n«только GPU» превращается в текст для человека, и проверять его надо без\nDOM.",
           "exports": [
@@ -18219,7 +18646,7 @@
           "name": "depLine",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 396,
+          "line": 431,
           "signature": "depLine(name, dep, hint)",
           "docComment": "Строка состояния одного внешнего бинаря — с подсказкой, что ставить.",
           "exports": [
@@ -18231,7 +18658,7 @@
           "name": "el",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 418,
+          "line": 453,
           "signature": "el(tag, cls, text)",
           "exports": []
         },
@@ -18240,7 +18667,7 @@
           "name": "statusLine",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 426,
+          "line": 461,
           "signature": "statusLine(host, { tone, text })",
           "docComment": "Строка состояния с тоном.",
           "exports": []
@@ -18250,7 +18677,7 @@
           "name": "buildMeetSettings",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 441,
+          "line": 476,
           "signature": "buildMeetSettings(host, deps)",
           "docComment": "Рисует вкладку.",
           "exports": [
@@ -18262,7 +18689,7 @@
           "name": "buildProfileBlock",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 666,
+          "line": 704,
           "signature": "buildProfileBlock(profile, api, refs)",
           "docComment": "Блок постоянного профиля браузера: предупреждение, права, кнопка сброса.\n\n# Почему предупреждение приходит С СЕРВЕРА\n\nПотому что оно описывает СВОЙСТВО ХРАНЕНИЯ, а не интерфейс: что именно\nлежит в каталоге, знает бэкенд, и написанный здесь свой текст разъехался бы\nс фактическим поведением в первый же день, когда поведение изменится.\n\n# Почему кнопка видна и при выключенной настройке\n\nПотому что каталог мог остаться от прежней настройки. «Выключил галку, а\nсессия Google так и лежит на диске» — ровно то молчаливое расхождение,\nкоторого плагин избегает везде.",
           "exports": []
@@ -18272,7 +18699,7 @@
           "name": "buildCloudBlock",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 731,
+          "line": 769,
           "signature": "buildCloudBlock(fs, api, refs)",
           "docComment": "Хвост раздела «Облако»: остаток средств и состояние каталога моделей.\n\n# Почему баланс приезжает ОТДЕЛЬНЫМ запросом и позже формы\n\nПотому что это второй поход в чужой сервис. В `GET /api/meet/status` его\nнамеренно нет: статус гейтит панель плагина, и подвисший polza.ai выключил\nбы встречи целиком. Здесь тот же принцип на уровне вкладки: форма уже\nнарисована и работает, а строка остатка дозаполняется, когда ответ придёт.\nОтказ — строчка, а не сломанная вкладка.",
           "exports": []
@@ -18282,7 +18709,7 @@
           "name": "buildModelRow",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 774,
+          "line": 812,
           "signature": "buildModelRow(m, models, api, refs)",
           "docComment": "Строка модели: имя, вес, состояние, кнопка скачать/удалить.",
           "exports": []
@@ -18292,7 +18719,7 @@
           "name": "cloudCatalogueFor",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 822,
+          "line": 860,
           "signature": "cloudCatalogueFor(key, catalogue)",
           "docComment": "Список моделей каталога для поля — либо `null`, если списка нет.\n\nСтадии смотрят в РАЗНЫЕ списки: расшифровка в `stt`, саммари в `chat`.\nСмешанный список предлагал бы выбрать генератор картинок саммаризатором.",
           "exports": [
@@ -18304,7 +18731,7 @@
           "name": "buildField",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 831,
+          "line": 869,
           "signature": "buildField(f, refs)",
           "docComment": "Одно поле настроек.",
           "exports": []
@@ -18314,7 +18741,7 @@
           "name": "collect",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 966,
+          "line": 1004,
           "signature": "collect(refs)",
           "docComment": "Собирает ИЗМЕНЁННЫЕ значения полей.",
           "exports": []
@@ -18324,7 +18751,7 @@
           "name": "applySaved",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 992,
+          "line": 1030,
           "signature": "applySaved(refs, config)",
           "docComment": "Обновляет форму ответом сервера, чтобы «изменённых полей» не осталось.",
           "exports": []
@@ -18334,7 +18761,7 @@
           "name": "errText",
           "type": "function",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 1002,
+          "line": 1040,
           "signature": "errText(e)",
           "exports": []
         },
@@ -18365,10 +18792,21 @@
           "name": "BACKEND_LABELS",
           "type": "variable",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 95,
+          "line": 96,
           "docComment": "Подписи переключателей стадий.",
           "exports": [
             "BACKEND_LABELS"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/settings/meet-tab.js:BLOCKER_LABELS",
+          "name": "BLOCKER_LABELS",
+          "type": "variable",
+          "path": "tmux-web/static/js/settings/meet-tab.js",
+          "line": 105,
+          "docComment": "Коды нехватки — словами. Те же коды, что у `deps::blocker_hint` в бэкенде;\nздесь они превращаются в причину ОТКАТА у переключателя стадии.",
+          "exports": [
+            "BLOCKER_LABELS"
           ]
         },
         {
@@ -18376,7 +18814,7 @@
           "name": "KEY_MASK_CHAR",
           "type": "variable",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 109,
+          "line": 123,
           "docComment": "Символ маски ключа.\n\nТот же, что `crate::cloud::MASK_CHAR` в бэкенде. Здесь он нужен ровно затем,\nчтобы НЕ ОТПРАВИТЬ МАСКУ ОБРАТНО: `GET` отдаёт ключ только маской, и форма,\nкоторая вернёт её в `PUT`, получит 400 (бэкенд узнаёт свою маску и\nотказывается принимать её за ключ) либо, не будь той проверки, затёрла бы\nнастоящий ключ строкой из точек.",
           "exports": [
             "KEY_MASK_CHAR"
@@ -18387,7 +18825,7 @@
           "name": "HOUR_PROMPT_TOKENS",
           "type": "variable",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 266,
+          "line": 301,
           "docComment": "Токенов во входе и выходе саммари часовой встречи — для оценки стоимости.",
           "exports": [
             "HOUR_PROMPT_TOKENS"
@@ -18398,7 +18836,7 @@
           "name": "HOUR_COMPLETION_TOKENS",
           "type": "variable",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 267,
+          "line": 302,
           "exports": [
             "HOUR_COMPLETION_TOKENS"
           ]
@@ -18408,7 +18846,7 @@
           "name": "WINDOW_MODE_LABELS",
           "type": "variable",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 348,
+          "line": 383,
           "docComment": "Подписи режимов окна.",
           "exports": [
             "WINDOW_MODE_LABELS"
@@ -18419,7 +18857,7 @@
           "name": "DEP_HINTS",
           "type": "variable",
           "path": "tmux-web/static/js/settings/meet-tab.js",
-          "line": 411,
+          "line": 446,
           "docComment": "Что именно ставить, если бинаря нет.",
           "exports": [
             "DEP_HINTS"
@@ -18441,7 +18879,7 @@
           "name": "openSettingsModal",
           "type": "function",
           "path": "tmux-web/static/js/settings/modal.js",
-          "line": 51,
+          "line": 62,
           "signature": "openSettingsModal(initialTab)",
           "exports": [
             "openSettingsModal"
@@ -18712,6 +19150,89 @@
           "docComment": "Сколько бесед просим у плагина для списка выбора.",
           "exports": [
             "PEER_LIST_LIMIT"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/settings/voice-tab.js",
+      "name": "voice-tab.js",
+      "type": "file",
+      "path": "tmux-web/static/js/settings/voice-tab.js",
+      "exports": [
+        "buildVoiceForm",
+        "ENGINES",
+        "SHARED_HINT",
+        "VK_VOICE_CONFIG",
+        "TELEGRAM_VOICE_CONFIG",
+        "B24_VOICE_CONFIG"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/settings/voice-tab.js:buildVoiceForm",
+          "name": "buildVoiceForm",
+          "type": "function",
+          "path": "tmux-web/static/js/settings/voice-tab.js",
+          "line": 105,
+          "signature": "buildVoiceForm(settings, onSaved, config, api, doc)",
+          "docComment": "Строит секцию «Голосовые сообщения».",
+          "exports": [
+            "buildVoiceForm"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/settings/voice-tab.js:ENGINES",
+          "name": "ENGINES",
+          "type": "variable",
+          "path": "tmux-web/static/js/settings/voice-tab.js",
+          "line": 49,
+          "docComment": "Значения селекта движка — в порядке показа.\n\nОблако первым и подписано «по умолчанию», потому что это СТАНДАРТ фичи:\nголосовое в чате живёт секунды и читается сразу, поэтому оно не должно ни\nждать очереди к GPU, ни требовать 574 МБ весов на машине. Локальный движок —\nосознанный выбор человека, а не то, куда можно съехать молча: бэкенд по той\nже причине НЕ наследует `stt_backend` из настроек встреч (см. шапку\n`plugins/voice/src/config.rs`).",
+          "exports": [
+            "ENGINES"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/settings/voice-tab.js:SHARED_HINT",
+          "name": "SHARED_HINT",
+          "type": "variable",
+          "path": "tmux-web/static/js/settings/voice-tab.js",
+          "line": 55,
+          "docComment": "Подпись под селектом: настройка одна на все мессенджеры.",
+          "exports": [
+            "SHARED_HINT"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/settings/voice-tab.js:VK_VOICE_CONFIG",
+          "name": "VK_VOICE_CONFIG",
+          "type": "variable",
+          "path": "tmux-web/static/js/settings/voice-tab.js",
+          "line": 65,
+          "docComment": "Конфиг секции для панели VK.\n\n`api` передаётся ССЫЛКАМИ на функции панели, а не строкой пути: адреса живут\nв модулях `api.js` каждой панели, и контрактные тесты сверяют их с таблицей\nроутов плагина. Собранный здесь путь эту сверку обошёл бы.",
+          "exports": [
+            "VK_VOICE_CONFIG"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/settings/voice-tab.js:TELEGRAM_VOICE_CONFIG",
+          "name": "TELEGRAM_VOICE_CONFIG",
+          "type": "variable",
+          "path": "tmux-web/static/js/settings/voice-tab.js",
+          "line": 75,
+          "docComment": "Конфиг секции для панели Telegram.",
+          "exports": [
+            "TELEGRAM_VOICE_CONFIG"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/settings/voice-tab.js:B24_VOICE_CONFIG",
+          "name": "B24_VOICE_CONFIG",
+          "type": "variable",
+          "path": "tmux-web/static/js/settings/voice-tab.js",
+          "line": 85,
+          "docComment": "Конфиг секции для панели Битрикс24.",
+          "exports": [
+            "B24_VOICE_CONFIG"
           ]
         }
       ]
@@ -20352,7 +20873,11 @@
         "clearSavedAnalysis",
         "clearThread",
         "startAnalysis",
-        "cancelAnalysis"
+        "cancelAnalysis",
+        "transcribeVoice",
+        "getVoiceTranscript",
+        "getVoiceSettings",
+        "setVoiceSettings"
       ],
       "children": [
         {
@@ -20563,7 +21088,7 @@
           "name": "getChatPrompt",
           "type": "function",
           "path": "tmux-web/static/js/telegram/api.js",
-          "line": 409,
+          "line": 413,
           "signature": "getChatPrompt(dialogId)",
           "docComment": "GET /api/telegram/dialogs/:id/prompt — заметка пользователя к чату.\n\n`max_chars` приходит С СЕРВЕРА и не зашивается в JS: счётчик символов в\ntextarea обязан совпадать с лимитом, по которому сервер реально режет, —\nиначе пользователь допишет фразу, которая молча пропадёт.\n\nОтсутствие заметки — это `{prompt: '', updated_at: null}`, а НЕ 404: «нет\nзаметки» и «пустая заметка» на этом роуте одно состояние.",
           "exports": [
@@ -20575,7 +21100,7 @@
           "name": "putChatPrompt",
           "type": "function",
           "path": "tmux-web/static/js/telegram/api.js",
-          "line": 424,
+          "line": 428,
           "signature": "putChatPrompt(dialogId, prompt)",
           "docComment": "PUT /api/telegram/dialogs/:id/prompt — сохранить заметку.\n\nПустая строка СТИРАЕТ заметку, и это единственный способ её стереть:\nотдельного DELETE нет. Тело обязано присутствовать всегда — отсутствующий\nили битый JSON сервер считает `400 invalid_input`, а не «стереть».",
           "exports": [
@@ -20587,7 +21112,7 @@
           "name": "getSavedAnalysis",
           "type": "function",
           "path": "tmux-web/static/js/telegram/api.js",
-          "line": 452,
+          "line": 456,
           "signature": "getSavedAnalysis(dialogId)",
           "docComment": "GET /api/telegram/dialogs/:id/analysis — последний СОХРАНЁННЫЙ разбор.\n\nЛежит в локальном файле, поэтому роут отвечает 200 и при мёртвой связи с\nTelegram: попап показывает прошлый разбор даже когда выгрузить новую\nисторию нечем.\n\n«Разбора нет» — это `{text: '', updated_at: null, last_message_id: null}`, а\nНЕ 404: попап открывают и до первого запуска, и ошибка в этом месте была бы\nвраньём о нормальном состоянии.\n\n`thread` ВСЕГДА массив: сервер отдаёт `[]` там, где вопросов не задавали, а\nпотребитель (ядро попапа) обходит его циклом и не обязан помнить, что поля\nможет не быть вовсе (старый бэкенд, кэш PWA со старым фронтом).\nНормализация здесь, а не у потребителя: точка входа данных одна.",
           "exports": [
@@ -20599,7 +21124,7 @@
           "name": "clearSavedAnalysis",
           "type": "function",
           "path": "tmux-web/static/js/telegram/api.js",
-          "line": 475,
+          "line": 479,
           "signature": "clearSavedAnalysis(dialogId)",
           "docComment": "DELETE /api/telegram/dialogs/:id/analysis — стереть сохранённый разбор.\n\nЗаметку чата НЕ трогает: в попапе это две разные кнопки и в хранилище две\nразные величины. `{cleared: false}` — не ошибка, а «стирать было нечего»\n(две вкладки нажали подряд).",
           "exports": [
@@ -20611,7 +21136,7 @@
           "name": "clearThread",
           "type": "function",
           "path": "tmux-web/static/js/telegram/api.js",
-          "line": 493,
+          "line": 497,
           "signature": "clearThread(dialogId)",
           "docComment": "DELETE /api/telegram/dialogs/:id/analysis/thread — стереть ТОЛЬКО тред.\n\nОтдельный путь, а не `?thread=1` у общего DELETE: так разведение кнопок\nстановится буквальным — CLEAR ✕ и CLEAR Q&A бьют в РАЗНЫЕ адреса и не могут\nстереть чужое. Ни разбор, ни заметку чата не трогает. `{cleared: false}` —\nне ошибка, а «стирать было нечего».",
           "exports": [
@@ -20623,7 +21148,7 @@
           "name": "startAnalysis",
           "type": "function",
           "path": "tmux-web/static/js/telegram/api.js",
-          "line": 532,
+          "line": 536,
           "signature": "startAnalysis(dialogId, opts)",
           "docComment": "POST /api/telegram/dialogs/:id/analysis — запустить разбор или задать вопрос.\n\nОтвет приходит СРАЗУ, в момент запуска процесса: текст модели едет кадрами\n`analysis_delta` по /ws/telegram, финал — `analysis_done`. Держать HTTP\nоткрытым на всю генерацию нельзя, её оборвёт любой прокси между браузером и\ndevforge.\n\n`attached: true` означает, что нового процесса не запускалось — мы\nподключились к уже идущему run'у (вторая вкладка, повторный клик).\n\nТРИ вида запуска (`kind`):\n- `analyze` — полный разбор выгруженной истории;\n- `ask` — вопрос по той же истории (сохранённый разбор не трогает);\n- `refresh` — дочитать только сообщения новее сохранённого разбора и\n  вернуть ОБНОВЛЁННЫЙ ЦЕЛЬНЫЙ разбор, который заменит прошлый.\n\nДВА исхода `refresh`, о которых обязан знать вызывающий:\n- сохранённого разбора нет ⇒ `400 invalid_input` (сначала полный разбор);\n- новых сообщений нет ⇒ `200 {run_id: null, no_new_messages: true}`. Это\n  штатный ответ, а не ошибка: модель не запускалась, кадров не будет, и\n  ждать их нельзя — попап навсегда остался бы в «идёт разбор».\n\nНеобязательные поля НЕ отправляются вовсе, если их нет: сервер отличает\nотсутствующий `depth` (взять значение по умолчанию) от переданного.",
           "exports": [
@@ -20635,11 +21160,59 @@
           "name": "cancelAnalysis",
           "type": "function",
           "path": "tmux-web/static/js/telegram/api.js",
-          "line": 562,
+          "line": 566,
           "signature": "cancelAnalysis(dialogId, runId)",
           "docComment": "POST /api/telegram/dialogs/:id/analysis/cancel — остановить идущий разбор.\n\n`runId` необязателен: без него сервер гасит тот run, что идёт по этому чату.\nИменно так кнопка «стоп» продолжает работать после перезагрузки вкладки,\nпотерявшей `run_id`.\n\n`{cancelled: false}` — не ошибка: гасить было нечего (run уже закончился).",
           "exports": [
             "cancelAnalysis"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/telegram/api.js:transcribeVoice",
+          "name": "transcribeVoice",
+          "type": "function",
+          "path": "tmux-web/static/js/telegram/api.js",
+          "line": 608,
+          "signature": "transcribeVoice(dialogId, messageId, index, opts)",
+          "docComment": "POST /api/telegram/voice/:id/:mid/:idx/transcribe — запустить расшифровку.\n\nОтвет приходит СРАЗУ: сама расшифровка идёт секунды или минуты, а прогресс\nедет кадрами `voice_transcribe_*` по /ws/telegram.\n\nТРИ исхода: `{ready: true, text}` — уже посчитано (движок не запускался);\n`{run_id, attached: false}` — прогон запущен; `{run_id, attached: true}` —\nрасшифровка этого вложения уже идёт (вторая вкладка, повторный клик).\n\nРешать по `err.code`, а не по тексту: `voice_not_audio`, `voice_too_long`,\n`voice_no_ffmpeg`, `voice_no_whisper`, `voice_no_model`, `voice_no_key`,\n`voice_busy`, `metal_unavailable`.",
+          "exports": [
+            "transcribeVoice"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/telegram/api.js:getVoiceTranscript",
+          "name": "getVoiceTranscript",
+          "type": "function",
+          "path": "tmux-web/static/js/telegram/api.js",
+          "line": 632,
+          "signature": "getVoiceTranscript(dialogId, messageId, index)",
+          "docComment": "GET /api/telegram/voice/:id/:mid/:idx/transcript — готовая расшифровка.\n\nРасшифровки нет — это `{ready: false}` с пустым текстом, а НЕ ошибка. Ни\nодного вызова Telegram: ответ читается из локального файла, поэтому работает\nи при мёртвом соединении.",
+          "exports": [
+            "getVoiceTranscript"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/telegram/api.js:getVoiceSettings",
+          "name": "getVoiceSettings",
+          "type": "function",
+          "path": "tmux-web/static/js/telegram/api.js",
+          "line": 654,
+          "signature": "getVoiceSettings()",
+          "docComment": "GET /api/telegram/voice/settings — каким движком расшифровываются голосовые.\n\nНастройка ОБЩАЯ для всех мессенджеров: она живёт в `voice.toml` рядом с\nключом polza.ai, а не в `user_settings.json`. Поэтому три панели читают её\nсвоими роутами, но видят одно и то же значение.\n\nКлюч облака НИКОГДА не приходит — только признак `cloud_key_set`.\n`warning` (если он есть) объясняет, чего выбранному движку не хватает:\n`voice_no_key`, `voice_no_model`, `voice_no_whisper`, `voice_no_ffmpeg`.\n\nЛогина в мессенджере роут НЕ требует: движок настраивают до входа.",
+          "exports": [
+            "getVoiceSettings"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/telegram/api.js:setVoiceSettings",
+          "name": "setVoiceSettings",
+          "type": "function",
+          "path": "tmux-web/static/js/telegram/api.js",
+          "line": 667,
+          "signature": "setVoiceSettings(engine)",
+          "docComment": "PUT /api/telegram/voice/settings — переключить движок расшифровки.\n\nВыбор СОХРАНЯЕТСЯ, даже если движок сейчас нерабочий: в ответе тогда придёт\n`warning`. Отказ приходит только на чужое слово (`400 invalid_input`).",
+          "exports": [
+            "setVoiceSettings"
           ]
         }
       ]
@@ -24663,7 +25236,8 @@
         "suspendTelegram",
         "resumeTelegram",
         "teardownTelegram",
-        "_debugState"
+        "_debugState",
+        "VOICE_FRAME_EVENT"
       ],
       "children": [
         {
@@ -24851,11 +25425,21 @@
           ]
         },
         {
+          "id": "tmux-web/static/js/telegram/main.js:emitVoiceFrame",
+          "name": "emitVoiceFrame",
+          "type": "function",
+          "path": "tmux-web/static/js/telegram/main.js",
+          "line": 636,
+          "signature": "emitVoiceFrame(phase, evt)",
+          "docComment": "Перекладывает кадр расшифровки в DOM-событие панели.",
+          "exports": []
+        },
+        {
           "id": "tmux-web/static/js/telegram/main.js:onNotifyDefaultsChanged",
           "name": "onNotifyDefaultsChanged",
           "type": "function",
           "path": "tmux-web/static/js/telegram/main.js",
-          "line": 630,
+          "line": 669,
           "signature": "onNotifyDefaultsChanged(msg)",
           "docComment": "WS `notify_defaults_changed` — сменились ГЛОБАЛЬНЫЕ дефолты уведомлений\n(users / chats / broadcasts).\n\nПересчитать mute поимённо на фронте нельзя: дефолт применяется ко всем\nдиалогам с УНАСЛЕДОВАННЫМИ настройками, а какие из них унаследованные —\nзнает только сервер (в `DialogDto.muted` приходит уже разрешённое\nзначение, без признака «откуда взялось»). Перечислять их в кадре сервер\nтоже не может — их бывают тысячи. Поэтому единственный честный путь —\nперечитать список диалогов и пересобрать бейдж по нему.\n\nПроизводные карты сбрасываются: их значения посчитаны по СТАРЫМ дефолтам и\nс этого момента врут. Свежие прилетят с ближайшими кадрами.",
           "exports": [
@@ -24867,7 +25451,7 @@
           "name": "scheduleRead",
           "type": "function",
           "path": "tmux-web/static/js/telegram/main.js",
-          "line": 676,
+          "line": 715,
           "signature": "scheduleRead(dialogId, maxId)",
           "docComment": "Ставит диалог в очередь на отметку о прочтении.\n\nТри триггера ведут сюда: открытие диалога, докрутка ленты до низа и приход\nнового сообщения в открытый диалог. Все они склеиваются debounce'ом\n([`READ_DEBOUNCE_MS`]) и коалесцируются по максимальному `message_id`:\nоткрыть чат с двадцатью непрочитанными обязано стоить ОДИН запрос, а не\nдвадцать.\n\nСкрытая вкладка (или открытая, но не на Telegram) не отмечает ничего —\nсм. `readAllowed`.",
           "exports": [
@@ -24879,7 +25463,7 @@
           "name": "flushRead",
           "type": "function",
           "path": "tmux-web/static/js/telegram/main.js",
-          "line": 705,
+          "line": 744,
           "signature": "flushRead()",
           "docComment": "Отправляет накопленные отметки о прочтении.\n\nЛокальный сброс счётчика делается ПОСЛЕ успеха: сервер разошлёт ещё и\n`read`/`in` всем вкладкам, но своя собственная не должна ждать эха, чтобы\nбейдж погас без задержки.",
           "exports": []
@@ -24889,7 +25473,7 @@
           "name": "noteReadFromServer",
           "type": "function",
           "path": "tmux-web/static/js/telegram/main.js",
-          "line": 729,
+          "line": 768,
           "signature": "noteReadFromServer(dialogId, maxId)",
           "docComment": "Запоминает, что диалог прочитан ИЗВНЕ (другое устройство прислало\n`read`/`in`).\n\nБез этого наша вкладка при первом же скролле отправила бы «свою» отметку\nдо того же id — лишний запрос, который ничего не меняет.",
           "exports": []
@@ -24899,7 +25483,7 @@
           "name": "onTyping",
           "type": "function",
           "path": "tmux-web/static/js/telegram/main.js",
-          "line": 754,
+          "line": 793,
           "signature": "onTyping(msg)",
           "docComment": "Индикатор «печатает…» с автосбросом по каждому участнику.\n\nСброс по таймеру обязателен: Telegram НЕ присылает «перестал печатать»,\nон просто перестаёт присылать typing. Без таймера индикатор залипал бы\nнавсегда.\n\nСостояние — по КЛЮЧУ `диалог|пользователь`, а не одна строка на весь\nплагин: в группе печатать могут несколько человек одновременно, и каждый\nгаснет по своему таймеру. События неактивных диалогов тоже запоминаются\n(переключение на такой диалог сразу покажет актуальную строку), но в DOM\nпопадает только активный.",
           "exports": []
@@ -24909,7 +25493,7 @@
           "name": "typingLabel",
           "type": "function",
           "path": "tmux-web/static/js/telegram/main.js",
-          "line": 788,
+          "line": 827,
           "signature": "typingLabel(dialogId, userId)",
           "docComment": "Как подписать печатающего.\n\nВ личном чате `dialog_id === user_id`, поэтому имя собеседника — это title\nдиалога. Сверка id ОБЯЗАТЕЛЬНА: без неё любой участник группы (а в\nтеории и второй человек в том же событии) получал бы имя самого диалога,\nи строка выглядела бы как «Sofia, Sofia are typing…».\n\nДля участника группы имени у нас нет — Telegram присылает только user_id, а\nтянуть профиль ради индикатора значит делать RPC на каждое нажатие клавиши\nсобеседником. Поэтому: свой диалог с этим человеком (если он есть в\nсписке) → его title, иначе сам id.",
           "exports": []
@@ -24919,7 +25503,7 @@
           "name": "renderTyping",
           "type": "function",
           "path": "tmux-web/static/js/telegram/main.js",
-          "line": 800,
+          "line": 839,
           "signature": "renderTyping()",
           "docComment": "Перерисовывает #tg-typing по активному диалогу.",
           "exports": []
@@ -24929,7 +25513,7 @@
           "name": "clearTypingIndicator",
           "type": "function",
           "path": "tmux-web/static/js/telegram/main.js",
-          "line": 817,
+          "line": 856,
           "signature": "clearTypingIndicator()",
           "docComment": "Гасит индикатор и снимает ВСЕ таймеры.\n\nВызывается при смене диалога, уходе страницы в фон и logout'е: без этого\nбыстрое переключение диалогов оставляло бы висящие setTimeout'ы со\nссылками на DOM.",
           "exports": [
@@ -24941,7 +25525,7 @@
           "name": "refreshAll",
           "type": "function",
           "path": "tmux-web/static/js/telegram/main.js",
-          "line": 831,
+          "line": 870,
           "signature": "refreshAll()",
           "docComment": "Перечитывает состояние с сервера (после реконнекта/resync).\n\nДиалоги — всегда; история — только для открытого диалога. Ошибки\nглотаются: если сервер ещё не готов, следующий `open`/`resync` повторит.",
           "exports": [
@@ -24953,7 +25537,7 @@
           "name": "ensureWs",
           "type": "function",
           "path": "tmux-web/static/js/telegram/main.js",
-          "line": 858,
+          "line": 897,
           "signature": "ensureWs()",
           "docComment": "Поднимает постоянное WS-соединение, если оно уместно.\n\nУместно = плагин включён И аккаунт авторизован. Соединение НЕ привязано к\nвкладке: бейдж и тосты обязаны работать из terminal/tasks, а сервер вещает\nсобытия без фильтрации именно ради этого.",
           "exports": []
@@ -24963,7 +25547,7 @@
           "name": "selfUserLabel",
           "type": "function",
           "path": "tmux-web/static/js/telegram/main.js",
-          "line": 871,
+          "line": 910,
           "signature": "selfUserLabel(u)",
           "docComment": "Собирает подпись пользователя для titlebar: `@username`, иначе имя,\nиначе телефон, иначе id.",
           "exports": [
@@ -24975,7 +25559,7 @@
           "name": "applyLoginState",
           "type": "function",
           "path": "tmux-web/static/js/telegram/main.js",
-          "line": 896,
+          "line": 935,
           "signature": "applyLoginState(dto)",
           "docComment": "Применяет LoginStateDto к UI вкладки.\n\nЕДИНАЯ точка: вызывается и ответом `GET /api/telegram/status`, и\nWS-событием `login_state`. Поэтому обязана быть идемпотентной —\nповторный вызов с тем же dto ничего не ломает (в частности, не сбрасывает\nвведённые поля и не перезапускает countdown FLOOD_WAIT).\n\nРаскладка:\n  not_configured | disconnected | code_sent | password_required\n      → оверлей #tg-login на нужном шаге, кнопка выхода скрыта;\n  authorized\n      → оверлей скрыт, #tg-self-user заполнен, выход доступен.",
           "exports": [
@@ -24987,7 +25571,7 @@
           "name": "clearAccountData",
           "type": "function",
           "path": "tmux-web/static/js/telegram/main.js",
-          "line": 946,
+          "line": 985,
           "signature": "clearAccountData()",
           "docComment": "Очищает всё, что относилось к прошлому аккаунту (данные + UI).\n\nРевокацию objectURL'ов делает `clearTgAccountData` в state.js — там же,\nгде эти URL'ы создаются, чтобы утечка после logout не могла появиться\nиз-за расхождения двух копий логики.",
           "exports": [
@@ -24999,7 +25583,7 @@
           "name": "requestLogout",
           "type": "function",
           "path": "tmux-web/static/js/telegram/main.js",
-          "line": 979,
+          "line": 1018,
           "signature": "requestLogout()",
           "docComment": "Выход из аккаунта по кнопке #tg-logout.\n\nПодтверждение обязательно: logout удаляет файл сессии на сервере, и\nследующий вход потребует код из Telegram заново.",
           "exports": [
@@ -25011,7 +25595,7 @@
           "name": "setMode",
           "type": "function",
           "path": "tmux-web/static/js/telegram/main.js",
-          "line": 1018,
+          "line": 1057,
           "signature": "setMode(mode)",
           "docComment": "Отражает состояние соединения СРАЗУ в двух местах: Mode-бейдж\n`#tg-statusbar` и пульс-точка в `#tg-titlebar`.\n\nОбе индикации ставятся одним вызовом намеренно: разъехавшиеся «CONNECTED» в\nстатусбаре и красная точка в шапке — худший вид вранья, чем отсутствие\nиндикации вовсе. Цвета живут в CSS (`.tg-mode-*` и `#tg-titlebar.tg-conn-*`).\n\nВызовы событийные (колбэки open/close/lat из ws.js и applyLoginState) —\nникакого поллинга: таймер тикал бы и в скрытой вкладке.",
           "exports": [
@@ -25023,7 +25607,7 @@
           "name": "setLatency",
           "type": "function",
           "path": "tmux-web/static/js/telegram/main.js",
-          "line": 1048,
+          "line": 1087,
           "signature": "setLatency(ms)",
           "docComment": "Обновляет LAT в статусбаре.\n\nСглаживание скользящим средним по последним [`LAT_WINDOW`] замерам: оценка\nидёт по дрейфу серверных ping'ов (ws.js::latencyFromPingDrift), а он шумит\nна десятки миллисекунд из-за планировщика — без сглаживания цифра прыгала\nбы на каждом такте и читалась как поломка.\n\n`null` (нет соединения) ОЧИЩАЕТ окно: усреднять замеры разных соединений\nбессмысленно, а показывать старое значение при разорванном WS — вредно.",
           "exports": [
@@ -25035,7 +25619,7 @@
           "name": "renderLatency",
           "type": "function",
           "path": "tmux-web/static/js/telegram/main.js",
-          "line": 1068,
+          "line": 1107,
           "signature": "renderLatency()",
           "docComment": "Рисует текущее значение LAT, ничего не пересчитывая.\n\nНужна отдельно от setLatency: при открытии вкладки значение уже могло быть\nизмерено (WS постоянный и живёт с любой вкладки), и повторный «замер» тем же\nчислом исказил бы окно сглаживания.",
           "exports": []
@@ -25045,7 +25629,7 @@
           "name": "initTelegramGate",
           "type": "function",
           "path": "tmux-web/static/js/telegram/main.js",
-          "line": 1083,
+          "line": 1122,
           "signature": "initTelegramGate()",
           "docComment": "Гейт кнопки ✈ по состоянию плагина на сервере.\n\nВызывается один раз из bootstrap. Ошибка/404 — штатный случай\n«плагин выключен»: кнопка остаётся скрытой, ничего не логируем.\n\nЕсли аккаунт уже авторизован, здесь же поднимается ПОСТОЯННЫЙ WS — не\nдожидаясь открытия вкладки. Иначе бейдж и тосты появлялись бы только\nпосле того, как пользователь хоть раз зашёл в Telegram, то есть ровно\nтогда, когда они уже не нужны.",
           "exports": [
@@ -25057,7 +25641,7 @@
           "name": "initTelegram",
           "type": "function",
           "path": "tmux-web/static/js/telegram/main.js",
-          "line": 1108,
+          "line": 1147,
           "signature": "initTelegram()",
           "docComment": "Инициализация содержимого вкладки при первом открытии.\nИдемпотентна.",
           "exports": [
@@ -25069,7 +25653,7 @@
           "name": "suspendTelegram",
           "type": "function",
           "path": "tmux-web/static/js/telegram/main.js",
-          "line": 1180,
+          "line": 1219,
           "signature": "suspendTelegram()",
           "docComment": "Страница ушла в фон (visibilitychange: hidden).\n\nWS закрывается: у скрытой страницы бейджа всё равно не видно, а держать\nсокет и получать поток апдейтов «в никуда» — только расход батареи и\nтрафика. При возврате [`resumeTelegram`] переподключается и перечитывает\nсостояние, поэтому пропущенные события не теряются.\n\nВАЖНО: это НЕ реакция на смену вкладки внутри devforge — при переходе на\nterminal соединение обязано жить (см. tabs.js).",
           "exports": [
@@ -25081,7 +25665,7 @@
           "name": "resumeTelegram",
           "type": "function",
           "path": "tmux-web/static/js/telegram/main.js",
-          "line": 1187,
+          "line": 1226,
           "signature": "resumeTelegram()",
           "docComment": "Страница вернулась на передний план — восстановить соединение.",
           "exports": [
@@ -25093,7 +25677,7 @@
           "name": "teardownTelegram",
           "type": "function",
           "path": "tmux-web/static/js/telegram/main.js",
-          "line": 1197,
+          "line": 1236,
           "signature": "teardownTelegram()",
           "docComment": "Полная остановка (beforeunload).",
           "exports": [
@@ -25105,7 +25689,7 @@
           "name": "_debugState",
           "type": "function",
           "path": "tmux-web/static/js/telegram/main.js",
-          "line": 1225,
+          "line": 1264,
           "signature": "_debugState()",
           "docComment": "Снимок состояния для e2e-тестов (по образцу echo/main.js).",
           "exports": [
@@ -25130,11 +25714,22 @@
           "exports": []
         },
         {
+          "id": "tmux-web/static/js/telegram/main.js:VOICE_FRAME_EVENT",
+          "name": "VOICE_FRAME_EVENT",
+          "type": "variable",
+          "path": "tmux-web/static/js/telegram/main.js",
+          "line": 633,
+          "docComment": "Имя DOM-события, которым панель отдаёт кадры расшифровки наружу.\n\nОдно на все четыре кадра: вид кадра лежит в `detail.phase`. Совпадает по\nформе с VK-шным `vk:voice-transcribe` — общий модуль ГС-Ф5 подписывается на\nоба одинаковым кодом.\n\nОбъявлено в `js/telegram/media.js` — там же, где карточка, которая на него\nподписывается: этот файл импортирует media.js, и обратный импорт замкнул бы\nцикл. Здесь имя только переэкспортируется.",
+          "exports": [
+            "VOICE_FRAME_EVENT"
+          ]
+        },
+        {
           "id": "tmux-web/static/js/telegram/main.js:CONN_MODES",
           "name": "CONN_MODES",
           "type": "variable",
           "path": "tmux-web/static/js/telegram/main.js",
-          "line": 1002,
+          "line": 1041,
           "docComment": "Три состояния соединения — единственный источник и бейджа, и точки.",
           "exports": []
         }
@@ -25165,6 +25760,8 @@
         "teardownMedia",
         "_debugMediaState",
         "THUMB_HEIGHT",
+        "VOICE_FRAME_EVENT",
+        "voiceTranscript",
         "renderMediaCard"
       ],
       "children": [
@@ -25173,7 +25770,7 @@
           "name": "setMediaGrowthHandler",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 75,
+          "line": 77,
           "signature": "setMediaGrowthHandler(fn)",
           "docComment": "Подписывает ленту на «карточка доросла».",
           "exports": [
@@ -25185,7 +25782,7 @@
           "name": "noteMediaGrowth",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 85,
+          "line": 87,
           "signature": "noteMediaGrowth()",
           "docComment": "Сообщает подписчику о приросте высоты.\n\nИсключение подписчика не имеет права уронить загрузку превью: карточка\nважнее прокрутки.",
           "exports": []
@@ -25195,7 +25792,7 @@
           "name": "loadMedia",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 132,
+          "line": 134,
           "signature": "loadMedia(dialogId, messageId, kind, onNetProgress)",
           "docComment": "Грузит медиа и возвращает objectURL.\n\nДедупликация двухуровневая: готовый URL берётся из `tgState.mediaCache`, а\nНЕЗАВЕРШЁННАЯ загрузка — из `local.loads`. Второй уровень важен не меньше\nпервого: без него два клика по OPEN дали бы две параллельные загрузки\nодного файла (сервер бы их схлопнул, но браузер честно скачал бы дважды).",
           "exports": [
@@ -25207,7 +25804,7 @@
           "name": "downloadBlobUrl",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 165,
+          "line": 167,
           "signature": "downloadBlobUrl(dialogId, messageId, kind, onNetProgress)",
           "docComment": "`fetch` → чтение тела с прогрессом → `Blob` → `objectURL`.\n\nЕсли поток недоступен (старый браузер, прокси без streaming), честно\nпадаем на `response.blob()` — тогда прогресса нет, но файл загрузится.",
           "exports": []
@@ -25217,7 +25814,7 @@
           "name": "revokeDialogMedia",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 203,
+          "line": 205,
           "signature": "revokeDialogMedia()",
           "docComment": "Освобождает ВСЕ objectURL'ы медиа.\n\nЗовётся при смене диалога и на teardown. Без этого 20 переключений между\nдиалогами с фотографиями оставляли бы в памяти вкладки все скачанные\nблобы: браузер сам их не собирает, пока живёт URL.",
           "exports": [
@@ -25229,7 +25826,7 @@
           "name": "dropMessageMedia",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 225,
+          "line": 227,
           "signature": "dropMessageMedia(dialogId, messageId)",
           "docComment": "Сбрасывает objectURL'ы одного сообщения (оба `kind`).\n\nНужен на `message_edited`/`message_deleted`: сервер в этот момент\nинвалидирует свой файловый кэш, и держать во вкладке старую картинку —\nзначит показывать пользователю то, чего в Telegram больше нет.",
           "exports": [
@@ -25241,7 +25838,7 @@
           "name": "resetMediaCards",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 238,
+          "line": 240,
           "signature": "resetMediaCards()",
           "docComment": "Забывает карточки (перед перерисовкой ленты).",
           "exports": [
@@ -25253,7 +25850,7 @@
           "name": "button",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 252,
+          "line": 277,
           "signature": "button(label, title)",
           "docComment": "Кнопка карточки в терминальном стиле.",
           "exports": []
@@ -25263,7 +25860,7 @@
           "name": "buildMediaCard",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 271,
+          "line": 296,
           "signature": "buildMediaCard(msg)",
           "docComment": "Собирает карточку медиа для строки лога.\n\nДиспетчеризация по `media.kind`: photo | video | document | sticker | voice\n| audio | other. Незнакомый вид попадает в ветку `other` (глиф + размер) —\nпроглатывать сообщение нельзя, даже если рисовать нечего.",
           "exports": [
@@ -25275,7 +25872,7 @@
           "name": "observeThumb",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 433,
+          "line": 460,
           "signature": "observeThumb(ctl)",
           "docComment": "Ставит карточку под наблюдение: превью грузится, когда она подъезжает к\nвьюпорту. Без IntersectionObserver (очень старый браузер) грузим сразу —\nлучше лишние запросы, чем пустые карточки.",
           "exports": []
@@ -25285,7 +25882,7 @@
           "name": "ensureThumb",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 454,
+          "line": 481,
           "signature": "ensureThumb(ctl)",
           "docComment": "Грузит превью один раз.",
           "exports": []
@@ -25295,7 +25892,7 @@
           "name": "showThumb",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 483,
+          "line": 510,
           "signature": "showThumb(ctl, url)",
           "docComment": "Подставляет превью в карточку.\n\nО приросте высоты сообщается ИЗ СОБЫТИЯ `load`, а не отсюда. Здесь картинка\nещё не декодирована: `<img>` занимает по вертикали ноль, тело карточки стоит\nна `min-height`, и доскролл в этот момент пришёлся бы на старую раскладку —\nто есть ровно на ту, из-за которой дефект и существовал. К моменту `load`\nразмеры известны и высота уже пересчитана.\n\nСлушатель одноразовый (снимает сам себя): у одной карточки превью\nподставляется единожды, а забытый слушатель держал бы в памяти контроллер\nвместе со всей строкой ленты.",
           "exports": []
@@ -25305,7 +25902,7 @@
           "name": "setProgress",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 502,
+          "line": 529,
           "signature": "setProgress(ctl, leg, received, total)",
           "docComment": "Показывает прогрессбар с подписью. `leg` — 'TG' или 'NET'.",
           "exports": []
@@ -25315,7 +25912,7 @@
           "name": "markReceived",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 512,
+          "line": 539,
           "signature": "markReceived(ctl)",
           "docComment": "Финальное состояние: «✓ RECEIVED».",
           "exports": []
@@ -25325,7 +25922,7 @@
           "name": "markError",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 527,
+          "line": 554,
           "signature": "markError(ctl, err, retry)",
           "docComment": "Ошибка загрузки.\n\nРешение принимается по КОДУ контракта, а не по тексту:\n`no_media` — ретрай бессмыслен (медиа нет), `flood_wait` — показываем,\nсколько ждать, остальное — кнопка повтора.",
           "exports": []
@@ -25335,7 +25932,7 @@
           "name": "onDownloadProgress",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 564,
+          "line": 591,
           "signature": "onDownloadProgress(evt)",
           "docComment": "WS `download_progress` — «сервер тянет файл из Telegram».\n\nКарточка ищется по `(dialog_id, message_id)`; события о медиа, которого нет\nна экране (другой диалог, страница истории выше), молча игнорируются.\n`total: null` ⇒ индетерминированный индикатор (размер Telegram не сообщил).",
           "exports": [
@@ -25347,7 +25944,7 @@
           "name": "openMedia",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 592,
+          "line": 619,
           "signature": "openMedia(ctl)",
           "docComment": "OPEN: смысл зависит от вида вложения.\n\n- фото/стикер → лайтбокс;\n- видео/голосовое/аудио → плеер внутри карточки;\n- документ/прочее → blob в новой вкладке (браузер сам решит, показать\n  или предложить сохранить); заблокировали popup — падаем на SAVE.",
           "exports": [
@@ -25359,7 +25956,7 @@
           "name": "withFull",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 617,
+          "line": 644,
           "signature": "withFull(ctl, done, onFail)",
           "docComment": "Грузит полный файл с прогрессом и передаёт URL в колбэк.\n\nЕдинственная точка запуска «тяжёлой» загрузки: и лайтбокс, и плеер, и\nSAVE ходят через неё, поэтому прогресс и обработка ошибок везде одинаковы.\n\n`onFail` нужен вызывающим, у которых есть СВОЙ индикатор: лайтбокс\nпоказывает «loading…» в подписи, и без этого колбэка он остался бы\n«загружающимся» навсегда, хотя загрузка уже провалилась.",
           "exports": []
@@ -25369,7 +25966,7 @@
           "name": "saveMedia",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 639,
+          "line": 666,
           "signature": "saveMedia(ctl)",
           "docComment": "SAVE: полный файл → `<a download>` → click.\n\nobjectURL НЕ revoke'ается: он лежит в `tgState.mediaCache` и будет\nпереиспользован (например, лайтбоксом), а освободится при смене диалога.\nИмя санитизируется — `download` браузеры трактуют как подсказку пути.",
           "exports": [
@@ -25381,7 +25978,7 @@
           "name": "stopPlayer",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 654,
+          "line": 681,
           "signature": "stopPlayer()",
           "docComment": "Останавливает и снимает активный плеер, возвращая карточку в исходный вид.",
           "exports": [
@@ -25393,7 +25990,7 @@
           "name": "isPlayerClick",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 682,
+          "line": 709,
           "signature": "isPlayerClick(target)",
           "docComment": "Клик пришёл изнутри плеера (нативные controls)?\n\nShadow DOM браузерных controls ретаргетит события на сам `<video>`/\n`<audio>`, поэтому `closest('.tg-media-player')` надёжно ловит любой клик\nпо плееру, включая перемотку и паузу. Проверка `closest` выбрана как\nосновная (в паре со stopPropagation на слоте): она работает и когда\nсобытие пришло в обход слота (например, синтетическое в тестах), и не\nзависит от порядка навешивания обработчиков.\n\nОт DOM нужен только метод `closest` — покрыто node-тестами.",
           "exports": [
@@ -25405,7 +26002,7 @@
           "name": "resolveCardClick",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 703,
+          "line": 730,
           "signature": "resolveCardClick(cardKey, activeKey, fromPlayer)",
           "docComment": "Решает, что делать при клике, запускающем воспроизведение в карточке.\n\nЧистая функция (покрыта node-тестами) — единственная точка истины для\n«пересоздавать ли плеер»:\n- `ignore` — клик из controls активного плеера, карточка его не трогает;\n- `toggle` — плеер этой карточки уже открыт: play/pause без пересоздания,\n  позиция сохраняется;\n- `start`  — плеера нет или он на другой карточке: создать новый (старый\n  гасится — инвариант «играет ровно один»).",
           "exports": [
@@ -25417,7 +26014,7 @@
           "name": "togglePlayback",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 710,
+          "line": 737,
           "signature": "togglePlayback(el)",
           "docComment": "play/pause существующего элемента: позиция воспроизведения сохраняется.",
           "exports": []
@@ -25427,7 +26024,7 @@
           "name": "ensurePlayerEsc",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 725,
+          "line": 752,
           "signature": "ensurePlayerEsc()",
           "docComment": "Esc останавливает активный плеер (навешивается лениво, один раз).\n\nЛайтбокс перекрывает панель и обрабатывает Esc сам (см. initMedia) — при\nоткрытом лайтбоксе не вмешиваемся, чтобы одно нажатие не закрывало оба.",
           "exports": []
@@ -25437,7 +26034,7 @@
           "name": "playInCard",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 745,
+          "line": 772,
           "signature": "playInCard(ctl)",
           "docComment": "Плеер прямо в карточке.\n\nОдновременно играет РОВНО один: старт на ДРУГОЙ карточке гасит предыдущий\n(иначе голосовое и видео накладываются друг на друга и перекрикивают).\nПовторный вызов для ТОЙ ЖЕ карточки НЕ пересоздаёт элемент — переключает\nplay/pause, сохраняя позицию (пересоздание сбрасывало currentTime в 0 и\nделало перемотку бессмысленной).",
           "exports": [
@@ -25449,7 +26046,7 @@
           "name": "initMedia",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 824,
+          "line": 851,
           "signature": "initMedia()",
           "docComment": "Навешивает обработчики лайтбокса (идемпотентно).",
           "exports": [
@@ -25461,7 +26058,7 @@
           "name": "trapFocus",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 848,
+          "line": 875,
           "signature": "trapFocus(e)",
           "docComment": "Держит фокус внутри лайтбокса (доступность).",
           "exports": []
@@ -25471,7 +26068,7 @@
           "name": "openLightbox",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 870,
+          "line": 897,
           "signature": "openLightbox(ctl)",
           "docComment": "Открывает полноразмерное изображение поверх панели.\n\nПока грузится full — в подписи «loading…», картинка остаётся пустой:\nподставлять превью растянутым было бы обманом («уже загрузилось»).",
           "exports": [
@@ -25483,7 +26080,7 @@
           "name": "closeLightbox",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 908,
+          "line": 935,
           "signature": "closeLightbox()",
           "docComment": "Закрывает лайтбокс и возвращает фокус на карточку.",
           "exports": [
@@ -25495,7 +26092,7 @@
           "name": "teardownMedia",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 921,
+          "line": 948,
           "signature": "teardownMedia()",
           "docComment": "Полная очистка (logout, teardown вкладки).",
           "exports": [
@@ -25507,7 +26104,7 @@
           "name": "_debugMediaState",
           "type": "function",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 928,
+          "line": 955,
           "signature": "_debugMediaState()",
           "docComment": "Снимок состояния для e2e/диагностики.",
           "exports": [
@@ -25519,7 +26116,7 @@
           "name": "THUMB_HEIGHT",
           "type": "variable",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 52,
+          "line": 54,
           "docComment": "Высота превью в карточке (синхронно с CSS `.tg-media-thumb`).",
           "exports": [
             "THUMB_HEIGHT"
@@ -25530,7 +26127,7 @@
           "name": "OBSERVER_MARGIN",
           "type": "variable",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 55,
+          "line": 57,
           "docComment": "Запас в пикселях, при котором превью считается «почти видимым».",
           "exports": []
         },
@@ -25539,7 +26136,7 @@
           "name": "onMediaGrowth",
           "type": "variable",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 68,
+          "line": 70,
           "docComment": "Кого известить, что карточка выросла в высоту.\n\nМодульная переменная, а не параметр `buildMediaCard`: рост случается НЕ в\nмомент построения карточки, а спустя сотни миллисекунд — когда браузер\nдекодировал картинку. Прокидывать колбэк через каждую карточку означало бы\nхранить его в контроллере ради одного вызова.\n\nОбратной зависимости `media.js → chat.js` при этом не возникает: подписчика\nставит сам chat.js в `initChat`, а модуль знает о нём только как о функции.",
           "exports": []
         },
@@ -25548,15 +26145,37 @@
           "name": "local",
           "type": "variable",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 94,
+          "line": 96,
           "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/telegram/media.js:VOICE_FRAME_EVENT",
+          "name": "VOICE_FRAME_EVENT",
+          "type": "variable",
+          "path": "tmux-web/static/js/telegram/media.js",
+          "line": 260,
+          "docComment": "Имя DOM-события, которым панель отдаёт кадры расшифровки наружу.\n\nОбъявлено ЗДЕСЬ, а не в `main.js`, хотя рассылает кадры именно он: карточку\nрисует этот файл, а `main.js` импортирует его — обратный импорт замкнул бы\nцикл. `main.js` берёт имя отсюда и переэкспортирует.",
+          "exports": [
+            "VOICE_FRAME_EVENT"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/telegram/media.js:voiceTranscript",
+          "name": "voiceTranscript",
+          "type": "variable",
+          "path": "tmux-web/static/js/telegram/media.js",
+          "line": 269,
+          "docComment": "Текст расшифровки под голосовым — ОБЩИЙ модуль на три панели.\n\nПанель отдаёт сюда только транспорт, имя события с кадрами и префикс\nклассов. У Telegram вложение в сообщении ОДНО, поэтому индекс всегда 0 —\nровно как в соли заглушки волны.",
+          "exports": [
+            "voiceTranscript"
+          ]
         },
         {
           "id": "tmux-web/static/js/telegram/media.js:renderMediaCard",
           "name": "renderMediaCard",
           "type": "variable",
           "path": "tmux-web/static/js/telegram/media.js",
-          "line": 426,
+          "line": 453,
           "docComment": "Алиас под имя из плана.",
           "exports": [
             "renderMediaCard"
@@ -26823,7 +27442,7 @@
           "name": "connectTelegramWs",
           "type": "function",
           "path": "tmux-web/static/js/telegram/ws.js",
-          "line": 79,
+          "line": 85,
           "signature": "connectTelegramWs(handlers)",
           "docComment": "Открыть (или переиспользовать) соединение.\n\nИдемпотентен: при живом сокете только обновляет handlers — второго сокета\nне появится. Это важно, потому что connect зовут из нескольких точек\n(гейт при загрузке страницы, applyLoginState после входа, возврат вкладки\nиз фона), и каждая из них может сработать в любом порядке.",
           "exports": [
@@ -26835,7 +27454,7 @@
           "name": "disconnectTelegramWs",
           "type": "function",
           "path": "tmux-web/static/js/telegram/ws.js",
-          "line": 100,
+          "line": 106,
           "signature": "disconnectTelegramWs()",
           "docComment": "Закрыть соединение без реконнекта.\n\nВызывается на visibilitychange:hidden (скрытую вкладку держать сокетом\nнезачем — бейджа всё равно не видно) и на beforeunload.",
           "exports": [
@@ -26847,7 +27466,7 @@
           "name": "isTelegramWsOpen",
           "type": "function",
           "path": "tmux-web/static/js/telegram/ws.js",
-          "line": 125,
+          "line": 131,
           "signature": "isTelegramWsOpen()",
           "docComment": "Открыто ли соединение прямо сейчас.",
           "exports": [
@@ -26859,7 +27478,7 @@
           "name": "_debugWsState",
           "type": "function",
           "path": "tmux-web/static/js/telegram/ws.js",
-          "line": 130,
+          "line": 136,
           "signature": "_debugWsState()",
           "docComment": "Снимок состояния для e2e/диагностики.",
           "exports": [
@@ -26871,7 +27490,7 @@
           "name": "open",
           "type": "function",
           "path": "tmux-web/static/js/telegram/ws.js",
-          "line": 142,
+          "line": 148,
           "signature": "open()",
           "exports": []
         },
@@ -26880,7 +27499,7 @@
           "name": "scheduleReconnect",
           "type": "function",
           "path": "tmux-web/static/js/telegram/ws.js",
-          "line": 194,
+          "line": 200,
           "signature": "scheduleReconnect()",
           "exports": []
         },
@@ -26889,7 +27508,7 @@
           "name": "callHandler",
           "type": "function",
           "path": "tmux-web/static/js/telegram/ws.js",
-          "line": 206,
+          "line": 212,
           "signature": "callHandler(name, arg)",
           "exports": []
         },
@@ -26898,7 +27517,7 @@
           "name": "handleFrame",
           "type": "function",
           "path": "tmux-web/static/js/telegram/ws.js",
-          "line": 216,
+          "line": 222,
           "signature": "handleFrame(raw)",
           "exports": []
         },
@@ -26929,7 +27548,7 @@
           "name": "PING_INTERVAL_MS",
           "type": "variable",
           "path": "tmux-web/static/js/telegram/ws.js",
-          "line": 52,
+          "line": 58,
           "docComment": "Период серверного ping'а, мс — HEARTBEAT_SECS в plugins/telegram/src/ws/mod.rs.\nИспользуется только как эталон для оценки задержки; расхождение с сервером\nухудшит точность LAT, но ничего не сломает.",
           "exports": [
             "PING_INTERVAL_MS"
@@ -26940,7 +27559,7 @@
           "name": "local",
           "type": "variable",
           "path": "tmux-web/static/js/telegram/ws.js",
-          "line": 54,
+          "line": 60,
           "exports": []
         }
       ]
@@ -28041,7 +28660,11 @@
         "clearThread",
         "clearSavedAnalysis",
         "startAnalysis",
-        "cancelAnalysis"
+        "cancelAnalysis",
+        "transcribeVoice",
+        "getVoiceTranscript",
+        "getVoiceSettings",
+        "setVoiceSettings"
       ],
       "children": [
         {
@@ -28049,7 +28672,7 @@
           "name": "withCaptchaFields",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 85,
+          "line": 89,
           "signature": "withCaptchaFields(payload, opts)",
           "docComment": "Добавляет ответ на captcha в тело запроса.\n\nИмена полей — серверные (`captcha_sid`/`captcha_key`), а не camelCase:\nэто провод, и он совпадает с параметрами самого VK.",
           "exports": []
@@ -28059,7 +28682,7 @@
           "name": "markCaptcha",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 106,
+          "line": 110,
           "signature": "markCaptcha(err)",
           "docComment": "Обогащает ошибку полем `.captcha`, если сервер попросил символы с картинки.\n\nСам URL картинки (`captcha_img`) в `<img src>` НЕ ставится — он ведёт на\nсерверы VK. Адрес для показа даёт `captchaImageUrl(sid)`.",
           "exports": []
@@ -28069,7 +28692,7 @@
           "name": "callC",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 116,
+          "line": 120,
           "signature": "callC(path, init)",
           "docComment": "Обёртка вызова: ошибки проходят через markCaptcha.",
           "exports": []
@@ -28079,7 +28702,7 @@
           "name": "seg",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 125,
+          "line": 129,
           "signature": "seg(value)",
           "docComment": "Кодирует сегмент пути (peer_id бывает отрицательным, id — строки).",
           "exports": []
@@ -28089,7 +28712,7 @@
           "name": "getStatus",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 144,
+          "line": 148,
           "signature": "getStatus()",
           "docComment": "GET /api/vk/status.\n\nЕдинственный роут, отвечающий 200 в любом состоянии логина. **404 означает\n«плагин выключен»** (роуты не зарегистрированы, devforge запущен без\n`--vk`) — это НЕ ошибка, и обрабатывать её обязан вызывающий: по ней гейт\nпрячет кнопку Ⓥ.",
           "exports": [
@@ -28101,7 +28724,7 @@
           "name": "loginToken",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 163,
+          "line": 167,
           "signature": "loginToken(payload)",
           "docComment": "POST /api/vk/login/token — отдать серверу то, что вставил пользователь.\n\nПринимается АДРЕСНАЯ СТРОКА ЦЕЛИКОМ, её фрагмент или сам токен: разбор\nживёт ТОЛЬКО на бэкенде (plugins/vk/src/login.rs::parse_token_input).\nВторой парсер здесь был бы вторым местом, где можно ошибиться в обращении с\nсекретом, поэтому фронт не смотрит внутрь значения вообще — даже чтобы\n«подсказать формат».\n\nАВТОПОВТОРОВ НЕТ. Мусор — это `400 invalid_input`, и повторять его\nбессмысленно; всё остальное пользователь инициирует кнопкой сам.",
           "exports": [
@@ -28113,7 +28736,7 @@
           "name": "verifyLogin",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 177,
+          "line": 181,
           "signature": "verifyLogin(opts)",
           "docComment": "POST /api/vk/login/verify — перепроверить уже сохранённый токен.\n\nНужен кнопке «повторить» на экране `disconnected` и ручной проверке после\nтого, как пользователь поправил права токена на стороне VK.",
           "exports": [
@@ -28125,7 +28748,7 @@
           "name": "logout",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 189,
+          "line": 193,
           "signature": "logout()",
           "docComment": "POST /api/vk/logout — отвязать аккаунт.\n\nСервер стирает токен ЛОКАЛЬНО и в VK не ходит: у пользовательского токена\nнет метода «отозвать себя». Успешен из любого состояния.",
           "exports": [
@@ -28137,7 +28760,7 @@
           "name": "submitCaptcha",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 202,
+          "line": 206,
           "signature": "submitCaptcha(payload)",
           "docComment": "POST /api/vk/captcha — отдать символы с картинки.\n\nСервер перепроверяет токен с ответом и при успехе будит realtime-воркера,\nпоэтому отдельного «переподключиться» после captcha не нужно.",
           "exports": [
@@ -28149,7 +28772,7 @@
           "name": "captchaImageUrl",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 218,
+          "line": 222,
           "signature": "captchaImageUrl(sid)",
           "docComment": "Адрес картинки captcha — ВСЕГДА через прокси бэкенда.\n\nПрямой `captcha_img` из ошибки в `<img src>` не ставится никогда: это\nотправило бы браузер пользователя на серверы VK со всеми его cookie. То же\nправило, что для медиа.",
           "exports": [
@@ -28161,7 +28784,7 @@
           "name": "getFilters",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 235,
+          "line": 239,
           "signature": "getFilters()",
           "docComment": "GET /api/vk/filters — четыре серверных фильтра бесед.\n\nЗаменяют телеграмные папки: у VK это параметр метода\n`messages.getConversations`, а не пользовательская структура.",
           "exports": [
@@ -28173,7 +28796,7 @@
           "name": "getDialogs",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 250,
+          "line": 254,
           "signature": "getDialogs(opts)",
           "docComment": "GET /api/vk/dialogs — страница списка бесед.\n\n`signal` — из js/vk/ratelimit.js::createCoalescer: быстрое переключение\nсерверных фильтров обязано ОТМЕНЯТЬ предыдущий запрос, а не копить их в\nочереди 3 rps.",
           "exports": [
@@ -28185,7 +28808,7 @@
           "name": "getMessages",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 271,
+          "line": 275,
           "signature": "getMessages(dialogId, opts)",
           "docComment": "GET /api/vk/dialogs/:id/messages — страница истории.\n\n`beforeId` — это `message.id`, а НЕ `conversation_message_id`: параметр VK\nназывается `start_message_id` и принимает глобальный идентификатор\nсообщения. Подстановка туда cmid дала бы страницу из чужого места истории.",
           "exports": [
@@ -28197,7 +28820,7 @@
           "name": "getMessage",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 290,
+          "line": 294,
           "signature": "getMessage(dialogId, messageId)",
           "docComment": "GET /api/vk/dialogs/:id/messages/:mid — одно сообщение.",
           "exports": [
@@ -28209,7 +28832,7 @@
           "name": "sendMessage",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 311,
+          "line": 315,
           "signature": "sendMessage(dialogId, opts)",
           "docComment": "POST /api/vk/dialogs/:id/messages — отправка.\n\n`uploadIds` (альбом) и `uploadId` (один файл) — разные поля: у VK до 10\nвложений в сообщении, и сервер собирает их одним конвейером.\n\nЦель ответа адресуется `conversation_message_id` (`replyToCmid`): у VK\nименно он одинаков у всех участников беседы и именно его несёт цитата.\n`replyToId` (глобальный `message.id`) оставлен для случая, когда cmid у\nфронта нет вовсе; при обоих заданных сервер выбирает cmid.",
           "exports": [
@@ -28221,7 +28844,7 @@
           "name": "markRead",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 337,
+          "line": 341,
           "signature": "markRead(dialogId, maxId, opts)",
           "docComment": "POST /api/vk/dialogs/:id/read — отметить прочитанным.",
           "exports": [
@@ -28233,7 +28856,7 @@
           "name": "sendTyping",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 356,
+          "line": 360,
           "signature": "sendTyping(dialogId, action)",
           "docComment": "POST /api/vk/dialogs/:id/typing — «печатает…».\n\nVK держит статус около 10 секунд, поэтому вызывать его на каждую букву\nнельзя: при лимите 3 rps набор текста съел бы весь бюджет.",
           "exports": [
@@ -28245,7 +28868,7 @@
           "name": "pressButton",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 376,
+          "line": 380,
           "signature": "pressButton(dialogId, messageId, opts)",
           "docComment": "POST /api/vk/dialogs/:id/messages/:mid/button — нажать кнопку бота.\n\nКоординаты, а не payload: одинаковый payload встречается в разных кнопках\nодной клавиатуры, и сервер обязан знать, какая именно нажата.\n\nАВТОПОВТОРОВ НЕТ: повторное нажатие — действие пользователя.",
           "exports": [
@@ -28257,7 +28880,7 @@
           "name": "mediaUrl",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 397,
+          "line": 401,
           "signature": "mediaUrl(dialogId, messageId, index, kind)",
           "docComment": "Адрес вложения — через прокси бэкенда, всегда.\n\nИндекс обязателен: у сообщения VK до 10 вложений, и без него второе фото\nзатирало бы первое и в кэше, и в ключе objectURL.",
           "exports": [
@@ -28269,7 +28892,7 @@
           "name": "fetchMedia",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 414,
+          "line": 418,
           "signature": "fetchMedia(dialogId, messageId, index, kind)",
           "docComment": "Сырой Response вложения — для прогресса через `body.getReader()`.\n\nВозвращает именно Response, а не тело: разбирать поток обязан вызывающий,\nиначе прогресс скачивания посчитать не из чего.",
           "exports": [
@@ -28281,7 +28904,7 @@
           "name": "getChatPrompt",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 445,
+          "line": 449,
           "signature": "getChatPrompt(dialogId)",
           "docComment": "GET /api/vk/dialogs/:id/prompt — заметка пользователя к беседе.\n\n`max_chars` приходит С СЕРВЕРА и не зашивается в JS: счётчик символов в\ntextarea обязан совпадать с лимитом, по которому сервер реально режет, —\nиначе пользователь допишет фразу, которая молча пропадёт.\n\nОтсутствие заметки — это `{prompt: '', updated_at: null}`, а НЕ 404: «нет\nзаметки» и «пустая заметка» на этом роуте одно состояние.",
           "exports": [
@@ -28293,7 +28916,7 @@
           "name": "putChatPrompt",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 460,
+          "line": 464,
           "signature": "putChatPrompt(dialogId, prompt)",
           "docComment": "PUT /api/vk/dialogs/:id/prompt — сохранить заметку.\n\nПустая строка СТИРАЕТ заметку, и это единственный способ её стереть:\nотдельного DELETE нет. Тело обязано присутствовать всегда — отсутствующий\nили битый JSON сервер считает `400 invalid_input`, а не «стереть».",
           "exports": [
@@ -28305,7 +28928,7 @@
           "name": "getSavedAnalysis",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 493,
+          "line": 497,
           "signature": "getSavedAnalysis(dialogId)",
           "docComment": "GET /api/vk/dialogs/:id/analysis — последний СОХРАНЁННЫЙ разбор беседы.\n\nЛежит в том же локальном файле, что и заметка, поэтому роут отвечает 200 и\nпри мёртвой сети VK: попап показывает прошлый разбор даже когда выгрузить\nновую историю нечем.\n\n«Разбора нет» — это `{text: '', updated_at: null, last_message_id: null}`, а\nНЕ 404: попап открывают и до первого запуска, и ошибка в этом месте была бы\nвраньём о нормальном состоянии.\n\n`last_message_id` — точка отсчёта REFRESH (до какого сообщения разобрано).\nФронту она нужна только как признак «есть от чего считать новые»; сам номер\nв запрос не уезжает — его берёт сервер из своего же хранилища.\n\n`thread` — сохранённый тред вопросов и ответов (АЧ-И2), от старых к новым.\nОн ВСЕГДА массив: сервер отдаёт `[]` там, где вопросов не задавали, а\nпотребитель (js/vk/analysis.js) обходит его циклом и не обязан помнить, что\nполя может не быть вовсе (старый бэкенд, кэш PWA со старым фронтом).\nНормализация здесь, а не у потребителя: точка входа данных одна.",
           "exports": [
@@ -28317,7 +28940,7 @@
           "name": "clearThread",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 520,
+          "line": 524,
           "signature": "clearThread(dialogId)",
           "docComment": "DELETE /api/vk/dialogs/:id/analysis/thread — стереть ТОЛЬКО тред вопросов.\n\nОтдельный путь, а не `?thread=1` у общего DELETE: query-параметры в этом\nплагине разбираются вручную (`RawQuery`), потому что `Query<T>` ломает\nauth-лестницу маршрута. Заодно это делает разведение кнопок буквальным —\nCLEAR ✕ и CLEAR Q&A бьют в РАЗНЫЕ адреса и не могут стереть чужое.\n\nНи разбор, ни заметку беседы не трогает. `{cleared: false}` — не ошибка, а\n«стирать было нечего» (две вкладки нажали подряд).",
           "exports": [
@@ -28329,7 +28952,7 @@
           "name": "clearSavedAnalysis",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 537,
+          "line": 541,
           "signature": "clearSavedAnalysis(dialogId)",
           "docComment": "DELETE /api/vk/dialogs/:id/analysis — стереть сохранённый разбор.\n\nЗаметку беседы НЕ трогает: в попапе это две разные кнопки и в хранилище две\nразные величины. `{cleared: false}` — не ошибка, а «стирать было нечего»\n(две вкладки нажали подряд).",
           "exports": [
@@ -28341,7 +28964,7 @@
           "name": "startAnalysis",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 573,
+          "line": 577,
           "signature": "startAnalysis(dialogId, opts)",
           "docComment": "POST /api/vk/dialogs/:id/analysis — запустить разбор или задать вопрос.\n\nОтвет приходит СРАЗУ, в момент запуска процесса: текст модели едет кадрами\n`analysis_delta` по /ws/vk, финал — `analysis_done`. Держать HTTP открытым\nна всю генерацию нельзя, её оборвёт любой прокси между браузером и devforge.\n\n`attached: true` означает, что нового процесса не запускалось — мы\nподключились к уже идущему run'у (вторая вкладка, повторный клик).\n\nТРИ вида запуска (`kind`):\n- `analyze` — полный разбор выгруженной истории;\n- `ask` — вопрос по той же истории (сохранённый разбор не трогает);\n- `refresh` — дочитать только сообщения новее сохранённого разбора и\n  вернуть ОБНОВЛЁННЫЙ ЦЕЛЬНЫЙ разбор, который заменит прошлый.\n\nДВА исхода `refresh`, о которых обязан знать вызывающий:\n- сохранённого разбора нет ⇒ `400 invalid_input` (сначала полный разбор);\n- новых сообщений нет ⇒ `200 {run_id: null, no_new_messages: true}`. Это\n  штатный ответ, а не ошибка: модель не запускалась, кадров по /ws/vk не\n  будет, и ждать их нельзя — попап навсегда остался бы в «идёт разбор».\n  Именно ради этого случая `run_id` стал nullable.\n\nНеобязательные поля НЕ отправляются вовсе, если их нет: сервер отличает\nотсутствующий `depth` (взять значение по умолчанию) от переданного.",
           "exports": [
@@ -28353,7 +28976,7 @@
           "name": "cancelAnalysis",
           "type": "function",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 600,
+          "line": 604,
           "signature": "cancelAnalysis(dialogId, runId)",
           "docComment": "POST /api/vk/dialogs/:id/analysis/cancel — остановить идущий разбор.\n\n`runId` необязателен: без него сервер гасит тот run, что идёт по этой\nбеседе. Именно так кнопка «стоп» продолжает работать после перезагрузки\nвкладки, потерявшей `run_id`.\n\n`{cancelled: false}` — не ошибка: гасить было нечего (run уже закончился).",
           "exports": [
@@ -28361,11 +28984,59 @@
           ]
         },
         {
+          "id": "tmux-web/static/js/vk/api.js:transcribeVoice",
+          "name": "transcribeVoice",
+          "type": "function",
+          "path": "tmux-web/static/js/vk/api.js",
+          "line": 638,
+          "signature": "transcribeVoice(dialogId, messageId, index, opts)",
+          "docComment": "POST /api/vk/voice/:peer/:mid/:idx/transcribe — запустить расшифровку.\n\nОтвет приходит СРАЗУ, как у `startAnalysis`: сама расшифровка идёт секунды\n(минутное голосовое) или минуты (пятнадцатиминутное), а прогресс едет\nкадрами `voice_transcribe_*` по /ws/vk.\n\nТРИ исхода, о которых обязан знать вызывающий:\n- `{ready: true, text}` — расшифровка уже была посчитана; движок не\n  запускался, кадров по WS не будет;\n- `{run_id, attached: false}` — прогон запущен, ждём кадры;\n- `{run_id, attached: true}` — расшифровка этого вложения УЖЕ идёт (вторая\n  вкладка, повторный клик), нового прогона не запускалось.\n\nКоды отказов — свои у каждой причины, и решать по ним, а не по тексту:\n`voice_not_audio`, `voice_too_long`, `voice_no_ffmpeg`, `voice_no_whisper`,\n`voice_no_model`, `voice_no_key`, `voice_busy`, `metal_unavailable`.",
+          "exports": [
+            "transcribeVoice"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/vk/api.js:getVoiceTranscript",
+          "name": "getVoiceTranscript",
+          "type": "function",
+          "path": "tmux-web/static/js/vk/api.js",
+          "line": 662,
+          "signature": "getVoiceTranscript(dialogId, messageId, index)",
+          "docComment": "GET /api/vk/voice/:peer/:mid/:idx/transcript — готовая расшифровка.\n\nРасшифровки нет — это `{ready: false}` с пустым текстом, а НЕ ошибка: «ещё\nне расшифровывали» — нормальное состояние вложения. Ни одного вызова VK и\nни одного запуска движка: ответ читается из локального файла, поэтому\nработает и при мёртвой сети.",
+          "exports": [
+            "getVoiceTranscript"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/vk/api.js:getVoiceSettings",
+          "name": "getVoiceSettings",
+          "type": "function",
+          "path": "tmux-web/static/js/vk/api.js",
+          "line": 683,
+          "signature": "getVoiceSettings()",
+          "docComment": "GET /api/vk/voice/settings — каким движком расшифровываются голосовые.\n\nНастройка ОБЩАЯ для всех мессенджеров: она живёт в `voice.toml` рядом с\nключом polza.ai, а не в `user_settings.json`. Поэтому три панели читают её\nсвоими роутами, но видят одно и то же значение.\n\nКлюч облака НИКОГДА не приходит — только признак `cloud_key_set`.\n`warning` (если он есть) объясняет, чего выбранному движку не хватает:\n`voice_no_key`, `voice_no_model`, `voice_no_whisper`, `voice_no_ffmpeg`.\n\nЛогина в мессенджере роут НЕ требует: движок настраивают до входа.",
+          "exports": [
+            "getVoiceSettings"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/vk/api.js:setVoiceSettings",
+          "name": "setVoiceSettings",
+          "type": "function",
+          "path": "tmux-web/static/js/vk/api.js",
+          "line": 696,
+          "signature": "setVoiceSettings(engine)",
+          "docComment": "PUT /api/vk/voice/settings — переключить движок расшифровки.\n\nВыбор СОХРАНЯЕТСЯ, даже если движок сейчас нерабочий: в ответе тогда придёт\n`warning`. Отказ приходит только на чужое слово (`400 invalid_input`).",
+          "exports": [
+            "setVoiceSettings"
+          ]
+        },
+        {
           "id": "tmux-web/static/js/vk/api.js:call",
           "name": "call",
           "type": "variable",
           "path": "tmux-web/static/js/vk/api.js",
-          "line": 73,
+          "line": 77,
           "docComment": "Единственная точка выхода модуля в сеть.\n\nФ4 обернёт её планировщиком js/vk/ratelimit.js (клиентский бюджет под 3 rps\nсервера); менять сигнатуру для этого не придётся.",
           "exports": []
         }
@@ -32345,7 +33016,8 @@
         "teardownVk",
         "_debugState",
         "TOAST_THROTTLE_MS",
-        "TOAST_PREFIX"
+        "TOAST_PREFIX",
+        "VOICE_FRAME_EVENT"
       ],
       "children": [
         {
@@ -32605,11 +33277,21 @@
           ]
         },
         {
+          "id": "tmux-web/static/js/vk/main.js:emitVoiceFrame",
+          "name": "emitVoiceFrame",
+          "type": "function",
+          "path": "tmux-web/static/js/vk/main.js",
+          "line": 885,
+          "signature": "emitVoiceFrame(phase, evt)",
+          "docComment": "Перекладывает кадр расшифровки в DOM-событие панели.",
+          "exports": []
+        },
+        {
           "id": "tmux-web/static/js/vk/main.js:rememberFrameFlags",
           "name": "rememberFrameFlags",
           "type": "function",
           "path": "tmux-web/static/js/vk/main.js",
-          "line": 862,
+          "line": 907,
           "signature": "rememberFrameFlags(dialogId, frame)",
           "docComment": "Запоминает решение сервера о беседе ВНЕ загруженной страницы.\n\nДля беседы, которая в списке есть, запись не нужна: там значение свежее и\nавторитетнее, и recomputeUnread такую запись снимает.",
           "exports": []
@@ -32619,7 +33301,7 @@
           "name": "noteReadFromServer",
           "type": "function",
           "path": "tmux-web/static/js/vk/main.js",
-          "line": 876,
+          "line": 921,
           "signature": "noteReadFromServer(dialogId, maxId)",
           "docComment": "Запоминает, что беседу прочитали ИЗВНЕ (другое устройство прислало\n`read`/`in`).\n\nБез этого наша вкладка при первой же прокрутке отправила бы «свою» отметку\nдо того же id — лишний запрос, который ничего не меняет.",
           "exports": []
@@ -32629,7 +33311,7 @@
           "name": "refreshStatus",
           "type": "function",
           "path": "tmux-web/static/js/vk/main.js",
-          "line": 888,
+          "line": 933,
           "signature": "refreshStatus()",
           "docComment": "Перечитывает `GET /api/vk/status` и применяет его.",
           "exports": []
@@ -32639,7 +33321,7 @@
           "name": "initVkGate",
           "type": "function",
           "path": "tmux-web/static/js/vk/main.js",
-          "line": 908,
+          "line": 953,
           "signature": "initVkGate()",
           "docComment": "Гейт кнопки Ⓥ по состоянию плагина на сервере.\n\nВызывается один раз из bootstrap. Ошибка/404 — штатный случай «плагин\nвыключен»: кнопка остаётся скрытой, ничего не логируем.",
           "exports": [
@@ -32651,7 +33333,7 @@
           "name": "doLogout",
           "type": "function",
           "path": "tmux-web/static/js/vk/main.js",
-          "line": 937,
+          "line": 982,
           "signature": "doLogout()",
           "docComment": "Отвязать аккаунт: сервер стирает токен локально, панель — свои данные.",
           "exports": []
@@ -32661,7 +33343,7 @@
           "name": "initVk",
           "type": "function",
           "path": "tmux-web/static/js/vk/main.js",
-          "line": 960,
+          "line": 1005,
           "signature": "initVk()",
           "docComment": "Инициализация содержимого вкладки при первом открытии.\n\nИдемпотентна: tabs.js зовёт её на КАЖДОМ входе на вкладку, и повторная\nнавеска слушателей дала бы двойные обработчики (двойная отправка сообщения\n— самый заметный из возможных симптомов).",
           "exports": [
@@ -32673,7 +33355,7 @@
           "name": "suspendVk",
           "type": "function",
           "path": "tmux-web/static/js/vk/main.js",
-          "line": 1013,
+          "line": 1058,
           "signature": "suspendVk()",
           "docComment": "Страница ушла в фон.\n\nСоединение закрывается по СКРЫТИЮ СТРАНИЦЫ, но НЕ по смене вкладки\ndevforge: оно постоянное, потому что бейдж и тосты должны работать из любой\nвкладки.",
           "exports": [
@@ -32685,7 +33367,7 @@
           "name": "resumeVk",
           "type": "function",
           "path": "tmux-web/static/js/vk/main.js",
-          "line": 1031,
+          "line": 1076,
           "signature": "resumeVk()",
           "docComment": "Страница вернулась из фона.\n\nСоединение на время фона РВЁТСЯ ([`suspendVk`]), поэтому возврат — это не\nтолько «подключиться заново»: пока связи не было, кадры `new_message` шли в\nникуда. Список бесед и открытую ленту надо ДОГНАТЬ по REST, иначе сообщение,\nпришедшее в открытую беседу, не появится в ней до перехода в другую беседу и\nобратно (forge-oy0c).\n\nСам догон живёт в обработчике кадра `open`, а не здесь: соединение\nподнимается и после обрыва связи, без всякого фона, и две точки догона\nозначали бы два одинаковых запроса на один возврат.",
           "exports": [
@@ -32697,7 +33379,7 @@
           "name": "reloadData",
           "type": "function",
           "path": "tmux-web/static/js/vk/main.js",
-          "line": 1043,
+          "line": 1088,
           "signature": "reloadData()",
           "docComment": "Перечитывает список бесед принудительно (resync, реконнект WS).\n\nОтдельно от [`ensureData`]: та защищена флагом «уже грузили», а здесь нужно\nименно обновить — состояние могло уехать, пока связи не было.",
           "exports": [
@@ -32709,7 +33391,7 @@
           "name": "teardownVk",
           "type": "function",
           "path": "tmux-web/static/js/vk/main.js",
-          "line": 1058,
+          "line": 1103,
           "signature": "teardownVk()",
           "docComment": "beforeunload: снять слушателей и закрыть соединения.",
           "exports": [
@@ -32721,7 +33403,7 @@
           "name": "_debugState",
           "type": "function",
           "path": "tmux-web/static/js/vk/main.js",
-          "line": 1085,
+          "line": 1130,
           "signature": "_debugState()",
           "docComment": "Снимок состояния для e2e/диагностики.",
           "exports": [
@@ -32766,6 +33448,17 @@
           "line": 239,
           "docComment": "Три состояния соединения — единственный источник и бейджа, и точки.",
           "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/vk/main.js:VOICE_FRAME_EVENT",
+          "name": "VOICE_FRAME_EVENT",
+          "type": "variable",
+          "path": "tmux-web/static/js/vk/main.js",
+          "line": 882,
+          "docComment": "Имя DOM-события, которым панель отдаёт кадры расшифровки наружу.\n\nОдно на все четыре кадра: вид кадра лежит в `detail.phase`. Четыре разных\nсобытия заставили бы подписчика вешать четыре слушателя и снимать четыре.\n\nОбъявлено в `js/vk/media.js` — там же, где карточка, которая на него\nподписывается: этот файл импортирует media.js, и обратный импорт замкнул бы\nцикл. Здесь имя только переэкспортируется, чтобы прежние импорты из main.js\nпродолжали работать.",
+          "exports": [
+            "VOICE_FRAME_EVENT"
+          ]
         }
       ]
     },
@@ -32798,6 +33491,8 @@
         "teardownMedia",
         "_debugMediaState",
         "THUMB_HEIGHT",
+        "VOICE_FRAME_EVENT",
+        "voiceTranscript",
         "MAX_ATTACH_INDEX"
       ],
       "children": [
@@ -32806,7 +33501,7 @@
           "name": "setMediaGrowthHandler",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 117,
+          "line": 143,
           "signature": "setMediaGrowthHandler(fn)",
           "docComment": "Подписывает ленту на «карточка доросла».",
           "exports": [
@@ -32818,7 +33513,7 @@
           "name": "noteMediaGrowth",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 127,
+          "line": 153,
           "signature": "noteMediaGrowth()",
           "docComment": "Сообщает подписчику о приросте высоты.\n\nИсключение подписчика не имеет права уронить загрузку превью: карточка\nважнее прокрутки.",
           "exports": []
@@ -32828,7 +33523,7 @@
           "name": "loadMedia",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 177,
+          "line": 203,
           "signature": "loadMedia(dialogId, messageId, index, kind, onNetProgress)",
           "docComment": "Грузит вложение и возвращает objectURL.\n\nДедупликация двухуровневая: готовый URL берётся из `vkState.mediaCache`, а\nНЕЗАВЕРШЁННАЯ загрузка — из `local.loads`. Второй уровень важен не меньше\nпервого: без него два клика по OPEN дали бы две параллельные загрузки одного\nфайла (сервер бы их схлопнул, но браузер честно скачал бы дважды).",
           "exports": [
@@ -32840,7 +33535,7 @@
           "name": "downloadBlobUrl",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 210,
+          "line": 236,
           "signature": "downloadBlobUrl(dialogId, messageId, index, kind, onNetProgress)",
           "docComment": "`fetch` → чтение тела с прогрессом → `Blob` → `objectURL`.\n\nЕсли поток недоступен (старый браузер, прокси без streaming), честно падаем\nна `response.blob()` — тогда прогресса нет, но файл загрузится.",
           "exports": []
@@ -32850,7 +33545,7 @@
           "name": "revokeDialogMedia",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 249,
+          "line": 275,
           "signature": "revokeDialogMedia()",
           "docComment": "Освобождает ВСЕ objectURL'ы вложений.\n\nЗовётся при смене беседы и на teardown. Без этого 20 переключений между\nбеседами с фотографиями оставляли бы в памяти вкладки все скачанные блобы:\nбраузер сам их не собирает, пока живёт URL. У VK цена ошибки выше, чем у\nTelegram: одно сообщение способно принести десять блобов.",
           "exports": [
@@ -32862,7 +33557,7 @@
           "name": "dropMessageMedia",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 275,
+          "line": 301,
           "signature": "dropMessageMedia(dialogId, messageId)",
           "docComment": "Сбрасывает objectURL'ы одного сообщения (ВСЕ вложения, оба `kind`).\n\nНужен на `message_edited`/`message_deleted`: сервер в этот момент\nинвалидирует свой файловый кэш, и держать во вкладке старую картинку —\nзначит показывать пользователю то, чего в VK больше нет.\n\nОбходятся все индексы 0..MAX_ATTACH_INDEX, а не «сколько было вложений»:\nправка могла ЗАМЕНИТЬ список, и старую длину спросить уже негде.",
           "exports": [
@@ -32874,7 +33569,7 @@
           "name": "resetMediaCards",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 292,
+          "line": 318,
           "signature": "resetMediaCards()",
           "docComment": "Забывает карточки (перед перерисовкой ленты).",
           "exports": [
@@ -32886,7 +33581,7 @@
           "name": "button",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 307,
+          "line": 333,
           "signature": "button(label, title)",
           "docComment": "Кнопка карточки в терминальном стиле.",
           "exports": []
@@ -32896,7 +33591,7 @@
           "name": "cardKey",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 317,
+          "line": 343,
           "signature": "cardKey(dialogId, messageId, index)",
           "docComment": "Ключ карточки в реестре.",
           "exports": []
@@ -32906,7 +33601,7 @@
           "name": "buildMediaCard",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 334,
+          "line": 360,
           "signature": "buildMediaCard(msg, att, group)",
           "docComment": "Собирает карточку ОДНОГО вложения.\n\nДиспетчеризация по `att.kind`: photo | video | document | sticker | graffiti\n| voice | audio | other | unsupported. Незнакомый вид попадает в ветку\n«other» (глиф + заголовок) — проглатывать вложение нельзя, даже если рисовать\nнечего: пропавшая карточка читается как потеря данных.",
           "exports": [
@@ -32918,9 +33613,9 @@
           "name": "buildWave",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 549,
+          "line": 585,
           "signature": "buildWave(media, messageId, index)",
-          "docComment": "Псевдо-волна голосового.\n\nЕсли VK прислал огибающую (`waveform`), рисуем ЕЁ — это настоящая форма\nзаписи. Иначе детерминированный шум по `(message_id, index)`, чтобы карточка\nне «дышала» при каждой перерисовке ленты и чтобы два голосовых одного\nсообщения выглядели по-разному.",
+          "docComment": "Псевдо-волна голосового.\n\nЕсли огибающая приехала (`waveform`), рисуем ЕЁ — это настоящая форма\nзаписи. Иначе детерминированный шум по `(message_id, index)`, чтобы карточка\nне «дышала» при каждой перерисовке ленты и чтобы два голосовых одного\nсообщения выглядели по-разному.\n\nСам рисовальщик — общий на три панели\n(`js/messenger/waveform-core.js`): волна Bitrix и Telegram обязана быть\nнеотличима от волны VK, а три копии одной ветки неминуемо разъехались бы.",
           "exports": []
         },
         {
@@ -32928,7 +33623,7 @@
           "name": "renderAttachmentGroup",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 584,
+          "line": 602,
           "signature": "renderAttachmentGroup(msg)",
           "docComment": "Контейнер с карточками ВСЕХ вложений сообщения.\n\nВерхняя граница — `MAX_INLINE_CARDS`: десять карточек (потолок VK)\nпревращают одно сообщение в экран, поэтому хвост сворачивается в «…ещё N».",
           "exports": [
@@ -32940,7 +33635,7 @@
           "name": "observeThumb",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 612,
+          "line": 630,
           "signature": "observeThumb(ctl)",
           "docComment": "Ставит карточку под наблюдение: превью грузится, когда она подъезжает к\nвьюпорту. Без IntersectionObserver (очень старый браузер) грузим сразу —\nлучше лишние запросы, чем пустые карточки.",
           "exports": []
@@ -32950,7 +33645,7 @@
           "name": "ensureThumb",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 634,
+          "line": 652,
           "signature": "ensureThumb(ctl)",
           "docComment": "Грузит превью один раз.",
           "exports": []
@@ -32960,7 +33655,7 @@
           "name": "showThumb",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 663,
+          "line": 681,
           "signature": "showThumb(ctl, url)",
           "docComment": "Подставляет превью в карточку.\n\nО приросте высоты сообщается ИЗ СОБЫТИЯ `load`, а не отсюда. Здесь картинка\nещё не декодирована: `<img>` занимает по вертикали ноль, тело карточки стоит\nна `min-height`, и доскролл в этот момент пришёлся бы на старую раскладку —\nто есть ровно на ту, из-за которой дефект и существовал. К моменту `load`\nразмеры известны и высота уже пересчитана.\n\nСлушатель одноразовый (снимает сам себя): у одной карточки превью\nподставляется единожды, а забытый слушатель держал бы в памяти контроллер\nвместе со всей строкой ленты.",
           "exports": []
@@ -32970,7 +33665,7 @@
           "name": "setProgress",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 682,
+          "line": 700,
           "signature": "setProgress(ctl, leg, received, total)",
           "docComment": "Показывает прогрессбар с подписью. `leg` — 'VK' или 'NET'.",
           "exports": []
@@ -32980,7 +33675,7 @@
           "name": "markReceived",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 692,
+          "line": 710,
           "signature": "markReceived(ctl)",
           "docComment": "Финальное состояние: «✓ RECEIVED».",
           "exports": []
@@ -32990,7 +33685,7 @@
           "name": "markError",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 707,
+          "line": 725,
           "signature": "markError(ctl, err, retry)",
           "docComment": "Ошибка загрузки.\n\nРешение принимается по КОДУ контракта, а не по тексту: `no_media` — ретрай\nбессмыслен (файла нет), `flood_wait` — показываем, сколько ждать, остальное —\nкнопка повтора.",
           "exports": []
@@ -33000,7 +33695,7 @@
           "name": "onDownloadProgress",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 745,
+          "line": 763,
           "signature": "onDownloadProgress(evt)",
           "docComment": "WS `download_progress` — «сервер тянет файл из VK».\n\nКарточка ищется по `(dialog_id, message_id, index)`. ИНДЕКС ОБЯЗАТЕЛЕН: без\nнего прогресс второго фото сообщения прилетал бы в карточку первого.\nСобытия о медиа, которого нет на экране (другая беседа, страница истории\nвыше), молча игнорируются.",
           "exports": [
@@ -33012,7 +33707,7 @@
           "name": "openExternal",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 776,
+          "line": 794,
           "signature": "openExternal(rawUrl)",
           "docComment": "Открывает внешнюю ссылку в новой вкладке.\n\nЕдинственный адрес, который сюда попадает, — страница плеера VK\n(`player_url`). Файлы вложений так не открываются НИКОГДА: они идут через\nпрокси бэкенда и `blob:`.",
           "exports": [
@@ -33024,7 +33719,7 @@
           "name": "openMedia",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 798,
+          "line": 816,
           "signature": "openMedia(ctl)",
           "docComment": "OPEN: смысл зависит от вида вложения.\n\n- фото/стикер/граффити → лайтбокс (с галереей по вложениям сообщения);\n- видео → страница плеера VK во внешней вкладке (файла у нас нет и не будет);\n- голосовое/аудио → плеер внутри карточки;\n- ссылка → адрес собеседника во внешней вкладке (файла у неё не бывает);\n- документ/прочее → blob в новой вкладке (браузер сам решит, показать или\n  предложить сохранить); заблокировали popup — падаем на SAVE.",
           "exports": [
@@ -33036,7 +33731,7 @@
           "name": "withFull",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 841,
+          "line": 859,
           "signature": "withFull(ctl, done, onFail)",
           "docComment": "Грузит полный файл с прогрессом и передаёт URL в колбэк.\n\nЕдинственная точка запуска «тяжёлой» загрузки: и лайтбокс, и плеер, и SAVE\nходят через неё, поэтому прогресс и обработка ошибок везде одинаковы.\n\n`onFail` нужен вызывающим, у которых есть СВОЙ индикатор: лайтбокс показывает\n«loading…» в подписи, и без этого колбэка он остался бы «загружающимся»\nнавсегда, хотя загрузка уже провалилась.",
           "exports": []
@@ -33046,7 +33741,7 @@
           "name": "saveMedia",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 863,
+          "line": 881,
           "signature": "saveMedia(ctl)",
           "docComment": "SAVE: полный файл → `<a download>` → click.\n\nobjectURL НЕ revoke'ается: он лежит в `vkState.mediaCache` и будет\nпереиспользован (например, лайтбоксом), а освободится при смене беседы.\nИмя санитизируется — `download` браузеры трактуют как подсказку пути.",
           "exports": [
@@ -33058,7 +33753,7 @@
           "name": "stopPlayer",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 882,
+          "line": 900,
           "signature": "stopPlayer()",
           "docComment": "Останавливает и снимает активный плеер, возвращая карточку в исходный вид.",
           "exports": [
@@ -33070,7 +33765,7 @@
           "name": "isPlayerClick",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 905,
+          "line": 923,
           "signature": "isPlayerClick(target)",
           "docComment": "Клик пришёл изнутри плеера (нативные controls)?\n\nShadow DOM браузерных controls ретаргетит события на сам `<audio>`, поэтому\n`closest('.vk-media-player')` надёжно ловит любой клик по плееру, включая\nперемотку и паузу.",
           "exports": [
@@ -33082,7 +33777,7 @@
           "name": "resolveCardClick",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 925,
+          "line": 943,
           "signature": "resolveCardClick(key, activeKey, fromPlayer)",
           "docComment": "Решает, что делать при клике, запускающем воспроизведение в карточке.\n\nЧистая функция — единственная точка истины для «пересоздавать ли плеер»:\n- `ignore` — клик из controls активного плеера, карточка его не трогает;\n- `toggle` — плеер этой карточки уже открыт: play/pause без пересоздания,\n  позиция сохраняется;\n- `start`  — плеера нет или он на другой карточке: создать новый (старый\n  гасится — инвариант «играет ровно один»).",
           "exports": [
@@ -33094,7 +33789,7 @@
           "name": "togglePlayback",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 932,
+          "line": 950,
           "signature": "togglePlayback(el)",
           "docComment": "play/pause существующего элемента: позиция воспроизведения сохраняется.",
           "exports": []
@@ -33104,7 +33799,7 @@
           "name": "ensurePlayerEsc",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 947,
+          "line": 965,
           "signature": "ensurePlayerEsc()",
           "docComment": "Esc останавливает активный плеер (навешивается лениво, один раз).\n\nЛайтбокс перекрывает панель и обрабатывает Esc сам (см. initMedia) — при\nоткрытом лайтбоксе не вмешиваемся, чтобы одно нажатие не закрывало оба.",
           "exports": []
@@ -33114,7 +33809,7 @@
           "name": "playInCard",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 966,
+          "line": 984,
           "signature": "playInCard(ctl)",
           "docComment": "Плеер прямо в карточке (голосовое и аудиозапись).\n\nОдновременно играет РОВНО один: старт на ДРУГОЙ карточке гасит предыдущий\n(иначе два голосовых из одного сообщения перекрикивают друг друга —\nу VK это штатная ситуация, а не экзотика). Повторный вызов для ТОЙ ЖЕ\nкарточки НЕ пересоздаёт элемент: переключает play/pause, сохраняя позицию.",
           "exports": [
@@ -33126,7 +33821,7 @@
           "name": "initMedia",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 1043,
+          "line": 1061,
           "signature": "initMedia()",
           "docComment": "Навешивает обработчики лайтбокса (идемпотентно).",
           "exports": [
@@ -33138,7 +33833,7 @@
           "name": "trapFocus",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 1089,
+          "line": 1107,
           "signature": "trapFocus(e)",
           "docComment": "Держит фокус внутри лайтбокса (доступность).",
           "exports": []
@@ -33148,7 +33843,7 @@
           "name": "galleryOf",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 1114,
+          "line": 1132,
           "signature": "galleryOf(ctl)",
           "docComment": "Картиночные вложения ОДНОГО сообщения — это и есть галерея.\n\nХодить по всей ленте нельзя: «следующее фото» означает следующее в ЭТОМ\nсообщении, а не в переписке. Непросматриваемые виды (документ, голосовое)\nиз галереи выпадают — листать их лайтбоксом нечем.",
           "exports": [
@@ -33160,7 +33855,7 @@
           "name": "openLightbox",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 1128,
+          "line": 1146,
           "signature": "openLightbox(ctl)",
           "docComment": "Открывает полноразмерное изображение поверх панели.\n\nПока грузится full — в подписи «loading…», картинка остаётся пустой:\nподставлять превью растянутым было бы обманом («уже загрузилось»).",
           "exports": [
@@ -33172,7 +33867,7 @@
           "name": "stepLightbox",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 1150,
+          "line": 1168,
           "signature": "stepLightbox(delta)",
           "docComment": "Сдвигает галерею на `delta` позиций.\n\nГраницы НЕ зациклены намеренно: «следующее» за последним фото — это ничего,\nа прыжок в начало читается как сбой. Кнопки на границах отключаются\n(`disabled`), поэтому мышью в упор не упрёшься вовсе.",
           "exports": [
@@ -33184,7 +33879,7 @@
           "name": "showAt",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 1160,
+          "line": 1178,
           "signature": "showAt(pos)",
           "docComment": "Показывает вложение галереи по позиции.",
           "exports": []
@@ -33194,7 +33889,7 @@
           "name": "closeLightbox",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 1209,
+          "line": 1227,
           "signature": "closeLightbox()",
           "docComment": "Закрывает лайтбокс и возвращает фокус на карточку.",
           "exports": [
@@ -33206,7 +33901,7 @@
           "name": "teardownMedia",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 1226,
+          "line": 1244,
           "signature": "teardownMedia()",
           "docComment": "Полная очистка (logout, teardown вкладки).",
           "exports": [
@@ -33218,7 +33913,7 @@
           "name": "_debugMediaState",
           "type": "function",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 1233,
+          "line": 1251,
           "signature": "_debugMediaState()",
           "docComment": "Снимок состояния для e2e/диагностики.",
           "exports": [
@@ -33230,10 +33925,32 @@
           "name": "THUMB_HEIGHT",
           "type": "variable",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 84,
+          "line": 86,
           "docComment": "Высота превью в карточке (синхронно с CSS `.vk-media-thumb`).",
           "exports": [
             "THUMB_HEIGHT"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/vk/media.js:VOICE_FRAME_EVENT",
+          "name": "VOICE_FRAME_EVENT",
+          "type": "variable",
+          "path": "tmux-web/static/js/vk/media.js",
+          "line": 95,
+          "docComment": "Имя DOM-события, которым панель отдаёт кадры расшифровки наружу.\n\nОбъявлено ЗДЕСЬ, а не в `main.js`, хотя рассылает кадры именно он: карточку\nрисует этот файл, а `main.js` импортирует его — обратный импорт замкнул бы\nцикл. `main.js` берёт имя отсюда и переэкспортирует.",
+          "exports": [
+            "VOICE_FRAME_EVENT"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/vk/media.js:voiceTranscript",
+          "name": "voiceTranscript",
+          "type": "variable",
+          "path": "tmux-web/static/js/vk/media.js",
+          "line": 105,
+          "docComment": "Текст расшифровки под голосовым — ОБЩИЙ модуль на три панели.\n\nПанель отдаёт сюда ровно три вещи: свой транспорт, имя своего DOM-события с\nкадрами и свой префикс классов. Ни состояний, ни разметки, ни подписей\nошибок здесь нет и быть не должно — иначе три панели разъедутся ровно так\nже, как разъезжались три копии звуковой дорожки до Ф2.",
+          "exports": [
+            "voiceTranscript"
           ]
         },
         {
@@ -33241,7 +33958,7 @@
           "name": "MAX_ATTACH_INDEX",
           "type": "variable",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 94,
+          "line": 120,
           "docComment": "Верхний индекс вложения — столько же, сколько у бэкенда\n(`media_cache::MAX_ATTACH_INDEX`).\n\nНужен ровно в одном месте: `dropMessageMedia` обходит все возможные ключи\nсообщения, потому что к моменту правки список вложений уже другой и спросить\n«сколько их было» не у кого.",
           "exports": [
             "MAX_ATTACH_INDEX"
@@ -33252,7 +33969,7 @@
           "name": "OBSERVER_MARGIN",
           "type": "variable",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 97,
+          "line": 123,
           "docComment": "Запас в пикселях, при котором превью считается «почти видимым».",
           "exports": []
         },
@@ -33261,7 +33978,7 @@
           "name": "onMediaGrowth",
           "type": "variable",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 110,
+          "line": 136,
           "docComment": "Кого известить, что карточка выросла в высоту.\n\nМодульная переменная, а не параметр `renderAttachmentGroup`: рост случается\nНЕ в момент построения карточки, а спустя сотни миллисекунд — когда браузер\nдекодировал картинку. Прокидывать колбэк через каждую карточку означало бы\nхранить его в контроллере ради одного вызова.\n\nОбратной зависимости `media.js → chat.js` при этом не возникает: подписчика\nставит сам chat.js в `initChat`, а модуль знает о нём только как о функции.",
           "exports": []
         },
@@ -33270,7 +33987,7 @@
           "name": "local",
           "type": "variable",
           "path": "tmux-web/static/js/vk/media.js",
-          "line": 136,
+          "line": 162,
           "exports": []
         }
       ]
@@ -34674,7 +35391,7 @@
           "name": "urlFor",
           "type": "function",
           "path": "tmux-web/static/js/vk/ws.js",
-          "line": 65,
+          "line": 69,
           "signature": "urlFor()",
           "docComment": "Адрес соединения с токеном в query (WebSocket не умеет заголовки).",
           "exports": []
@@ -34684,7 +35401,7 @@
           "name": "callHandler",
           "type": "function",
           "path": "tmux-web/static/js/vk/ws.js",
-          "line": 71,
+          "line": 75,
           "signature": "callHandler(name, arg)",
           "docComment": "Зовёт обработчик панели, не давая его исключению порвать соединение.",
           "exports": []
@@ -34694,7 +35411,7 @@
           "name": "onFrame",
           "type": "function",
           "path": "tmux-web/static/js/vk/ws.js",
-          "line": 82,
+          "line": 86,
           "signature": "onFrame(msg)",
           "docComment": "Раскладывает кадр по обработчикам панели.",
           "exports": []
@@ -34704,7 +35421,7 @@
           "name": "ensureClient",
           "type": "function",
           "path": "tmux-web/static/js/vk/ws.js",
-          "line": 102,
+          "line": 106,
           "signature": "ensureClient()",
           "exports": []
         },
@@ -34713,7 +35430,7 @@
           "name": "connectVkWs",
           "type": "function",
           "path": "tmux-web/static/js/vk/ws.js",
-          "line": 136,
+          "line": 140,
           "signature": "connectVkWs(handlers)",
           "docComment": "Открыть (или переиспользовать) соединение.\n\nИдемпотентен: при живом сокете только обновляет handlers. Это важно, потому\nчто connect зовут из нескольких точек (гейт при загрузке страницы,\napplyLoginState после успешного логина, возврат вкладки из фона), и порядок\nмежду ними не определён.",
           "exports": [
@@ -34725,7 +35442,7 @@
           "name": "disconnectVkWs",
           "type": "function",
           "path": "tmux-web/static/js/vk/ws.js",
-          "line": 149,
+          "line": 153,
           "signature": "disconnectVkWs()",
           "docComment": "Закрыть соединение без реконнекта.\n\nВызывается на visibilitychange:hidden (скрытую вкладку держать сокетом\nнезачем — бейджа всё равно не видно) и на beforeunload.",
           "exports": [
@@ -34737,7 +35454,7 @@
           "name": "isVkWsOpen",
           "type": "function",
           "path": "tmux-web/static/js/vk/ws.js",
-          "line": 156,
+          "line": 160,
           "signature": "isVkWsOpen()",
           "docComment": "Открыто ли соединение прямо сейчас.",
           "exports": [
@@ -34749,7 +35466,7 @@
           "name": "_debugWsState",
           "type": "function",
           "path": "tmux-web/static/js/vk/ws.js",
-          "line": 161,
+          "line": 165,
           "signature": "_debugWsState()",
           "docComment": "Снимок состояния для e2e/диагностики.",
           "exports": [
@@ -34783,8 +35500,8 @@
           "name": "SERVER_FRAMES",
           "type": "variable",
           "path": "tmux-web/static/js/vk/ws.js",
-          "line": 49,
-          "docComment": "Полный набор кадров сервера — для сверки с protocol.rs глазами и для\nдиагностики: неизвестный тип не ошибка (сервер может начать присылать новое\nсобытие раньше, чем обновится закешированный фронт), но в консоли о нём\nстоит сказать.\n\nПОРЯДОК ЗДЕСЬ — ЧАСТЬ КОНТРАКТА: список сверяется с вариантами `VkServerMsg`\n(plugins/vk/src/ws/protocol.rs) построчно контрактным тестом. Четвёрка\n`analysis_*` стоит РОВНО между `dialog_changed` и `resync`, как в enum'е.",
+          "line": 51,
+          "docComment": "Полный набор кадров сервера — для сверки с protocol.rs глазами и для\nдиагностики: неизвестный тип не ошибка (сервер может начать присылать новое\nсобытие раньше, чем обновится закешированный фронт), но в консоли о нём\nстоит сказать.\n\nПОРЯДОК ЗДЕСЬ — ЧАСТЬ КОНТРАКТА: список сверяется с вариантами `VkServerMsg`\n(plugins/vk/src/ws/protocol.rs) построчно контрактным тестом. Четвёрка\n`analysis_*` стоит РОВНО между `dialog_changed` и `resync`, как в enum'е, а\nчетвёрка `voice_transcribe_*` — сразу за `download_progress`: расшифровка\nпродолжает жизненный цикл вложения, который начинается его скачиванием.",
           "exports": [
             "SERVER_FRAMES"
           ]
@@ -34794,7 +35511,7 @@
           "name": "local",
           "type": "variable",
           "path": "tmux-web/static/js/vk/ws.js",
-          "line": 57,
+          "line": 61,
           "exports": []
         }
       ]

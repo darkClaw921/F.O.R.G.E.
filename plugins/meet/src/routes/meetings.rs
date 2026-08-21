@@ -611,21 +611,22 @@ async fn start_stage(
 
 /// Почему саммари сейчас невозможно. `None` — возможно.
 ///
-/// Отдельной пробы Claude CLI нет намеренно: его отсутствие обнаруживается при
-/// запуске и попадает в `summary_status = failed` вместе с хвостом stderr —
-/// то есть человек всё равно узнаёт причину, но не ценой ещё одного
-/// периодического процесса на старте devforge.
-/// В облачном режиме проба всё-таки есть, и она бесплатна: «ключа нет» видно
-/// БЕЗ единого сетевого вызова. Отсутствие ключа — не «попробуем и упадём», а
-/// заведомо известный отказ, и говорить о нём заранее честнее.
+/// Обе стороны проверяются БЕЗ единого процесса и сетевого вызова: у облака —
+/// наличие ключа, у локального пути — наличие файла Claude CLI. Запускать его
+/// ради пробы нельзя (лишний процесс на каждом гейте), а знать, работает ли
+/// сторона, надо: без этого нечем выбрать маршрут.
+///
+/// Отказ наступает, только когда не работает НИ ОДНА сторона: облако без ключа
+/// при живом Claude CLI — это не отказ, а откат на локальный путь (таблица —
+/// в [`crate::deps::choose_route`]).
 fn summary_blocker(state: &Arc<MeetState>) -> Option<&'static str> {
-    if !state.config.summary_enabled {
-        return Some("summary_disabled");
-    }
-    if state.config.summary_backend.is_cloud() && !state.config.cloud_configured() {
-        return Some("cloud_not_configured");
-    }
-    None
+    crate::deps::plan_summary(
+        state.config.summary_backend,
+        state.config.summary_enabled,
+        state.config.cloud_configured(),
+        &state.config.claude_cli_path,
+    )
+    .err()
 }
 
 /// `POST /api/meet/meetings/:id/retry?from=` — повтор этапа.

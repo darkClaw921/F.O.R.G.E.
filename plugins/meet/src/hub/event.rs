@@ -215,6 +215,26 @@ pub enum MeetEvent {
     /// исход, поэтому счётчик обязан быть виден.
     FramesDropped { total: u64 },
 
+    /// **Со звуком что-то не так, а встреча ещё идёт.**
+    ///
+    /// Предупреждение, а не провал: бот продолжает писать. Существует потому,
+    /// что худший исход записи — не падение, а ТИШИНА, замеченная через час,
+    /// когда спасать уже нечего. Живой случай: медиа-канал площадки не
+    /// поднялся (DNS медиасервера не разрешился, TURN ответил 403), сигнальный
+    /// канал работал, дорожки завелись, и 63 минуты писались нули — а узналось
+    /// это только из `ffmpeg` сутки спустя.
+    ///
+    /// Два источника, и оба нужны: расхождение «DOM показывает говорящих, VAD
+    /// молчит» видно изнутри, ошибки медиа-канала из `chrome.log` — снаружи.
+    /// Первый ловит любую причину глухоты, второй называет её.
+    MediaWarning {
+        at_ms: u64,
+        /// `deaf_bot` | `media_transport`.
+        code: String,
+        /// Человеческое объяснение: что именно наблюдалось.
+        detail: String,
+    },
+
     /// Запись закончена.
     RecordingStopped { reason: StopReason, at_ms: u64 },
 
@@ -254,6 +274,7 @@ impl MeetEvent {
             Self::TrackModeDetected { .. } => "track_mode_detected",
             Self::CapturePathDetected { .. } => "capture_path_detected",
             Self::FramesDropped { .. } => "frames_dropped",
+            Self::MediaWarning { .. } => "media_warning",
             Self::RecordingStopped { .. } => "recording_stopped",
             Self::Failed { .. } => "failed",
         }
@@ -275,7 +296,8 @@ impl MeetEvent {
             | Self::ActiveSpeaker { .. }
             | Self::TrackModeDetected { .. }
             | Self::CapturePathDetected { .. }
-            | Self::FramesDropped { .. } => RANK_DURING,
+            | Self::FramesDropped { .. }
+            | Self::MediaWarning { .. } => RANK_DURING,
             Self::RecordingStopped { .. } => RANK_STOPPED,
             // Провал законен где угодно — ранг ему не нужен, и
             // `validate_order` его пропускает раньше, чем спросит.
@@ -297,6 +319,7 @@ impl MeetEvent {
             | Self::ParticipantsChanged { at_ms, .. }
             | Self::ActiveSpeaker { at_ms, .. }
             | Self::TrackModeDetected { at_ms, .. }
+            | Self::MediaWarning { at_ms, .. }
             | Self::RecordingStopped { at_ms, .. } => Some(*at_ms),
             _ => None,
         }

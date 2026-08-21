@@ -450,6 +450,27 @@ impl Stand {
             .collect()
     }
 
+    /// Ставит РАБОЧИЙ Claude CLI.
+    ///
+    /// Без него локальная сторона саммари нерабочая, и гейт законно уводит её
+    /// в облако (таблица `deps::choose_route`). То есть проверить «локальное
+    /// саммари остаётся локальным» можно только на машине, где оно вообще
+    /// возможно.
+    ///
+    /// Состояние пересобирается целиком (`MeetConfig` внутри него неизменяем),
+    /// поэтому отчёт проб переносится руками: иначе вместе со старым
+    /// состоянием потерялся бы подставленный ffmpeg.
+    async fn with_claude(&mut self, path: &PathBuf) {
+        let mut cfg = self.state.config.clone();
+        cfg.claude_cli_path = path.clone();
+        let deps = self.state.deps_snapshot().await;
+        let db = self.state.db().expect("база обязана быть открыта");
+        let state = MeetState::new(cfg);
+        state.attach_db(db).unwrap();
+        *state.deps.write().await = deps;
+        self.state = state;
+    }
+
     async fn summary_status(&self) -> SummaryStatus {
         repo::meetings::get(&self.state, &self.meeting_id)
             .await
@@ -754,53 +775,101 @@ async fn cloud_summary_deltas_arrive_as_the_same_progress_frame() {
     );
 }
 
-/// **ВСЕ ЧЕТЫРЕ КОМБИНАЦИИ.** Переключатели независимы.
+/// **ВСЕ ЧЕТЫРЕ КОМБИНАЦИИ.** Переключатели независимы — ПОКА ЗАКАЗАННЫЙ
+/// ПУТЬ РАБОТАЕТ.
 ///
-/// Локальные половины на этой машине заведомо недоступны (whisper не найден,
-/// Claude CLI нет), поэтому проверяется ровно то, что от комбинации зависит:
-/// какой ПУТЬ выбран. Облачная расшифровка + локальное саммари даёт транскрипт
-/// и провалившееся саммари; локальная расшифровка отказывает ДО транскрипта.
+/// Заказ соблюдается ровно до тех пор, пока заказанная сторона возможна: гейт
+/// деградирует, а не блокирует (`forge-0s0l5`). Поэтому «локальное значит
+/// локальное» проверяется на машине, где локальная сторона есть, а на ЧИСТОЙ
+/// машине с ключом обе локальные половины честно уезжают в облако — с записью
+/// отката в журнал.
 #[tokio::test(flavor = "multi_thread")]
 async fn all_four_combinations_take_the_path_they_are_told_to() {
     // 1. cloud + cloud — полный проход (проверен главным тестом), здесь только
     //    отметка, что комбинация допустима.
-    // 2. cloud + local: транскрипт есть, саммари провалилось (Claude CLI нет).
+    // 2. cloud + local С РАБОЧИМ Claude CLI: саммари остаётся локальным.
     let cloud = Cloud::start().await;
-    let s = Stand::new(&cloud, SttBackend::Cloud, SummaryBackend::Local).await;
+    let mut s = Stand::new(&cloud, SttBackend::Cloud, SummaryBackend::Local).await;
+    let claude = mocks::mock_claude_success(&s.bin, "claude", "## Резюме\n\nСчитали локально.")
+        .unwrap();
+    s.with_claude(&claude).await;
     pipeline::run::run(&s.state, &s.meeting_id).await.unwrap();
     assert_eq!(s.status().await, MeetStatus::Ready);
     assert!(s.meeting_dir.join("transcript.md").is_file());
-    assert_eq!(
-        s.summary_status().await,
-        SummaryStatus::Failed,
-        "локального Claude CLI на машине нет — саммари обязано честно провалиться"
-    );
+    assert_eq!(s.summary_status().await, SummaryStatus::Ready);
     assert!(
         !cloud.calls().contains(&"chat".to_string()),
         "локальное саммари ушло в облако: {:?}",
         cloud.calls()
     );
-
-    // 3. local + cloud: расшифровка отказывает, до саммари дело не доходит.
-    let cloud2 = Cloud::start().await;
-    let s = Stand::new(&cloud2, SttBackend::Local, SummaryBackend::Cloud).await;
-    assert!(pipeline::run::run(&s.state, &s.meeting_id).await.is_err());
     let codes = s.event_codes().await;
     assert!(
-        codes.iter().any(|c| c == "whisper_unavailable"),
-        "локальный путь обязан жаловаться на whisper, а не на облако: {codes:?}"
+        !codes.iter().any(|c| c.contains("fallback")),
+        "оба заказанных пути рабочие, откатываться было не от чего: {codes:?}"
+    );
+
+    // 3. local + cloud НА ЧИСТОЙ МАШИНЕ: локального whisper нет, ключ есть —
+    //    расшифровка ОТКАТЫВАЕТСЯ В ОБЛАКО вместо того, чтобы похоронить
+    //    запись. Обратная сторона `forge-0s0l5`.
+    let cloud2 = Cloud::start().await;
+    let s = Stand::new(&cloud2, SttBackend::Local, SummaryBackend::Cloud).await;
+    pipeline::run::run(&s.state, &s.meeting_id).await.unwrap();
+    assert_eq!(s.status().await, MeetStatus::Ready);
+    let codes = s.event_codes().await;
+    assert!(
+        codes.iter().any(|c| c == "stt_fallback_cloud"),
+        "откат обязан быть виден в журнале: {codes:?}"
     );
     assert!(
-        cloud2.calls().is_empty(),
-        "локальная расшифровка сходила в облако: {:?}",
+        cloud2.calls().contains(&"stt".to_string()),
+        "откатились в облако, но так туда и не сходили: {:?}",
         cloud2.calls()
     );
 
-    // 4. local + local: то же самое, облако не трогается вовсе.
+    // 4. local + local на чистой машине: откатываются ОБЕ стадии, и оба
+    //    отката записаны — молчаливой подмены не бывает.
     let cloud3 = Cloud::start().await;
     let s = Stand::new(&cloud3, SttBackend::Local, SummaryBackend::Local).await;
-    assert!(pipeline::run::run(&s.state, &s.meeting_id).await.is_err());
-    assert!(cloud3.calls().is_empty());
+    pipeline::run::run(&s.state, &s.meeting_id).await.unwrap();
+    let codes = s.event_codes().await;
+    assert!(codes.iter().any(|c| c == "stt_fallback_cloud"), "{codes:?}");
+    assert!(
+        codes.iter().any(|c| c == "summary_fallback_cloud"),
+        "{codes:?}"
+    );
+    assert_eq!(s.summary_status().await, SummaryStatus::Ready);
+}
+
+/// **НИ ОДНОГО РАБОЧЕГО ПУТИ — ТОЛЬКО ТОГДА ОТКАЗ.**
+///
+/// Чистая машина И ключа нет: откатываться некуда, и расшифровка обязана
+/// отказать кодом ЗАКАЗАННОГО пути.
+#[tokio::test(flavor = "multi_thread")]
+async fn with_no_working_path_at_all_the_stage_refuses_by_the_configured_code() {
+    for (backend, want) in [
+        (SttBackend::Cloud, "cloud_not_configured"),
+        (SttBackend::Local, "whisper_unavailable"),
+    ] {
+        let cloud = Cloud::start().await;
+        let mut s = Stand::new(&cloud, backend, SummaryBackend::Cloud).await;
+        let mut cfg = s.state.config.clone();
+        cfg.polza_api_key = forge_meet::cloud::SecretKey::default();
+        let deps = s.state.deps_snapshot().await;
+        let db = s.state.db().unwrap();
+        let state = MeetState::new(cfg);
+        state.attach_db(db).unwrap();
+        *state.deps.write().await = deps;
+        s.state = state;
+
+        assert!(pipeline::run::run(&s.state, &s.meeting_id).await.is_err());
+        let codes = s.event_codes().await;
+        assert!(
+            codes.iter().any(|c| c == want),
+            "{}: ждали {want}, получили {codes:?}",
+            backend.as_str()
+        );
+        assert!(cloud.calls().is_empty());
+    }
 }
 
 /// Ключа нет — облачная расшифровка отказывает СВОИМ кодом, а не «whisper не

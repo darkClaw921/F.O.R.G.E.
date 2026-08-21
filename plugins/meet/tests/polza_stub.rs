@@ -736,10 +736,19 @@ async fn the_upload_is_an_mp3_and_never_asks_for_word_timestamps() {
         !call.file_body.starts_with("RIFF"),
         "на облако ушёл сырой WAV — он роняет их шлюз"
     );
-    assert_eq!(call.fields.get("response_format").map(String::as_str), Some("verbose_json"));
+    // Формат просится ПО МОДЕЛИ. Дефолт встреч теперь тот же дешёвый
+    // `whisper-large-v3-turbo`, что и у чатов, а он `verbose_json` не
+    // принимает вовсе — шлюз отвечает BAD_REQUEST и расшифровка теряется
+    // целиком (см. `cloud::stt_response_format`).
+    assert_eq!(
+        call.fields.get("response_format").map(String::as_str),
+        Some(forge_meet::cloud::stt_response_format(
+            forge_meet::cloud::DEFAULT_STT_MODEL
+        ))
+    );
     assert_eq!(
         call.fields.get("model").map(String::as_str),
-        Some("openai/whisper-1")
+        Some(forge_meet::cloud::DEFAULT_STT_MODEL)
     );
     assert_eq!(call.fields.get("language").map(String::as_str), Some("ru"));
     assert!(

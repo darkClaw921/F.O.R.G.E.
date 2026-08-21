@@ -351,6 +351,23 @@ pub struct MediaDto {
     pub duration_secs: Option<i32>,
     /// Есть ли у вложения превью-миниатюра.
     pub has_thumb: bool,
+    /// Звуковая огибающая голосового: столбики `0..=255`, не длиннее
+    /// `forge_voice::waveform::MAX_WAVEFORM`.
+    ///
+    /// # Откуда она берётся
+    ///
+    /// Из `DocumentAttributeAudio.waveform` — Telegram присылает её сам,
+    /// упакованной по пять бит на отсчёт ([`forge_voice::waveform::from_telegram`]).
+    /// Атрибут есть только у ГОЛОСОВЫХ; у обычного аудиофайла его нет, и тогда
+    /// огибающую считает бэкенд по скачанному файлу
+    /// ([`crate::voice::waveform_of`]), а пока не посчитал — поле пусто и фронт
+    /// рисует детерминированную заглушку.
+    ///
+    /// Поле называется и заполняется так же, как `waveform` у VK и Bitrix:
+    /// волну во всех трёх панелях рисует один и тот же код
+    /// (`static/js/messenger/waveform-core.js`).
+    #[serde(default)]
+    pub waveform: Vec<i32>,
 }
 
 /// Флаги атрибутов документа, по которым определяется его вид.
@@ -425,6 +442,31 @@ fn doc_flags(attrs: &[tl::enums::DocumentAttribute]) -> DocFlags {
     f
 }
 
+/// Огибающая из атрибутов документа, приведённая к общей шкале.
+///
+/// `DocumentAttributeAudio.waveform` — единственное место, где Telegram отдаёт
+/// НАСТОЯЩУЮ форму записи, и отдаёт он её бесплатно, вместе с сообщением.
+/// Поэтому атрибут всегда побеждает расчёт на бэке: тот стоит запуска ffmpeg и
+/// требует, чтобы файл уже был скачан.
+///
+/// Атрибутов `Audio` в документе бывает два (несогласованные данные: музыка и
+/// голос разом — см. `doc_flags_handles_custom_emoji_and_mixed_attributes`),
+/// поэтому берётся ПЕРВЫЙ НЕПУСТОЙ, а не первый попавшийся: пустое поле у
+/// одного из атрибутов не должно скрыть заполненное у другого.
+fn audio_waveform(attrs: &[tl::enums::DocumentAttribute]) -> Vec<i32> {
+    for attr in attrs {
+        if let tl::enums::DocumentAttribute::Audio(a) = attr {
+            if let Some(packed) = a.waveform.as_ref().filter(|w| !w.is_empty()) {
+                let w = forge_voice::waveform::from_telegram(packed);
+                if !w.is_empty() {
+                    return w;
+                }
+            }
+        }
+    }
+    Vec::new()
+}
+
 /// Размеры одного превью, если они вообще известны.
 ///
 /// `Stripped`/`Path` пропускаются: это blur-заглушки и векторные контуры без
@@ -473,6 +515,7 @@ pub fn media_dto(media: &Media) -> Option<MediaDto> {
                 height: h,
                 duration_secs: None,
                 has_thumb: !thumbs.is_empty(),
+                waveform: Vec::new(),
             }
         }
         Media::Document(d) => {
@@ -495,6 +538,7 @@ pub fn media_dto(media: &Media) -> Option<MediaDto> {
                 // полусекундного кружка выглядело бы поломкой.
                 duration_secs: d.duration().map(|s| s.ceil() as i32),
                 has_thumb: !d.thumbs().is_empty(),
+                waveform: audio_waveform(attrs),
             }
         }
         Media::Sticker(s) => {
@@ -508,6 +552,7 @@ pub fn media_dto(media: &Media) -> Option<MediaDto> {
                 height: h,
                 duration_secs: None,
                 has_thumb: !s.document.thumbs().is_empty(),
+                waveform: Vec::new(),
             }
         }
         Media::WebPage(_) => return None,
@@ -2156,6 +2201,47 @@ mod tests {
         );
         // Вырожденное превью 0×0 — валидный, хоть и бесполезный ответ.
         assert_eq!(largest_dimensions([(0, 0)].into_iter()), Some((0, 0)));
+    }
+
+    /// Атрибут голосового кладётся в `MediaDto.waveform` — в той же шкале и с
+    /// тем же потолком, что у VK.
+    #[test]
+    fn the_voice_attribute_becomes_a_real_waveform() {
+        let audio = |voice: bool, w: Option<Vec<u8>>| {
+            tl::enums::DocumentAttribute::Audio(tl::types::DocumentAttributeAudio {
+                voice,
+                duration: 7,
+                title: None,
+                performer: None,
+                waveform: w,
+            })
+        };
+
+        // `0b11111_00001_00000` → отсчёты [0, 1, 31] → общая шкала 0..255.
+        let w = audio_waveform(&[audio(true, Some(vec![0x20, 0x7c]))]);
+        assert_eq!(w, vec![0, 8, forge_voice::waveform::WAVEFORM_MAX_VALUE]);
+
+        // Атрибута нет / он пуст — огибающей нет, но и паники нет: такую
+        // запись досчитает бэкенд по скачанному файлу.
+        assert!(audio_waveform(&[audio(true, None)]).is_empty());
+        assert!(audio_waveform(&[audio(true, Some(Vec::new()))]).is_empty());
+        assert!(audio_waveform(&[]).is_empty());
+
+        // Два атрибута Audio (несогласованные данные): побеждает НЕПУСТОЙ, а
+        // не первый попавшийся.
+        let w = audio_waveform(&[audio(false, None), audio(true, Some(vec![0xff; 5]))]);
+        assert_eq!(w.len(), 8);
+        assert!(
+            w.iter().all(|v| *v == forge_voice::waveform::WAVEFORM_MAX_VALUE),
+            "{w:?}"
+        );
+
+        // Длинная запись укладывается в общий потолок столбиков.
+        let long = audio_waveform(&[audio(true, Some(vec![0xa5; 1_000]))]);
+        assert!(long.len() <= forge_voice::waveform::MAX_WAVEFORM, "{}", long.len());
+        assert!(long
+            .iter()
+            .all(|v| (0..=forge_voice::waveform::WAVEFORM_MAX_VALUE).contains(v)));
     }
 
     #[test]

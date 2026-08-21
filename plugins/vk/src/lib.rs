@@ -74,6 +74,8 @@ pub mod peers;
 pub mod progress;
 pub mod routes;
 pub mod state;
+pub mod voice;
+pub mod voice_auto;
 #[cfg(test)]
 pub(crate) mod testlog;
 pub mod ws;

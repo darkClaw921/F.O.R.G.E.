@@ -42,6 +42,17 @@ import {
 import { buildVisibilityForm } from './telegram-visibility-tab.js';
 import { buildVkVisibilityForm } from './vk-visibility-tab.js';
 import { buildBitrixVisibilityForm } from './bitrix-visibility-tab.js';
+import {
+    buildVoiceForm, B24_VOICE_CONFIG, TELEGRAM_VOICE_CONFIG, VK_VOICE_CONFIG,
+} from './voice-tab.js';
+import { getVoiceSettings as vkGetVoiceSettings, setVoiceSettings as vkSetVoiceSettings }
+    from '../vk/api.js';
+import {
+    getVoiceSettings as tgGetVoiceSettings, setVoiceSettings as tgSetVoiceSettings,
+} from '../telegram/api.js';
+import {
+    getVoiceSettings as b24GetVoiceSettings, setVoiceSettings as b24SetVoiceSettings,
+} from '../bitrix/api.js';
 import { buildMeetSettings } from './meet-tab.js';
 import {
     meetEnabled, getMeetConfig, putMeetConfig, getMeetStatus, getModels, downloadModel,
@@ -309,6 +320,9 @@ export function openSettingsModal(initialTab) {
         };
         $telegramContent.appendChild(buildVisibilityForm(settingsArg, onSaved));
         $telegramContent.appendChild(buildHotkeysForm(settingsArg, onSaved, TELEGRAM_HOTKEYS_CONFIG));
+        $telegramContent.appendChild(buildVoiceForm(settingsArg, onSaved, TELEGRAM_VOICE_CONFIG, {
+            getVoiceSettings: tgGetVoiceSettings, setVoiceSettings: tgSetVoiceSettings,
+        }));
     };
 
     // Вкладка «VK»: два раздела — видимость бесед (белый список типов и
@@ -340,6 +354,9 @@ export function openSettingsModal(initialTab) {
         };
         $vkContent.appendChild(buildVkVisibilityForm(settingsArg, onSaved));
         $vkContent.appendChild(buildHotkeysForm(settingsArg, onSaved, VK_HOTKEYS_CONFIG));
+        $vkContent.appendChild(buildVoiceForm(settingsArg, onSaved, VK_VOICE_CONFIG, {
+            getVoiceSettings: vkGetVoiceSettings, setVoiceSettings: vkSetVoiceSettings,
+        }));
     };
 
     // Вкладка «Битрикс24»: два раздела — видимость диалогов (белый список
@@ -372,6 +389,9 @@ export function openSettingsModal(initialTab) {
         };
         $bitrixContent.appendChild(buildBitrixVisibilityForm(settingsArg, onSaved));
         $bitrixContent.appendChild(buildHotkeysForm(settingsArg, onSaved, B24_HOTKEYS_CONFIG));
+        $bitrixContent.appendChild(buildVoiceForm(settingsArg, onSaved, B24_VOICE_CONFIG, {
+            getVoiceSettings: b24GetVoiceSettings, setVoiceSettings: b24SetVoiceSettings,
+        }));
     };
 
     // Вкладка «Встречи»: настройки плагина forge-meet. В отличие от соседей

@@ -143,6 +143,27 @@
 //!     вида. Как и у соседей, оба списка — БЕЛЫЙ список, и фильтр считается
 //!     ДЕЙСТВУЮЩИМ, только когда хотя бы один из них непуст.
 //!
+//!   - `vk_voice_autotranscribe`, `telegram_voice_autotranscribe`,
+//!     `bitrix_voice_autotranscribe` (bool, default **false**) — разбирать ли
+//!     НОВЫЕ входящие голосовые сообщения автоматически, каждый в своей
+//!     панели. Три отдельных поля, а не одно общее: панели включаются разными
+//!     флагами запуска и живут у разных людей по-разному, и «включил в VK —
+//!     заработало в рабочем портале» было бы неожиданностью, а не удобством.
+//!
+//!     Дефолт `false` читается строго как `=== true` (как у `*_filter_enabled`,
+//!     а не как у `*_hotkeys_enabled`): фича тратит GPU либо деньги в облаке,
+//!     и молчаливо включаться она не имеет права. При выключенном флаге
+//!     плагин не делает НИ докачки вложения, НИ запуска движка — это гейт
+//!     фазы, а не пожелание.
+//!
+//!     Настройки не читаются плагинами через `AppState` (его у них нет вовсе):
+//!     плагин читает ЭТОТ ЖЕ файл сам, модулем `forge_voice::prefs`, на каждое
+//!     входящее голосовое. Отсюда и «применяется без перезапуска».
+//!
+//!     Выбор ДВИЖКА расшифровки (`local` / `cloud`) в этом файле НЕ живёт: он
+//!     общий для всех мессенджеров и лежит в `~/.config/forge/voice.toml`
+//!     рядом с ключом polza.ai (роут `…/voice/settings` у каждого плагина).
+//!
 //! Токена VK в этом файле нет и быть не должно: он живёт в конфиге плагина
 //! (`~/.config/forge/vk.toml`, права 0600), а `user_settings.json` читается
 //! фронтендом целиком через `GET /api/user-settings` и секретов не хранит.
@@ -484,6 +505,18 @@ pub struct UserSettings {
     /// `"19"`, `"sg12"` — в формате `DialogDto.id` плагина Битрикс24).
     #[serde(default)]
     pub bitrix_visible_peers: Vec<String>,
+    /// Разбирать ли новые входящие голосовые VK автоматически. Default
+    /// `false` — фича opt-in и тратит GPU либо деньги в облаке (см. шапку
+    /// модуля). Читается не только фронтом: плагин VK открывает ЭТОТ ЖЕ файл
+    /// модулем `forge_voice::prefs` на каждое входящее голосовое.
+    #[serde(default)]
+    pub vk_voice_autotranscribe: bool,
+    /// То же для Telegram (`telegram_voice_autotranscribe`).
+    #[serde(default)]
+    pub telegram_voice_autotranscribe: bool,
+    /// То же для Битрикс24 (`bitrix_voice_autotranscribe`).
+    #[serde(default)]
+    pub bitrix_voice_autotranscribe: bool,
     /// Авто-апрув интерактивных prompt'ов Claude Code в tmux-сессиях
     /// (см. [`crate::auto_approve`]). Default `false` — фича opt-in и
     /// нажимает клавиши за пользователя, см. инвариант в шапке модуля.
@@ -538,6 +571,9 @@ impl Default for UserSettings {
             bitrix_filter_enabled: false,
             bitrix_visible_kinds: Vec::new(),
             bitrix_visible_peers: Vec::new(),
+            vk_voice_autotranscribe: false,
+            telegram_voice_autotranscribe: false,
+            bitrix_voice_autotranscribe: false,
             auto_approve_enabled: false,
             auto_approve_broad: false,
             auto_approve_questions: default_auto_approve_questions(),
@@ -638,6 +674,15 @@ pub struct PatchUserSettingsReq {
     /// списка.
     #[serde(default)]
     pub bitrix_visible_peers: Option<Vec<String>>,
+    /// Включить/выключить авторазбор новых голосовых VK.
+    #[serde(default)]
+    pub vk_voice_autotranscribe: Option<bool>,
+    /// То же для Telegram.
+    #[serde(default)]
+    pub telegram_voice_autotranscribe: Option<bool>,
+    /// То же для Битрикс24.
+    #[serde(default)]
+    pub bitrix_voice_autotranscribe: Option<bool>,
     /// Включить/выключить авто-апрув prompt'ов Claude Code целиком.
     #[serde(default)]
     pub auto_approve_enabled: Option<bool>,
@@ -831,6 +876,17 @@ impl UserSettingsStore {
         }
         if let Some(v) = payload.bitrix_visible_peers {
             inner.settings.bitrix_visible_peers = sanitize_visible_list(v);
+        }
+        // Три ОТДЕЛЬНЫХ флага авторазбора голосовых — по одному на панель.
+        // Санитайзер им не нужен: это булевы, а не списки.
+        if let Some(v) = payload.vk_voice_autotranscribe {
+            inner.settings.vk_voice_autotranscribe = v;
+        }
+        if let Some(v) = payload.telegram_voice_autotranscribe {
+            inner.settings.telegram_voice_autotranscribe = v;
+        }
+        if let Some(v) = payload.bitrix_voice_autotranscribe {
+            inner.settings.bitrix_voice_autotranscribe = v;
         }
         if let Some(v) = payload.auto_approve_enabled {
             inner.settings.auto_approve_enabled = v;
@@ -1230,6 +1286,69 @@ mod tests {
             .expect("patch must succeed");
         assert_eq!(res.telegram_hotkeys.len(), 1);
         assert!(res.telegram_hotkeys.contains_key("msg.reply"));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// **АВТОРАЗБОР ГОЛОСОВЫХ ВЫКЛЮЧЕН ВО ВСЕХ ТРЁХ ПАНЕЛЯХ, И СТАРЫЙ ФАЙЛ
+    /// БЕЗ ЭТИХ ПОЛЕЙ ЧИТАЕТСЯ, А НЕ ЛОМАЕТСЯ.**
+    ///
+    /// Файл пишется РУКАМИ, без новых ключей, — ровно то, что лежит на диске у
+    /// человека, обновившего devforge. Ошибка миграции здесь означала бы, что
+    /// обновление сбрасывает ВСЕ настройки пользователя разом.
+    #[test]
+    fn test_voice_autotranscribe_defaults_off_on_an_old_file() {
+        let path = tmp_path("voice_auto_old_file");
+        std::fs::write(
+            &path,
+            r#"{"todo_default_priority":1,"vk_filter_enabled":true,
+                "vk_visible_peers":["2000000042"]}"#,
+        )
+        .unwrap();
+        let store = UserSettingsStore::new(path.clone());
+        let s = store.get();
+        assert!(!s.vk_voice_autotranscribe);
+        assert!(!s.telegram_voice_autotranscribe);
+        assert!(!s.bitrix_voice_autotranscribe);
+        // Старые поля при этом уцелели — файл прочитан, а не заменён дефолтами.
+        assert!(s.vk_filter_enabled);
+        assert_eq!(s.vk_visible_peers, vec!["2000000042"]);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// **PATCH ОДНОГО ФЛАГА НЕ ТРОГАЕТ ДВА СОСЕДНИХ.**
+    ///
+    /// Три панели — три решения человека, и включение разбора в VK не имеет
+    /// права включить его в рабочем портале.
+    #[test]
+    fn test_voice_autotranscribe_patch_is_per_panel() {
+        let path = tmp_path("voice_auto_per_panel");
+        let store = UserSettingsStore::new(path.clone());
+        let res = store
+            .patch(PatchUserSettingsReq {
+                vk_voice_autotranscribe: Some(true),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert!(res.vk_voice_autotranscribe);
+        assert!(!res.telegram_voice_autotranscribe);
+        assert!(!res.bitrix_voice_autotranscribe);
+
+        let res = store
+            .patch(PatchUserSettingsReq {
+                bitrix_voice_autotranscribe: Some(true),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert!(res.vk_voice_autotranscribe, "первый флаг не сброшен вторым патчем");
+        assert!(res.bitrix_voice_autotranscribe);
+        assert!(!res.telegram_voice_autotranscribe);
+
+        // Плагин читает ЭТОТ файл сам (forge_voice::prefs), поэтому патч обязан
+        // оказаться на диске сразу, а не при завершении процесса.
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(json["vk_voice_autotranscribe"], true);
+        assert_eq!(json["telegram_voice_autotranscribe"], false);
         let _ = std::fs::remove_file(&path);
     }
 

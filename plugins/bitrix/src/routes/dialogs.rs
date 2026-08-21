@@ -760,12 +760,17 @@ pub(crate) async fn load_page(
     let self_id = state.self_id().await;
     let peers = &state.peers;
 
-    Ok(dto::sort_messages_ascending(
+    let mut messages = dto::sort_messages_ascending(
         page.messages
             .iter()
             .map(|m| dto::message_from_raw(m, dialog_id, self_id, &index, peers))
             .collect(),
-    ))
+    );
+    // Огибающая голосовых: портал её не отдаёт вовсе, её посчитал бэкенд при
+    // скачивании файла. Читается ТОЛЬКО для аудио-вложений — у остальных видов
+    // сайдкара нет по построению, и диск не трогается.
+    crate::voice::attach_waveforms(&state.config, dialog_id, &mut messages);
+    Ok(messages)
 }
 
 /// `GET /api/bitrix/dialogs/:id/messages?limit&before_id&after_id` — страница

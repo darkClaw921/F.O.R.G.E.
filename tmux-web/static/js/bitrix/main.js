@@ -48,7 +48,8 @@ import {
     initB24Keynav, resetB24Keynav, teardownB24Keynav, _debugKeynavState,
 } from './keynav.js';
 import {
-    dropMessageMedia, initMedia, onDownloadProgress, teardownMedia, _debugMediaState,
+    dropMessageMedia, initMedia, onDownloadProgress, teardownMedia,
+    VOICE_FRAME_EVENT as MEDIA_VOICE_FRAME_EVENT, _debugMediaState,
 } from './media.js';
 import {
     closeB24ContactsAfterSelect, initB24Mobile, _debugB24Mobile,
@@ -462,6 +463,15 @@ export function buildHandlers() {
         // чтение `response.body` в браузере — считается внутри media.js.
         download_progress: (msg) => onDownloadProgress(msg),
 
+        // --- расшифровка голосовых (ГС-Ф3) ---
+        // Кадры уходят в DOM-событие, а не в конкретный модуль: текст под
+        // голосовым рисует ОБЩИЙ для трёх мессенджеров модуль (ГС-Ф5), и он
+        // подключается К панели, а не встраивается в её main.js.
+        voice_transcribe_started: (msg) => emitVoiceFrame('started', msg),
+        voice_transcribe_delta: (msg) => emitVoiceFrame('delta', msg),
+        voice_transcribe_done: (msg) => emitVoiceFrame('done', msg),
+        voice_transcribe_error: (msg) => emitVoiceFrame('error', msg),
+
         // --- отправка файла (Ф9) ---
         //
         // Применяется только фаза `portal`: свой прогресс приёма вкладка знает
@@ -804,4 +814,34 @@ export function _debugState() {
             };
         })(),
     };
+}
+
+/**
+ * Имя DOM-события, которым панель отдаёт кадры расшифровки наружу.
+ *
+ * Одно на все четыре кадра: вид кадра лежит в `detail.phase`. По форме
+ * совпадает с `vk:voice-transcribe` и `telegram:voice-transcribe` — общий
+ * модуль ГС-Ф5 подписывается на все три одинаковым кодом.
+ *
+ * Объявлено в `js/bitrix/media.js` — там же, где карточка, которая на него
+ * подписывается: этот файл импортирует media.js, и обратный импорт замкнул бы
+ * цикл. Здесь имя только переэкспортируется.
+ */
+export const VOICE_FRAME_EVENT = MEDIA_VOICE_FRAME_EVENT;
+
+/** Перекладывает кадр расшифровки в DOM-событие панели. */
+function emitVoiceFrame(phase, evt) {
+    if (!evt) return;
+    document.dispatchEvent(
+        new CustomEvent(VOICE_FRAME_EVENT, {
+            detail: {
+                phase,
+                plugin: 'bitrix',
+                dialogId: String(evt.dialog_id ?? ''),
+                messageId: String(evt.message_id ?? ''),
+                index: Number(evt.index ?? 0),
+                frame: evt,
+            },
+        }),
+    );
 }

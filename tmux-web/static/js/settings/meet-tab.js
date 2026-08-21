@@ -77,6 +77,7 @@ export const MEET_LABELS = {
     vad_off_db: 'Порог выключения, дБ над шумом',
     vad_confirm_ms: 'Подтверждение речи, мс',
     vad_hangover_ms: 'Пауза внутри реплики, мс',
+    silence_gate_dbfs: 'Порог «записана тишина», dBFS (пик тише — встреча признаётся пустой)',
     max_concurrent_recordings: 'Одновременных записей',
     max_concurrent_summaries: 'Одновременных саммари',
     max_cache_bytes: 'Дисковый бюджет записей, байт (0 — не подрезать)',
@@ -95,6 +96,19 @@ export const MEET_LABELS = {
 export const BACKEND_LABELS = {
     cloud: 'в облаке (polza.ai)',
     local: 'локально',
+};
+
+/**
+ * Коды нехватки — словами. Те же коды, что у `deps::blocker_hint` в бэкенде;
+ * здесь они превращаются в причину ОТКАТА у переключателя стадии.
+ */
+export const BLOCKER_LABELS = {
+    cloud_not_configured: 'ключ API не задан',
+    whisper_unavailable: 'whisper не найден',
+    model_unavailable: 'модели whisper нет на диске',
+    metal_unavailable: 'нет GPU (Metal)',
+    ffmpeg_unavailable: 'нет ffmpeg',
+    claude_cli_unavailable: 'Claude CLI не найден',
 };
 
 /**
@@ -118,14 +132,35 @@ export const KEY_MASK_CHAR = '•';
  *
  * @param {string} key — `stt_backend` | `summary_backend`
  * @param {string} value — `cloud` | `local`
- * @param {{cloud?: object, deps?: object}} ctx — блоки ответа `/api/meet/status`
+ * @param {{cloud?: object, deps?: object, config?: object}} ctx — блоки ответа
+ *        `/api/meet/status`
  * @returns {{tone: 'ok'|'warn', text: string}}
  */
 export function backendNote(key, value, ctx) {
     const c = ctx || {};
     const cloud = c.cloud || {};
     const deps = c.deps || {};
+    const cfg = c.config || {};
     const stage = key === 'stt_backend' ? 'Расшифровка' : 'Саммари';
+
+    // ОТКАТ ГЕЙТА — ПЕРВЫМ ДЕЛОМ.
+    //
+    // Заказанный путь может быть нерабочим, и тогда бэкенд не отказывает, а
+    // считает вторым (`deps::choose_route`, инцидент `forge-0s0l5`). Человек
+    // обязан увидеть подмену здесь: молча она хуже честного отказа — он будет
+    // думать, что платит за облако, пока считает локальный whisper.
+    const isStt = key === 'stt_backend';
+    const chosen = isStt ? cfg.stt_backend : cfg.summary_backend;
+    const effective = isStt ? cfg.stt_effective : cfg.summary_effective;
+    const why = isStt ? cfg.stt_fallback_reason : cfg.summary_fallback_reason;
+    if (why && chosen === value && effective && effective !== value) {
+        return {
+            tone: 'warn',
+            text: `${stage} ЗАКАЗАНА ${BACKEND_LABELS[value] || value}, а считается `
+                + `${BACKEND_LABELS[effective] || effective}: ${BLOCKER_LABELS[why] || why}. `
+                + 'Либо почините заказанный путь, либо переключите стадию явно.',
+        };
+    }
 
     if (value === 'cloud') {
         if (cloud.configured !== true) {
@@ -537,6 +572,9 @@ export async function buildMeetSettings(host, deps) {
     refs.ctx = {
         cloud: (status && status.cloud) || null,
         deps: (status && status.deps) || null,
+        // Решения гейта: чем стадия посчитается ФАКТИЧЕСКИ и почему это не то,
+        // что заказано.
+        config: (status && status.config) || null,
     };
     refs.catalogue = catalogue;
     const byGroup = new Map();

@@ -44,11 +44,15 @@ export const PING_INTERVAL_MS = 15000;
  *
  * ПОРЯДОК ЗДЕСЬ — ЧАСТЬ КОНТРАКТА: список сверяется с вариантами `VkServerMsg`
  * (plugins/vk/src/ws/protocol.rs) построчно контрактным тестом. Четвёрка
- * `analysis_*` стоит РОВНО между `dialog_changed` и `resync`, как в enum'е.
+ * `analysis_*` стоит РОВНО между `dialog_changed` и `resync`, как в enum'е, а
+ * четвёрка `voice_transcribe_*` — сразу за `download_progress`: расшифровка
+ * продолжает жизненный цикл вложения, который начинается его скачиванием.
  */
 export const SERVER_FRAMES = [
     'login_state', 'new_message', 'message_edited', 'message_deleted',
     'typing', 'online', 'read', 'upload_progress', 'download_progress',
+    'voice_transcribe_started', 'voice_transcribe_delta',
+    'voice_transcribe_done', 'voice_transcribe_error',
     'notify_settings', 'unread_total', 'history_cleared', 'dialog_changed',
     'analysis_started', 'analysis_delta', 'analysis_done', 'analysis_error',
     'resync', 'ping',

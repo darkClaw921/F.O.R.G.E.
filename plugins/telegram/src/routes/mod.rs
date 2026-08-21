@@ -56,6 +56,10 @@
 //! | DELETE | `/api/telegram/dialogs/:id/analysis` | стереть сохранённый разбор | 404, 409, 500, 503 |
 //! | POST | `/api/telegram/dialogs/:id/analysis/cancel` | остановить идущий анализ | 404, 409, 503 |
 //! | DELETE | `/api/telegram/dialogs/:id/analysis/thread` | стереть тред вопросов | 404, 409, 500, 503 |
+//! | POST | `/api/telegram/voice/:dialog_id/:message_id/:index/transcribe` | запустить расшифровку голосового | 400, 404, 409, 500, 503 |
+//! | GET | `/api/telegram/voice/:dialog_id/:message_id/:index/transcript` | готовая расшифровка голосового | 400, 409 |
+//! | GET | `/api/telegram/voice/settings` | выбранный движок расшифровки | 500 |
+//! | PUT | `/api/telegram/voice/settings` | переключить движок (`local`/`cloud`) | 400, 500 |
 //!
 //! WebSocket `/ws/telegram` в таблицу не входит намеренно: у него другой
 //! контракт (кадры `TgServerMsg`), и его сверяет отдельная ось того же теста.
@@ -66,6 +70,7 @@ pub mod error;
 pub mod login;
 pub mod media;
 pub mod upload;
+pub mod voice;
 
 use std::sync::Arc;
 
@@ -88,6 +93,7 @@ pub fn build_router(state: Arc<TelegramState>) -> Router {
         .merge(media::router())
         .merge(upload::router(max_upload_bytes))
         .merge(analysis::router())
+        .merge(voice::router())
         .route("/ws/telegram", get(crate::ws::telegram_ws))
         .with_state(state)
 }

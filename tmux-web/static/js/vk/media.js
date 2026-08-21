@@ -71,7 +71,9 @@ import {
     $vkLightboxPrev,
 } from '../core/dom.js';
 
-import { fetchMedia } from './api.js';
+import { buildWave as buildWaveNode, noiseSeed } from '../messenger/waveform-core.js';
+import { createVoiceTranscript } from '../messenger/voice-transcript-core.js';
+import { fetchMedia, getVoiceTranscript, transcribeVoice } from './api.js';
 import { MAX_INLINE_CARDS, normalizeAttachments } from './attachments.js';
 import {
     canShowThumb, durationLabel, formatBytes, isImageKind, isPlayableKind, linkDomain,
@@ -82,6 +84,30 @@ import { vkState } from './state.js';
 
 /** Высота превью в карточке (синхронно с CSS `.vk-media-thumb`). */
 export const THUMB_HEIGHT = 184;
+
+/**
+ * Имя DOM-события, которым панель отдаёт кадры расшифровки наружу.
+ *
+ * Объявлено ЗДЕСЬ, а не в `main.js`, хотя рассылает кадры именно он: карточку
+ * рисует этот файл, а `main.js` импортирует его — обратный импорт замкнул бы
+ * цикл. `main.js` берёт имя отсюда и переэкспортирует.
+ */
+export const VOICE_FRAME_EVENT = 'vk:voice-transcribe';
+
+/**
+ * Текст расшифровки под голосовым — ОБЩИЙ модуль на три панели.
+ *
+ * Панель отдаёт сюда ровно три вещи: свой транспорт, имя своего DOM-события с
+ * кадрами и свой префикс классов. Ни состояний, ни разметки, ни подписей
+ * ошибок здесь нет и быть не должно — иначе три панели разъедутся ровно так
+ * же, как разъезжались три копии звуковой дорожки до Ф2.
+ */
+export const voiceTranscript = createVoiceTranscript({
+    plugin: 'vk',
+    classPrefix: 'vk-voice',
+    frameEvent: VOICE_FRAME_EVENT,
+    api: { transcribe: transcribeVoice, transcript: getVoiceTranscript },
+});
 
 /**
  * Верхний индекс вложения — столько же, сколько у бэкенда
@@ -485,6 +511,12 @@ export function buildMediaCard(msg, att, group) {
     card.appendChild(body);
     card.appendChild(foot);
 
+    // Блок расшифровки — ПОД подвалом карточки и только у звука: у фотографии
+    // расшифровки не бывает, и пустой блок под ней — мусор, а не сдержанность.
+    // `null` для не-звука возвращает сам общий модуль.
+    const transcript = voiceTranscript.attach({ dialogId, messageId, index, kind });
+    if (transcript) card.appendChild(transcript);
+
     const ctl = {
         el: card,
         dialogId,
@@ -541,35 +573,21 @@ export function buildMediaCard(msg, att, group) {
 /**
  * Псевдо-волна голосового.
  *
- * Если VK прислал огибающую (`waveform`), рисуем ЕЁ — это настоящая форма
+ * Если огибающая приехала (`waveform`), рисуем ЕЁ — это настоящая форма
  * записи. Иначе детерминированный шум по `(message_id, index)`, чтобы карточка
  * не «дышала» при каждой перерисовке ленты и чтобы два голосовых одного
  * сообщения выглядели по-разному.
+ *
+ * Сам рисовальщик — общий на три панели
+ * (`js/messenger/waveform-core.js`): волна Bitrix и Telegram обязана быть
+ * неотличима от волны VK, а три копии одной ветки неминуемо разъехались бы.
  */
 function buildWave(media, messageId, index) {
-    const wave = document.createElement('div');
-    wave.className = 'vk-media-wave';
-    wave.setAttribute('aria-hidden', 'true');
-    const real = Array.isArray(media.waveform) ? media.waveform : [];
-    if (real.length) {
-        const peak = real.reduce((acc, v) => Math.max(acc, Number(v) || 0), 0) || 1;
-        const step = Math.max(1, Math.ceil(real.length / 40));
-        for (let i = 0; i < real.length; i += step) {
-            const bar = document.createElement('span');
-            bar.style.height = `${8 + Math.round(((Number(real[i]) || 0) / peak) * 24)}px`;
-            wave.appendChild(bar);
-        }
-        return wave;
-    }
-    let seed = ((messageId || 1) * 2654435761) ^ ((index + 1) * 40503);
-    for (let i = 0; i < 40; i += 1) {
-        seed = (seed ^ (seed << 13)) >>> 0;
-        seed = (seed ^ (seed >>> 17)) >>> 0;
-        const bar = document.createElement('span');
-        bar.style.height = `${8 + (seed % 24)}px`;
-        wave.appendChild(bar);
-    }
-    return wave;
+    return buildWaveNode({
+        waveform: media.waveform,
+        seed: noiseSeed(messageId, index),
+        className: 'vk-media-wave',
+    });
 }
 
 /**

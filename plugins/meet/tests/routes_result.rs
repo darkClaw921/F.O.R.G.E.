@@ -420,6 +420,10 @@ async fn a_retry_that_makes_no_sense_here_is_409_invalid_state() {
     // Встреча ещё входит в комнату: повторять нечего, файлов нет.
     let s = Stand::at(MeetStatus::Joining).await;
     s.with_whisper_ready().await;
+    // Саммаризатор на месте НАМЕРЕННО: лестница проверяет нехватку
+    // компонентов РАНЬШЕ перехода, и без мока отказ пришёл бы кодом
+    // `claude_cli_unavailable` — то есть тест перестал бы проверять переход.
+    mocks::mock_claude_success(&s.bin, "claude", "## Резюме").unwrap();
 
     for stage in ["transcoding", "transcribing", "summarizing"] {
         let (code, body) = s
@@ -582,9 +586,51 @@ async fn the_dependency_ladder_follows_the_backend() {
 
     // 3. Локальный путь без ключа: ключ ни при чём, жалоба про whisper.
     cfg.stt_backend = forge_meet::config::SttBackend::Local;
-    let (code, body) = ask(variant(&s.state, snapshot.clone(), cfg).await, s.id.clone()).await;
+    let (code, body) = ask(variant(&s.state, snapshot.clone(), cfg.clone()).await, s.id.clone()).await;
     assert_eq!(code, StatusCode::CONFLICT, "{body}");
     assert_eq!(body["error"], "whisper_unavailable", "{body}");
+
+    // 4. **РЕГРЕССИЯ `forge-0s0l5`.** Облако по умолчанию, ключа нет, зато
+    //    локальный движок ГОТОВ — отказа не бывает: гейт откатывается, а
+    //    роут пропускает повтор.
+    let mut ready_local = snapshot.clone();
+    ready_local.whisper.found = Some(true);
+    ready_local.whisper.path = Some("/bin/true".to_string());
+    ready_local.model_ready = true;
+    ready_local.gpu_metal = Some(true);
+    cfg.stt_backend = forge_meet::config::SttBackend::Cloud;
+    let (_code, body) = ask(variant(&s.state, ready_local.clone(), cfg.clone()).await, s.id.clone()).await;
+    // Проверяется КОД отказа, а не его отсутствие: встречу уже увёл в
+    // `transcribing` вариант 1 выше, и повторный переход туда же законно
+    // отвергается таблицей состояний. Важно ровно одно — нехватки
+    // компонентов среди причин больше нет.
+    assert_ne!(
+        body["error"], "cloud_not_configured",
+        "готовый локальный whisper обязан подхватить встречу: {body}"
+    );
+
+    // И статус ЧЕСТНО рассказывает, чем встреча посчитается на самом деле:
+    // молчаливая подмена движка хуже отказа.
+    let app = variant(&s.state, ready_local, cfg).await;
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/meet/status")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "status не падает никогда");
+    let bytes = axum::body::to_bytes(resp.into_body(), 1 << 22).await.unwrap();
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(body["config"]["stt_backend"], "cloud", "заказ не подменяется: {body}");
+    assert_eq!(body["config"]["stt_effective"], "local", "{body}");
+    assert_eq!(
+        body["config"]["stt_fallback_reason"], "cloud_not_configured",
+        "{body}"
+    );
+    assert!(body["config"]["stt_blocker"].is_null(), "{body}");
 }
 
 /// Саммари, ВЫКЛЮЧЕННОЕ конфигом, отвечает своим кодом, а не молча ничего не
@@ -638,6 +684,9 @@ async fn a_failed_meeting_may_retry_the_transcription_but_not_the_summary() {
         .await
         .unwrap();
     s.with_whisper_ready().await;
+    // Саммаризатор на месте: проверяется ЗАПРЕТ ПЕРЕХОДА, а не нехватка
+    // компонентов (лестница смотрит компоненты раньше перехода).
+    mocks::mock_claude_success(&s.bin, "claude", "## Резюме").unwrap();
 
     let (code, body) = s
         .post(&format!("/api/meet/meetings/{}/retry?from=summarizing", s.id))

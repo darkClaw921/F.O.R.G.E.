@@ -46,6 +46,7 @@ pub mod chrome;
 pub mod endgame;
 pub mod frame;
 pub mod inject;
+pub mod medialog;
 pub mod mode;
 pub mod observe;
 pub mod platforms;
@@ -68,6 +69,7 @@ pub use chrome::{
 };
 pub use endgame::{EndConfig, EndSignals, EndWatch};
 pub use frame::AudioFrame;
+pub use medialog::{DeafWatch, MediaLogWatch, CODE_DEAF_BOT, CODE_MEDIA_TRANSPORT};
 pub use mode::{detect_track_mode, TrackMode, TrackObservation};
 pub use observe::{Axis, DeviceState, PageSnapshot, ParticipantNamer, RawParticipant};
 pub use platforms::{ProbeBook, ProbeSet};

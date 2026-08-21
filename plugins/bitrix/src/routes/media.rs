@@ -339,6 +339,11 @@ pub async fn download_attachment(
         .map_err(|e| ApiError::not_connected(format!("could not store media in the cache: {e}")))?;
     guard.disarm();
 
+    // Звуковая огибающая: портал её не отдаёт вовсе, поэтому она считается
+    // здесь — по файлу, который только что лёг на диск. В ФОН: человек ждёт
+    // байты, а волна доедет со следующей выдачей `MediaDto`.
+    crate::voice::spawn_waveform(&state, key, meta.clone());
+
     tracing::debug!(
         target: "forge_bitrix",
         key = %key.id(),

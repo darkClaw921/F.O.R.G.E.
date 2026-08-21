@@ -43,6 +43,10 @@
 //   DELETE /api/bitrix/dialogs/:id/analysis          clearSavedAnalysis(Ф12)
 //   POST   /api/bitrix/dialogs/:id/analysis/cancel   cancelAnalysis    (Ф12)
 //   DELETE /api/bitrix/dialogs/:id/analysis/thread   clearThread       (Ф12)
+//   POST   /api/bitrix/voice/:dialog/:mid/:index/transcribe  transcribeVoice    (ГС-Ф3)
+//   GET    /api/bitrix/voice/:dialog/:mid/:index/transcript  getVoiceTranscript (ГС-Ф3)
+//   GET    /api/bitrix/voice/settings                         getVoiceSettings   (ГС-Ф4)
+//   PUT    /api/bitrix/voice/settings                         setVoiceSettings   (ГС-Ф4)
 //
 // Реализованы обёртки только для смонтированных роутов; остальные строки
 // таблицы — карта на будущее, чтобы имена не расползлись.
@@ -115,6 +119,12 @@ export const PATHS = {
     dialogAnalysis: '/api/bitrix/dialogs/:id/analysis',
     dialogAnalysisCancel: '/api/bitrix/dialogs/:id/analysis/cancel',
     dialogAnalysisThread: '/api/bitrix/dialogs/:id/analysis/thread',
+    // Голосовые сообщения (ГС-Ф3). Адреса и формы ответов совпадают с VK и
+    // Telegram: текст под голосовым рисует один общий модуль, и расхождение в
+    // транспорте означало бы «в VK работает, в Битриксе нет».
+    voiceTranscribe: '/api/bitrix/voice/:dialog/:mid/:index/transcribe',
+    voiceTranscript: '/api/bitrix/voice/:dialog/:mid/:index/transcript',
+    voiceSettings: '/api/bitrix/voice/settings',
 };
 
 /**
@@ -748,3 +758,93 @@ export function cancelAnalysis(dialogId, runId) {
     if (runId) body.run_id = String(runId);
     return call(withSeg(PATHS.dialogAnalysisCancel, ':id', dialogId), jsonInit('POST', body));
 }
+
+// ---------------------------------------------------------------------------
+// Голосовые сообщения (ГС-Ф3).
+// ---------------------------------------------------------------------------
+
+/** Подставляет все три сегмента адреса вложения. */
+function voicePath(template, dialogId, messageId, index) {
+    return withSeg(
+        withSeg(withSeg(template, ':dialog', dialogId), ':mid', messageId),
+        ':index',
+        String(Number(index || 0)),
+    );
+}
+
+/**
+ * POST /api/bitrix/voice/:dialog/:mid/:index/transcribe — запустить расшифровку.
+ *
+ * Ответ приходит СРАЗУ: сама расшифровка идёт секунды или минуты, а прогресс
+ * едет кадрами `voice_transcribe_*` по /ws/bitrix.
+ *
+ * ТРИ исхода: `{ready: true, text}` — уже посчитано (движок не запускался);
+ * `{run_id, attached: false}` — прогон запущен; `{run_id, attached: true}` —
+ * расшифровка этого вложения уже идёт (вторая вкладка, повторный клик).
+ *
+ * Решать по `err.code`, а не по тексту: `voice_not_audio`, `voice_too_long`,
+ * `voice_no_ffmpeg`, `voice_no_whisper`, `voice_no_model`, `voice_no_key`,
+ * `voice_busy`, `metal_unavailable`.
+ *
+ * @param {string} dialogId `chat123` | `sg45` | `77`
+ * @param {number|string} messageId
+ * @param {number} index номер вложения в сообщении
+ * @param {{force?: boolean}} [opts] `force` — пересчитать, даже если готово
+ * @returns {Promise<{run_id: ?string, attached: boolean, ready: boolean, engine: string, text?: string}>}
+ */
+export async function transcribeVoice(dialogId, messageId, index, opts) {
+    const q = opts && opts.force ? '?force=1' : '';
+    return call(
+        voicePath(PATHS.voiceTranscribe, dialogId, messageId, index) + q,
+        jsonInit('POST', {}),
+    );
+}
+
+/**
+ * GET /api/bitrix/voice/:dialog/:mid/:index/transcript — готовая расшифровка.
+ *
+ * Расшифровки нет — это `{ready: false}` с пустым текстом, а НЕ ошибка. Ни
+ * одного обращения к порталу: ответ читается из локального файла, поэтому
+ * работает и при исчерпанном лимите запросов.
+ *
+ * @param {string} dialogId
+ * @param {number|string} messageId
+ * @param {number} index
+ * @returns {Promise<{ready: boolean, text: string, language: string, engine: string, duration_ms: number, created_at: ?number}>}
+ */
+export async function getVoiceTranscript(dialogId, messageId, index) {
+    return call(voicePath(PATHS.voiceTranscript, dialogId, messageId, index));
+}
+
+/**
+ * GET /api/bitrix/voice/settings — каким движком расшифровываются голосовые.
+ *
+ * Настройка ОБЩАЯ для всех мессенджеров: она живёт в `voice.toml` рядом с
+ * ключом polza.ai, а не в `user_settings.json`. Поэтому три панели читают её
+ * своими роутами, но видят одно и то же значение.
+ *
+ * Ключ облака НИКОГДА не приходит — только признак `cloud_key_set`.
+ * `warning` (если он есть) объясняет, чего выбранному движку не хватает:
+ * `voice_no_key`, `voice_no_model`, `voice_no_whisper`, `voice_no_ffmpeg`.
+ *
+ * Логина в мессенджере роут НЕ требует: движок настраивают до входа.
+ *
+ * @returns {Promise<{engine: string, cloud_key_set: boolean, warning?: {code: string, message: string}}>}
+ */
+export async function getVoiceSettings() {
+    return call(PATHS.voiceSettings);
+}
+
+/**
+ * PUT /api/bitrix/voice/settings — переключить движок расшифровки.
+ *
+ * Выбор СОХРАНЯЕТСЯ, даже если движок сейчас нерабочий: в ответе тогда придёт
+ * `warning`. Отказ приходит только на чужое слово (`400 invalid_input`).
+ *
+ * @param {string} engine `local` | `cloud`
+ * @returns {Promise<{engine: string, cloud_key_set: boolean, warning?: {code: string, message: string}}>}
+ */
+export async function setVoiceSettings(engine) {
+    return call(PATHS.voiceSettings, jsonInit('PUT', { engine: String(engine || '') }));
+}
+

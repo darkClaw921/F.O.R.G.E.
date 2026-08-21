@@ -47,6 +47,8 @@ pub mod routes;
 pub mod runtime;
 pub mod session;
 pub mod state;
+pub mod voice;
+pub mod voice_auto;
 pub mod updates;
 pub mod ws;
 

@@ -612,7 +612,7 @@ dependencies = [
 
 [[package]]
 name = "devforge"
-version = "0.1.70"
+version = "0.1.71"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -889,6 +889,7 @@ dependencies = [
  "chrono",
  "forge-chat-analysis",
  "forge-claude-runner",
+ "forge-voice",
  "futures-util",
  "mime_guess",
  "reqwest",
@@ -987,6 +988,7 @@ dependencies = [
  "forge-atomic",
  "forge-cdp",
  "forge-claude-runner",
+ "forge-voice",
  "futures-util",
  "libc",
  "reqwest",
@@ -1017,6 +1019,7 @@ dependencies = [
  "chrono",
  "forge-chat-analysis",
  "forge-claude-runner",
+ "forge-voice",
  "futures-util",
  "grammers-client",
  "grammers-mtsender",
@@ -1045,6 +1048,7 @@ dependencies = [
  "chrono",
  "forge-chat-analysis",
  "forge-claude-runner",
+ "forge-voice",
  "futures-util",
  "mime_guess",
  "reqwest",
@@ -1057,6 +1061,23 @@ dependencies = [
  "tower",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "forge-voice"
+version = "0.1.0"
+dependencies = [
+ "forge-atomic",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "toml",
+ "toml_edit",
+ "tracing",
 ]
 
 [[package]]

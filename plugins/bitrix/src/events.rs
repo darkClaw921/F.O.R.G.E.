@@ -769,6 +769,13 @@ async fn dispatch(state: &Arc<B24State>, events: &[EventRaw]) -> usize {
         let muted = state.is_muted(&dialog_id).await;
         for frame in frames_for(ev, &dialog_id, self_id, &state.peers, muted) {
             invalidate_media(state, &frame).await;
+            // Авторазбор голосовых (Ф4). Решение принимается здесь и стоит
+            // разбора уже полученного DTO; страница истории (дескрипторы
+            // файлов), докачка и движок уезжают в фоновую задачу — поток
+            // событий держит ленту всего портала.
+            if let B24ServerMsg::MessageNew { message, .. } = &frame {
+                crate::voice_auto::on_new_message(state, message).await;
+            }
             state.broadcast_event(frame);
             sent += 1;
         }

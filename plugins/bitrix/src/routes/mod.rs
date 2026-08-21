@@ -50,6 +50,10 @@
 //! | DELETE | `/api/bitrix/dialogs/:id/analysis`      | **анализ** | стереть разбор (тред и заметка целы) |
 //! | DELETE | `/api/bitrix/dialogs/:id/analysis/thread` | **анализ** | стереть тред Q&A (разбор и заметка целы) |
 //! | POST   | `/api/bitrix/dialogs/:id/analysis/cancel` | **анализ** | остановить идущий разбор |
+//! | POST   | `/api/bitrix/voice/:dialog/:mid/:index/transcribe` | **голос** | запустить расшифровку голосового |
+//! | GET    | `/api/bitrix/voice/:dialog/:mid/:index/transcript` | **голос** | готовая расшифровка голосового |
+//! | GET    | `/api/bitrix/voice/settings` | **голос** | выбранный движок расшифровки |
+//! | PUT    | `/api/bitrix/voice/settings` | **голос** | переключить движок (`local`/`cloud`) |
 //!
 //! ## Решения, зафиксированные здесь навсегда
 //!
@@ -131,6 +135,7 @@ pub mod login;
 pub mod media;
 pub mod tasks;
 pub mod upload;
+pub mod voice;
 
 use std::sync::Arc;
 
@@ -279,6 +284,7 @@ pub fn build_router(state: Arc<B24State>) -> Router {
         .merge(analysis::router())
         .merge(tasks::router())
         .merge(media::router())
+        .merge(voice::router())
         .merge(upload::router(max_upload_bytes))
         .with_state(state)
 }

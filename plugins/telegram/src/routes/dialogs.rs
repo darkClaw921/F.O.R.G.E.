@@ -973,6 +973,9 @@ pub async fn get_messages(
     // от порядка чужой реализации.
     messages.sort_by_key(|m| m.id);
     enrich_page_replies(&client, peer, &mut messages).await;
+    // Огибающая аудио БЕЗ атрибута Telegram: её посчитал бэкенд при скачивании
+    // файла. Голосовые с атрибутом эта функция не трогает — их волна уже в DTO.
+    crate::voice::attach_waveforms(&state.config, &mut messages);
 
     Ok(Json(MessagesResp { messages, has_more }))
 }

@@ -44,7 +44,13 @@ export const PING_INTERVAL_MS = 15000;
 export const SERVER_FRAMES = [
     'login_state', 'dialogs_patch', 'message_new', 'message_update',
     'message_delete', 'reaction', 'typing', 'read', 'counters', 'presence',
-    'task_update', 'upload_progress', 'download_progress', 'error',
+    'task_update', 'upload_progress', 'download_progress',
+    // Расшифровка голосовых (ГС-Ф3) — сразу за `download_progress`: она
+    // продолжает жизненный цикл вложения, который начинается его скачиванием.
+    // Порядок сверяет с protocol.rs bitrix_contract.test.mjs.
+    'voice_transcribe_started', 'voice_transcribe_delta',
+    'voice_transcribe_done', 'voice_transcribe_error',
+    'error',
     // Анализ чата через Claude (Ф12). Четыре кадра стоят ПЕРЕД служебными
     // `resync`/`ping` — там же, где у VK и Telegram: порядок здесь не
     // косметика, его побайтно сверяет с protocol.rs bitrix_contract.test.mjs.

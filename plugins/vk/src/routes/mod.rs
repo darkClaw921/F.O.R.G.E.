@@ -40,6 +40,10 @@
 //! | POST | `/api/vk/dialogs/:id/analysis`                | **АЧ-Ф3** | запустить анализ (`analyze`/`refresh`) или вопрос |
 //! | DELETE | `/api/vk/dialogs/:id/analysis/thread`       | **АЧ-И2** | стереть тред вопросов (разбор и заметку не трогает) |
 //! | POST | `/api/vk/dialogs/:id/analysis/cancel`         | **АЧ-Ф3** | остановить идущий анализ |
+//! | POST | `/api/vk/voice/:peer_id/:message_id/:index/transcribe` | **ГС-Ф3** | запустить расшифровку голосового |
+//! | GET  | `/api/vk/voice/:peer_id/:message_id/:index/transcript` | **ГС-Ф3** | готовая расшифровка голосового |
+//! | GET  | `/api/vk/voice/settings` | **ГС-Ф4** | выбранный движок расшифровки (ключ облака НЕ отдаётся) |
+//! | PUT  | `/api/vk/voice/settings` | **ГС-Ф4** | переключить движок (`local`/`cloud`), запись в `voice.toml` |
 //!
 //! («АЧ» — фазы фичи «Анализ чата через Claude», нумерация у неё своя;
 //! «АЧ-И» — её доработки: И1 «сохраняемый и инкрементальный анализ»,
@@ -81,6 +85,10 @@
 //! - [`dialogs`] — беседы, история, отдельное сообщение, фильтры и отправка;
 //! - [`media`] — байты вложений из файлового кэша (Ф7);
 //! - [`upload`] — staging файла и трёхшаговый конвейер заливки в VK (Ф8);
+//! - [`voice`] — расшифровка голосовых через общее ядро `forge-voice`: запуск
+//!   прогона и выдача готового текста. Лестница СВОЯ (форма координат раньше
+//!   авторизации, как у [`media`]), потому что адресуется вложение, а не
+//!   беседа;
 //! - [`analysis`] — пер-чатовый пользовательский контекст, сохранённый разбор,
 //!   тред вопросов и запуск нового разбора через Claude. Группа с ДВУМЯ
 //!   лестницами: `/prompt`, `GET|DELETE /analysis` и
@@ -103,6 +111,7 @@ pub mod error;
 pub mod login;
 pub mod media;
 pub mod upload;
+pub mod voice;
 
 use std::sync::Arc;
 
@@ -178,6 +187,7 @@ pub fn build_router(state: Arc<VkState>) -> Router {
         .merge(dialogs::router())
         .merge(analysis::router())
         .merge(media::router())
+        .merge(voice::router())
         .merge(upload::router(max_upload_bytes))
         .with_state(state)
 }

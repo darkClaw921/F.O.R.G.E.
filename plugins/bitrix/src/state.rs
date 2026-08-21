@@ -529,6 +529,22 @@ pub struct B24State {
     /// потолок параллелизма и таблица `run_id → процесс`, по которой работает
     /// отмена. Хаб на запрос не знал бы ни о чём из этого.
     pub analysis: crate::analysis::AnalysisHub,
+    /// Реестр идущих расшифровок голосовых ([`forge_voice::VoiceHub`]).
+    ///
+    /// Создаётся безусловно, как и реестр анализа: отсутствие ffmpeg, весов и
+    /// ключа облака — отказ КОНКРЕТНОГО запроса со своим кодом, а не повод не
+    /// поднять вкладку мессенджера.
+    ///
+    /// Потолки читаются из `voice.toml` ОДИН раз, в конструкторе: менять их на
+    /// лету значило бы бросать уже идущие прогоны. Всё остальное — движок,
+    /// язык, ключ — перечитывается на каждый запрос ([`B24State::voice_config`]).
+    pub voice: forge_voice::VoiceHub,
+    /// Ключи, которые АВТОРАЗБОР уже брал в работу (Ф4).
+    ///
+    /// Отдельно от дедупа реестра: тот не пускает второй прогон, пока идёт
+    /// первый, а стор не даёт пересчитывать готовое, — но прогон, уже
+    /// закончившийся отказом, повторная доставка события запускала бы снова.
+    pub voice_seen: forge_voice::auto::SeenKeys,
 }
 
 impl B24State {
@@ -573,6 +589,18 @@ impl B24State {
             config.analysis_timeout_secs,
         )
         .with_store(prompts.clone(), config.prompts_path.clone());
+        // Потолки расшифровки — из `voice.toml`, который лежит рядом с
+        // `bitrix.toml` (в бою это `~/.config/forge/`). Битый файл не имеет
+        // права мешать плагину подняться: берём встроенные умолчания, а внятный
+        // отказ `voice_config` выдаст роут при первом нажатии кнопки.
+        let (voice_path, meet_path) = forge_voice::config::paths_next_to(&config.config_path);
+        let voice_cfg =
+            forge_voice::VoiceConfig::load_from(&voice_path, &meet_path).unwrap_or_default();
+        let voice = forge_voice::VoiceHub::new(
+            Arc::new(crate::ws::protocol::B24VoiceSink::new(broadcast.clone())),
+            voice_cfg.max_parallel,
+            voice_cfg.run_timeout(),
+        );
         Arc::new(Self {
             config,
             webhook: RwLock::new(webhook),
@@ -602,7 +630,50 @@ impl B24State {
             ws_idle_timeout,
             prompts,
             analysis,
+            voice,
+            voice_seen: forge_voice::auto::SeenKeys::default(),
         })
+    }
+
+    /// Настройки голосовых сообщений — ЧИТАЮТСЯ ЗАНОВО на каждый запрос.
+    ///
+    /// `voice.toml` правят руками ровно тогда, когда что-то не работает:
+    /// вписывают ключ polza.ai, переключают движок. Конфиг, прочитанный один
+    /// раз при старте, означал бы «перезапустите devforge, чтобы настройка
+    /// подействовала». Файл маленький, чтение стоит одного `open`.
+    ///
+    /// Ищется РЯДОМ с `bitrix.toml` — см. [`forge_voice::config::paths_next_to`]:
+    /// в бою это `~/.config/forge/`, а в тестах — временный каталог, и изоляция
+    /// получается без единой переменной окружения.
+    ///
+    /// # Errors
+    ///
+    /// [`forge_voice::VoiceError::Config`] — файл не разбирается; в тексте
+    /// назван КОНКРЕТНЫЙ файл (`voice.toml` или `meet.toml`).
+    pub fn voice_config(&self) -> Result<forge_voice::VoiceConfig, forge_voice::VoiceError> {
+        let (voice, meet) = self.voice_paths();
+        forge_voice::VoiceConfig::load_from(&voice, &meet)
+    }
+
+    /// Пути `voice.toml` и `meet.toml`, которыми пользуется этот плагин.
+    ///
+    /// Отдельным методом, потому что их нужно ДВОИМ: чтению настроек и записи
+    /// выбранного движка (`PUT …/voice/settings`). Второе написание
+    /// `paths_next_to` означало бы, что роут пишет не в тот файл, который
+    /// читает состояние, — и заметили бы это только на чужой машине.
+    #[must_use]
+    pub fn voice_paths(&self) -> (std::path::PathBuf, std::path::PathBuf) {
+        forge_voice::config::paths_next_to(&self.config.config_path)
+    }
+
+    /// Стор готовых расшифровок рядом с медиа-кэшем плагина.
+    ///
+    /// Корень — тот же `cache_dir`, что у вложений: расшифровка живёт рядом с
+    /// файлом, который расшифровывали, и чистка кэша по диалогу сносит их одним
+    /// каталогом.
+    #[must_use]
+    pub fn voice_store(&self) -> forge_voice::TranscriptStore {
+        forge_voice::TranscriptStore::new(&self.config.cache_dir)
     }
 
     // ------------------------------------------------------------------
@@ -1126,7 +1197,14 @@ impl B24State {
 
     /// Регистрирует фонового воркера для последующего graceful shutdown.
     pub async fn register_worker(&self, handle: JoinHandle<()>) {
-        self.workers.lock().await.push(handle);
+        let mut guard = self.workers.lock().await;
+        // Отработавшие ручки выбрасываются ЗДЕСЬ, а не при остановке. До Ф4
+        // список пополнялся считаные разы за жизнь процесса (лонгпол, sweeper,
+        // GC загрузок), и расти ему было некуда. Авторазбор голосовых
+        // регистрирует ЗАДАЧУ НА СООБЩЕНИЕ — без подчистки открытая на неделю
+        // панель копила бы по ручке на каждое голосовое аккаунта.
+        guard.retain(|h| !h.is_finished());
+        guard.push(handle);
     }
 
     /// Останавливает всех зарегистрированных воркеров.

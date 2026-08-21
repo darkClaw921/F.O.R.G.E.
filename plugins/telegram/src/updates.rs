@@ -685,6 +685,12 @@ async fn handle_update(state: &Arc<TelegramState>, update: &Update) {
         );
     }
     for ev in events {
+        // Авторазбор голосовых (Ф4). Решение принимается здесь и стоит разбора
+        // уже полученного DTO; докачка по MTProto и движок уезжают в фоновую
+        // задачу — поток апдейтов держит ленту всего аккаунта.
+        if let TgServerMsg::NewMessage { message, .. } = &ev {
+            crate::voice_auto::on_new_message(state, message).await;
+        }
         state.broadcast_event(ev);
     }
 }

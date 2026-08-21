@@ -1,6 +1,19 @@
-//! Облачная расшифровка: `POST /audio/transcriptions` окнами по ≤ 90 секунд.
+//! Облачная расшифровка ВСТРЕЧИ: пер-трековый прогон поверх ядра.
 //!
-//! Модуль НЕ импортирует `axum` и `http`.
+//! # Что переехало в `forge-voice`, а что осталось здесь
+//!
+//! Всё, что не знает про встречу, живёт в [`forge_voice::cloud::stt`]:
+//! [`plan_windows`], [`plan_windows_at_silence`], [`build_window_args`],
+//! [`build_form_fields`], [`parse_verbose_json`], [`shift_segments`],
+//! [`SttOptions`], [`CloudSttOutcome`], [`transcribe_file`] и общее тело
+//! [`run_windows`]. Тем же кодом расшифровываются голосовые сообщения в трёх
+//! мессенджерах — окна по 90 секунд и разбор `verbose_json` у них ровно те же.
+//!
+//! Здесь остался ПЕР-ТРЕКОВЫЙ путь: он стоит на [`crate::pipeline::pertrack`],
+//! то есть на дорожках, интервалах речи и подписи спикера — понятиях встречи,
+//! которых у голосового сообщения нет и быть не может. Прежние пути импорта
+//! (`crate::cloud::stt::plan_windows` и остальные) продолжают резолвиться через
+//! обратный `pub use` ниже.
 //!
 //! # Нарезка обязательна, и режет её НАШ код
 //!
@@ -8,35 +21,7 @@
 //! две минуты аудио отвечают 200 за 35 с, три минуты — обрыв TCP на 62-й
 //! секунде. Предел по СТЕНЕ, а не по размеру файла, поэтому окно меряется
 //! длительностью аудио, а не байтами, и берётся с запасом
-//! ([`super::MAX_STT_WINDOW_SECS`] = 90 с). Ждать отказа и резать после него
-//! нельзя: отказ стоит минуту стены на каждое окно.
-//!
-//! # На облако уходит mp3, а не WAV
-//!
-//! Принимаются `flac, m4a, mp3, mp4, mpeg, mpga, oga, ogg, wav, webm`, но WAV
-//! на 193 КБ **уронил их шлюз** с `Maximum call stack size exceeded` (наивная
-//! base64-обвязка на той стороне), тогда как mp3 того же аудио прошёл. Заодно
-//! это на порядок меньше трафика: час встречи в PCM 16 кГц — 115 МБ.
-//!
-//! # Таймкоды посегментные, пословных НЕТ
-//!
-//! `timestamp_granularities[]=word` **принимается без ошибки и молча
-//! игнорируется** — поля `words` в ответе нет вовсе. Поэтому параметр не
-//! отправляется совсем (на это есть тест
-//! [`tests::the_request_never_asks_for_word_timestamps`]): отправлять параметр,
-//! который не работает, — значит однажды поверить, что он работает.
-//!
-//! Следствие для [`crate::pipeline::speakers`]: [`WhisperSegment::tokens`] у
-//! облачных сегментов ПУСТ, и ветка «уверенность ниже порога ⇒ режем сегмент по
-//! границе слова» в облачном режиме обязана деградировать до пометки
-//! `overlapped`, а не выдавать границы, которых никто не измерял. Разрезать
-//! нечем — слов с метками нет.
-//!
-//! # Одно упавшее окно не теряет встречу
-//!
-//! Каждое окно самостоятельно. Отказ одного попадает в
-//! [`CloudSttOutcome::failed`] и в журнал встречи, а остальные окна доезжают:
-//! правило «`failed` только когда нет транскрипта» сильнее полноты.
+//! ([`super::MAX_STT_WINDOW_SECS`] = 90 с).
 //!
 //! # ОБЛАКО УМЕЕТ ИДТИ ПО ДОРОЖКАМ, И ЭТО ДЕШЕВЛЕ МИКСА
 //!
@@ -54,11 +39,6 @@
 //! (`raw/track-N.wav` — это микрофон одного человека), а перебивания
 //! разбираются вместо того, чтобы склеиваться в кашу.
 //!
-//! Движку специфична только отправка: план нарезки, вырезка речи, обратный
-//! пересчёт координат и подпись берутся из [`crate::pipeline::pertrack`] как
-//! есть — облачный прогон встаёт РЯДОМ с локальным как вторая реализация
-//! одного шага, а не как его копия.
-//!
 //! # ОКНА РЕЖУТСЯ ПО ТИШИНЕ, А НЕ ПО АРИФМЕТИКЕ
 //!
 //! [`plan_windows`] режет запись ровно по 90 с — и реплика, попавшая на
@@ -72,97 +52,24 @@
 //! речи, между которыми в записи была тишина, и границы кусков — это и есть
 //! безопасные границы разреза. [`plan_windows_on_cuts`] набирает окно из ЦЕЛЫХ
 //! кусков и не режет кусок никогда — кроме одного случая, когда выбора нет:
-//! кусок сам длиннее окна (человек говорит без пауз полторы минуты). Такой
-//! разрез осознанный, он попадает в [`CutWindows::forced_cuts`] и оттуда в
-//! журнал встречи, чтобы дыра на этом стыке не выглядела загадкой.
+//! кусок сам длиннее окна. Такой разрез осознанный, он попадает в
+//! [`CutWindows::forced_cuts`] и оттуда в журнал встречи.
 //!
-//! Миксовому пути то же лечение делает [`plan_windows_at_silence`]: интервалы
-//! речи на общей оси уже посчитаны пайплайном, и граница окна сдвигается ВНИЗ,
-//! к паузе перед пределом. Вниз, а не в обе стороны: потолок
-//! [`MAX_STT_WINDOW_SECS`] измерен обрывом TCP и превышению не подлежит.
-//! Интервалов нет (режим `Mixed`) — остаётся арифметика: придумывать паузы
-//! вместо того, чтобы их знать, было бы хуже, чем резать честно и грубо.
+//! Миксовому пути то же лечение делает [`plan_windows_at_silence`] уже в ядре.
 
-use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::path::PathBuf;
 
-use serde_json::Value;
-use tokio_util::sync::CancellationToken;
-
-use super::{status_error, CloudClient, CloudError, MAX_STT_WINDOW_SECS, STT_RESPONSE_FORMAT};
+use super::{CloudClient, MAX_STT_WINDOW_SECS};
 use crate::pipeline::pertrack::{self, CutPlan, TrackJob, TrackTranscript};
-use crate::pipeline::proc::{self, ProcError};
-use crate::pipeline::whisper::WhisperSegment;
+use crate::pipeline::proc::ProcError;
 
-/// Подкаталог, куда кладутся временные mp3 окон.
-pub const WINDOW_DIR: &str = "cloud";
+// Нужны ТЕЛАМ существующих тестов, которые переезд не переписывал.
+#[cfg(test)]
+use serde_json::Value;
+#[cfg(test)]
+use std::path::Path;
 
-/// Битрейт окна. Речь 16 кГц моно: 32 кбит/с — тот же выбор, что у архивного
-/// AAC, и на распознавании он не сказывается.
-pub const WINDOW_BITRATE: &str = "32k";
-
-/// Одно окно расшифровки на общей оси встречи.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Window {
-    pub index: usize,
-    /// Начало окна на общей оси, мс. **Это и есть смещение**, которое потом
-    /// прибавляется к таймкодам ответа.
-    pub start_ms: i64,
-    /// Длительность окна, мс.
-    pub len_ms: i64,
-}
-
-impl Window {
-    /// Конец окна на общей оси, мс.
-    #[must_use]
-    pub fn end_ms(&self) -> i64 {
-        self.start_ms + self.len_ms
-    }
-
-    /// Имя временного файла окна.
-    #[must_use]
-    pub fn file_name(&self) -> String {
-        format!("window-{:04}.mp3", self.index)
-    }
-}
-
-/// Режет запись на окна. **Чистая функция.**
-///
-/// Окна идут встык, без перекрытия: перекрытие удвоило бы речь на стыке, а
-/// сшивать дубли по тексту — гадание. Последнее окно короче остальных.
-#[must_use]
-pub fn plan_windows(total_ms: i64, window_ms: i64) -> Vec<Window> {
-    if total_ms <= 0 {
-        return Vec::new();
-    }
-    // Потолок здесь, а не только в конфиге: функция чистая и вызывается из
-    // тестов напрямую, а предел измерен и обсуждению не подлежит.
-    let win = window_ms.clamp(1_000, MAX_STT_WINDOW_SECS as i64 * 1_000);
-    let mut out = Vec::new();
-    let mut start = 0i64;
-    while start < total_ms {
-        let len = win.min(total_ms - start);
-        out.push(Window {
-            index: out.len(),
-            start_ms: start,
-            len_ms: len,
-        });
-        start += len;
-    }
-    out
-}
-
-/// Окна вырезанного файла и места, где кусок речи пришлось разрезать.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct CutWindows {
-    /// Окна В КООРДИНАТАХ ВЫРЕЗАННОГО ФАЙЛА. Идут встык и покрывают его весь.
-    pub windows: Vec<Window>,
-    /// Точки вырезанного файла, где ОДИН кусок речи разрезан пополам.
-    ///
-    /// Пусто в подавляющем большинстве встреч: разрез случается только у
-    /// куска, который сам длиннее окна.
-    pub forced_cuts: Vec<i64>,
-}
+pub use forge_voice::cloud::stt::*;
 
 /// Режет вырезанный речевой файл на окна ПО ГРАНИЦАМ КУСКОВ. **Чистая функция.**
 ///
@@ -231,75 +138,6 @@ pub fn plan_windows_on_cuts(plan: &CutPlan, window_ms: i64) -> CutWindows {
     out
 }
 
-/// Режет ЗАПИСЬ на окна, двигая границы в тишину. **Чистая функция.**
-///
-/// Это лечение `forge-12532` для миксового пути: на приёмке Ф17 арифметическая
-/// граница 180 с пришлась на середину реплики, и в транскрипт дважды попал
-/// хвост «базы данных» — модель ДОГОВОРИЛА оборванную фразу по контексту, а
-/// следующее окно расшифровало её настоящий хвост. Перекрытия окон при этом
-/// не было и нет: дубль рождается достройкой, а не наложением.
-///
-/// Граница переносится ВНИЗ, к ближайшей паузе перед пределом окна: потолок
-/// [`MAX_STT_WINDOW_SECS`] измерен, и превышать его нельзя ни на миллисекунду.
-/// Точка реза берётся с полем [`pertrack::CUT_PAD_MS`] ПЕРЕД началом следующей
-/// реплики — первый слог тише остального слова и в интервал VAD часто не
-/// попадает, а резать по самому началу значило бы отрезать его.
-///
-/// Пауз в пределах окна нет вовсе (речь без перерыва длиннее окна) — режем
-/// арифметически и называем это место в [`CutWindows::forced_cuts`].
-#[must_use]
-pub fn plan_windows_at_silence(total_ms: i64, window_ms: i64, speech: &[(i64, i64)]) -> CutWindows {
-    if total_ms <= 0 {
-        return CutWindows::default();
-    }
-    let win = window_ms.clamp(1_000, MAX_STT_WINDOW_SECS as i64 * 1_000);
-
-    // Речь СЛИВАЕТСЯ: интервалы разных дорожек пересекаются, и пауза есть
-    // только там, где молчат все.
-    let mut spans: Vec<(i64, i64)> = speech.iter().copied().filter(|(s, e)| e > s).collect();
-    spans.sort_unstable();
-    let mut merged: Vec<(i64, i64)> = Vec::with_capacity(spans.len());
-    for (s, e) in spans {
-        match merged.last_mut() {
-            Some(last) if s <= last.1 => last.1 = last.1.max(e),
-            _ => merged.push((s, e)),
-        }
-    }
-    let mut out = CutWindows::default();
-    let mut start = 0i64;
-    while start < total_ms {
-        let limit = (start + win).min(total_ms);
-        let end = if limit >= total_ms {
-            total_ms
-        } else {
-            // Предел окна уже пришёлся на паузу — резать там и надо.
-            match merged.iter().position(|(s, e)| limit > *s && limit < *e) {
-                None => limit,
-                Some(n) => {
-                    // Предел попал в середину реплики: отступаем к её началу с
-                    // полем, но не залезая в предыдущую реплику.
-                    let floor = if n > 0 { merged[n - 1].1 } else { 0 };
-                    let c = (merged[n].0 - pertrack::CUT_PAD_MS).max(floor);
-                    if c > start {
-                        c
-                    } else {
-                        // Отступать некуда: реплика длиннее окна целиком.
-                        out.forced_cuts.push(limit);
-                        limit
-                    }
-                }
-            }
-        };
-        out.windows.push(Window {
-            index: out.windows.len(),
-            start_ms: start,
-            len_ms: end - start,
-        });
-        start = end;
-    }
-    out
-}
-
 /// Во сколько раз сумма речи по дорожкам может превышать длительность микса,
 /// прежде чем ОБЛАЧНЫЙ пер-трековый путь признаётся невыгодным.
 ///
@@ -334,471 +172,6 @@ pub fn within_cloud_budget(speech_ms: i64, mix_ms: i64) -> bool {
         return false;
     }
     speech_ms as f64 <= mix_ms as f64 * CLOUD_SPEECH_BUDGET_RATIO
-}
-
-/// argv ffmpeg: вырезать окно и сжать в mp3.
-///
-/// `-ss` и `-t` стоят ДО `-i`: на WAV это точная и мгновенная перемотка по
-/// смещению в файле, а после `-i` ffmpeg декодировал бы всё от начала записи —
-/// на последнем окне часовой встречи это час работы вместо секунды.
-#[must_use]
-pub fn build_window_args(input: &Path, w: Window, out: &Path) -> Vec<String> {
-    vec![
-        "-hide_banner".into(),
-        "-nostdin".into(),
-        "-y".into(),
-        "-ss".into(),
-        format!("{:.3}", w.start_ms as f64 / 1000.0),
-        "-t".into(),
-        format!("{:.3}", w.len_ms as f64 / 1000.0),
-        "-i".into(),
-        input.display().to_string(),
-        "-c:a".into(),
-        "libmp3lame".into(),
-        "-b:a".into(),
-        WINDOW_BITRATE.into(),
-        "-ac".into(),
-        "1".into(),
-        "-ar".into(),
-        "16000".into(),
-        out.display().to_string(),
-    ]
-}
-
-/// Текстовые поля формы `POST /audio/transcriptions`. **Чистая функция.**
-///
-/// `timestamp_granularities` здесь нет и быть не может — см. шапку модуля.
-#[must_use]
-pub fn build_form_fields(model: &str, language: &str) -> Vec<(String, String)> {
-    let mut fields = vec![
-        ("model".to_string(), model.to_string()),
-        (
-            "response_format".to_string(),
-            STT_RESPONSE_FORMAT.to_string(),
-        ),
-    ];
-    if !language.trim().is_empty() {
-        fields.push(("language".to_string(), language.trim().to_string()));
-    }
-    fields
-}
-
-/// Сдвигает сегменты на общую ось встречи.
-///
-/// **Отдельная функция, а не `remap_segment_times`.** Тот пересчёт —
-/// МНОЖИТЕЛЬ и живёт на `AttributedSegment` (коррекция дрейфа); сдвиг окна —
-/// СЛОЖЕНИЕ на `WhisperSegment`, до всякой атрибуции. Подмена одного другим
-/// растянула бы запись вместо переноса.
-pub fn shift_segments(segments: &mut [WhisperSegment], offset_ms: i64) {
-    if offset_ms == 0 {
-        return;
-    }
-    for s in segments.iter_mut() {
-        s.start_ms += offset_ms;
-        s.end_ms += offset_ms;
-        for t in s.tokens.iter_mut() {
-            t.start_ms += offset_ms;
-            t.end_ms += offset_ms;
-        }
-    }
-}
-
-/// Разбирает ответ `response_format=verbose_json`.
-///
-/// Форма OpenAI: `{"task","language","duration","text","segments":[{"start",
-/// "end","text",…}]}`, время в СЕКУНДАХ дробными числами.
-///
-/// Поле `tokens` в этом ответе — массив ЧИСЛОВЫХ идентификаторов токенов
-/// модели, а не меток времени, поэтому не читается вовсе: получить из него
-/// [`crate::pipeline::whisper::WhisperToken`] невозможно.
-pub fn parse_verbose_json(raw: &str) -> Result<(Vec<WhisperSegment>, Option<String>), CloudError> {
-    let v: Value =
-        serde_json::from_str(raw).map_err(|e| CloudError::Decode(format!("{e}: {}", head(raw))))?;
-    let language = v
-        .get("language")
-        .and_then(Value::as_str)
-        .map(str::to_string);
-    let ms = |node: &Value, key: &str| -> i64 {
-        node.get(key)
-            .and_then(Value::as_f64)
-            .map(|s| (s * 1000.0).round() as i64)
-            .unwrap_or(0)
-    };
-
-    if let Some(items) = v.get("segments").and_then(Value::as_array) {
-        let mut out = Vec::with_capacity(items.len());
-        for item in items {
-            let text = item
-                .get("text")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .trim()
-                .to_string();
-            if text.is_empty() {
-                continue;
-            }
-            out.push(WhisperSegment {
-                start_ms: ms(item, "start"),
-                end_ms: ms(item, "end"),
-                text,
-                // Пословных меток облако не даёт — см. шапку модуля.
-                tokens: Vec::new(),
-            });
-        }
-        return Ok((out, language));
-    }
-
-    // Массива сегментов нет, но текст есть: так отвечают модели, у которых
-    // `verbose_json` выродился в `json`. Терять расшифровку из-за этого нельзя,
-    // но и врать про таймкоды тоже — сегмент растягивается на всё окно, и
-    // вызывающий подставит его границы.
-    let text = v
-        .get("text")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .trim()
-        .to_string();
-    if text.is_empty() {
-        return Err(CloudError::Decode(format!(
-            "в ответе нет ни segments, ни text: {}",
-            head(raw)
-        )));
-    }
-    Ok((
-        vec![WhisperSegment {
-            start_ms: 0,
-            end_ms: 0,
-            text,
-            tokens: Vec::new(),
-        }],
-        language,
-    ))
-}
-
-fn head(raw: &str) -> String {
-    raw.chars().take(200).collect()
-}
-
-// --- прогон -------------------------------------------------------------------
-
-/// Что запускать.
-#[derive(Debug, Clone)]
-pub struct SttOptions {
-    /// Бинарь ffmpeg — им нарезаются и сжимаются окна.
-    pub ffmpeg: PathBuf,
-    pub ffmpeg_timeout: Duration,
-    /// Окно, мс. Больше [`MAX_STT_WINDOW_SECS`] обрезается [`plan_windows`].
-    pub window_ms: i64,
-    /// Интервалы речи НА ОБЩЕЙ ОСИ записи, по которым границы окон уезжают в
-    /// тишину ([`plan_windows_at_silence`]).
-    ///
-    /// Пусто — режем арифметически, как резали до `forge-12532`. Пустым это
-    /// поле бывает законно: в режиме `Mixed` пер-трекового VAD нет, а
-    /// придумывать паузы вместо того, чтобы их знать, — худший из исходов.
-    /// Пер-трековому прогону поле не нужно: там границы дают куски речи.
-    pub speech: Vec<(i64, i64)>,
-    pub model: String,
-    pub language: String,
-    /// Потолок ОДНОГО окна.
-    pub request_timeout: Duration,
-    pub cancel: CancellationToken,
-}
-
-/// Окно, которое не доехало.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FailedWindow {
-    pub index: usize,
-    pub start_ms: i64,
-    pub code: &'static str,
-    pub message: String,
-}
-
-/// Итог облачной расшифровки.
-#[derive(Debug, Clone, Default)]
-pub struct CloudSttOutcome {
-    /// Сегменты ВСЕХ доехавших окон, уже на общей оси и по возрастанию времени.
-    pub segments: Vec<WhisperSegment>,
-    /// Сколько окон планировалось.
-    pub windows: usize,
-    /// Окна, которые не доехали. Пусто — расшифровка полная.
-    pub failed: Vec<FailedWindow>,
-    /// Границы окон, которые пришлось поставить внутрь непрерывной речи, мс.
-    pub forced_cuts: Vec<i64>,
-    /// Язык, как его назвало облако.
-    pub language: Option<String>,
-}
-
-impl CloudSttOutcome {
-    /// Полная ли расшифровка.
-    #[must_use]
-    pub fn complete(&self) -> bool {
-        self.failed.is_empty()
-    }
-
-    /// Текст предупреждения для журнала встречи. `None` — предупреждать не о
-    /// чем.
-    #[must_use]
-    pub fn gap_note(&self) -> Option<String> {
-        if self.failed.is_empty() {
-            return None;
-        }
-        let list: Vec<String> = self
-            .failed
-            .iter()
-            .map(|f| format!("{:.0} с ({})", f.start_ms as f64 / 1000.0, f.code))
-            .collect();
-        Some(format!(
-            "облако не расшифровало {} из {} окон, пропуски начинаются на: {}",
-            self.failed.len(),
-            self.windows,
-            list.join(", ")
-        ))
-    }
-
-    /// Текст предупреждения о границах окон, поставленных внутрь речи.
-    #[must_use]
-    pub fn forced_note(&self) -> Option<String> {
-        if self.forced_cuts.is_empty() {
-            return None;
-        }
-        let list: Vec<String> = self
-            .forced_cuts
-            .iter()
-            .map(|c| format!("{:.0} с", *c as f64 / 1000.0))
-            .collect();
-        Some(format!(
-            "речь без пауз длиннее окна расшифровки — разрезана: {}",
-            list.join(", ")
-        ))
-    }
-}
-
-impl CloudClient {
-    /// Отправляет одно окно и возвращает его сегменты В СОБСТВЕННОЙ оси окна.
-    pub async fn transcribe_bytes(
-        &self,
-        audio: Vec<u8>,
-        file_name: &str,
-        model: &str,
-        language: &str,
-        timeout: Duration,
-    ) -> Result<(Vec<WhisperSegment>, Option<String>), CloudError> {
-        let part = reqwest::multipart::Part::bytes(audio)
-            .file_name(file_name.to_string())
-            .mime_str("audio/mpeg")
-            .map_err(CloudError::from_reqwest)?;
-        let mut form = reqwest::multipart::Form::new().part("file", part);
-        for (k, v) in build_form_fields(model, language) {
-            form = form.text(k, v);
-        }
-
-        let resp = self
-            .post("audio/transcriptions")
-            .timeout(timeout)
-            .multipart(form)
-            .send()
-            .await
-            .map_err(CloudError::from_reqwest)?;
-        let status = resp.status().as_u16();
-        let body = resp.text().await.map_err(CloudError::from_reqwest)?;
-        if !(200..300).contains(&status) {
-            return Err(status_error(status, &body));
-        }
-        parse_verbose_json(&body)
-    }
-}
-
-/// Расшифровывает файл целиком: нарезка → mp3 → облако → общая ось.
-///
-/// `on_progress` получает проценты по числу законченных окон — тот же
-/// контракт, что у локального whisper, поэтому кадр `Progress` на фронте не
-/// меняется.
-///
-/// Ошибкой считается только случай, когда не доехало НИ ОДНО окно: одно
-/// упавшее окно — это дыра в расшифровке, а не потерянная встреча.
-pub async fn transcribe_file(
-    client: &CloudClient,
-    wav: &Path,
-    total_ms: i64,
-    work_dir: &Path,
-    opts: &SttOptions,
-    on_progress: Option<&(dyn Fn(u8) + Send + Sync)>,
-) -> Result<CloudSttOutcome, ProcError> {
-    // Границы окон уезжают в тишину, если интервалы речи известны: реплика,
-    // разрезанная посередине, задваивается достройкой модели (`forge-12532`).
-    let planned = if opts.speech.is_empty() {
-        CutWindows {
-            windows: plan_windows(total_ms, opts.window_ms),
-            forced_cuts: Vec::new(),
-        }
-    } else {
-        plan_windows_at_silence(total_ms, opts.window_ms, &opts.speech)
-    };
-    let windows = planned.windows;
-    if windows.is_empty() {
-        return Err(ProcError::new(
-            "no_audio",
-            "расшифровывать нечего: длительность записи нулевая",
-            "",
-        ));
-    }
-
-    let (mut outcome, first_error) = run_windows(
-        client,
-        wav,
-        &windows,
-        &work_dir.join(WINDOW_DIR),
-        opts,
-        &mut |done, total| {
-            if let Some(cb) = on_progress {
-                cb(((done as f64 / total as f64) * 100.0).round().min(100.0) as u8);
-            }
-        },
-    )
-    .await?;
-
-    if outcome.segments.is_empty() {
-        // Ни одного слова — вот теперь это отказ расшифровки.
-        return Err(first_error.unwrap_or_else(|| {
-            ProcError::new("cloud_empty", "облако не вернуло ни одного сегмента", "")
-        }));
-    }
-    outcome.forced_cuts = planned.forced_cuts;
-    // Окна идут по порядку, но ответ окна может перекрыть границу; сортировка
-    // дешевле, чем разбираться в этом на стыке.
-    outcome.segments.sort_by_key(|s| s.start_ms);
-    Ok(outcome)
-}
-
-/// Гоняет ГОТОВЫЙ список окон одного файла. Общее тело обоих путей.
-///
-/// Сегменты возвращаются на оси ТОГО ФАЙЛА, который прислали: миксу это сразу
-/// общая ось встречи, вырезанному речевому файлу — его собственная, и её потом
-/// пересчитывает [`pertrack::remap_segments`].
-///
-/// `Err` здесь — только отмена и несоздавшийся каталог. Отказ окна не ошибка:
-/// он ложится в `failed`, а `Option<ProcError>` несёт ПЕРВЫЙ отказ, чтобы
-/// вызывающий мог назвать причину, если не доехало вообще ничего.
-async fn run_windows(
-    client: &CloudClient,
-    wav: &Path,
-    windows: &[Window],
-    dir: &Path,
-    opts: &SttOptions,
-    on_done: &mut (dyn FnMut(usize, usize) + Send),
-) -> Result<(CloudSttOutcome, Option<ProcError>), ProcError> {
-    std::fs::create_dir_all(dir).map_err(|e| {
-        ProcError::new(
-            "cloud_workdir",
-            format!("не создаётся каталог окон {}: {e}", dir.display()),
-            "",
-        )
-    })?;
-
-    let mut outcome = CloudSttOutcome {
-        windows: windows.len(),
-        ..CloudSttOutcome::default()
-    };
-    let mut first_error: Option<ProcError> = None;
-
-    for (n, w) in windows.iter().enumerate() {
-        if opts.cancel.is_cancelled() {
-            return Err(ProcError::new("cancelled", "расшифровка отменена", ""));
-        }
-        let mp3 = dir.join(w.file_name());
-        let step = window_once(client, wav, *w, &mp3, opts).await;
-        // Временный файл не переживает окно: час встречи это 40 окон, и
-        // оставленные mp3 лежали бы в каталоге встречи навсегда.
-        let _ = std::fs::remove_file(&mp3);
-
-        match step {
-            Ok((mut segs, lang)) => {
-                if outcome.language.is_none() {
-                    outcome.language = lang;
-                }
-                // Вырожденный ответ без таймкодов растягивается на окно: иначе
-                // весь его текст лёг бы в нулевую точку встречи.
-                if segs.len() == 1 && segs[0].start_ms == 0 && segs[0].end_ms == 0 {
-                    segs[0].end_ms = w.len_ms;
-                }
-                shift_segments(&mut segs, w.start_ms);
-                outcome.segments.extend(segs);
-            }
-            Err(err) => {
-                if err.code == "cancelled" {
-                    return Err(err);
-                }
-                tracing::warn!(
-                    target: "forge_meet",
-                    window = w.index,
-                    start_ms = w.start_ms,
-                    code = err.code,
-                    "forge-meet: окно облачной расшифровки не доехало: {}",
-                    err.message
-                );
-                outcome.failed.push(FailedWindow {
-                    index: w.index,
-                    start_ms: w.start_ms,
-                    code: err.code,
-                    message: err.full_message(),
-                });
-                if first_error.is_none() {
-                    first_error = Some(err);
-                }
-            }
-        }
-        on_done(n + 1, windows.len());
-    }
-    Ok((outcome, first_error))
-}
-
-/// Одно окно: нарезка, отправка, разбор.
-async fn window_once(
-    client: &CloudClient,
-    wav: &Path,
-    w: Window,
-    mp3: &Path,
-    opts: &SttOptions,
-) -> Result<(Vec<WhisperSegment>, Option<String>), ProcError> {
-    let args = build_window_args(wav, w, mp3);
-    proc::run(&opts.ffmpeg, &args, opts.ffmpeg_timeout, &opts.cancel)
-        .await
-        .map_err(|e| {
-            if e.code == "cancelled" {
-                e
-            } else {
-                ProcError::new("cloud_encode_failed", e.message.clone(), e.stderr_tail.clone())
-            }
-        })?;
-
-    let bytes = std::fs::read(mp3).map_err(|e| {
-        ProcError::new(
-            "cloud_encode_failed",
-            format!("окно {} не читается с диска: {e}", w.index),
-            "",
-        )
-    })?;
-    if bytes.is_empty() {
-        return Err(ProcError::new(
-            "cloud_encode_failed",
-            format!("окно {} получилось пустым", w.index),
-            "",
-        ));
-    }
-
-    let name = w.file_name();
-    let send = client.transcribe_bytes(
-        bytes,
-        &name,
-        &opts.model,
-        &opts.language,
-        opts.request_timeout,
-    );
-    tokio::select! {
-        biased;
-        _ = opts.cancel.cancelled() => Err(ProcError::new("cancelled", "расшифровка отменена", "")),
-        res = send => res.map_err(ProcError::from),
-    }
 }
 
 // --- прогон по дорожкам --------------------------------------------------------
@@ -1314,10 +687,16 @@ mod tests {
                     "в форме появились метки: {keys:?}"
                 );
                 assert!(keys.contains(&"model"));
+                // Встречи ходят ТОЛЬКО в whisper-1: им нужны таймкоды, а живут
+                // они лишь в `verbose_json`. Дешёвая turbo, которой по умолчанию
+                // расшифровывают голосовые в чатах, этот формат не принимает
+                // вовсе (шлюз отвечает BAD_REQUEST), поэтому формат выводится из
+                // модели — `cloud::stt_response_format`, — а не задан константой.
+                let want = if model == "openai/whisper-1" { "verbose_json" } else { "json" };
                 assert_eq!(
                     f.iter().find(|(k, _)| k == "response_format").map(|(_, v)| v.as_str()),
-                    Some("verbose_json"),
-                    "без verbose_json таймкодов не будет вовсе"
+                    Some(want),
+                    "{model}: неверный response_format"
                 );
                 assert_eq!(keys.contains(&"language"), !lang.trim().is_empty());
             }

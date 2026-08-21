@@ -753,7 +753,10 @@ struct Entry {
     bin: PathBuf,
     /// Сайдкар меты (может отсутствовать — тогда запись битая и уйдёт первой).
     meta: PathBuf,
-    /// Суммарный вес пары.
+    /// Сайдкар посчитанной огибающей (есть только у аудио, см.
+    /// [`forge_voice::waveform::SIDECAR_SUFFIX`]).
+    wave: PathBuf,
+    /// Суммарный вес записи со всеми сайдкарами.
     bytes: u64,
     /// Время последнего использования (приближённо).
     mtime: SystemTime,
@@ -833,17 +836,29 @@ pub async fn sweep_once(cfg: &BitrixConfig, protected: &HashSet<String>) -> Swee
                 continue;
             }
             let Some(stem) = name.strip_suffix(".bin") else {
-                continue; // .meta.json учитывается вместе со своим .bin
+                continue; // .meta.json и .wave.json учитываются со своим .bin
             };
             let meta = dir.join(format!("{stem}.meta.json"));
             let meta_len = tokio::fs::metadata(&meta)
                 .await
                 .map(|m| m.len())
                 .unwrap_or(0);
+            // Огибающая ходит за байтами: считаться она может только по ним, и
+            // пережить их не должна — иначе после подчистки в каталоге
+            // остались бы вечные сироты, которые никто уже не удалит.
+            let wave = dir.join(format!(
+                "{stem}{}",
+                forge_voice::waveform::SIDECAR_SUFFIX
+            ));
+            let wave_len = tokio::fs::metadata(&wave)
+                .await
+                .map(|m| m.len())
+                .unwrap_or(0);
             entries.push(Entry {
                 bin: entry.path(),
                 meta,
-                bytes: md.len() + meta_len,
+                wave,
+                bytes: md.len() + meta_len + wave_len,
                 mtime: md.modified().unwrap_or(UNIX_EPOCH),
                 id: format!("{dir_name}/{stem}"),
             });
@@ -869,6 +884,7 @@ pub async fn sweep_once(cfg: &BitrixConfig, protected: &HashSet<String>) -> Swee
             continue;
         }
         let _ = tokio::fs::remove_file(&e.meta).await;
+        let _ = tokio::fs::remove_file(&e.wave).await;
         stats.removed += 1;
         stats.freed += e.bytes;
         stats.total_after = stats.total_after.saturating_sub(e.bytes);

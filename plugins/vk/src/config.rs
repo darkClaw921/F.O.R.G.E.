@@ -168,6 +168,16 @@ pub fn prompts_path() -> PathBuf {
     }
 }
 
+/// Путь файла пользовательских настроек хоста
+/// (`~/.forge/user_settings.json`).
+///
+/// Строится ядром ([`forge_voice::prefs::default_path`]), а не здесь: тот же
+/// путь строит хост в `tmux-web/src/main.rs`, и третье написание означало бы,
+/// что плагин читает файл, которого никто не пишет.
+pub fn user_settings_path() -> PathBuf {
+    forge_voice::prefs::default_path()
+}
+
 /// Дефолтный путь бинаря Claude CLI (`$HOME/.local/bin/claude`).
 ///
 /// Тот же дефолт, что у `forge_echo::config` (`plugins/echo/src/config.rs`):
@@ -361,6 +371,20 @@ pub struct VkConfig {
     /// `~/.forge/vk-chat-prompts.json`.
     #[serde(skip, default = "prompts_path")]
     pub prompts_path: PathBuf,
+    /// Файл пользовательских настроек хоста (`~/.forge/user_settings.json`).
+    ///
+    /// Плагин его только ЧИТАЕТ: оттуда берутся тумблер «Автоматически
+    /// разбирать новые аудиосообщения» и белый список видимости бесед
+    /// (`forge_voice::prefs`, [`crate::voice_auto`]). Своего канала настроек
+    /// у плагина нет — хост знает про него ровно `init` → `register_routes` →
+    /// `spawn_workers`, и зависимость на `AppState` ради одного булева
+    /// значения сломала бы границу плагина.
+    ///
+    /// Из TOML НЕ читается и хранится отдельным полем по той же причине, что
+    /// [`Self::prompts_path`]: тест указывает свой tempdir и физически не
+    /// может задеть настоящие настройки пользователя.
+    #[serde(skip, default = "user_settings_path")]
+    pub user_settings_path: PathBuf,
     /// Путь бинаря Claude CLI для анализа чата (АЧ-Ф3).
     ///
     /// В ОТЛИЧИЕ от [`Self::config_path`] и [`Self::prompts_path`] читается из
@@ -402,6 +426,7 @@ impl Default for VkConfig {
             longpoll_wait_secs: default_longpoll_wait_secs(),
             config_path: config_path(),
             prompts_path: prompts_path(),
+            user_settings_path: user_settings_path(),
             claude_cli_path: default_claude_cli_path(),
             analysis_timeout_secs: default_analysis_timeout_secs(),
             analysis_max_chars: default_analysis_max_chars(),

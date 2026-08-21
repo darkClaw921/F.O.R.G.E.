@@ -753,3 +753,44 @@ textarea.ds-prompt-textarea {
     color: var(--ok, #3fa34d);
     margin-bottom: 6px;
 }
+
+/* ── Секция «Голосовые сообщения» (ГС-Ф4) ─────────────────────────────────
+   Одна разметка на три вкладки: её строит js/settings/voice-tab.js. Цвета —
+   только токенами палитры, как во всей этой форме: захардкоженный hex здесь
+   был бы виден на любой чужой теме. */
+.voice-engine-group {
+    /* Тот же заголовок группы, что у списков видимости, — правила выше. */
+    margin-top: 14px;
+}
+
+.voice-engine-select {
+    width: 100%;
+    max-width: 320px;
+    padding: 5px 8px;
+    background: var(--bg-soft, var(--bg));
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font: inherit;
+}
+
+.voice-engine-select:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.voice-engine-shared {
+    margin: 4px 0 0;
+}
+
+/* Движок выбран, но работать сейчас не будет (нет ключа, нет модели). Это
+   предупреждение, а не ошибка: выбор сохранён, чинить нужно окружение. */
+.voice-engine-warning {
+    color: var(--warn, #d08b00);
+    margin: 4px 0 0;
+}
+
+.voice-save-ok {
+    color: var(--ok, #3fa34d);
+    margin-bottom: 6px;
+}

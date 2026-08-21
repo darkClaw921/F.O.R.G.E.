@@ -1,0 +1,35 @@
+[package]
+name = "forge-voice"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Общее ядро голосовых сообщений F.O.R.G.E. — расшифровка whisper.cpp и polza.ai, расчёт звуковой огибающей, стор транскриптов"
+
+# НИ ОДНОЙ ЛИТЕРАЛЬНОЙ ВЕРСИИ.
+#
+# Это не стиль, а инвариант крейта, и он проверяется гейтом фазы. `forge-voice`
+# — ядро, которое подключают сразу четверо (`forge-meet` плюс три
+# плагина-мессенджера). Литеральная версия здесь означала бы, что расхождение с
+# остальным деревом обнаружится не при сборке, а в рантайме: два `tokio-util`
+# — это два разных `CancellationToken`, и отмена расшифровки перестала бы
+# доходить до процесса молча. Нужной зависимости нет в `[workspace.dependencies]`
+# — её добавляют ТУДА, а не сюда.
+[dependencies]
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+toml = { workspace = true }
+toml_edit = { workspace = true }
+
+# HTTP к polza.ai. `multipart` нужен `POST /audio/transcriptions`; TLS-бэкенд
+# фича не трогает, инвариант «openssl в дереве нет» она не задевает.
+reqwest = { workspace = true, features = ["multipart"] }
+
+# Атомарная запись транскриптов и конфига: `tmp` → `fsync` → `rename` → `0600`.
+forge-atomic = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

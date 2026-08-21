@@ -169,10 +169,28 @@ pub struct StatusConfigDto {
     pub audio_sample_rate: u32,
     pub summary_enabled: bool,
     pub cache_dir: String,
-    /// Где считается расшифровка: `cloud` | `local`.
+    /// Где ЗАКАЗАНО считать расшифровку: `cloud` | `local`.
     pub stt_backend: &'static str,
-    /// Где считается саммари: `cloud` | `local`.
+    /// Где ЗАКАЗАНО считать саммари: `cloud` | `local`.
     pub summary_backend: &'static str,
+    /// **Где расшифровка посчитается ФАКТИЧЕСКИ** прямо сейчас.
+    ///
+    /// Отличается от `stt_backend`, когда заказанный путь нерабочий и гейт
+    /// откатывается на второй. `None` — не работает ни один путь, и стадия
+    /// откажет кодом `stt_blocker`.
+    pub stt_effective: Option<&'static str>,
+    /// Почему фактический путь расшифровки не совпал с заказанным
+    /// (`cloud_not_configured`, `whisper_unavailable`, …). ОТКАТ ОБЯЗАН БЫТЬ
+    /// ВИДЕН: молчаливая подмена движка хуже честного отказа.
+    pub stt_fallback_reason: Option<&'static str>,
+    /// Почему расшифровка невозможна вообще. `None` — возможна.
+    pub stt_blocker: Option<&'static str>,
+    /// Где саммари посчитается ФАКТИЧЕСКИ.
+    pub summary_effective: Option<&'static str>,
+    /// Почему фактическая сторона саммари не совпала с заказанной.
+    pub summary_fallback_reason: Option<&'static str>,
+    /// Почему саммари невозможно вообще (в том числе `summary_disabled`).
+    pub summary_blocker: Option<&'static str>,
 }
 
 /// Облако глазами интерфейса.
@@ -263,10 +281,22 @@ async fn status(State(state): State<Arc<MeetState>>) -> Json<StatusDto> {
         }
     };
 
+    let deps = state.deps_snapshot().await;
+    // Решения гейта — ПОЛЯ ответа, а не отказ роута: `status` остаётся тем
+    // единственным местом, где человек видит, чем встреча посчитается на самом
+    // деле и почему это не то, что он заказывал.
+    let stt_plan = deps.plan_transcribe(state.config.stt_backend, state.config.cloud_configured());
+    let summary_plan = crate::deps::plan_summary(
+        state.config.summary_backend,
+        state.config.summary_enabled,
+        state.config.cloud_configured(),
+        &state.config.claude_cli_path,
+    );
+
     Json(StatusDto {
         enabled: true,
         db_ready: state.db().is_some(),
-        deps: state.deps_snapshot().await,
+        deps,
         limits: state.limits(),
         providers: &PROVIDERS,
         active,
@@ -282,6 +312,12 @@ async fn status(State(state): State<Arc<MeetState>>) -> Json<StatusDto> {
             cache_dir: state.config.cache_dir.display().to_string(),
             stt_backend: state.config.stt_backend.as_str(),
             summary_backend: state.config.summary_backend.as_str(),
+            stt_effective: stt_plan.as_ref().ok().map(|p| p.route.as_str()),
+            stt_fallback_reason: stt_plan.as_ref().ok().and_then(|p| p.fallback_reason),
+            stt_blocker: stt_plan.err(),
+            summary_effective: summary_plan.as_ref().ok().map(|p| p.route.as_str()),
+            summary_fallback_reason: summary_plan.as_ref().ok().and_then(|p| p.fallback_reason),
+            summary_blocker: summary_plan.err(),
         },
         cloud: cloud_status(&state).await,
     })

@@ -30,6 +30,7 @@
 //
 // Модуль НЕ импортирует ленту: он только собирает узлы и отдаёт их наверх.
 
+import { buildWave, noiseSeed } from '../messenger/waveform-core.js';
 import { formatBytes, mediaKindLabel, renderSegments } from './format.js';
 
 /** Сколько карточек рисуется под одним сообщением. */
@@ -136,6 +137,20 @@ export function buildMediaCard(media, doc = globalThis.document, msg = null) {
     icon.className = 'b24-media-icon';
     icon.textContent = mediaGlyph(kind);
     body.appendChild(icon);
+    if (kind === 'voice' || kind === 'audio') {
+        // Звуковая дорожка. Портал огибающую не отдаёт вовсе — её считает
+        // бэкенд по скачанному файлу и кладёт в `media.waveform`; пока её нет,
+        // общий модуль рисует детерминированную заглушку. Рисовальщик тот же,
+        // что у VK и Telegram: волна одной записи обязана выглядеть одинаково
+        // во всех трёх панелях.
+        body.appendChild(buildWave({
+            waveform: media.waveform,
+            seed: noiseSeed(msg && msg.id, media.index),
+            className: 'b24-media-wave',
+            doc,
+        }));
+        icon.hidden = true;
+    }
     const player = doc.createElement('div');
     player.className = 'b24-media-player';
     player.hidden = true;

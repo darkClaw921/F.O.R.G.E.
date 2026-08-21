@@ -564,6 +564,13 @@ struct Shared {
     tracks_seen: AtomicUsize,
     tracks_live: AtomicUsize,
     speaking_tracks: AtomicUsize,
+    /// VAD хоть раз за встречу нашёл речь.
+    ///
+    /// Отдельный флаг рядом со счётчиком говорящих дорожек, а не «счётчик был
+    /// когда-то ненулевым»: счётчик показывает СЕЙЧАС и обнуляется на каждой
+    /// паузе, а страж глухоты ([`super::medialog::DeafWatch`]) спрашивает про
+    /// всю встречу.
+    speech_seen: AtomicBool,
     /// Участники находились хоть раз. См. страж «протухшие пробы не выкидывают
     /// бота» в [`super::endgame`].
     participants_known: AtomicBool,
@@ -591,6 +598,7 @@ impl Shared {
             tracks_seen: AtomicUsize::new(0),
             tracks_live: AtomicUsize::new(0),
             speaking_tracks: AtomicUsize::new(0),
+            speech_seen: AtomicBool::new(false),
             participants_known: AtomicBool::new(false),
             joined: AtomicBool::new(false),
         }
@@ -1135,6 +1143,7 @@ fn page_event_to_meet(shared: &Arc<Shared>, ev: &super::transport::PageEvent) ->
         }
         "speech_start" => {
             shared.speaking_tracks.fetch_add(1, Ordering::SeqCst);
+            shared.speech_seen.store(true, Ordering::SeqCst);
             Some(MeetEvent::SpeechStarted {
                 track_id: track(ev),
                 at_ms: ev.u64_field("at").unwrap_or(ev.at_ms),
@@ -1239,6 +1248,10 @@ async fn monitor(
     let mut last_active: Option<String> = None;
     let mut last_mode = super::TrackMode::Unknown;
     let interval = Duration::from_millis(cfg.timings.observe_interval_ms.max(50));
+    // Два стража «бот не слышит встречу»: один смотрит на расхождение DOM и
+    // VAD, другой дочитывает `chrome.log`. Оба одноразовые по причине.
+    let mut deaf = super::medialog::DeafWatch::new();
+    let mut media_log = super::medialog::MediaLogWatch::new(&cfg.meeting_dir);
 
     loop {
         tokio::select! {
@@ -1295,6 +1308,29 @@ async fn monitor(
                 let _ = events.send(MeetEvent::TrackModeDetected {
                     at_ms: obs.at_ms,
                     mode,
+                });
+            }
+        }
+
+        // ГЛУХОТА БОТА. Проверяется только когда ось уже есть: до
+        // `recording_started` звука нет по построению, и молчание VAD в это
+        // время ничего не значит.
+        if axis_ready {
+            let dom_speaking = snap.speaking || snap.active.is_some();
+            let vad_fired = shared.speech_seen.load(Ordering::SeqCst);
+            if let Some(detail) = deaf.observe(dom_speaking, vad_fired, interval.as_millis() as u64)
+            {
+                let _ = events.send(MeetEvent::MediaWarning {
+                    at_ms: obs.at_ms,
+                    code: super::medialog::CODE_DEAF_BOT.to_string(),
+                    detail,
+                });
+            }
+            for detail in media_log.poll() {
+                let _ = events.send(MeetEvent::MediaWarning {
+                    at_ms: obs.at_ms,
+                    code: super::medialog::CODE_MEDIA_TRANSPORT.to_string(),
+                    detail,
                 });
             }
         }

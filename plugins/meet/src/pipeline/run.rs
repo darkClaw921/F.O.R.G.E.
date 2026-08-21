@@ -74,6 +74,13 @@ use crate::state::MeetState;
 use crate::status::MeetStatus;
 use crate::ws::protocol::{MeetServerMsg, Phase};
 
+/// Код провала «звука в записи нет».
+///
+/// Один на весь плагин: его пишет гейт тишины в `status_reason` встречи, по
+/// нему же тест отличает честный отказ от любого другого. Строка машинная, а
+/// не текст для человека, — человеческое объяснение едет в `detail`.
+pub const NO_AUDIO_CAPTURED: &str = "no_audio_captured";
+
 /// Итог прогона — то, что уходит в лог и в тесты.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PipelineReport {
@@ -404,6 +411,31 @@ async fn run_inner(
         }
     }
 
+    // Громкость сведённого микса. Мерится ЗДЕСЬ, сразу после сведения, а
+    // применяется ниже — после архива и дрейфа, чтобы у провалившей гейт
+    // встречи на диске остались и `audio.m4a`, и манифест с цифрой: пустая
+    // запись — это улика, и выкидывать её нельзя.
+    let loudness = match &ffmpeg_bin {
+        Some(bin) => {
+            match ffmpeg::measure_loudness(bin, &mix_path, ffmpeg_timeout, cancel).await {
+                Ok(v) => v,
+                Err(e) if e.code == "cancelled" => return Err(StageFailure::new("loudness", e)),
+                // Замер — диагностика, а не этап: сорвался он, значит гейт
+                // тишины просто не сработает.
+                Err(e) => {
+                    tracing::warn!(
+                        target: "forge_meet",
+                        meeting_id = %meeting_id,
+                        "forge-meet: громкость микса не измерилась: {}",
+                        e.full_message()
+                    );
+                    None
+                }
+            }
+        }
+        None => None,
+    };
+
     // --- этап 2: архивный файл (только с ffmpeg) ---------------------------
     //
     // Повтор ИМЕННО расшифровки (`retry?from=transcribing`) архив не
@@ -490,6 +522,7 @@ async fn run_inner(
             drift_scale,
             actual_duration_ms: actual_ms,
             archive: audio_path.is_some(),
+            mix_peak_db: loudness.map(|l| l.max_db),
             // Заполняется ПОСЛЕ расшифровки: сейчас ещё неизвестно, каким
             // путём она пойдёт.
             per_track: 0,
@@ -502,6 +535,54 @@ async fn run_inner(
                 "forge-meet: манифест не обновился после сведения"
             );
         }
+    }
+
+    // --- гейт тишины --------------------------------------------------------
+    //
+    // ПОСЛЕДНЯЯ ТОЧКА, ГДЕ ЕЩЁ МОЖНО ОТКАЗАТЬСЯ ЧЕСТНО. Дальше начинается
+    // расшифровка, а whisper на часе цифровой тишины не молчит — он ВЫДУМЫВАЕТ
+    // реплики (живой случай: 78 штук, «Корректор А.Кулакова» семь раз подряд),
+    // и человек получает `ready` с саммари по несуществующему разговору. Такой
+    // артефакт хуже отказа: по нему невозможно понять, что встречи в записи
+    // нет.
+    //
+    // Сравнивается ПИК, а не среднее: час болтовни и одна фраза за час дают
+    // разное среднее, но одинаково ненулевой пик. Порог — поле конфига
+    // (`silence_gate_dbfs`), потому что подбирается он на живых записях;
+    // значение ниже -91 dB (пол 16-битной сетки) гейт выключает.
+    if let Some(l) = loudness {
+        if l.max_db < cfg.silence_gate_dbfs {
+            let detail = format!(
+                "звук не записался: пик сведённого аудио {:.1} dBFS при пороге {:.1} dBFS \
+                 (среднее {:.1} dBFS, дорожек {}). Медиа-канал до площадки не поднялся; \
+                 расшифровка не запускалась, чтобы модель не выдумала разговор.",
+                l.max_db,
+                cfg.silence_gate_dbfs,
+                l.mean_db,
+                tracks.len()
+            );
+            tracing::warn!(
+                target: "forge_meet",
+                meeting_id = %meeting_id,
+                peak_db = l.max_db,
+                "forge-meet: гейт тишины остановил встречу: {detail}"
+            );
+            return Err(StageFailure::new(
+                "silence_gate",
+                ProcError::new(NO_AUDIO_CAPTURED, detail, ""),
+            ));
+        }
+    } else {
+        // Замера нет — гейт бездействует, но молчать об этом нельзя: иначе
+        // «почему пустую запись пропустили» станет вопросом без ответа.
+        let _ = repo::events::note(
+            state,
+            meeting_id,
+            MeetStatus::Transcoding.as_str(),
+            "silence_check_skipped",
+            Some("громкость сведённого аудио не измерена, гейт тишины не применялся"),
+        )
+        .await;
     }
 
     // --- этап 4: таймлайн речи ---------------------------------------------
@@ -619,12 +700,42 @@ async fn run_inner(
     // 3. семафор «whisper строго один»: он держит единственный GPU. Облачные
     //    задания идут по сети параллельно, и их сериализация означала бы, что
     //    вторая встреча ждёт первую БЕЗ ЕДИНОЙ ПРИЧИНЫ.
-    let cloud_stt = cfg.stt_backend.is_cloud();
-    if let Some(code) = deps.transcribe_blocker_for(cfg.stt_backend, cfg.cloud_configured()) {
-        return Err(StageFailure::new(
-            "whisper",
-            ProcError::new(code, format!("расшифровка недоступна: {code}"), ""),
-        ));
+    //
+    // Путь выбирает ГЕЙТ, а не конфиг напрямую: заказанный путь может быть
+    // нерабочим, и тогда берётся второй (таблица — в `deps::choose_route`).
+    // Отказ остаётся ровно на случай «не работает ни один».
+    let plan = deps
+        .plan_transcribe(cfg.stt_backend, cfg.cloud_configured())
+        .map_err(|code| {
+            StageFailure::new(
+                "whisper",
+                ProcError::new(
+                    code,
+                    format!(
+                        "расшифровка недоступна: {code} — {}",
+                        crate::deps::blocker_hint(code)
+                    ),
+                    "",
+                ),
+            )
+        })?;
+    let cloud_stt = plan.route.is_cloud();
+    // ОТКАТ ВИДЕН: молчаливая подмена движка хуже честного отказа — человек
+    // думал бы, что платит за облако, пока считает локальный whisper.
+    if let (Some(code), Some(note)) = (plan.stt_event(), plan.fallback_note()) {
+        let _ = repo::events::note(
+            state,
+            meeting_id,
+            MeetStatus::Transcribing.as_str(),
+            code,
+            Some(&note),
+        )
+        .await;
+        tracing::warn!(
+            target: "forge_meet",
+            meeting_id = %meeting_id,
+            "forge-meet: {note}"
+        );
     }
 
     // Слот и гейт — только у локального пути (см. развилку выше).

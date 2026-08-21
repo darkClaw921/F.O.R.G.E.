@@ -98,7 +98,13 @@ impl MeetError {
                 format!("переход {from} → {to} недопустим")
             }
             Self::Busy => "все слоты записи заняты".to_string(),
-            Self::DepUnavailable(code) => format!("не готов внешний компонент: {code}"),
+            // Отказ наступает, только когда не работает НИ ОДИН путь стадии,
+            // поэтому текст обязан называть ДЕЙСТВИЕ: до человека он доходит
+            // ровно тогда, когда чинить действительно надо.
+            Self::DepUnavailable(code) => format!(
+                "не готов внешний компонент: {code} — {}",
+                crate::deps::blocker_hint(code)
+            ),
             Self::BadRequest(m) => m.clone(),
             Self::RangeNotSatisfiable { len } => {
                 format!("запрошенный диапазон за пределами файла длиной {len} байт")

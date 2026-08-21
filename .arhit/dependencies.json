@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-20T09:31:53.072Z",
+  "generatedAt": "2026-08-21T13:45:10.904Z",
   "dependencies": [
     {
       "from": "tmux-web/static/command-dock.js",
@@ -3945,6 +3945,116 @@
       "toElement": "jsonInit"
     },
     {
+      "from": "tmux-web/static/js/bitrix/api.js",
+      "to": "tmux-web/static/js/bitrix/api.js",
+      "type": "call",
+      "fromElement": "voicePath",
+      "toElement": "withSeg"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/api.js",
+      "to": "tmux-web/static/js/bitrix/api.js",
+      "type": "call",
+      "fromElement": "voicePath",
+      "toElement": "withSeg"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/api.js",
+      "to": "tmux-web/static/js/bitrix/api.js",
+      "type": "call",
+      "fromElement": "voicePath",
+      "toElement": "withSeg"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/api.js",
+      "to": "tmux-web/static/js/bitrix/api.js",
+      "type": "call",
+      "fromElement": "voicePath",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/api.js",
+      "to": "tmux-web/static/js/bitrix/api.js",
+      "type": "call",
+      "fromElement": "voicePath",
+      "toElement": "Number"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/api.js",
+      "to": "tmux-web/static/js/bitrix/api.js",
+      "type": "call",
+      "fromElement": "transcribeVoice",
+      "toElement": "call"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/api.js",
+      "to": "tmux-web/static/js/bitrix/api.js",
+      "type": "call",
+      "fromElement": "transcribeVoice",
+      "toElement": "voicePath"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/api.js",
+      "to": "tmux-web/static/js/bitrix/api.js",
+      "type": "call",
+      "fromElement": "transcribeVoice",
+      "toElement": "jsonInit"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/api.js",
+      "to": "tmux-web/static/js/bitrix/api.js",
+      "type": "call",
+      "fromElement": "getVoiceTranscript",
+      "toElement": "call"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/api.js",
+      "to": "tmux-web/static/js/bitrix/api.js",
+      "type": "call",
+      "fromElement": "getVoiceTranscript",
+      "toElement": "voicePath"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/api.js",
+      "to": "tmux-web/static/js/bitrix/api.js",
+      "type": "call",
+      "fromElement": "getVoiceSettings",
+      "toElement": "call"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/api.js",
+      "to": "tmux-web/static/js/bitrix/api.js",
+      "type": "call",
+      "fromElement": "setVoiceSettings",
+      "toElement": "call"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/api.js",
+      "to": "tmux-web/static/js/bitrix/api.js",
+      "type": "call",
+      "fromElement": "setVoiceSettings",
+      "toElement": "jsonInit"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/api.js",
+      "to": "tmux-web/static/js/bitrix/api.js",
+      "type": "call",
+      "fromElement": "setVoiceSettings",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/attachments.js",
+      "to": "tmux-web/static/js/messenger/waveform-core.js",
+      "type": "import",
+      "toElement": "buildWave"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/attachments.js",
+      "to": "tmux-web/static/js/messenger/waveform-core.js",
+      "type": "import",
+      "toElement": "noiseSeed"
+    },
+    {
       "from": "tmux-web/static/js/bitrix/attachments.js",
       "to": "tmux-web/static/js/bitrix/format.js",
       "type": "import",
@@ -4157,6 +4267,27 @@
       "type": "call",
       "fromElement": "buildMediaCard",
       "toElement": "body.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/attachments.js",
+      "to": "tmux-web/static/js/bitrix/attachments.js",
+      "type": "call",
+      "fromElement": "buildMediaCard",
+      "toElement": "body.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/attachments.js",
+      "to": "tmux-web/static/js/bitrix/attachments.js",
+      "type": "call",
+      "fromElement": "buildMediaCard",
+      "toElement": "buildWave"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/attachments.js",
+      "to": "tmux-web/static/js/bitrix/attachments.js",
+      "type": "call",
+      "fromElement": "buildMediaCard",
+      "toElement": "noiseSeed"
     },
     {
       "from": "tmux-web/static/js/bitrix/attachments.js",
@@ -12866,6 +12997,12 @@
       "from": "tmux-web/static/js/bitrix/main.js",
       "to": "tmux-web/static/js/bitrix/media.js",
       "type": "import",
+      "toElement": "VOICE_FRAME_EVENT"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/main.js",
+      "to": "tmux-web/static/js/bitrix/media.js",
+      "type": "import",
       "toElement": "_debugMediaState"
     },
     {
@@ -13646,6 +13783,34 @@
       "to": "tmux-web/static/js/bitrix/main.js",
       "type": "call",
       "fromElement": "buildHandlers",
+      "toElement": "emitVoiceFrame"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/main.js",
+      "to": "tmux-web/static/js/bitrix/main.js",
+      "type": "call",
+      "fromElement": "buildHandlers",
+      "toElement": "emitVoiceFrame"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/main.js",
+      "to": "tmux-web/static/js/bitrix/main.js",
+      "type": "call",
+      "fromElement": "buildHandlers",
+      "toElement": "emitVoiceFrame"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/main.js",
+      "to": "tmux-web/static/js/bitrix/main.js",
+      "type": "call",
+      "fromElement": "buildHandlers",
+      "toElement": "emitVoiceFrame"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/main.js",
+      "to": "tmux-web/static/js/bitrix/main.js",
+      "type": "call",
+      "fromElement": "buildHandlers",
       "toElement": "onUploadProgress"
     },
     {
@@ -14251,6 +14416,34 @@
       "toElement": "f.peers.slice"
     },
     {
+      "from": "tmux-web/static/js/bitrix/main.js",
+      "to": "tmux-web/static/js/bitrix/main.js",
+      "type": "call",
+      "fromElement": "emitVoiceFrame",
+      "toElement": "document.dispatchEvent"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/main.js",
+      "to": "tmux-web/static/js/bitrix/main.js",
+      "type": "call",
+      "fromElement": "emitVoiceFrame",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/main.js",
+      "to": "tmux-web/static/js/bitrix/main.js",
+      "type": "call",
+      "fromElement": "emitVoiceFrame",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/main.js",
+      "to": "tmux-web/static/js/bitrix/main.js",
+      "type": "call",
+      "fromElement": "emitVoiceFrame",
+      "toElement": "Number"
+    },
+    {
       "from": "tmux-web/static/js/bitrix/media.js",
       "to": "tmux-web/static/js/core/dom.js",
       "type": "import",
@@ -14285,6 +14478,12 @@
       "to": "tmux-web/static/js/core/dom.js",
       "type": "import",
       "toElement": "$b24LightboxPrev"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/media.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "import",
+      "toElement": "createVoiceTranscript"
     },
     {
       "from": "tmux-web/static/js/bitrix/media.js",
@@ -14345,6 +14544,12 @@
       "to": "tmux-web/static/js/bitrix/state.js",
       "type": "import",
       "toElement": "b24State"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/media.js",
+      "to": "tmux-web/static/js/bitrix/media.js",
+      "type": "call",
+      "toElement": "createVoiceTranscript"
     },
     {
       "from": "tmux-web/static/js/bitrix/media.js",
@@ -14702,6 +14907,20 @@
       "type": "call",
       "fromElement": "renderMediaGroup",
       "toElement": "wireCard"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/media.js",
+      "to": "tmux-web/static/js/bitrix/media.js",
+      "type": "call",
+      "fromElement": "renderMediaGroup",
+      "toElement": "voiceTranscript.attach"
+    },
+    {
+      "from": "tmux-web/static/js/bitrix/media.js",
+      "to": "tmux-web/static/js/bitrix/media.js",
+      "type": "call",
+      "fromElement": "renderMediaGroup",
+      "toElement": "el.appendChild"
     },
     {
       "from": "tmux-web/static/js/bitrix/media.js",
@@ -41447,6 +41666,1217 @@
       "toElement": "normalizeThemeMode"
     },
     {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "transcriptKey",
+      "toElement": "Number"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "transcriptKey",
+      "toElement": "Number.isFinite"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "isAudioKind",
+      "toElement": "AUDIO_KINDS.includes"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "isAudioKind",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "needsCollapse",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "errorText",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "errorText",
+      "toElement": "Object.prototype.hasOwnProperty.call"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "runningLabel",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "runningLabel",
+      "toElement": "Number.isFinite"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "readyLabel",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "readyLabel",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "readyLabel",
+      "toElement": "parts.push"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "readyLabel",
+      "toElement": "parts.push"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "readyLabel",
+      "toElement": "parts.join"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "setClass",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "setClass",
+      "toElement": "have.includes"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "setClass",
+      "toElement": "have.push"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "setClass",
+      "toElement": "have.filter"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attr",
+      "toElement": "node.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attr",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "createVoiceTranscript",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "createVoiceTranscript",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "stateOf",
+      "toElement": "states.get"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "stateOf",
+      "toElement": "blankState"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "stateOf",
+      "toElement": "states.set"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "renderView",
+      "toElement": "stateOf"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "renderView",
+      "toElement": "attr"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "renderView",
+      "toElement": "runningLabel"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "renderView",
+      "toElement": "readyLabel"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "renderView",
+      "toElement": "errorText"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "renderView",
+      "toElement": "Number.isFinite"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "renderView",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "renderView",
+      "toElement": "needsCollapse"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "renderView",
+      "toElement": "setClass"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "renderView",
+      "toElement": "cls"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "renderView",
+      "toElement": "attr"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "renderView",
+      "toElement": "attr"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "forget",
+      "toElement": "observer.unobserve"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "renderKey",
+      "toElement": "views.get"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "renderKey",
+      "toElement": "renderView"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "coordsOf",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "coordsOf",
+      "toElement": "parts.slice"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "coordsOf",
+      "toElement": "Number"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "fetchTranscript",
+      "toElement": "stateOf"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "fetchTranscript",
+      "toElement": "renderKey"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "fetchTranscript",
+      "toElement": "coordsOf"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "fetchTranscript",
+      "toElement": "cfg.api.transcript"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "fetchTranscript",
+      "toElement": "stateOf"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "fetchTranscript",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "fetchTranscript",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "fetchTranscript",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "fetchTranscript",
+      "toElement": "Number"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "fetchTranscript",
+      "toElement": "stateOf"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "fetchTranscript",
+      "toElement": "renderKey"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "start",
+      "toElement": "stateOf"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "start",
+      "toElement": "renderKey"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "start",
+      "toElement": "coordsOf"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "start",
+      "toElement": "cfg.api.transcribe"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "start",
+      "toElement": "stateOf"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "start",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "start",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "start",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "start",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "start",
+      "toElement": "stateOf"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "start",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "start",
+      "toElement": "renderKey"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "onFrame",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "onFrame",
+      "toElement": "transcriptKey"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "onFrame",
+      "toElement": "stateOf"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "onFrame",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "onFrame",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "onFrame",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "onFrame",
+      "toElement": "Math.max"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "onFrame",
+      "toElement": "Math.min"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "onFrame",
+      "toElement": "Number"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "onFrame",
+      "toElement": "Number.isFinite"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "onFrame",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "onFrame",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "onFrame",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "onFrame",
+      "toElement": "Number"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "onFrame",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "onFrame",
+      "toElement": "renderKey"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "listen",
+      "toElement": "target.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "listen",
+      "toElement": "onFrame"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "ensureObserver",
+      "toElement": "observer.unobserve"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "ensureObserver",
+      "toElement": "fetchTranscript"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "scheduleFetch",
+      "toElement": "stateOf"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "scheduleFetch",
+      "toElement": "ensureObserver"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "scheduleFetch",
+      "toElement": "io.observe"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "scheduleFetch",
+      "toElement": "setTimeout"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "scheduleFetch",
+      "toElement": "eagerTimer.unref"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "scheduleFetch",
+      "toElement": "fetchTranscript"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "isAudioKind"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "listen"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "transcriptKey"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "doc.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "cls"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "attr"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "doc.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "cls"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "doc.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "cls"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "doc.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "cls"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "attr"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "attr"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "head.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "head.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "doc.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "cls"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "attr"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "doc.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "cls"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "progress.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "doc.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "cls"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "doc.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "cls"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "doc.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "cls"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "attr"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "doc.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "cls"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "attr"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "actions.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "actions.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "root.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "root.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "root.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "root.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "runBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "e.stopPropagation"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "stateOf"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "start"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "toggleBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "e.stopPropagation"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "stateOf"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "renderKey"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "views.get"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "list.filter"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "forget"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "live.push"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "views.set"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "renderView"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "attach",
+      "toElement": "scheduleFetch"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "createVoiceTranscript",
+      "toElement": "start"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "createVoiceTranscript",
+      "toElement": "transcriptKey"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "createVoiceTranscript",
+      "toElement": "states.get"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "createVoiceTranscript",
+      "toElement": "transcriptKey"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "createVoiceTranscript",
+      "toElement": "Number.isFinite"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "createVoiceTranscript",
+      "toElement": "states.clear"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "createVoiceTranscript",
+      "toElement": "views.clear"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "call",
+      "fromElement": "createVoiceTranscript",
+      "toElement": "observer.disconnect"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/waveform-core.js",
+      "to": "tmux-web/static/js/messenger/waveform-core.js",
+      "type": "call",
+      "fromElement": "noiseSeed",
+      "toElement": "Number"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/waveform-core.js",
+      "to": "tmux-web/static/js/messenger/waveform-core.js",
+      "type": "call",
+      "fromElement": "noiseSeed",
+      "toElement": "Number"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/waveform-core.js",
+      "to": "tmux-web/static/js/messenger/waveform-core.js",
+      "type": "call",
+      "fromElement": "realHeights",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/waveform-core.js",
+      "to": "tmux-web/static/js/messenger/waveform-core.js",
+      "type": "call",
+      "fromElement": "realHeights",
+      "toElement": "real.reduce"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/waveform-core.js",
+      "to": "tmux-web/static/js/messenger/waveform-core.js",
+      "type": "call",
+      "fromElement": "realHeights",
+      "toElement": "Math.max"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/waveform-core.js",
+      "to": "tmux-web/static/js/messenger/waveform-core.js",
+      "type": "call",
+      "fromElement": "realHeights",
+      "toElement": "Number"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/waveform-core.js",
+      "to": "tmux-web/static/js/messenger/waveform-core.js",
+      "type": "call",
+      "fromElement": "realHeights",
+      "toElement": "Math.max"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/waveform-core.js",
+      "to": "tmux-web/static/js/messenger/waveform-core.js",
+      "type": "call",
+      "fromElement": "realHeights",
+      "toElement": "Math.ceil"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/waveform-core.js",
+      "to": "tmux-web/static/js/messenger/waveform-core.js",
+      "type": "call",
+      "fromElement": "realHeights",
+      "toElement": "out.push"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/waveform-core.js",
+      "to": "tmux-web/static/js/messenger/waveform-core.js",
+      "type": "call",
+      "fromElement": "realHeights",
+      "toElement": "Math.round"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/waveform-core.js",
+      "to": "tmux-web/static/js/messenger/waveform-core.js",
+      "type": "call",
+      "fromElement": "realHeights",
+      "toElement": "Number"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/waveform-core.js",
+      "to": "tmux-web/static/js/messenger/waveform-core.js",
+      "type": "call",
+      "fromElement": "noiseHeights",
+      "toElement": "out.push"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/waveform-core.js",
+      "to": "tmux-web/static/js/messenger/waveform-core.js",
+      "type": "call",
+      "fromElement": "waveHeights",
+      "toElement": "realHeights"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/waveform-core.js",
+      "to": "tmux-web/static/js/messenger/waveform-core.js",
+      "type": "call",
+      "fromElement": "waveHeights",
+      "toElement": "noiseHeights"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/waveform-core.js",
+      "to": "tmux-web/static/js/messenger/waveform-core.js",
+      "type": "call",
+      "fromElement": "buildWave",
+      "toElement": "doc.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/waveform-core.js",
+      "to": "tmux-web/static/js/messenger/waveform-core.js",
+      "type": "call",
+      "fromElement": "buildWave",
+      "toElement": "wave.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/waveform-core.js",
+      "to": "tmux-web/static/js/messenger/waveform-core.js",
+      "type": "call",
+      "fromElement": "buildWave",
+      "toElement": "waveHeights"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/waveform-core.js",
+      "to": "tmux-web/static/js/messenger/waveform-core.js",
+      "type": "call",
+      "fromElement": "buildWave",
+      "toElement": "doc.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/waveform-core.js",
+      "to": "tmux-web/static/js/messenger/waveform-core.js",
+      "type": "call",
+      "fromElement": "buildWave",
+      "toElement": "wave.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/messenger/waveform-core.js",
+      "to": "tmux-web/static/js/messenger/waveform-core.js",
+      "type": "call",
+      "fromElement": "hasRealWaveform",
+      "toElement": "Array.isArray"
+    },
+    {
       "from": "tmux-web/static/js/messenger/ws-core.js",
       "to": "tmux-web/static/js/messenger/ws-core.js",
       "type": "call",
@@ -52737,6 +54167,66 @@
     },
     {
       "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "import",
+      "toElement": "buildVoiceForm"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "import",
+      "toElement": "B24_VOICE_CONFIG"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "import",
+      "toElement": "TELEGRAM_VOICE_CONFIG"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "import",
+      "toElement": "VK_VOICE_CONFIG"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/vk/api.js",
+      "type": "import",
+      "toElement": "getVoiceSettings"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/vk/api.js",
+      "type": "import",
+      "toElement": "setVoiceSettings"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/telegram/api.js",
+      "type": "import",
+      "toElement": "getVoiceSettings"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/telegram/api.js",
+      "type": "import",
+      "toElement": "setVoiceSettings"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/bitrix/api.js",
+      "type": "import",
+      "toElement": "getVoiceSettings"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/bitrix/api.js",
+      "type": "import",
+      "toElement": "setVoiceSettings"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
       "to": "tmux-web/static/js/settings/meet-tab.js",
       "type": "import",
       "toElement": "buildMeetSettings"
@@ -53030,6 +54520,13 @@
       "to": "tmux-web/static/js/settings/modal.js",
       "type": "call",
       "fromElement": "openSettingsModal",
+      "toElement": "buildVoiceForm"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/settings/modal.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
       "toElement": "fetchUserSettings"
     },
     {
@@ -53051,6 +54548,13 @@
       "to": "tmux-web/static/js/settings/modal.js",
       "type": "call",
       "fromElement": "openSettingsModal",
+      "toElement": "buildVoiceForm"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/settings/modal.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
       "toElement": "fetchUserSettings"
     },
     {
@@ -53066,6 +54570,13 @@
       "type": "call",
       "fromElement": "openSettingsModal",
       "toElement": "buildHotkeysForm"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/settings/modal.js",
+      "type": "call",
+      "fromElement": "openSettingsModal",
+      "toElement": "buildVoiceForm"
     },
     {
       "from": "tmux-web/static/js/settings/modal.js",
@@ -56511,6 +58022,292 @@
       "type": "call",
       "fromElement": "invalidateVkFilter",
       "toElement": "api.refresh"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/user-settings-api.js",
+      "type": "import",
+      "toElement": "updateUserSettings"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "wrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "wrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "d.createTextNode"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "setTimeout"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "box.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "updateUserSettings"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "showOk"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "onSaved"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "showError"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "select.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "ENGINES.some"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "api.getVoiceSettings"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "applyState"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "showError"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "select.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "api.setVoiceSettings"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "applyState"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "showOk"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "showError"
     },
     {
       "from": "tmux-web/static/js/sidebar/mobile.js",
@@ -65161,6 +66958,97 @@
       "type": "call",
       "fromElement": "cancelAnalysis",
       "toElement": "jsonInit"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/api.js",
+      "to": "tmux-web/static/js/telegram/api.js",
+      "type": "call",
+      "fromElement": "transcribeVoice",
+      "toElement": "Number"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/api.js",
+      "to": "tmux-web/static/js/telegram/api.js",
+      "type": "call",
+      "fromElement": "transcribeVoice",
+      "toElement": "call"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/api.js",
+      "to": "tmux-web/static/js/telegram/api.js",
+      "type": "call",
+      "fromElement": "transcribeVoice",
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/api.js",
+      "to": "tmux-web/static/js/telegram/api.js",
+      "type": "call",
+      "fromElement": "transcribeVoice",
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/api.js",
+      "to": "tmux-web/static/js/telegram/api.js",
+      "type": "call",
+      "fromElement": "transcribeVoice",
+      "toElement": "jsonInit"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/api.js",
+      "to": "tmux-web/static/js/telegram/api.js",
+      "type": "call",
+      "fromElement": "getVoiceTranscript",
+      "toElement": "Number"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/api.js",
+      "to": "tmux-web/static/js/telegram/api.js",
+      "type": "call",
+      "fromElement": "getVoiceTranscript",
+      "toElement": "call"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/api.js",
+      "to": "tmux-web/static/js/telegram/api.js",
+      "type": "call",
+      "fromElement": "getVoiceTranscript",
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/api.js",
+      "to": "tmux-web/static/js/telegram/api.js",
+      "type": "call",
+      "fromElement": "getVoiceTranscript",
+      "toElement": "encodeURIComponent"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/api.js",
+      "to": "tmux-web/static/js/telegram/api.js",
+      "type": "call",
+      "fromElement": "getVoiceSettings",
+      "toElement": "call"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/api.js",
+      "to": "tmux-web/static/js/telegram/api.js",
+      "type": "call",
+      "fromElement": "setVoiceSettings",
+      "toElement": "call"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/api.js",
+      "to": "tmux-web/static/js/telegram/api.js",
+      "type": "call",
+      "fromElement": "setVoiceSettings",
+      "toElement": "jsonInit"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/api.js",
+      "to": "tmux-web/static/js/telegram/api.js",
+      "type": "call",
+      "fromElement": "setVoiceSettings",
+      "toElement": "String"
     },
     {
       "from": "tmux-web/static/js/telegram/botkb.js",
@@ -75753,6 +77641,12 @@
     },
     {
       "from": "tmux-web/static/js/telegram/main.js",
+      "to": "tmux-web/static/js/telegram/media.js",
+      "type": "import",
+      "toElement": "VOICE_FRAME_EVENT"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/main.js",
       "to": "tmux-web/static/js/telegram/mobile.js",
       "type": "import",
       "toElement": "closeTgContactsAfterSelect"
@@ -76617,6 +78511,34 @@
       "to": "tmux-web/static/js/telegram/main.js",
       "type": "call",
       "fromElement": "buildHandlers",
+      "toElement": "emitVoiceFrame"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/main.js",
+      "to": "tmux-web/static/js/telegram/main.js",
+      "type": "call",
+      "fromElement": "buildHandlers",
+      "toElement": "emitVoiceFrame"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/main.js",
+      "to": "tmux-web/static/js/telegram/main.js",
+      "type": "call",
+      "fromElement": "buildHandlers",
+      "toElement": "emitVoiceFrame"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/main.js",
+      "to": "tmux-web/static/js/telegram/main.js",
+      "type": "call",
+      "fromElement": "buildHandlers",
+      "toElement": "emitVoiceFrame"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/main.js",
+      "to": "tmux-web/static/js/telegram/main.js",
+      "type": "call",
+      "fromElement": "buildHandlers",
       "toElement": "onAnalysisStarted"
     },
     {
@@ -76639,6 +78561,34 @@
       "type": "call",
       "fromElement": "buildHandlers",
       "toElement": "onAnalysisError"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/main.js",
+      "to": "tmux-web/static/js/telegram/main.js",
+      "type": "call",
+      "fromElement": "emitVoiceFrame",
+      "toElement": "document.dispatchEvent"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/main.js",
+      "to": "tmux-web/static/js/telegram/main.js",
+      "type": "call",
+      "fromElement": "emitVoiceFrame",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/main.js",
+      "to": "tmux-web/static/js/telegram/main.js",
+      "type": "call",
+      "fromElement": "emitVoiceFrame",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/main.js",
+      "to": "tmux-web/static/js/telegram/main.js",
+      "type": "call",
+      "fromElement": "emitVoiceFrame",
+      "toElement": "Number"
     },
     {
       "from": "tmux-web/static/js/telegram/main.js",
@@ -77744,9 +79694,39 @@
     },
     {
       "from": "tmux-web/static/js/telegram/media.js",
+      "to": "tmux-web/static/js/messenger/waveform-core.js",
+      "type": "import",
+      "toElement": "buildWave"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/media.js",
+      "to": "tmux-web/static/js/messenger/waveform-core.js",
+      "type": "import",
+      "toElement": "noiseSeed"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/media.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "import",
+      "toElement": "createVoiceTranscript"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/media.js",
       "to": "tmux-web/static/js/telegram/api.js",
       "type": "import",
       "toElement": "fetchMedia"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/media.js",
+      "to": "tmux-web/static/js/telegram/api.js",
+      "type": "import",
+      "toElement": "getVoiceTranscript"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/media.js",
+      "to": "tmux-web/static/js/telegram/api.js",
+      "type": "import",
+      "toElement": "transcribeVoice"
     },
     {
       "from": "tmux-web/static/js/telegram/media.js",
@@ -78137,6 +80117,12 @@
       "from": "tmux-web/static/js/telegram/media.js",
       "to": "tmux-web/static/js/telegram/media.js",
       "type": "call",
+      "toElement": "createVoiceTranscript"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/media.js",
+      "to": "tmux-web/static/js/telegram/media.js",
+      "type": "call",
       "fromElement": "button",
       "toElement": "document.createElement"
     },
@@ -78292,35 +80278,21 @@
       "to": "tmux-web/static/js/telegram/media.js",
       "type": "call",
       "fromElement": "buildMediaCard",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/telegram/media.js",
-      "to": "tmux-web/static/js/telegram/media.js",
-      "type": "call",
-      "fromElement": "buildMediaCard",
-      "toElement": "wave.setAttribute"
-    },
-    {
-      "from": "tmux-web/static/js/telegram/media.js",
-      "to": "tmux-web/static/js/telegram/media.js",
-      "type": "call",
-      "fromElement": "buildMediaCard",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/telegram/media.js",
-      "to": "tmux-web/static/js/telegram/media.js",
-      "type": "call",
-      "fromElement": "buildMediaCard",
-      "toElement": "wave.appendChild"
-    },
-    {
-      "from": "tmux-web/static/js/telegram/media.js",
-      "to": "tmux-web/static/js/telegram/media.js",
-      "type": "call",
-      "fromElement": "buildMediaCard",
       "toElement": "body.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/media.js",
+      "to": "tmux-web/static/js/telegram/media.js",
+      "type": "call",
+      "fromElement": "buildMediaCard",
+      "toElement": "buildWave"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/media.js",
+      "to": "tmux-web/static/js/telegram/media.js",
+      "type": "call",
+      "fromElement": "buildMediaCard",
+      "toElement": "noiseSeed"
     },
     {
       "from": "tmux-web/static/js/telegram/media.js",
@@ -78489,6 +80461,20 @@
       "type": "call",
       "fromElement": "buildMediaCard",
       "toElement": "card.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/media.js",
+      "to": "tmux-web/static/js/telegram/media.js",
+      "type": "call",
+      "fromElement": "buildMediaCard",
+      "toElement": "card.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/telegram/media.js",
+      "to": "tmux-web/static/js/telegram/media.js",
+      "type": "call",
+      "fromElement": "buildMediaCard",
+      "toElement": "voiceTranscript.attach"
     },
     {
       "from": "tmux-web/static/js/telegram/media.js",
@@ -86220,6 +88206,97 @@
       "type": "call",
       "fromElement": "cancelAnalysis",
       "toElement": "jsonInit"
+    },
+    {
+      "from": "tmux-web/static/js/vk/api.js",
+      "to": "tmux-web/static/js/vk/api.js",
+      "type": "call",
+      "fromElement": "transcribeVoice",
+      "toElement": "callC"
+    },
+    {
+      "from": "tmux-web/static/js/vk/api.js",
+      "to": "tmux-web/static/js/vk/api.js",
+      "type": "call",
+      "fromElement": "transcribeVoice",
+      "toElement": "seg"
+    },
+    {
+      "from": "tmux-web/static/js/vk/api.js",
+      "to": "tmux-web/static/js/vk/api.js",
+      "type": "call",
+      "fromElement": "transcribeVoice",
+      "toElement": "seg"
+    },
+    {
+      "from": "tmux-web/static/js/vk/api.js",
+      "to": "tmux-web/static/js/vk/api.js",
+      "type": "call",
+      "fromElement": "transcribeVoice",
+      "toElement": "seg"
+    },
+    {
+      "from": "tmux-web/static/js/vk/api.js",
+      "to": "tmux-web/static/js/vk/api.js",
+      "type": "call",
+      "fromElement": "transcribeVoice",
+      "toElement": "jsonInit"
+    },
+    {
+      "from": "tmux-web/static/js/vk/api.js",
+      "to": "tmux-web/static/js/vk/api.js",
+      "type": "call",
+      "fromElement": "getVoiceTranscript",
+      "toElement": "callC"
+    },
+    {
+      "from": "tmux-web/static/js/vk/api.js",
+      "to": "tmux-web/static/js/vk/api.js",
+      "type": "call",
+      "fromElement": "getVoiceTranscript",
+      "toElement": "seg"
+    },
+    {
+      "from": "tmux-web/static/js/vk/api.js",
+      "to": "tmux-web/static/js/vk/api.js",
+      "type": "call",
+      "fromElement": "getVoiceTranscript",
+      "toElement": "seg"
+    },
+    {
+      "from": "tmux-web/static/js/vk/api.js",
+      "to": "tmux-web/static/js/vk/api.js",
+      "type": "call",
+      "fromElement": "getVoiceTranscript",
+      "toElement": "seg"
+    },
+    {
+      "from": "tmux-web/static/js/vk/api.js",
+      "to": "tmux-web/static/js/vk/api.js",
+      "type": "call",
+      "fromElement": "getVoiceSettings",
+      "toElement": "callC"
+    },
+    {
+      "from": "tmux-web/static/js/vk/api.js",
+      "to": "tmux-web/static/js/vk/api.js",
+      "type": "call",
+      "fromElement": "setVoiceSettings",
+      "toElement": "callC"
+    },
+    {
+      "from": "tmux-web/static/js/vk/api.js",
+      "to": "tmux-web/static/js/vk/api.js",
+      "type": "call",
+      "fromElement": "setVoiceSettings",
+      "toElement": "jsonInit"
+    },
+    {
+      "from": "tmux-web/static/js/vk/api.js",
+      "to": "tmux-web/static/js/vk/api.js",
+      "type": "call",
+      "fromElement": "setVoiceSettings",
+      "toElement": "String"
     },
     {
       "from": "tmux-web/static/js/vk/attachments.js",
@@ -98344,6 +100421,62 @@
       "from": "tmux-web/static/js/vk/main.js",
       "to": "tmux-web/static/js/vk/main.js",
       "type": "call",
+      "fromElement": "buildHandlers",
+      "toElement": "emitVoiceFrame"
+    },
+    {
+      "from": "tmux-web/static/js/vk/main.js",
+      "to": "tmux-web/static/js/vk/main.js",
+      "type": "call",
+      "fromElement": "buildHandlers",
+      "toElement": "emitVoiceFrame"
+    },
+    {
+      "from": "tmux-web/static/js/vk/main.js",
+      "to": "tmux-web/static/js/vk/main.js",
+      "type": "call",
+      "fromElement": "buildHandlers",
+      "toElement": "emitVoiceFrame"
+    },
+    {
+      "from": "tmux-web/static/js/vk/main.js",
+      "to": "tmux-web/static/js/vk/main.js",
+      "type": "call",
+      "fromElement": "buildHandlers",
+      "toElement": "emitVoiceFrame"
+    },
+    {
+      "from": "tmux-web/static/js/vk/main.js",
+      "to": "tmux-web/static/js/vk/main.js",
+      "type": "call",
+      "fromElement": "emitVoiceFrame",
+      "toElement": "document.dispatchEvent"
+    },
+    {
+      "from": "tmux-web/static/js/vk/main.js",
+      "to": "tmux-web/static/js/vk/main.js",
+      "type": "call",
+      "fromElement": "emitVoiceFrame",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/vk/main.js",
+      "to": "tmux-web/static/js/vk/main.js",
+      "type": "call",
+      "fromElement": "emitVoiceFrame",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/vk/main.js",
+      "to": "tmux-web/static/js/vk/main.js",
+      "type": "call",
+      "fromElement": "emitVoiceFrame",
+      "toElement": "Number"
+    },
+    {
+      "from": "tmux-web/static/js/vk/main.js",
+      "to": "tmux-web/static/js/vk/main.js",
+      "type": "call",
       "fromElement": "rememberFrameFlags",
       "toElement": "String"
     },
@@ -98896,9 +101029,39 @@
     },
     {
       "from": "tmux-web/static/js/vk/media.js",
+      "to": "tmux-web/static/js/messenger/waveform-core.js",
+      "type": "import",
+      "toElement": "buildWave"
+    },
+    {
+      "from": "tmux-web/static/js/vk/media.js",
+      "to": "tmux-web/static/js/messenger/waveform-core.js",
+      "type": "import",
+      "toElement": "noiseSeed"
+    },
+    {
+      "from": "tmux-web/static/js/vk/media.js",
+      "to": "tmux-web/static/js/messenger/voice-transcript-core.js",
+      "type": "import",
+      "toElement": "createVoiceTranscript"
+    },
+    {
+      "from": "tmux-web/static/js/vk/media.js",
       "to": "tmux-web/static/js/vk/api.js",
       "type": "import",
       "toElement": "fetchMedia"
+    },
+    {
+      "from": "tmux-web/static/js/vk/media.js",
+      "to": "tmux-web/static/js/vk/api.js",
+      "type": "import",
+      "toElement": "getVoiceTranscript"
+    },
+    {
+      "from": "tmux-web/static/js/vk/media.js",
+      "to": "tmux-web/static/js/vk/api.js",
+      "type": "import",
+      "toElement": "transcribeVoice"
     },
     {
       "from": "tmux-web/static/js/vk/media.js",
@@ -99013,6 +101176,12 @@
       "to": "tmux-web/static/js/vk/state.js",
       "type": "import",
       "toElement": "vkState"
+    },
+    {
+      "from": "tmux-web/static/js/vk/media.js",
+      "to": "tmux-web/static/js/vk/media.js",
+      "type": "call",
+      "toElement": "createVoiceTranscript"
     },
     {
       "from": "tmux-web/static/js/vk/media.js",
@@ -99761,6 +101930,20 @@
       "to": "tmux-web/static/js/vk/media.js",
       "type": "call",
       "fromElement": "buildMediaCard",
+      "toElement": "voiceTranscript.attach"
+    },
+    {
+      "from": "tmux-web/static/js/vk/media.js",
+      "to": "tmux-web/static/js/vk/media.js",
+      "type": "call",
+      "fromElement": "buildMediaCard",
+      "toElement": "card.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/vk/media.js",
+      "to": "tmux-web/static/js/vk/media.js",
+      "type": "call",
+      "fromElement": "buildMediaCard",
       "toElement": "Array.isArray"
     },
     {
@@ -99894,98 +102077,14 @@
       "to": "tmux-web/static/js/vk/media.js",
       "type": "call",
       "fromElement": "buildWave",
-      "toElement": "document.createElement"
+      "toElement": "buildWaveNode"
     },
     {
       "from": "tmux-web/static/js/vk/media.js",
       "to": "tmux-web/static/js/vk/media.js",
       "type": "call",
       "fromElement": "buildWave",
-      "toElement": "wave.setAttribute"
-    },
-    {
-      "from": "tmux-web/static/js/vk/media.js",
-      "to": "tmux-web/static/js/vk/media.js",
-      "type": "call",
-      "fromElement": "buildWave",
-      "toElement": "Array.isArray"
-    },
-    {
-      "from": "tmux-web/static/js/vk/media.js",
-      "to": "tmux-web/static/js/vk/media.js",
-      "type": "call",
-      "fromElement": "buildWave",
-      "toElement": "real.reduce"
-    },
-    {
-      "from": "tmux-web/static/js/vk/media.js",
-      "to": "tmux-web/static/js/vk/media.js",
-      "type": "call",
-      "fromElement": "buildWave",
-      "toElement": "Math.max"
-    },
-    {
-      "from": "tmux-web/static/js/vk/media.js",
-      "to": "tmux-web/static/js/vk/media.js",
-      "type": "call",
-      "fromElement": "buildWave",
-      "toElement": "Number"
-    },
-    {
-      "from": "tmux-web/static/js/vk/media.js",
-      "to": "tmux-web/static/js/vk/media.js",
-      "type": "call",
-      "fromElement": "buildWave",
-      "toElement": "Math.max"
-    },
-    {
-      "from": "tmux-web/static/js/vk/media.js",
-      "to": "tmux-web/static/js/vk/media.js",
-      "type": "call",
-      "fromElement": "buildWave",
-      "toElement": "Math.ceil"
-    },
-    {
-      "from": "tmux-web/static/js/vk/media.js",
-      "to": "tmux-web/static/js/vk/media.js",
-      "type": "call",
-      "fromElement": "buildWave",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/vk/media.js",
-      "to": "tmux-web/static/js/vk/media.js",
-      "type": "call",
-      "fromElement": "buildWave",
-      "toElement": "Math.round"
-    },
-    {
-      "from": "tmux-web/static/js/vk/media.js",
-      "to": "tmux-web/static/js/vk/media.js",
-      "type": "call",
-      "fromElement": "buildWave",
-      "toElement": "Number"
-    },
-    {
-      "from": "tmux-web/static/js/vk/media.js",
-      "to": "tmux-web/static/js/vk/media.js",
-      "type": "call",
-      "fromElement": "buildWave",
-      "toElement": "wave.appendChild"
-    },
-    {
-      "from": "tmux-web/static/js/vk/media.js",
-      "to": "tmux-web/static/js/vk/media.js",
-      "type": "call",
-      "fromElement": "buildWave",
-      "toElement": "document.createElement"
-    },
-    {
-      "from": "tmux-web/static/js/vk/media.js",
-      "to": "tmux-web/static/js/vk/media.js",
-      "type": "call",
-      "fromElement": "buildWave",
-      "toElement": "wave.appendChild"
+      "toElement": "noiseSeed"
     },
     {
       "from": "tmux-web/static/js/vk/media.js",

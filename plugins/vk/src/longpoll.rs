@@ -1394,6 +1394,13 @@ async fn run_worker(state: &Arc<VkState>, client: &VkClient, mut cursor: LpCurso
                     );
                 }
                 for frame in frames {
+                    // Авторазбор голосовых (Ф4). Решение принимается здесь и
+                    // стоит разбора уже полученного DTO; докачка и движок
+                    // уезжают в фоновую задачу, потому что лонгпол в это время
+                    // держит очередь событий всего аккаунта.
+                    if let VkServerMsg::NewMessage { message, .. } = &frame {
+                        crate::voice_auto::on_new_message(state, message).await;
+                    }
                     state.broadcast_event(frame);
                 }
 

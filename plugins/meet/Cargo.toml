@@ -122,6 +122,13 @@ forge-cdp = { path = "../forge-cdp" }
 # ВКонтакте.
 forge-claude-runner = { path = "../claude-runner" }
 
+# Ядро голосовых сообщений. Ребро направлено СЮДА, а не наоборот: движки
+# whisper.cpp и polza.ai вынесены из этого плагина в общий крейт, потому что та
+# же расшифровка понадобилась голосовым в VK, Telegram и Bitrix. В `forge-meet`
+# на прежних путях остались обратные `pub use` — ни одно место вызова и ни один
+# тест плагина от переезда не изменились.
+forge-voice = { path = "../voice" }
+
 [dev-dependencies]
 # ГЕРМЕТИЧНОСТЬ ОБЯЗАТЕЛЬНА: каждый тест ставит FORGE_MEET_CONFIG_PATH,
 # FORGE_MEET_CACHE_DIR и db_path в TempDir. Без этого `cargo test` съел бы
