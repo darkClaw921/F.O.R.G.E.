@@ -1326,7 +1326,11 @@ async fn monitor(
                     detail,
                 });
             }
-            for detail in media_log.poll() {
+            // Тот же вход, что у стража глухоты, и это не дублирование: строка
+            // отказа в логе сама по себе не означает пустой записи (штатный
+            // перебор ICE-кандидатов печатает такие же), поэтому причина
+            // называется только вместе с подтверждённой глухотой.
+            for detail in media_log.poll(dom_speaking, vad_fired, interval.as_millis() as u64) {
                 let _ = events.send(MeetEvent::MediaWarning {
                     at_ms: obs.at_ms,
                     code: super::medialog::CODE_MEDIA_TRANSPORT.to_string(),
