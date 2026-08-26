@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-21T13:45:10.904Z",
+  "generatedAt": "2026-08-25T18:15:01.018Z",
   "dependencies": [
     {
       "from": "tmux-web/static/command-dock.js",
@@ -54227,6 +54227,24 @@
     },
     {
       "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "import",
+      "toElement": "B24_SCOPE_SOURCE"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "import",
+      "toElement": "TELEGRAM_SCOPE_SOURCE"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "import",
+      "toElement": "VK_SCOPE_SOURCE"
+    },
+    {
+      "from": "tmux-web/static/js/settings/modal.js",
       "to": "tmux-web/static/js/settings/meet-tab.js",
       "type": "import",
       "toElement": "buildMeetSettings"
@@ -55361,6 +55379,629 @@
       "type": "call",
       "fromElement": "buildNotificationsForm",
       "toElement": "root.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "toIds"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "toIds"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "opts.onChange"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "row",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "row",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "row",
+      "toElement": "box.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "row",
+      "toElement": "set.add"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "row",
+      "toElement": "set.delete"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "row",
+      "toElement": "notify"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "row",
+      "toElement": "bucket.push"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "row",
+      "toElement": "wrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "row",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "row",
+      "toElement": "wrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "row",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "row",
+      "toElement": "wrap.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "root.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "root.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "root.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "search.setAttribute"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "root.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "root.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "renderGroups",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "renderGroups",
+      "toElement": "groupsBox.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "renderGroups",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "renderGroups",
+      "toElement": "groupsBox.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "renderGroups",
+      "toElement": "row"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "renderGroups",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "renderGroups",
+      "toElement": "draftGroups.has"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "renderPeers",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "renderPeers",
+      "toElement": "data.peers.filter"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "renderPeers",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "renderPeers",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "renderPeers",
+      "toElement": "peersBox.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "renderPeers",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "renderPeers",
+      "toElement": "peersBox.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "renderPeers",
+      "toElement": "row"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "renderPeers",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "renderPeers",
+      "toElement": "draftPeers.has"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "renderPeers",
+      "toElement": "data.peers.map"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "renderPeers",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "renderPeers",
+      "toElement": "Array.from"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "renderPeers",
+      "toElement": "shown.has"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "renderPeers",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "renderPeers",
+      "toElement": "peersBox.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "renderPeers",
+      "toElement": "peersBox.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "renderPeers",
+      "toElement": "row"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "search.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "renderPeers"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "Promise.all"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "opts.loadGroups"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "opts.loadPeers"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "renderGroups"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "renderPeers"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "clearBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "draftGroups.clear"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "draftPeers.clear"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "renderGroups"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "renderPeers"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "notify"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "actions.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "pruneBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "data.peers.map"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "Array.from"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "shown.has"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "draftPeers.delete"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "renderPeers"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "notify"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "actions.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "root.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "renderGroups"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "renderPeers"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "Array.from"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "buildPeerPicker",
+      "toElement": "Array.from"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "toIds",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "toIds",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "toIds",
+      "toElement": "out.includes"
+    },
+    {
+      "from": "tmux-web/static/js/settings/peer-picker.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "call",
+      "fromElement": "toIds",
+      "toElement": "out.push"
     },
     {
       "from": "tmux-web/static/js/settings/remotes-tab.js",
@@ -58024,6 +58665,302 @@
       "toElement": "api.refresh"
     },
     {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/vk/api.js",
+      "type": "import",
+      "toElement": "getDialogs"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/vk/format.js",
+      "type": "import",
+      "toElement": "peerKind"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/vk/ratelimit.js",
+      "type": "import",
+      "toElement": "PRIORITY_BG"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/vk/ratelimit.js",
+      "type": "import",
+      "toElement": "vkLimiter"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/vk/visibility.js",
+      "type": "import",
+      "toElement": "kindLabel"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/vk/visibility.js",
+      "type": "import",
+      "toElement": "VISIBLE_KINDS"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/telegram/api.js",
+      "type": "import",
+      "toElement": "getDialogs"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/telegram/api.js",
+      "type": "import",
+      "toElement": "listFolders"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/telegram/visibility.js",
+      "type": "import",
+      "toElement": "DIR_ARCHIVE"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/telegram/visibility.js",
+      "type": "import",
+      "toElement": "DIR_INBOX"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/telegram/visibility.js",
+      "type": "import",
+      "toElement": "folderKey"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/bitrix/api.js",
+      "type": "import",
+      "toElement": "getDialogs"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/bitrix/visibility.js",
+      "type": "import",
+      "toElement": "filterKind"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/bitrix/visibility.js",
+      "type": "import",
+      "toElement": "kindLabel"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/bitrix/visibility.js",
+      "type": "import",
+      "toElement": "VISIBLE_KINDS"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "fromElement": "marks",
+      "toElement": "list.filter"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "fromElement": "kindsAsGroups",
+      "toElement": "kinds.map"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "kindsAsGroups"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "vkLimiter.acquire"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "vkGetDialogs"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "list.map"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "marks"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "vkKindLabel"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "peerKind"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "tgListFolders"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "folderKey"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "out.push"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "out.push"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "tgGetDialogs"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "list.map"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "marks"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "kindsAsGroups"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "b24GetDialogs"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "list.map"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "String"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "marks"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "b24KindLabel"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "to": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "type": "call",
+      "toElement": "filterKind"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/peer-picker.js",
+      "type": "import",
+      "toElement": "buildPeerPicker"
+    },
+    {
       "from": "tmux-web/static/js/settings/voice-tab.js",
       "to": "tmux-web/static/js/settings/user-settings-api.js",
       "type": "import",
@@ -58146,7 +59083,35 @@
       "to": "tmux-web/static/js/settings/voice-tab.js",
       "type": "call",
       "fromElement": "buildVoiceForm",
+      "toElement": "buildScope"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "fs.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "scope.setEnabled"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
       "toElement": "box.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "scope.setEnabled"
     },
     {
       "from": "tmux-web/static/js/settings/voice-tab.js",
@@ -58168,6 +59133,13 @@
       "type": "call",
       "fromElement": "buildVoiceForm",
       "toElement": "onSaved"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildVoiceForm",
+      "toElement": "scope.setEnabled"
     },
     {
       "from": "tmux-web/static/js/settings/voice-tab.js",
@@ -58308,6 +59280,265 @@
       "type": "call",
       "fromElement": "buildVoiceForm",
       "toElement": "showError"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "box.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "box.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "buildPeerPicker"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "Array.isArray"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "a.listScopeGroups"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "a.listScopePeers"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "summaryText"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "box.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "box.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "box.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "box.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "summaryText",
+      "toElement": "picker.groups"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "summaryText",
+      "toElement": "picker.peers"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "summaryText",
+      "toElement": "parts.push"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "summaryText",
+      "toElement": "parts.push"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "summaryText",
+      "toElement": "parts.join"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "summaryText"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "d.createElement"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "saveBtn.addEventListener"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "picker.groups"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "picker.peers"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "updateUserSettings"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "setTimeout"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "onSaved"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "actions.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "box.appendChild"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "picker.setDisabled"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "box.classList.remove"
+    },
+    {
+      "from": "tmux-web/static/js/settings/voice-tab.js",
+      "to": "tmux-web/static/js/settings/voice-tab.js",
+      "type": "call",
+      "fromElement": "buildScope",
+      "toElement": "box.classList.add"
     },
     {
       "from": "tmux-web/static/js/sidebar/mobile.js",

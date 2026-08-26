@@ -34,7 +34,22 @@
 // `warning`, и секция показывает его текст — это единственный способ узнать
 // причину, не открывая `voice.toml`.
 
+import { buildPeerPicker } from './peer-picker.js';
 import { updateUserSettings } from './user-settings-api.js';
+
+/**
+ * Подпись блока выбора бесед — ОДНА на три панели.
+ *
+ * Пустой список означает «во всех беседах», и сказать это надо вслух: белый
+ * список, который человек ни разу не открывал, читается как «ничего не
+ * выбрано», а значит — как «ничего и не разбирается». Настройка работает
+ * ровно наоборот, и молчаливое расхождение здесь стоило бы человеку
+ * уверенности в том, что фича вообще включена.
+ */
+export const SCOPE_HINT =
+    'Пока ничего не выбрано, разбираются голосовые ВО ВСЕХ беседах. '
+    + 'Отметьте нужные — и авторазбор ограничится только ими. '
+    + 'Беседы, скрытые белым списком видимости, не разбираются в любом случае.';
 
 /**
  * Значения селекта движка — в порядке показа.
@@ -66,6 +81,14 @@ export const VK_VOICE_CONFIG = {
     key: 'vk',
     enabledKey: 'vk_voice_autotranscribe',
     toggleClass: 'vk-voice-auto',
+    scope: {
+        kindsKey: 'vk_voice_scope_kinds',
+        peersKey: 'vk_voice_scope_peers',
+        groupsTitle: 'Типы бесед',
+        peersTitle: 'Отдельные беседы',
+        searchPlaceholder: 'Поиск по названию',
+        searchAria: 'Поиск беседы',
+    },
     hint:
         'Новое входящее голосовое расшифровывается само, текст появляется под волной. '
         + 'Беседы, скрытые белым списком выше, не разбираются; свои исходящие — тоже.',
@@ -76,6 +99,17 @@ export const TELEGRAM_VOICE_CONFIG = {
     key: 'telegram',
     enabledKey: 'telegram_voice_autotranscribe',
     toggleClass: 'tg-voice-auto',
+    // У Telegram «группы» — это ПАПКИ аккаунта: принадлежность чата папке из
+    // одного его id не выводится, поэтому папку выбирают в форме, а плагин
+    // сверяется с ней по своей карте чатов.
+    scope: {
+        kindsKey: 'telegram_voice_scope_folders',
+        peersKey: 'telegram_voice_scope_dialogs',
+        groupsTitle: 'Папки',
+        peersTitle: 'Отдельные чаты',
+        searchPlaceholder: 'Поиск по названию',
+        searchAria: 'Поиск чата',
+    },
     hint:
         'Новое входящее голосовое расшифровывается само, текст появляется под волной. '
         + 'Разбираются только голосовые: пересланная музыка и подкасты — по кнопке.',
@@ -86,6 +120,17 @@ export const B24_VOICE_CONFIG = {
     key: 'bitrix',
     enabledKey: 'bitrix_voice_autotranscribe',
     toggleClass: 'b24-voice-auto',
+    // Ограничение портала: чат задачи по `DIALOG_ID` неотличим от обычного
+    // чата, поэтому вид `task` — такая же группа в этом списке, а отдельного
+    // ключа «только чаты задач» нет и быть не может.
+    scope: {
+        kindsKey: 'bitrix_voice_scope_kinds',
+        peersKey: 'bitrix_voice_scope_peers',
+        groupsTitle: 'Виды диалогов',
+        peersTitle: 'Отдельные диалоги',
+        searchPlaceholder: 'Поиск по названию',
+        searchAria: 'Поиск диалога',
+    },
     hint:
         'Новое входящее голосовое расшифровывается само, текст появляется под волной. '
         + 'Диалоги, скрытые белым списком выше, не разбираются; свои исходящие — тоже.',
@@ -156,9 +201,28 @@ export function buildVoiceForm(settings, onSaved, config, api, doc) {
         }
     };
 
+    // ── выбор бесед для авторазбора ──
+    //
+    // Отдельный белый список, НЕ связанный с видимостью: «не показывай мне
+    // этот чат» и «не трать GPU на этот чат» — разные просьбы. Пустой список
+    // означает «во всех беседах» (см. SCOPE_HINT), тумблера у него нет.
+    const scope = cfg.scope ? buildScope(d, cfg, api, s, onSaved) : null;
+    if (scope) {
+        fs.appendChild(scope.node);
+        // Недоступен, а не спрятан: исчезнувший блок читался бы как «настройки
+        // нет», а выключенный честно показывает и выбор, и то, что он сейчас
+        // ни на что не влияет.
+        scope.setEnabled(box.checked === true);
+    }
+
     box.addEventListener('change', async () => {
         const desired = !!box.checked;
         box.disabled = true;
+        // Доступность блока меняется СРАЗУ, ещё до ответа бэкенда: иначе
+        // человек, включивший тумблер, видел бы недоступный выбор и решил, что
+        // надо переоткрыть модалку. Отказ PATCH вернёт всё обратно вместе с
+        // самим чекбоксом.
+        if (scope) scope.setEnabled(desired);
         try {
             const updated = await updateUserSettings({ [cfg.enabledKey]: desired });
             showOk();
@@ -168,6 +232,7 @@ export function buildVoiceForm(settings, onSaved, config, api, doc) {
             // возвращаем сам чекбокс — иначе UI утверждал бы, что фича
             // включена, а бэкенд об этом не знал бы.
             box.checked = !desired;
+            if (scope) scope.setEnabled(!desired);
             showError(e);
         } finally {
             box.disabled = false;
@@ -252,4 +317,140 @@ export function buildVoiceForm(settings, onSaved, config, api, doc) {
     });
 
     return fs;
+}
+
+/**
+ * Блок «В каких чатах разбирать автоматически».
+ *
+ * Собран на общей форме выбора (`peer-picker.js`) — той же, устройство которой
+ * трижды написано руками в формах видимости. Здесь она параметризуется
+ * словарём площадки: у VK это ТИПЫ бесед, у Telegram — ПАПКИ аккаунта, у
+ * Битрикс24 — ВИДЫ диалогов.
+ *
+ * Источники данных приходят СНАРУЖИ (`api.listScopeGroups` /
+ * `api.listScopePeers`), а не собираются здесь: адреса и планировщики живут в
+ * модулях панелей, и у VK список обязан идти ФОНОВЫМ приоритетом общего
+ * лимитера (3 rps на весь клиент). Собранный внутри этого модуля запрос обошёл
+ * бы и то, и другое.
+ *
+ * Сохранение — своей кнопкой, а не по каждой галочке: выбор собирается из
+ * десятков отметок, и «сохранить» здесь осмысленный момент (в отличие от
+ * чекбокса авторазбора, где щелчок и есть решение).
+ *
+ * @param {Document} d документ
+ * @param {object} cfg конфиг панели (`*_VOICE_CONFIG`)
+ * @param {?object} api сетевой слой панели
+ * @param {object} s снимок user settings
+ * @param {?function} onSaved обратный вызов с обновлёнными настройками
+ * @returns {{node: object, setEnabled: function(boolean): void}}
+ */
+function buildScope(d, cfg, api, s, onSaved) {
+    const sc = cfg.scope;
+    const a = api || {};
+
+    const box = d.createElement('div');
+    box.className = 'voice-scope';
+
+    const title = d.createElement('div');
+    title.className = 'vk-visibility-group voice-scope-title';
+    title.textContent = 'В каких чатах разбирать автоматически';
+    box.appendChild(title);
+
+    const hint = d.createElement('div');
+    hint.className = 'notify-hint voice-scope-hint';
+    hint.textContent = SCOPE_HINT;
+    box.appendChild(hint);
+
+    const picker = buildPeerPicker({
+        doc: d,
+        classPrefix: 'voice-scope',
+        groupsTitle: sc.groupsTitle,
+        peersTitle: sc.peersTitle,
+        searchPlaceholder: sc.searchPlaceholder,
+        searchAria: sc.searchAria,
+        initialGroups: Array.isArray(s[sc.kindsKey]) ? s[sc.kindsKey] : [],
+        initialPeers: Array.isArray(s[sc.peersKey]) ? s[sc.peersKey] : [],
+        loadGroups: typeof a.listScopeGroups === 'function'
+            ? () => a.listScopeGroups() : null,
+        loadPeers: typeof a.listScopePeers === 'function'
+            ? () => a.listScopePeers() : null,
+        onChange: () => { summary.textContent = summaryText(); },
+    });
+    box.appendChild(picker.node);
+
+    const summary = d.createElement('div');
+    summary.className = 'notify-hint voice-scope-summary';
+    box.appendChild(summary);
+
+    const err = d.createElement('div');
+    err.className = 'notify-error voice-scope-error';
+    err.style.display = 'none';
+    box.appendChild(err);
+
+    const ok = d.createElement('div');
+    ok.className = 'notify-hint voice-scope-save-ok';
+    ok.textContent = 'Сохранено';
+    ok.style.display = 'none';
+    box.appendChild(ok);
+
+    function summaryText() {
+        const groups = picker.groups().length;
+        const peers = picker.peers().length;
+        if (!groups && !peers) return 'Выбора нет — разбираются все беседы.';
+        const parts = [];
+        if (groups) parts.push(`групп: ${groups}`);
+        if (peers) parts.push(`бесед: ${peers}`);
+        return `Разбираем только выбранное (${parts.join(', ')}).`;
+    }
+    summary.textContent = summaryText();
+
+    const actions = d.createElement('div');
+    actions.className = 'notify-actions voice-scope-actions';
+    const saveBtn = d.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'primary voice-scope-save';
+    saveBtn.textContent = 'Сохранить выбор';
+    saveBtn.addEventListener('click', async () => {
+        err.style.display = 'none';
+        err.textContent = '';
+        ok.style.display = 'none';
+        saveBtn.disabled = true;
+        // ТОЛЬКО два своих поля: PATCH применяет Some(..)-варианты, поэтому
+        // соседние настройки (включая белый список ВИДИМОСТИ) не трогаются.
+        // Списки уходят ЦЕЛИКОМ — снять галочку иначе нечем; уходят и
+        // выбранные, но не загруженные id, иначе форма молча вычёркивала бы
+        // беседы, до которых не дошёл список.
+        const payload = {
+            [sc.kindsKey]: picker.groups(),
+            [sc.peersKey]: picker.peers(),
+        };
+        try {
+            const updated = await updateUserSettings(payload);
+            ok.style.display = '';
+            if (typeof setTimeout === 'function') {
+                setTimeout(() => { ok.style.display = 'none'; }, 2000);
+            }
+            if (typeof onSaved === 'function') onSaved(updated);
+        } catch (e) {
+            err.style.display = '';
+            err.textContent = (e && e.message) ? e.message : 'Не удалось сохранить выбор.';
+        } finally {
+            saveBtn.disabled = false;
+        }
+    });
+    actions.appendChild(saveBtn);
+    box.appendChild(actions);
+
+    return {
+        node: box,
+        setEnabled(v) {
+            const on = v === true;
+            picker.setDisabled(!on);
+            saveBtn.disabled = !on;
+            // add/remove, а не `toggle(cls, force)`: второй аргумент toggle
+            // поддержан не везде, а состояние здесь строго двоичное.
+            if (on) box.classList.remove('voice-scope-off');
+            else box.classList.add('voice-scope-off');
+        },
+    };
 }

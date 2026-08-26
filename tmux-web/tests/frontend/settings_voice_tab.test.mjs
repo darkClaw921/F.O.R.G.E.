@@ -253,6 +253,193 @@ for (const [config, cls, key] of [
     eq(selectOf(fs), null, 'селекта движка без сетевого слоя нет');
 }
 
+// ── 4. блок «В каких чатах разбирать автоматически» ─────────────────────────
+//
+// Белый список авторазбора: ПУСТО = разбирать везде, отдельного тумблера у него
+// нет. Проверяется и то, что пустой список ничего не меняет, и то, что выбор
+// не теряет беседы, до которых не дошёл загруженный список.
+
+/** Мок источника бесед площадки. */
+function makeSource(peers, opts) {
+    const o = opts || {};
+    const calls = [];
+    return {
+        calls,
+        source: {
+            async listScopeGroups() {
+                calls.push('groups');
+                return o.groups || [
+                    { key: 'user', label: 'Личные сообщения' },
+                    { key: 'chat', label: 'Беседы' },
+                ];
+            },
+            async listScopePeers() {
+                calls.push('peers');
+                if (o.fails) throw new Error('плагин выключен');
+                return peers;
+            },
+        },
+    };
+}
+
+const PEERS = [
+    { id: '2000000042', title: 'Беседа' },
+    { id: '777', title: 'Человек' },
+];
+const scopeSaveOf = (fs) => fs.querySelector('.voice-scope-save');
+const scopeItemsOf = (fs) => fs.querySelectorAll('.voice-scope-item')
+    .map((r) => r.querySelector('input'));
+
+// Блок есть во всех трёх вкладках, и терминология групп — своя у каждой.
+for (const [config, groupsTitle, keys] of [
+    [V.VK_VOICE_CONFIG, 'Типы бесед', ['vk_voice_scope_kinds', 'vk_voice_scope_peers']],
+    [V.TELEGRAM_VOICE_CONFIG, 'Папки',
+        ['telegram_voice_scope_folders', 'telegram_voice_scope_dialogs']],
+    [V.B24_VOICE_CONFIG, 'Виды диалогов',
+        ['bitrix_voice_scope_kinds', 'bitrix_voice_scope_peers']],
+]) {
+    patches.length = 0;
+    const { source } = makeSource(PEERS);
+    const fs = V.buildVoiceForm(
+        { [config.enabledKey]: true }, null, config, source, $document,
+    );
+    // eslint-disable-next-line no-await-in-loop
+    await flush();
+    // eslint-disable-next-line no-await-in-loop
+    await flush();
+
+    const text = String(fs.textContent || '');
+    ok(text.includes('В каких чатах разбирать автоматически'), `${keys[0]}: блок отрисован`);
+    ok(text.includes(groupsTitle), `${keys[0]}: заголовок групп — «${groupsTitle}»`);
+    ok(
+        text.includes('разбираются голосовые ВО ВСЕХ беседах'),
+        `${keys[0]}: подпись честно объясняет пустой список`,
+    );
+
+    // Пустой выбор сохраняется пустыми списками и НИЧЕГО лишнего не пишет.
+    dispatch(scopeSaveOf(fs), 'click');
+    // eslint-disable-next-line no-await-in-loop
+    await flush();
+    // eslint-disable-next-line no-await-in-loop
+    await flush();
+    eq(patches.length, 1, `${keys[0]}: сохранение — один запрос`);
+    eq(patches[0].body, { [keys[0]]: [], [keys[1]]: [] },
+        `${keys[0]}: в теле ровно два своих поля`);
+    patches.length = 0;
+}
+
+// Сохранённый выбор виден при следующем открытии модалки.
+{
+    patches.length = 0;
+    const { source } = makeSource(PEERS);
+    const fs = V.buildVoiceForm({
+        vk_voice_autotranscribe: true,
+        vk_voice_scope_kinds: ['chat'],
+        vk_voice_scope_peers: ['777'],
+    }, null, V.VK_VOICE_CONFIG, source, $document);
+    await flush();
+    await flush();
+
+    const boxes = scopeItemsOf(fs);
+    const checked = boxes.filter((b) => b.checked).length;
+    eq(checked, 2, 'перемонтирование показало сохранённые галочки');
+
+    dispatch(scopeSaveOf(fs), 'click');
+    await flush();
+    await flush();
+    eq(
+        patches[0].body,
+        { vk_voice_scope_kinds: ['chat'], vk_voice_scope_peers: ['777'] },
+        'выбор пережил переоткрытие и ушёл обратно тем же составом',
+    );
+}
+
+// ⚠ Выбранная, но НЕ загруженная беседа не теряется, и чистка — только по
+// нажатию: иначе первое же открытие настроек молча вычеркнуло бы её.
+{
+    patches.length = 0;
+    const { source } = makeSource(PEERS);
+    const fs = V.buildVoiceForm({
+        vk_voice_autotranscribe: true,
+        vk_voice_scope_peers: ['777', '2000000999'],
+    }, null, V.VK_VOICE_CONFIG, source, $document);
+    await flush();
+    await flush();
+
+    ok(
+        String(fs.textContent).includes('Выбрано вне загруженного списка: 1'),
+        'незагруженная беседа показана человеку',
+    );
+    dispatch(scopeSaveOf(fs), 'click');
+    await flush();
+    await flush();
+    eq(patches[0].body.vk_voice_scope_peers, ['777', '2000000999'],
+        'сохранение НЕ выбрасывает беседу, которой нет в загруженном списке');
+
+    patches.length = 0;
+    dispatch(fs.querySelector('.voice-scope-prune'), 'click');
+    dispatch(scopeSaveOf(fs), 'click');
+    await flush();
+    await flush();
+    eq(patches[0].body.vk_voice_scope_peers, ['777'],
+        'кнопка «Убрать несуществующие» вычищает её по явному нажатию');
+}
+
+// Блок недоступен при выключенном тумблере и оживает без перезагрузки модалки.
+{
+    patches.length = 0;
+    const { source } = makeSource(PEERS);
+    const fs = V.buildVoiceForm({}, null, V.VK_VOICE_CONFIG, source, $document);
+    await flush();
+    await flush();
+
+    ok(
+        String(fs.textContent).includes('В каких чатах разбирать автоматически'),
+        'при выключенном тумблере блок ВИДЕН (недоступен, а не спрятан)',
+    );
+    ok(scopeItemsOf(fs).every((b) => b.disabled === true), 'галочки выбора недоступны');
+    eq(scopeSaveOf(fs).disabled, true, 'сохранять выбор нечего');
+    eq(fs.querySelector('.voice-scope-search').disabled, true, 'поиск недоступен');
+
+    const toggle = toggleOf(fs, 'vk-voice-auto');
+    toggle.checked = true;
+    dispatch(toggle, 'change');
+    await flush();
+    await flush();
+    ok(scopeItemsOf(fs).every((b) => b.disabled === false),
+        'включение тумблера открывает выбор сразу, без перезагрузки модалки');
+    eq(scopeSaveOf(fs).disabled, false, 'кнопка сохранения доступна');
+}
+
+// Отказ загрузки списка выбор не роняет: он уйдёт обратно тем же составом.
+{
+    patches.length = 0;
+    const { source } = makeSource(PEERS, { fails: true });
+    const fs = V.buildVoiceForm({
+        vk_voice_autotranscribe: true,
+        vk_voice_scope_peers: ['777'],
+    }, null, V.VK_VOICE_CONFIG, source, $document);
+    await flush();
+    await flush();
+
+    dispatch(scopeSaveOf(fs), 'click');
+    await flush();
+    await flush();
+    eq(patches[0].body.vk_voice_scope_peers, ['777'],
+        'недоступный список бесед НЕ стирает сохранённый выбор');
+}
+
+// Селект движка и чекбокс от блока не пострадали: секция по-прежнему строится
+// без сетевого слоя, и тогда блока выбора в ней просто нет.
+{
+    const fs = V.buildVoiceForm({}, null, V.VK_VOICE_CONFIG, null, $document);
+    ok(!!toggleOf(fs, 'vk-voice-auto'), 'чекбокс на месте и без источников');
+    ok(
+        String(fs.textContent).includes('В каких чатах разбирать автоматически'),
+        'блок выбора строится и без источников — выбор при этом сохранённый',
+    );
+}
+
 // ── итог ────────────────────────────────────────────────────────────────────
 
 if (failures > 0) {

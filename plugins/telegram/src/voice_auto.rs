@@ -19,22 +19,34 @@
 //! Поэтому индекс всегда [`crate::voice::ONLY_INDEX`], а не поле DTO: ключ
 //! кэша Telegram индекса не содержит вовсе.
 //!
-//! # ПРИНАДЛЕЖНОСТЬ ЧАТА ПАПКЕ ИЗ ОДНОГО `dialog_id` НЕ СЛЕДУЕТ
+//! # ПАПКИ ЧАТА РАЗРЕШАЮТСЯ ЗАПРОСОМ, А НЕ ВЫВОДЯТСЯ ИЗ `dialog_id`
 //!
-//! Белый список Telegram строится по ПАПКАМ аккаунта, а какая папка у чата —
-//! знает только загруженный список (`static/js/telegram/visibility.js` при
-//! неизвестном чате отвечает «скрыт»). Здесь то же самое: при ДЕЙСТВУЮЩЕМ
-//! фильтре разбирается лишь чат, отмеченный ПОИМЁННО. Сторона выбрана
-//! консервативно намеренно: не разобрать голосовое — мелкая неприятность
-//! (кнопка на месте), а разобрать его в чате, который человек попросил не
-//! показывать, — отправить чужую речь в облако вопреки настройке.
+//! Оба белых списка Telegram — и видимость, и скоуп авторазбора — строятся по
+//! ПАПКАМ аккаунта. Из одного `dialog_id` папка не следует: правила папки
+//! читают вид чата, mute, непрочитанное и явные include/exclude
+//! ([`crate::dto::dialog_in_folder`]). Поэтому [`dialog_groups`] спрашивает
+//! Telegram: папки берутся из кэша состояния (их правки приезжают
+//! `updateDialogFilter*`), сам чат — одним `messages.getPeerDialogs`.
+//!
+//! Запрос делается ТОЛЬКО когда хоть один из белых списков ДЕЙСТВУЕТ и только
+//! для голосовых, то есть единицы раз в минуту в худшем случае. Раньше здесь
+//! стоял `peer_kind: None` — «папку не знаем», — и это тихо ломало фичу: при
+//! непустом скоупе по папкам НИ ОДНО голосовое не разбиралось, сколько бы
+//! папок человек ни отметил.
+//!
+//! Сторона отказа осталась консервативной: не смогли разрешить папки (нет
+//! связи, чат недоступен) — считаем группы неизвестными, и при действующем
+//! белом списке разбирается лишь чат, отмеченный ПОИМЁННО. Не разобрать
+//! голосовое — мелкая неприятность (кнопка на месте), а разобрать его в чате,
+//! который человек исключил, — отправить чужую речь в облако вопреки
+//! настройке.
 
 use std::sync::Arc;
 
 use forge_voice::auto::{Candidate, Skip};
 use forge_voice::prefs::Prefs;
 
-use crate::dto::MessageDto;
+use crate::dto::{self, MessageDto};
 use crate::media_cache::{CacheKey, MediaKind};
 use crate::state::TelegramState;
 use crate::voice::{voice_key, ONLY_INDEX};
@@ -84,13 +96,21 @@ pub async fn on_new_message(state: &Arc<TelegramState>, msg: &MessageDto) -> usi
         0
     };
 
+    // Папки — только если они кому-то нужны: при пустых белых списках это был
+    // бы RPC ради значения, которое всё равно не спросят.
+    let groups = if prefs.filter_active() || prefs.scope_active() {
+        dialog_groups(state, &msg.dialog_id).await
+    } else {
+        Vec::new()
+    };
+    let group_refs: Vec<&str> = groups.iter().map(String::as_str).collect();
+
     let cand = Candidate {
         kind: &media.kind,
         outgoing: msg.out,
         duration_secs: media.duration_secs.map(i64::from),
         peer: &msg.dialog_id,
-        // Папку чата из его id не вывести — см. шапку модуля.
-        peer_kind: None,
+        peer_groups: &group_refs,
     };
     if let Err(skip) = forge_voice::auto::decide(&prefs, &cand, max_duration_secs) {
         log_skip(&msg.dialog_id, msg.id, &skip);
@@ -115,6 +135,56 @@ pub async fn on_new_message(state: &Arc<TelegramState>, msg: &MessageDto) -> usi
     let handle = tokio::spawn(async move { run_one(st, key).await });
     state.register_worker(handle).await;
     1
+}
+
+/// Ключи белых списков, которым подходит чат (`inbox`/`archive` плюс папки).
+///
+/// Пустой список означает «групп не знаем» — при ДЕЙСТВУЮЩЕМ белом списке
+/// такой чат проходит только поимённо (см. шапку модуля). Так бывает, когда
+/// нет подключения, чат недоступен или его peer'а нет в кэше.
+///
+/// Папки кэшируются в состоянии до ближайшего `updateDialogFilter*`, сам чат
+/// спрашивается каждый раз: его mute, архив и непрочитанное меняются
+/// постоянно, а от них зависят `exclude_*`-правила папок.
+pub async fn dialog_groups(state: &Arc<TelegramState>, dialog_id: &str) -> Vec<String> {
+    let Some(id) = dto::parse_dialog_id(dialog_id) else {
+        return Vec::new();
+    };
+    let Some(client) = state.client().await else {
+        return Vec::new();
+    };
+    let folders = match state.cached_folders().await {
+        Some(f) => f,
+        None => match crate::routes::dialogs::fetch_folders(&client).await {
+            Ok(f) => {
+                state.set_folders(f.clone()).await;
+                f
+            }
+            Err(e) => {
+                tracing::warn!(
+                    target: "forge_telegram",
+                    dialog_id = %dialog_id,
+                    error = %e.body.message,
+                    "forge-telegram: could not read folders for voice auto-transcribe"
+                );
+                return Vec::new();
+            }
+        },
+    };
+    let defaults = state.notify_defaults().await;
+    let Some(dialog) =
+        crate::updates::fetch_peer_dialog(state, &client, id, defaults, "voice_scope").await
+    else {
+        return Vec::new();
+    };
+    let keys = dto::dialog_group_keys(&dialog, &folders);
+    tracing::debug!(
+        target: "forge_telegram",
+        dialog_id = %dialog_id,
+        groups = %keys.join(","),
+        "forge-telegram: voice auto-transcribe resolved the chat folders"
+    );
+    keys
 }
 
 /// Печатает причину пропуска (`debug`: у выключенного тумблера это строка на

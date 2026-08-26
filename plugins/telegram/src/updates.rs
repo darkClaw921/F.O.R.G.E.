@@ -52,6 +52,30 @@
 //! но и обновляет серверные кэши ([`CacheEffect`]). Порядок именно такой:
 //! кэш пишется ДО broadcast, иначе клиент, дёрнувший REST в ответ на кадр,
 //! успел бы прочитать устаревшее состояние.
+//!
+//! # Диалог, которого нет ни в одной загруженной странице
+//!
+//! Кэш флагов ([`crate::state::TelegramState::notify_overrides`]) засевается
+//! ЛИСТИНГАМИ, то есть верхушкой списка. Чат, замьюченный точечно и в эту
+//! верхушку не попавший, кэшу неизвестен — а дефолт его категории говорит
+//! «звенит». Именно так тост приходил от чата, который пользователь заглушил
+//! месяц назад. Поэтому на промахе кэша воркер один раз ходит за правдой:
+//! [`probe_dialog_flags`] делает один `messages.getPeerDialogs`, который
+//! отдаёт и настройки уведомлений, и папку (архив), и настоящий `kind`.
+//!
+//! Цена ограничена по построению: попытка столбится
+//! ([`crate::state::TelegramState::claim_flags_probe`]) до запроса, поэтому
+//! на диалог приходится не больше одного RPC за сессию, а сам запрос идёт
+//! под [`DIALOG_FLAGS_TIMEOUT`] — зависший RPC не имеет права остановить
+//! поток апдейтов всего аккаунта.
+//!
+//! # Архив: досев + `updateFolderPeers`
+//!
+//! Архивные чаты в стартовый листинг не попадают вовсе (`iter_dialogs`
+//! отдаёт основной список, а строку «Архив» мы отбрасываем), поэтому
+//! [`seed_archive_flags`] один раз за процесс досевает архив, а
+//! `updateFolderPeers` держит кэш в актуальном состоянии дальше: перенос
+//! чата в архив с телефона обязан гасить тосты немедленно.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -60,7 +84,7 @@ use grammers_client::client::{UpdateStream, UpdatesConfiguration};
 use grammers_client::update::Update;
 use grammers_client::Client;
 use grammers_mtsender::InvocationError;
-use grammers_session::types::PeerId;
+use grammers_session::types::{PeerId, PeerKind};
 use grammers_session::updates::UpdatesLike;
 use grammers_tl_types as tl;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -84,6 +108,21 @@ pub const BACKOFF_SECS: [u64; 6] = [1, 2, 5, 10, 30, 60];
 /// задержал бы realtime насовсем. Апдейты в это время не теряются — они
 /// копятся в канале рантайма.
 pub const NOTIFY_DEFAULTS_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Сколько ждать ленивый резолв флагов неизвестного диалога.
+///
+/// Запрос стоит в hot-path'е воркера (один поток апдейтов на весь аккаунт),
+/// поэтому потолок жёсткий: не дождались — отдаём кадр по прежним правилам
+/// (дефолт категории), а не задерживаем typing, прочтения и соседние
+/// сообщения. Три секунды — заметно меньше, чем пользователь готов ждать
+/// появления сообщения в ленте.
+pub const DIALOG_FLAGS_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// Сколько архивных диалогов досевать в кэш флагов при старте воркера.
+///
+/// Одна страница `messages.getDialogs` (потолок Telegram) — архив длиннее
+/// сотни чатов встречается редко, а хвост добирается ленивым резолвом.
+pub const ARCHIVE_SEED_LIMIT: usize = 100;
 
 /// Как часто перепроверять состояние логина, пока ждём авторизации.
 ///
@@ -198,38 +237,52 @@ pub enum NotifyOutcome {
     /// Отдельный вариант, а не «просто None»: топики форума наш контракт
     /// пока не адресует, и это осознанное «игнорируем», а не дыра.
     Ignored,
+    /// Настройки диалога унаследованы от категории, а КАТЕГОРИЯ неизвестна.
+    ///
+    /// Бывает ровно у channel-peer'ов, которых мы ещё не видели: мегагруппа
+    /// и broadcast-канал по тегу `PeerId` неразличимы, а глобальные дефолты
+    /// у них разные. Любое значение здесь — догадка с шансом 50/50, и она
+    /// хуже отсутствия ответа: попав в кэш, она пережила бы сам апдейт и
+    /// заглушённая мегагруппа звенела бы до следующего листинга. Поэтому ни
+    /// события, ни записи в кэш — правду добудет [`probe_dialog_flags`] на
+    /// первом же сообщении.
+    Unknown,
 }
 
 /// Разбор `updateNotifySettings` — чистая функция.
 ///
 /// `now` и текущие `defaults` передаются параметрами, чтобы расчёт был
-/// детерминированным и проверялся без сети.
+/// детерминированным и проверялся без сети. `kind` — настоящая категория
+/// диалога, если она нам известна (кэш
+/// [`crate::state::TelegramState::dialog_kinds`]); `None` означает «не
+/// знаем», и тогда унаследованные настройки channel-peer'а дают
+/// [`NotifyOutcome::Unknown`] вместо догадки.
 pub fn notify_outcome(
     u: &tl::types::UpdateNotifySettings,
     now: i64,
     defaults: NotifyDefaults,
+    kind: Option<&str>,
 ) -> NotifyOutcome {
     let tl::enums::PeerNotifySettings::Settings(settings) = &u.notify_settings;
     match &u.peer {
         tl::enums::NotifyPeer::Peer(p) => {
             let peer = PeerId::from(&p.peer);
+            // Пустые настройки peer'а означают «как в категории» — без этой
+            // подстановки заглушённый глобально чат вернулся бы во фронт как
+            // звенящий. Но подставлять можно только ЗНАЯ категорию: по тегу
+            // `PeerId` мегагруппа неотличима от broadcast-канала.
+            let default_muted = match kind {
+                Some(k) => defaults.for_kind(k),
+                None if dto::notify_settings_inherited(settings)
+                    && peer.kind() == PeerKind::Channel =>
+                {
+                    return NotifyOutcome::Unknown;
+                }
+                None => defaults.for_peer_id(peer),
+            };
             NotifyOutcome::Dialog {
                 peer,
-                // Пустые настройки peer'а означают «как в категории» — без
-                // этой подстановки заглушённый глобально чат вернулся бы
-                // во фронт как звенящий.
-                //
-                // Оговорка: категория здесь берётся по тегу `PeerId`, а он
-                // не отличает мегагруппу от broadcast-канала. Промах
-                // возможен только у диалога с полностью унаследованными
-                // настройками и разными дефолтами `chats`/`broadcasts`;
-                // ближайший листинг диалогов перезапишет запись точным
-                // значением (там kind известен из индекса peer'ов).
-                muted: dto::notify_muted_with_default(
-                    settings,
-                    now,
-                    defaults.for_peer_id(peer),
-                ),
+                muted: dto::notify_muted_with_default(settings, now, default_muted),
             }
         }
         tl::enums::NotifyPeer::NotifyUsers => NotifyOutcome::Defaults(NotifyDefaults {
@@ -255,8 +308,9 @@ pub fn notify_settings_event(
     u: &tl::types::UpdateNotifySettings,
     now: i64,
     defaults: NotifyDefaults,
+    kind: Option<&str>,
 ) -> Option<TgServerMsg> {
-    match notify_outcome(u, now, defaults) {
+    match notify_outcome(u, now, defaults, kind) {
         NotifyOutcome::Defaults(d) => Some(TgServerMsg::NotifyDefaultsChanged {
             users: d.users,
             chats: d.chats,
@@ -266,7 +320,7 @@ pub fn notify_settings_event(
             dialog_id: dto::dialog_id_string(peer),
             muted,
         }),
-        NotifyOutcome::Ignored => None,
+        NotifyOutcome::Ignored | NotifyOutcome::Unknown => None,
     }
 }
 
@@ -397,6 +451,15 @@ pub enum CacheEffect {
         /// Итоговое «заглушён».
         muted: bool,
     },
+    /// Папки аккаунта изменились — кэш списка больше не годится.
+    FoldersChanged,
+    /// Диалог переехал в архив или обратно (`updateFolderPeers`).
+    DialogArchived {
+        /// Диалог.
+        dialog_id: i64,
+        /// Лежит ли он теперь в архиве.
+        archived: bool,
+    },
 }
 
 /// Что делать с апдейтом: события в broadcast, unread и правки кэшей.
@@ -418,13 +481,43 @@ struct UpdateContext {
     defaults: NotifyDefaults,
     /// Флаги диалога нового сообщения (для остальных апдейтов не нужны).
     flags: DialogFlags,
+    /// Категория диалога, к которому относится апдейт, если известна.
+    ///
+    /// Нужна `updateNotifySettings`: подставить дефолт категории можно
+    /// только зная её (мегагруппа против broadcast-канала).
+    kind: Option<&'static str>,
     /// Текущее время — расчёт `muted` обязан быть детерминированным.
     now: i64,
 }
 
+/// [`Mapped`] для `updateFolderPeers` — переезд чатов в архив и обратно.
+///
+/// События наружу нет намеренно: контракт WS пары «диалог ↔ папка» не знает,
+/// а фронт узнаёт о переезде из полей ближайшего кадра `new_message`. Нам же
+/// важна СЕРВЕРНАЯ правда: без неё чат, убранный в архив с телефона,
+/// продолжал бы звенеть до перезагрузки списка.
+fn folder_peers_mapped(u: &tl::types::UpdateFolderPeers) -> Mapped {
+    let mut effects = Vec::with_capacity(u.folder_peers.len());
+    for fp in &u.folder_peers {
+        let tl::enums::FolderPeer::Peer(fp) = fp;
+        let Some(dialog_id) = PeerId::from(&fp.peer).bot_api_dialog_id() else {
+            continue;
+        };
+        effects.push(CacheEffect::DialogArchived {
+            dialog_id,
+            archived: dto::is_archived(Some(fp.folder_id)),
+        });
+    }
+    Mapped {
+        events: Vec::new(),
+        unread_for: None,
+        effects,
+    }
+}
+
 /// [`Mapped`] для `updateNotifySettings`.
 fn notify_mapped(u: &tl::types::UpdateNotifySettings, ctx: UpdateContext) -> Mapped {
-    match notify_outcome(u, ctx.now, ctx.defaults) {
+    match notify_outcome(u, ctx.now, ctx.defaults, ctx.kind) {
         NotifyOutcome::Defaults(d) => Mapped {
             events: vec![TgServerMsg::NotifyDefaultsChanged {
                 users: d.users,
@@ -449,7 +542,7 @@ fn notify_mapped(u: &tl::types::UpdateNotifySettings, ctx: UpdateContext) -> Map
                 .into_iter()
                 .collect(),
         },
-        NotifyOutcome::Ignored => Mapped::default(),
+        NotifyOutcome::Ignored | NotifyOutcome::Unknown => Mapped::default(),
     }
 }
 
@@ -511,6 +604,19 @@ fn map_update(update: &Update, ctx: UpdateContext) -> Mapped {
         // дефолтов и записи в кэш.
         Update::Raw(raw) => match &raw.raw {
             tl::enums::Update::NotifySettings(u) => notify_mapped(u, ctx),
+            // Архивация с телефона: событий наружу нет, но серверный кэш
+            // обязан узнать о ней сразу (см. [`folder_peers_mapped`]).
+            tl::enums::Update::FolderPeers(u) => folder_peers_mapped(u),
+            // Правка папок: фронт перечитает их сам по событию, а МЫ обязаны
+            // выбросить свой кэш — по нему авторазбор решает, попадает ли чат
+            // в отмеченную папку.
+            other @ (tl::enums::Update::DialogFilter(_)
+            | tl::enums::Update::DialogFilterOrder(_)
+            | tl::enums::Update::DialogFilters) => Mapped {
+                events: map_raw_update(other).into_iter().collect(),
+                unread_for: None,
+                effects: vec![CacheEffect::FoldersChanged],
+            },
             other => Mapped {
                 events: map_raw_update(other).into_iter().collect(),
                 ..Mapped::default()
@@ -539,30 +645,221 @@ async fn dialog_flags(
     resolve_dialog_flags(cached, archived, defaults, kind)
 }
 
+/// DTO диалога из ответа `messages.getPeerDialogs` — чистая часть
+/// [`fetch_peer_dialog`].
+///
+/// `None` ⇒ запрошенного диалога в ответе нет (у аккаунта его попросту не
+/// существует — например, сообщение из чата, откуда нас уже удалили).
+///
+/// Именно DTO, а не одни флаги: тем же ответом пользуется авторазбор
+/// голосовых, которому нужны и `kind`, и `bot`/`contact`, и непрочитанное —
+/// правила папок Telegram читают всё это ([`dto::dialog_in_folder`]).
+pub fn peer_dialogs_dto(
+    answer: &tl::enums::messages::PeerDialogs,
+    id: PeerId,
+    now: i64,
+    defaults: NotifyDefaults,
+) -> Option<dto::DialogDto> {
+    let tl::enums::messages::PeerDialogs::Dialogs(d) = answer;
+    let index = dto::RawPeerIndex::new(&d.users, &d.chats);
+    let raw = d
+        .dialogs
+        .iter()
+        .find(|raw| !dto::is_folder_row(raw) && dto::raw_dialog_peer(raw) == id)?;
+    Some(dto::from_raw_dialog_with_defaults(
+        raw, None, &index, now, defaults,
+    ))
+}
+
+/// Флаги диалога из того же ответа — тонкая обёртка над [`peer_dialogs_dto`].
+///
+/// Вместе с флагами возвращается настоящая КАТЕГОРИЯ: только по данным чата
+/// мегагруппа отличима от broadcast-канала.
+pub fn peer_dialogs_flags(
+    answer: &tl::enums::messages::PeerDialogs,
+    id: PeerId,
+    now: i64,
+    defaults: NotifyDefaults,
+) -> Option<(DialogFlags, Option<&'static str>)> {
+    let dialog = peer_dialogs_dto(answer, id, now, defaults)?;
+    Some((
+        DialogFlags {
+            muted: dialog.muted,
+            archived: dialog.archived,
+        },
+        dto::kind_static(&dialog.kind),
+    ))
+}
+
+/// Один `messages.getPeerDialogs` по диалогу, которого нет в кэше.
+///
+/// `None` ⇒ peer'а нет в кэше (без `access_hash` запрос всё равно отвергнут,
+/// а резолв по сети — это скан диалогов, десятки RPC), RPC не уложился в
+/// [`DIALOG_FLAGS_TIMEOUT`] или Telegram про такой диалог не знает.
+///
+/// `who` — что именно спрашивает; попадает в лог, чтобы отказ был читаем и у
+/// флагов уведомлений, и у авторазбора голосовых.
+pub async fn fetch_peer_dialog(
+    state: &Arc<TelegramState>,
+    client: &Client,
+    id: PeerId,
+    defaults: NotifyDefaults,
+    who: &'static str,
+) -> Option<dto::DialogDto> {
+    let key = id.bot_api_dialog_id().unwrap_or_default();
+    let peer = peers::cached_peer(state, id).await?;
+    let request = tl::functions::messages::GetPeerDialogs {
+        peers: vec![tl::enums::InputDialogPeer::Peer(
+            tl::types::InputDialogPeer {
+                peer: tl::enums::InputPeer::from(&peer),
+            },
+        )],
+    };
+    match tokio::time::timeout(DIALOG_FLAGS_TIMEOUT, client.invoke(&request)).await {
+        Ok(Ok(answer)) => peer_dialogs_dto(&answer, id, dto::now_unix(), defaults),
+        Ok(Err(e)) => {
+            tracing::warn!(
+                target: "forge_telegram",
+                dialog_id = key,
+                who,
+                error = %e,
+                "forge-telegram: could not read the dialog behind an update"
+            );
+            None
+        }
+        Err(_) => {
+            tracing::warn!(
+                target: "forge_telegram",
+                dialog_id = key,
+                who,
+                timeout_secs = DIALOG_FLAGS_TIMEOUT.as_secs(),
+                "forge-telegram: reading the dialog behind an update timed out"
+            );
+            None
+        }
+    }
+}
+
+/// Один поход в сеть за флагами диалога, которого нет в кэше.
+///
+/// Возвращает `None`, когда правды добыть не удалось (попытка уже была,
+/// peer'а нет в кэше, RPC не уложился в [`DIALOG_FLAGS_TIMEOUT`] или
+/// Telegram про такой диалог ничего не знает) — вызывающий тогда работает
+/// по прежнему правилу «дефолт категории».
+///
+/// Успех кладёт в состояние ВСЁ, что узнал: mute, архив и категорию. Именно
+/// поэтому одного RPC хватает навсегда — следующее сообщение из этого чата
+/// разрешится по кэшу.
+async fn probe_dialog_flags(
+    state: &Arc<TelegramState>,
+    client: &Client,
+    id: PeerId,
+    key: i64,
+    defaults: NotifyDefaults,
+) -> Option<DialogFlags> {
+    // Пока настоящие дефолты не приехали, результат резолва — значение,
+    // посчитанное от заглушки. В кэше оно пережило бы саму заглушку и
+    // заглушённый глобально чат звенел бы всю сессию.
+    if !state.notify_defaults_known() {
+        return None;
+    }
+    if !state.claim_flags_probe(key).await {
+        return None;
+    }
+    let dialog = fetch_peer_dialog(state, client, id, defaults, "notify_flags").await?;
+    let flags = DialogFlags {
+        muted: dialog.muted,
+        archived: dialog.archived,
+    };
+    let kind = dto::kind_static(&dialog.kind);
+    state
+        .remember_dialog_flags(key, flags.muted, flags.archived)
+        .await;
+    if let Some(kind) = kind {
+        state.set_dialog_kind(key, kind).await;
+    }
+    tracing::debug!(
+        target: "forge_telegram",
+        dialog_id = key,
+        muted = flags.muted,
+        archived = flags.archived,
+        kind = kind.unwrap_or("?"),
+        "forge-telegram: notification flags resolved for a dialog outside the cache"
+    );
+    Some(flags)
+}
+
 /// Флаги диалога, из которого пришло сообщение.
 ///
 /// Категория берётся из `Peer` (там мегагруппа — это `group`), а не из тега
 /// `PeerId`: иначе мегагруппа получала бы дефолт broadcast-каналов.
+///
+/// На промахе кэша — один ленивый резолв ([`probe_dialog_flags`]): дефолт
+/// категории вместо точечного mute'а и есть та самая причина тостов от
+/// заглушённых чатов.
 async fn message_flags(
     state: &Arc<TelegramState>,
+    client: &Client,
     msg: &grammers_client::message::Message,
     defaults: NotifyDefaults,
 ) -> DialogFlags {
     let peer_id = msg.peer_id();
     let kind = msg.peer().map_or_else(|| dto::kind_of(peer_id), dto::peer_kind);
-    dialog_flags(state, peer_id.bot_api_dialog_id(), kind, defaults).await
+    let Some(key) = peer_id.bot_api_dialog_id() else {
+        return resolve_dialog_flags(None, false, defaults, kind);
+    };
+    // Категория из сообщения точнее тега id — запоминаем её и для будущих
+    // `updateNotifySettings` по этому диалогу.
+    state.set_dialog_kind(key, kind).await;
+    if let Some(muted) = state.is_dialog_muted(key).await {
+        return DialogFlags {
+            muted,
+            archived: state.is_archived(key).await,
+        };
+    }
+    if let Some(flags) = probe_dialog_flags(state, client, peer_id, key, defaults).await {
+        return flags;
+    }
+    dialog_flags(state, Some(key), kind, defaults).await
+}
+
+/// Категория диалога, к которому относится `updateNotifySettings`.
+///
+/// `None` — либо апдейт не про конкретный диалог, либо такого диалога мы
+/// ещё не видели (см. [`NotifyOutcome::Unknown`]).
+async fn notify_update_kind(
+    state: &Arc<TelegramState>,
+    u: &tl::types::UpdateNotifySettings,
+) -> Option<&'static str> {
+    let tl::enums::NotifyPeer::Peer(p) = &u.peer else {
+        return None;
+    };
+    let key = PeerId::from(&p.peer).bot_api_dialog_id()?;
+    state.dialog_kind(key).await
 }
 
 /// Собирает контекст обработки: снимок дефолтов, флаги диалога, время.
-async fn update_context(state: &Arc<TelegramState>, update: &Update) -> UpdateContext {
+async fn update_context(
+    state: &Arc<TelegramState>,
+    client: &Client,
+    update: &Update,
+) -> UpdateContext {
     let defaults = state.notify_defaults().await;
-    let flags = match update {
-        Update::NewMessage(msg) => message_flags(state, msg, defaults).await,
-        _ => DialogFlags::default(),
-    };
+    let mut flags = DialogFlags::default();
+    let mut kind = None;
+    match update {
+        Update::NewMessage(msg) => flags = message_flags(state, client, msg, defaults).await,
+        Update::Raw(raw) => {
+            if let tl::enums::Update::NotifySettings(u) = &raw.raw {
+                kind = notify_update_kind(state, u).await;
+            }
+        }
+        _ => {}
+    }
     UpdateContext {
         defaults,
         flags,
+        kind,
         now: dto::now_unix(),
     }
 }
@@ -588,6 +885,13 @@ async fn apply_effects(state: &Arc<TelegramState>, effects: &[CacheEffect]) {
             }
             CacheEffect::DialogMuted { dialog_id, muted } => {
                 state.set_dialog_muted(*dialog_id, *muted).await;
+            }
+            CacheEffect::FoldersChanged => state.forget_folders().await,
+            CacheEffect::DialogArchived {
+                dialog_id,
+                archived,
+            } => {
+                state.set_archived(*dialog_id, *archived).await;
             }
         }
     }
@@ -647,9 +951,11 @@ pub fn invalidations(events: &[TgServerMsg]) -> Vec<(String, i32)> {
 
 /// Обрабатывает один апдейт: кэш peer'ов, кэш уведомлений, медиа-кэш,
 /// unread, broadcast.
-async fn handle_update(state: &Arc<TelegramState>, update: &Update) {
+async fn handle_update(state: &Arc<TelegramState>, client: &Client, update: &Update) {
+    // Кэш peer'ов — ДО контекста: ленивый резолв флагов
+    // ([`probe_dialog_flags`]) берёт `access_hash` именно оттуда.
     cache_peers_from(state, update).await;
-    let ctx = update_context(state, update).await;
+    let ctx = update_context(state, client, update).await;
     let Mapped {
         events,
         unread_for,
@@ -759,7 +1065,13 @@ pub async fn refresh_notify_defaults(state: &Arc<TelegramState>, client: &Client
     )
     .await;
     let fresh = match fresh {
-        Ok(Some(d)) => d,
+        Ok(Some(d)) => {
+            // Порядок важен: пометка «дефолты настоящие» ставится ДО их
+            // публикации, иначе резолв, начавшийся между двумя строками,
+            // счёл бы их всё ещё заглушкой и отказался бы работать.
+            state.mark_notify_defaults_loaded();
+            d
+        }
         Ok(None) => return,
         Err(_) => {
             tracing::warn!(
@@ -783,6 +1095,44 @@ pub async fn refresh_notify_defaults(state: &Arc<TelegramState>, client: &Client
             chats: fresh.chats,
             broadcasts: fresh.broadcasts,
         });
+    }
+}
+
+/// Досевает кэш флагов содержимым архива — один раз за процесс.
+///
+/// # Зачем отдельный запрос
+///
+/// Стартовый листинг фронта идёт через `iter_dialogs()`, а он отдаёт
+/// ОСНОВНОЙ список: архив представлен одной служебной строкой «Архив»,
+/// которую мы отбрасываем. В результате про архивные чаты сервер не знал
+/// ничего, а «не знаю» для архива означает «показать» — и архив звенел.
+/// Один `messages.getDialogs` с `folder_id = 1` закрывает это целиком.
+///
+/// Ошибка не важна: не досеяли — работает ленивый резолв по первому
+/// сообщению. Поэтому и результат, и отказ только логируются.
+pub async fn seed_archive_flags(state: &Arc<TelegramState>, client: &Client) {
+    // По той же причине, что и в [`probe_dialog_flags`]: досев ЗАПОМИНАЕТ
+    // `muted`, посчитанный с наследованием от дефолтов.
+    if !state.notify_defaults_known() || !state.claim_archive_seed() {
+        return;
+    }
+    let defaults = state.notify_defaults().await;
+    match crate::routes::dialogs::folder_dialogs(state, client, 1, ARCHIVE_SEED_LIMIT, defaults)
+        .await
+    {
+        Ok(dialogs) => {
+            state.remember_dialogs(&dialogs).await;
+            tracing::info!(
+                target: "forge_telegram",
+                count = dialogs.len(),
+                "forge-telegram: archived dialogs seeded into the notification cache"
+            );
+        }
+        Err(e) => tracing::warn!(
+            target: "forge_telegram",
+            error = %e.body.message,
+            "forge-telegram: could not seed archived dialogs"
+        ),
     }
 }
 
@@ -827,7 +1177,7 @@ async fn run_worker(
             next = stream.next() => next,
         };
         match next {
-            Ok(update) => handle_update(state, &update).await,
+            Ok(update) => handle_update(state, &client, &update).await,
             Err(e) => {
                 // Сохраняем pts ДО ухода: иначе реконнект с catch_up
                 // пере-выкачает уже показанные сообщения.
@@ -950,6 +1300,9 @@ pub async fn supervisor(state: Arc<TelegramState>) {
         // звенящее. Апдейты за это время не теряются: они копятся в канале
         // рантайма, который мы только что забрали, но ещё не читаем.
         refresh_notify_defaults(&state, &client).await;
+        // Архив — тоже ДО первого апдейта и по той же причине: сообщение из
+        // архивного чата иначе уедет во фронт звенящим.
+        seed_archive_flags(&state, &client).await;
 
         match run_worker(&state, client, rx).await {
             WorkerExit::Shutdown => break,
@@ -1598,7 +1951,7 @@ mod tests {
         ];
         for (mute_until, silent, defaults, want_muted) in cases {
             let u = notify_update(dialog_notify_peer(777_000), mute_until, silent);
-            let ev = notify_settings_event(&u, now, defaults)
+            let ev = notify_settings_event(&u, now, defaults, Some("user"))
                 .expect("настройки диалога дают событие");
             assert_eq!(
                 ev,
@@ -1647,12 +2000,12 @@ mod tests {
         for (peer, want) in cases {
             let u = notify_update(peer.clone(), Some(i32::MAX), None);
             assert_eq!(
-                notify_outcome(&u, now, base),
+                notify_outcome(&u, now, base, None),
                 NotifyOutcome::Defaults(want),
                 "{peer:?}"
             );
             assert_eq!(
-                notify_settings_event(&u, now, base),
+                notify_settings_event(&u, now, base, None),
                 Some(TgServerMsg::NotifyDefaultsChanged {
                     users: want.users,
                     chats: want.chats,
@@ -1664,7 +2017,7 @@ mod tests {
         // Снятие глобального mute («все каналы» размьючены) тоже доезжает.
         let u = notify_update(tl::enums::NotifyPeer::NotifyBroadcasts, Some(0), None);
         assert_eq!(
-            notify_outcome(&u, now, muted_defaults()),
+            notify_outcome(&u, now, muted_defaults(), None),
             NotifyOutcome::Defaults(NotifyDefaults {
                 users: true,
                 chats: true,
@@ -1692,8 +2045,11 @@ mod tests {
             )
             .notify_settings,
         };
-        assert_eq!(notify_outcome(&u, now, muted_defaults()), NotifyOutcome::Ignored);
-        assert!(notify_settings_event(&u, now, muted_defaults()).is_none());
+        assert_eq!(
+            notify_outcome(&u, now, muted_defaults(), None),
+            NotifyOutcome::Ignored
+        );
+        assert!(notify_settings_event(&u, now, muted_defaults(), None).is_none());
         assert_eq!(
             notify_mapped(
                 &u,
@@ -1816,6 +2172,220 @@ mod tests {
 
         // Архив прокидывается как есть.
         assert!(resolve_dialog_flags(Some(false), true, NotifyDefaults::default(), "user").archived);
+    }
+
+    /// Сырой `messages.getPeerDialogs` — источник правды ленивого резолва:
+    /// mute (с наследованием по НАСТОЯЩЕЙ категории), архив и сам kind.
+    #[test]
+    fn peer_dialogs_answer_yields_flags_and_the_real_kind() {
+        let now = 1_800_000_000_i64;
+        let chats_only = NotifyDefaults {
+            chats: true,
+            ..NotifyDefaults::default()
+        };
+        let id = dto::parse_dialog_id("-1001234567890").unwrap();
+
+        // Мегагруппа в архиве с УНАСЛЕДОВАННЫМИ настройками: по тегу id её
+        // приняли бы за канал (broadcasts = false ⇒ «звенит»), а по данным
+        // чата видно группу — а «все группы» заглушены.
+        let answer = peer_dialogs_answer(
+            raw_dialog_row(
+                tl::enums::Peer::Channel(tl::types::PeerChannel {
+                    channel_id: 1_234_567_890,
+                }),
+                Some(1),
+                inherited_settings(),
+            ),
+            vec![test_megagroup(1_234_567_890)],
+        );
+        assert_eq!(
+            peer_dialogs_flags(&answer, id, now, chats_only),
+            Some((
+                DialogFlags {
+                    muted: true,
+                    archived: true,
+                },
+                Some("group")
+            ))
+        );
+
+        // Точечный mute «навсегда» в чате, у которого категория не заглушена.
+        let mut muted_forever = inherited_settings();
+        muted_forever.mute_until = Some(i32::MAX);
+        let answer = peer_dialogs_answer(
+            raw_dialog_row(
+                tl::enums::Peer::User(tl::types::PeerUser { user_id: 777_000 }),
+                None,
+                muted_forever,
+            ),
+            Vec::new(),
+        );
+        let user_id = dto::parse_dialog_id("777000").unwrap();
+        let (flags, kind) =
+            peer_dialogs_flags(&answer, user_id, now, NotifyDefaults::default()).unwrap();
+        assert!(flags.muted, "точечный mute обязан пережить промах кэша");
+        assert!(!flags.archived);
+        // Пользователя в `users` ответа нет ⇒ категория берётся по тегу id.
+        assert_eq!(kind, Some("user"));
+
+        // Диалога в ответе нет вовсе — резолв обязан честно вернуть None.
+        assert!(peer_dialogs_flags(&answer, id, now, chats_only).is_none());
+    }
+
+    /// Архивация с телефона правит кэш архива, но событий наружу не шлёт.
+    #[test]
+    fn folder_peers_update_records_archive_moves_only_in_the_cache() {
+        let u = tl::types::UpdateFolderPeers {
+            folder_peers: vec![
+                tl::enums::FolderPeer::Peer(tl::types::FolderPeer {
+                    peer: tl::enums::Peer::User(tl::types::PeerUser { user_id: 777_000 }),
+                    folder_id: 1,
+                }),
+                tl::enums::FolderPeer::Peer(tl::types::FolderPeer {
+                    peer: tl::enums::Peer::Channel(tl::types::PeerChannel {
+                        channel_id: 1_234_567_890,
+                    }),
+                    folder_id: 0,
+                }),
+            ],
+            pts: 1,
+            pts_count: 1,
+        };
+        let mapped = folder_peers_mapped(&u);
+        assert!(mapped.events.is_empty(), "контракт WS про папки не знает");
+        assert_eq!(mapped.unread_for, None);
+        assert_eq!(
+            mapped.effects,
+            vec![
+                CacheEffect::DialogArchived {
+                    dialog_id: 777_000,
+                    archived: true,
+                },
+                CacheEffect::DialogArchived {
+                    dialog_id: -1_001_234_567_890,
+                    archived: false,
+                },
+            ]
+        );
+    }
+
+    /// Настройки уведомлений, унаследованные от категории целиком.
+    fn inherited_settings() -> tl::types::PeerNotifySettings {
+        tl::types::PeerNotifySettings {
+            show_previews: None,
+            silent: None,
+            mute_until: None,
+            ios_sound: None,
+            android_sound: None,
+            other_sound: None,
+            stories_muted: None,
+            stories_hide_sender: None,
+            stories_ios_sound: None,
+            stories_android_sound: None,
+            stories_other_sound: None,
+        }
+    }
+
+    /// Строка диалога сырого ответа: peer, папка и настройки уведомлений.
+    fn raw_dialog_row(
+        peer: tl::enums::Peer,
+        folder_id: Option<i32>,
+        settings: tl::types::PeerNotifySettings,
+    ) -> tl::enums::Dialog {
+        tl::enums::Dialog::Dialog(tl::types::Dialog {
+            pinned: false,
+            unread_mark: false,
+            view_forum_as_messages: false,
+            peer,
+            top_message: 0,
+            read_inbox_max_id: 0,
+            read_outbox_max_id: 0,
+            unread_count: 0,
+            unread_mentions_count: 0,
+            unread_reactions_count: 0,
+            unread_poll_votes_count: 0,
+            notify_settings: tl::enums::PeerNotifySettings::Settings(settings),
+            pts: None,
+            draft: None,
+            folder_id,
+            ttl_period: None,
+        })
+    }
+
+    /// Ответ `messages.getPeerDialogs` из одной строки диалога.
+    fn peer_dialogs_answer(
+        dialog: tl::enums::Dialog,
+        chats: Vec<tl::enums::Chat>,
+    ) -> tl::enums::messages::PeerDialogs {
+        tl::enums::messages::PeerDialogs::Dialogs(tl::types::messages::PeerDialogs {
+            dialogs: vec![dialog],
+            messages: Vec::new(),
+            chats,
+            users: Vec::new(),
+            state: tl::enums::updates::State::State(tl::types::updates::State {
+                pts: 0,
+                qts: 0,
+                date: 0,
+                seq: 0,
+                unread_count: 0,
+            }),
+        })
+    }
+
+    /// Мегагруппа (`megagroup = true`) — тот самый случай, где тег `PeerId`
+    /// врёт про категорию.
+    fn test_megagroup(id: i64) -> tl::enums::Chat {
+        tl::enums::Chat::Channel(tl::types::Channel {
+            creator: false,
+            left: false,
+            broadcast: false,
+            verified: false,
+            megagroup: true,
+            restricted: false,
+            signatures: false,
+            min: false,
+            scam: false,
+            has_link: false,
+            has_geo: false,
+            slowmode_enabled: false,
+            call_active: false,
+            call_not_empty: false,
+            fake: false,
+            gigagroup: false,
+            noforwards: false,
+            join_to_send: false,
+            join_request: false,
+            forum: false,
+            stories_hidden: false,
+            stories_hidden_min: false,
+            stories_unavailable: false,
+            signature_profiles: false,
+            autotranslation: false,
+            broadcast_messages_allowed: false,
+            monoforum: false,
+            forum_tabs: false,
+            id,
+            access_hash: Some(42),
+            title: "мегагруппа".into(),
+            username: None,
+            photo: tl::enums::ChatPhoto::Empty,
+            date: 0,
+            restriction_reason: None,
+            admin_rights: None,
+            banned_rights: None,
+            default_banned_rights: None,
+            participants_count: None,
+            usernames: None,
+            stories_max_id: None,
+            color: None,
+            profile_color: None,
+            emoji_status: None,
+            level: None,
+            subscription_until_date: None,
+            bot_verification_icon: None,
+            send_paid_messages_stars: None,
+            linked_monoforum_id: None,
+        })
     }
 
     /// Тот же путь, но через настоящее состояние: кэш → дефолт → архив.
@@ -1979,7 +2549,7 @@ mod tests {
                         mute_until.is_some_and(|v| i64::from(v) > now)
                     };
                     assert_eq!(
-                        notify_outcome(&u, now, defaults),
+                        notify_outcome(&u, now, defaults, Some(category)),
                         NotifyOutcome::Dialog {
                             peer: dto::parse_dialog_id(dialog_id).unwrap(),
                             muted: want,
@@ -1990,25 +2560,40 @@ mod tests {
             }
         }
 
-        // Ограничение по тегу id: мегагруппа приходит как Channel и получает
-        // дефолт broadcasts, а не chats. Ошибка возможна ТОЛЬКО у диалога с
-        // полностью унаследованными настройками; ближайший листинг перепишет
-        // запись точным значением (там kind известен из индекса peer'ов).
+        // Мегагруппа с УНАСЛЕДОВАННЫМИ настройками и неизвестной категорией:
+        // по тегу id она неотличима от broadcast-канала, а дефолты у них
+        // разные. Догадка тут запрещена — иначе заглушённая «всеми группами»
+        // мегагруппа звенела бы до следующего листинга.
         let chats_only = NotifyDefaults {
             chats: true,
             ..NotifyDefaults::default()
         };
+        let inherited_channel = notify_update(channel_notify_peer(1_234_567_891), None, None);
+        assert_eq!(
+            notify_outcome(&inherited_channel, now, chats_only, None),
+            NotifyOutcome::Unknown,
+            "унаследованные настройки без известной категории — не догадка, а Unknown"
+        );
+        // Та же мегагруппа с известной категорией разрешается точно.
+        assert_eq!(
+            notify_outcome(&inherited_channel, now, chats_only, Some("group")),
+            NotifyOutcome::Dialog {
+                peer: dto::parse_dialog_id("-1001234567891").unwrap(),
+                muted: true,
+            }
+        );
+        // А ЯВНЫЕ настройки категории не требуют вовсе — Unknown им не грозит.
         assert_eq!(
             notify_outcome(
-                &notify_update(channel_notify_peer(1_234_567_891), None, None),
+                &notify_update(channel_notify_peer(1_234_567_891), Some(i32::MAX), None),
                 now,
                 chats_only,
+                None,
             ),
             NotifyOutcome::Dialog {
                 peer: dto::parse_dialog_id("-1001234567891").unwrap(),
-                muted: false,
-            },
-            "мегагруппу от канала по тегу id не отличить — это известная цена"
+                muted: true,
+            }
         );
     }
 
@@ -2023,7 +2608,7 @@ mod tests {
             // это свойство 32-битного поля Telegram, а не переполнение.
             let forever = notify_update(dialog_notify_peer(777_000), Some(i32::MAX), None);
             assert_eq!(
-                notify_outcome(&forever, now, defaults),
+                notify_outcome(&forever, now, defaults, Some("user")),
                 NotifyOutcome::Dialog {
                     peer: dto::parse_dialog_id("777000").unwrap(),
                     muted: now < i64::from(i32::MAX),
@@ -2032,7 +2617,7 @@ mod tests {
             // Пустые настройки от времени не зависят вовсе — только от дефолта.
             let inherited = notify_update(dialog_notify_peer(777_000), None, None);
             assert_eq!(
-                notify_outcome(&inherited, now, defaults),
+                notify_outcome(&inherited, now, defaults, Some("user")),
                 NotifyOutcome::Dialog {
                     peer: dto::parse_dialog_id("777000").unwrap(),
                     muted: true,
@@ -2044,6 +2629,7 @@ mod tests {
                     &notify_update(tl::enums::NotifyPeer::NotifyUsers, Some(i32::MAX), None),
                     now,
                     NotifyDefaults::default(),
+                    None,
                 ),
                 NotifyOutcome::Defaults(NotifyDefaults {
                     users: now < i64::from(i32::MAX),

@@ -664,7 +664,8 @@ textarea.ds-prompt-textarea {
 
 .tg-visibility-group,
 .vk-visibility-group,
-.b24-visibility-group {
+.b24-visibility-group,
+.voice-scope-group {
     font-size: 0.68rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -674,7 +675,8 @@ textarea.ds-prompt-textarea {
 
 .tg-visibility-list,
 .vk-visibility-list,
-.b24-visibility-list {
+.b24-visibility-list,
+.voice-scope-list {
     max-height: 220px;
     overflow-y: auto;
     border: 1px solid var(--border-input);
@@ -685,7 +687,8 @@ textarea.ds-prompt-textarea {
 
 .tg-visibility-item,
 .vk-visibility-item,
-.b24-visibility-item {
+.b24-visibility-item,
+.voice-scope-item {
     display: flex;
     align-items: baseline;
     gap: 6px;
@@ -696,7 +699,8 @@ textarea.ds-prompt-textarea {
 
 .tg-visibility-label,
 .vk-visibility-label,
-.b24-visibility-label {
+.b24-visibility-label,
+.voice-scope-label {
     flex: 1 1 auto;
     min-width: 0;
     overflow: hidden;
@@ -708,7 +712,8 @@ textarea.ds-prompt-textarea {
    приглушены и не участвуют в переносе. */
 .tg-visibility-badge,
 .vk-visibility-badge,
-.b24-visibility-badge {
+.b24-visibility-badge,
+.voice-scope-badge {
     flex: 0 0 auto;
     font-size: 0.65rem;
     color: var(--fg-mute);
@@ -716,7 +721,8 @@ textarea.ds-prompt-textarea {
 
 .tg-visibility-search,
 .vk-visibility-search,
-.b24-visibility-search {
+.b24-visibility-search,
+.voice-scope-search {
     width: 100%;
     box-sizing: border-box;
     margin: 4px 0 6px;
@@ -729,14 +735,16 @@ textarea.ds-prompt-textarea {
 }
 .tg-visibility-search:focus,
 .vk-visibility-search:focus,
-.b24-visibility-search:focus {
+.b24-visibility-search:focus,
+.voice-scope-search:focus {
     outline: none;
     border-color: var(--accent);
 }
 
 .tg-visibility-summary,
 .vk-visibility-summary,
-.b24-visibility-summary {
+.b24-visibility-summary,
+.voice-scope-summary {
     margin: 6px 0 2px;
 }
 /* Режим включён, но ничего не выбрано — предупреждение, а не ошибка:
@@ -791,6 +799,35 @@ textarea.ds-prompt-textarea {
 }
 
 .voice-save-ok {
+    color: var(--ok, #3fa34d);
+    margin-bottom: 6px;
+}
+
+/* ── Блок «В каких чатах разбирать автоматически» ──────────────────────────
+   Общая форма выбора (js/settings/peer-picker.js) с классами `voice-scope-*`;
+   правила списков, строк, пометок и поиска у неё ОБЩИЕ с формами видимости —
+   она дописана в их парные селекторы выше, а не скопирована.
+
+   При выключенном тумблере авторазбора блок остаётся на месте и лишь глохнет:
+   исчезающий блок читался бы как «настройка пропала», а сам выбор при этом
+   никуда не девается и сохраняется как был. */
+.voice-scope {
+    margin-top: 14px;
+}
+
+.voice-scope-off {
+    opacity: 0.5;
+}
+
+.voice-scope-title {
+    margin-top: 0;
+}
+
+.voice-scope-hint {
+    margin: 0 0 4px;
+}
+
+.voice-scope-save-ok {
     color: var(--ok, #3fa34d);
     margin-bottom: 6px;
 }

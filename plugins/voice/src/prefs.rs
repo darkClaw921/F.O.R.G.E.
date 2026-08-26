@@ -38,6 +38,23 @@
 //! решение «видна ли беседа» принимает плагин: только он умеет вывести вид
 //! беседы из её идентификатора (`peerKind` во фронте, `kind_of_peer` в
 //! плагине).
+//!
+//! # ДВА РАЗНЫХ БЕЛЫХ СПИСКА: ВИДИМОСТЬ И СКОУП АВТОРАЗБОРА
+//!
+//! `visible_*` — «какие беседы показывать в панели», `scope_*`
+//! (`*_voice_scope_*` в файле хоста) — «в каких беседах разбирать голосовые
+//! САМО». Списки отдельные, потому что просьбы разные: человек имеет право
+//! читать чат, не оплачивая расшифровку каждого голосового в нём.
+//!
+//! Отличаются они и прочтением пустоты. У видимости пустой список — это
+//! «ничего не выбрано» при отдельном тумблере `*_filter_enabled`, и
+//! [`Prefs::filter_active`] обезвреживает сочетание «включён, но пуст». У
+//! скоупа тумблера НЕТ вовсе, и **пустой скоуп означает «разбирать везде»**:
+//! фича добавлена к уже работающему авторазбору, и любое другое прочтение
+//! пустоты выключило бы его у всех, кто ни разу не открывал новую форму.
+//!
+//! Видимость остаётся ВЫШЕСТОЯЩИМ фильтром: скрытая беседа не разбирается,
+//! даже если попала в скоуп ([`crate::auto::decide`], порядок ступеней).
 
 use std::path::{Path, PathBuf};
 
@@ -60,6 +77,10 @@ pub struct PrefsKeys {
     pub visible_kinds: &'static str,
     /// Белый список бесед (`vk_visible_peers`, …).
     pub visible_peers: &'static str,
+    /// Скоуп авторазбора по видам/папкам (`vk_voice_scope_kinds`, …).
+    pub scope_kinds: &'static str,
+    /// Скоуп авторазбора по беседам (`vk_voice_scope_peers`, …).
+    pub scope_peers: &'static str,
 }
 
 /// Ключи панели VK.
@@ -68,6 +89,8 @@ pub const VK: PrefsKeys = PrefsKeys {
     filter_enabled: "vk_filter_enabled",
     visible_kinds: "vk_visible_kinds",
     visible_peers: "vk_visible_peers",
+    scope_kinds: "vk_voice_scope_kinds",
+    scope_peers: "vk_voice_scope_peers",
 };
 
 /// Ключи панели Telegram. «Виды» здесь — ПАПКИ аккаунта.
@@ -76,6 +99,8 @@ pub const TELEGRAM: PrefsKeys = PrefsKeys {
     filter_enabled: "telegram_filter_enabled",
     visible_kinds: "telegram_visible_folders",
     visible_peers: "telegram_visible_dialogs",
+    scope_kinds: "telegram_voice_scope_folders",
+    scope_peers: "telegram_voice_scope_dialogs",
 };
 
 /// Ключи панели Битрикс24.
@@ -84,6 +109,8 @@ pub const BITRIX: PrefsKeys = PrefsKeys {
     filter_enabled: "bitrix_filter_enabled",
     visible_kinds: "bitrix_visible_kinds",
     visible_peers: "bitrix_visible_peers",
+    scope_kinds: "bitrix_voice_scope_kinds",
+    scope_peers: "bitrix_voice_scope_peers",
 };
 
 /// Настройки одной панели, которые видит авторазбор.
@@ -97,6 +124,10 @@ pub struct Prefs {
     pub visible_kinds: Vec<String>,
     /// Белый список бесед.
     pub visible_peers: Vec<String>,
+    /// Скоуп авторазбора по видам/папкам. ПУСТО = разбирать везде.
+    pub scope_kinds: Vec<String>,
+    /// Скоуп авторазбора по беседам. ПУСТО = разбирать везде.
+    pub scope_peers: Vec<String>,
 }
 
 impl Prefs {
@@ -112,11 +143,13 @@ impl Prefs {
         self.filter_enabled && !(self.visible_kinds.is_empty() && self.visible_peers.is_empty())
     }
 
-    /// Видна ли беседа, у которой известны идентификатор и вид.
+    /// Видна ли беседа, у которой известны идентификатор и ГРУППЫ.
     ///
-    /// Порядок проверок тот же, что во фронте: поимённый выбор сильнее вида.
-    /// `kind` — уже приведённый плагином вид (`user`/`chat`/`community` у VK,
-    /// `user`/`chat`/`task` у Bitrix); `None` — «вид неизвестен», и тогда
+    /// Порядок проверок тот же, что во фронте: поимённый выбор сильнее группы.
+    /// `groups` — уже приведённые плагином группы беседы: у VK и Bitrix это
+    /// ровно один вид (`user`/`chat`/`community`, `user`/`chat`/`task`), у
+    /// Telegram — ключи ПАПОК аккаунта, а их у чата может быть несколько
+    /// (`inbox`, `folder:10`, …). Пустой срез — «группы неизвестны», и тогда
     /// решает только поимённый список.
     ///
     /// НЕИЗВЕСТНАЯ беседа при действующем фильтре считается НЕВИДИМОЙ. Это
@@ -124,7 +157,7 @@ impl Prefs {
     /// разобрать голосовое из беседы, которую человек попросил не показывать, —
     /// это отправить её содержание в облако вопреки настройке.
     #[must_use]
-    pub fn peer_visible(&self, peer: &str, kind: Option<&str>) -> bool {
+    pub fn peer_visible(&self, peer: &str, groups: &[&str]) -> bool {
         if !self.filter_active() {
             return true;
         }
@@ -135,11 +168,67 @@ impl Prefs {
         if self.visible_peers.iter().any(|p| p == id) {
             return true;
         }
-        match kind {
-            Some(k) => self.visible_kinds.iter().any(|v| v == k.trim()),
-            None => false,
-        }
+        any_group(&self.visible_kinds, groups)
     }
+
+    /// ДЕЙСТВУЕТ ли скоуп авторазбора.
+    ///
+    /// Тумблера у скоупа НЕТ — в отличие от видимости, где есть
+    /// `*_filter_enabled`. Действие определяется одной только непустотой
+    /// списков, и это ровно то, что делает добавление фичи безопасным для уже
+    /// работающих установок: пустой скоуп неотличим от его отсутствия.
+    #[must_use]
+    pub fn scope_active(&self) -> bool {
+        !(self.scope_kinds.is_empty() && self.scope_peers.is_empty())
+    }
+
+    /// Попадает ли беседа в скоуп авторазбора.
+    ///
+    /// **ПУСТОЙ СКОУП — ЭТО `true` ВСЕГДА**, для любых `peer` и `kind`. Иначе
+    /// появление полей молча выключило бы авторазбор у всех, кто его уже
+    /// включил: белый список, которого человек ни разу не заполнял, обязан
+    /// значить «во всех беседах».
+    ///
+    /// Дальше — та же семантика, что у [`Prefs::peer_visible`]: поимённый
+    /// выбор сильнее группы, `kind` уже приведён плагином к словарю панели
+    /// (`user`/`chat`/`community` у VK, `user`/`chat`/`task` у Bitrix, ключ
+    /// папки у Telegram), `None` — «группа неизвестна», и тогда решает только
+    /// поимённый список.
+    ///
+    /// Сторона отказа тоже общая с видимостью: при ДЕЙСТВУЮЩЕМ скоупе
+    /// неизвестная беседа считается ВНЕ скоупа. Разобрать лишнее — это отдать
+    /// содержание чужой беседы движку (и деньги облаку) вопреки настройке, а
+    /// неразобранное человек разберёт кнопкой.
+    ///
+    /// Скоуп НЕ отменяет видимость: скрытая беседа не разбирается, даже если
+    /// попала в скоуп, — ступень «беседа скрыта» стоит в
+    /// [`crate::auto::decide`] РАНЬШЕ.
+    #[must_use]
+    pub fn peer_in_scope(&self, peer: &str, groups: &[&str]) -> bool {
+        if !self.scope_active() {
+            return true;
+        }
+        let id = peer.trim();
+        if id.is_empty() {
+            return false;
+        }
+        if self.scope_peers.iter().any(|p| p == id) {
+            return true;
+        }
+        any_group(&self.scope_kinds, groups)
+    }
+}
+
+/// Пересекается ли белый список групп с группами беседы.
+///
+/// Отдельной функцией, потому что правило одно на оба списка: ХОТЯ БЫ ОДНА
+/// группа беседы отмечена. Множественность важна для Telegram — чат лежит
+/// сразу в нескольких папках, и требовать совпадения всех значило бы, что
+/// отмеченная папка не работает ни для одного чата, который есть ещё где-то.
+fn any_group(whitelist: &[String], groups: &[&str]) -> bool {
+    groups
+        .iter()
+        .any(|g| whitelist.iter().any(|w| w == g.trim()))
 }
 
 /// Путь `~/.forge/user_settings.json`.
@@ -173,6 +262,8 @@ pub fn read(path: &Path, keys: PrefsKeys) -> Prefs {
         filter_enabled: flag(&json, keys.filter_enabled),
         visible_kinds: list(&json, keys.visible_kinds),
         visible_peers: list(&json, keys.visible_peers),
+        scope_kinds: list(&json, keys.scope_kinds),
+        scope_peers: list(&json, keys.scope_peers),
     }
 }
 
@@ -310,7 +401,7 @@ mod tests {
             ..Prefs::default()
         };
         assert!(!p.filter_active());
-        assert!(p.peer_visible("2000000042", Some("chat")));
+        assert!(p.peer_visible("2000000042", &["chat"]));
     }
 
     /// **ПОИМЁННЫЙ ВЫБОР СИЛЬНЕЕ ВИДА, НЕИЗВЕСТНАЯ БЕСЕДА СКРЫТА.**
@@ -321,12 +412,181 @@ mod tests {
             filter_enabled: true,
             visible_kinds: vec!["chat".into()],
             visible_peers: vec!["777".into()],
+            ..Prefs::default()
         };
-        assert!(p.peer_visible("777", Some("user")), "отмечена поимённо");
-        assert!(p.peer_visible("2000000042", Some("chat")), "подходит по виду");
-        assert!(!p.peer_visible("42", Some("user")), "ни то, ни другое");
-        assert!(!p.peer_visible("42", None), "вид неизвестен — беседа скрыта");
-        assert!(!p.peer_visible("", Some("chat")), "беседа без адреса скрыта");
+        assert!(p.peer_visible("777", &["user"]), "отмечена поимённо");
+        assert!(p.peer_visible("2000000042", &["chat"]), "подходит по виду");
+        assert!(!p.peer_visible("42", &["user"]), "ни то, ни другое");
+        assert!(!p.peer_visible("42", &[]), "вид неизвестен — беседа скрыта");
+        assert!(!p.peer_visible("", &["chat"]), "беседа без адреса скрыта");
+    }
+
+    /// **ПУСТОЙ СКОУП РАЗБИРАЕТ ВЕЗДЕ — ГЛАВНОЕ ОБЕЩАНИЕ ФИЧИ.**
+    ///
+    /// Ноль настроек = поведение, которое было до появления полей. Провал
+    /// этого теста означал бы, что обновление молча выключило авторазбор.
+    #[test]
+    fn an_empty_scope_transcribes_everywhere() {
+        let p = Prefs {
+            autotranscribe: true,
+            ..Prefs::default()
+        };
+        assert!(!p.scope_active());
+        for (peer, groups) in [
+            ("2000000042", &["chat"][..]),
+            ("777", &["user"][..]),
+            ("chat7", &["task"][..]),
+            ("-99", &[][..]),
+            ("", &[][..]),
+        ] {
+            assert!(p.peer_in_scope(peer, groups), "{peer:?}/{groups:?}");
+        }
+    }
+
+    /// **ПОИМЁННЫЙ ВЫБОР И ВЫБОР ГРУППЫ, НЕИЗВЕСТНАЯ БЕСЕДА — ВНЕ СКОУПА.**
+    #[test]
+    fn a_non_empty_scope_is_a_whitelist() {
+        let p = Prefs {
+            autotranscribe: true,
+            scope_kinds: vec!["chat".into()],
+            scope_peers: vec!["777".into()],
+            ..Prefs::default()
+        };
+        assert!(p.scope_active());
+        assert!(p.peer_in_scope("777", &["user"]), "отмечена поимённо");
+        assert!(p.peer_in_scope("2000000042", &["chat"]), "подходит по группе");
+        assert!(p.peer_in_scope("2000000099", &["chat"]), "вся группа целиком");
+        assert!(!p.peer_in_scope("42", &["user"]), "ни то, ни другое");
+        assert!(!p.peer_in_scope("42", &[]), "группа неизвестна");
+        assert!(!p.peer_in_scope("", &["chat"]), "беседа без адреса");
+    }
+
+    /// **ЧАТ В НЕСКОЛЬКИХ ГРУППАХ: ХВАТАЕТ ОДНОЙ ОТМЕЧЕННОЙ.**
+    ///
+    /// Случай Telegram: чат лежит и в `inbox`, и в пользовательской папке.
+    /// Требовать совпадения ВСЕХ групп значило бы, что отмеченная папка не
+    /// работает ни для одного чата, который есть ещё где-то, — то есть ни для
+    /// одного вообще.
+    #[test]
+    fn one_matching_group_out_of_several_is_enough() {
+        let p = Prefs {
+            autotranscribe: true,
+            scope_kinds: vec!["folder:10".into()],
+            ..Prefs::default()
+        };
+        assert!(p.peer_in_scope("777000", &["inbox", "folder:10"]));
+        assert!(!p.peer_in_scope("777000", &["inbox", "folder:11"]));
+        assert!(!p.peer_in_scope("777000", &[]), "групп нет — вне скоупа");
+
+        let v = Prefs {
+            filter_enabled: true,
+            visible_kinds: vec!["archive".into()],
+            ..Prefs::default()
+        };
+        assert!(v.peer_visible("777000", &["archive", "folder:3"]));
+        assert!(!v.peer_visible("777000", &["inbox"]));
+    }
+
+    /// **ОДНОГО НЕПУСТОГО СПИСКА ХВАТАЕТ, ЧТОБЫ СКОУП ЗАДЕЙСТВОВАЛСЯ.**
+    ///
+    /// Выбрать только папку (не перечисляя чаты) — законный и, вероятно,
+    /// самый частый способ пользоваться формой.
+    #[test]
+    fn either_list_alone_makes_the_scope_act() {
+        let only_kinds = Prefs {
+            scope_kinds: vec!["inbox".into()],
+            ..Prefs::default()
+        };
+        assert!(only_kinds.peer_in_scope("1", &["inbox"]));
+        assert!(!only_kinds.peer_in_scope("1", &["archive"]));
+
+        let only_peers = Prefs {
+            scope_peers: vec!["1".into()],
+            ..Prefs::default()
+        };
+        assert!(only_peers.peer_in_scope("1", &["archive"]));
+        assert!(!only_peers.peer_in_scope("2", &["archive"]));
+    }
+
+    /// **СКОУП ЧИТАЕТСЯ ИЗ СВОИХ ПОЛЕЙ И НЕ ПУТАЕТСЯ С ВИДИМОСТЬЮ.**
+    #[test]
+    fn the_scope_is_read_from_its_own_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write(
+            dir.path(),
+            r#"{"vk_visible_peers":["1"],"vk_voice_scope_peers":["2"],
+                "vk_voice_scope_kinds":["chat"],
+                "telegram_voice_scope_dialogs":["3"],
+                "telegram_voice_scope_folders":["inbox"],
+                "bitrix_voice_scope_peers":["chat7"],
+                "bitrix_voice_scope_kinds":["task"]}"#,
+        );
+        let vk = read(&path, VK);
+        assert_eq!(vk.visible_peers, vec!["1"]);
+        assert_eq!(vk.scope_peers, vec!["2"]);
+        assert_eq!(vk.scope_kinds, vec!["chat"]);
+        assert!(vk.visible_kinds.is_empty(), "чужие списки не подмешаны");
+
+        let tg = read(&path, TELEGRAM);
+        assert_eq!(tg.scope_peers, vec!["3"], "у Telegram это *_dialogs");
+        assert_eq!(tg.scope_kinds, vec!["inbox"], "у Telegram это ПАПКИ");
+        assert!(tg.visible_peers.is_empty());
+
+        let b24 = read(&path, BITRIX);
+        assert_eq!(b24.scope_peers, vec!["chat7"]);
+        assert_eq!(b24.scope_kinds, vec!["task"]);
+    }
+
+    /// **БИТЫЙ ФАЙЛ И ЧУЖИЕ ТИПЫ В ПОЛЯХ СКОУПА — ЭТО НЕ ПАНИКА.**
+    ///
+    /// Скоуп при отказе ПУСТ, но и тумблер при отказе выключен, поэтому
+    /// «пусто = везде» не превращается в разбор всего подряд.
+    #[test]
+    fn a_broken_or_wrongly_typed_scope_is_empty_and_safe() {
+        let dir = tempfile::tempdir().unwrap();
+        for body in [
+            "{ это не json",
+            r#"{"vk_voice_scope_peers":"777"}"#,
+            r#"{"vk_voice_scope_peers":{"a":1},"vk_voice_scope_kinds":42}"#,
+            "{}",
+        ] {
+            let path = write(dir.path(), body);
+            let p = read(&path, VK);
+            assert!(p.scope_peers.is_empty(), "{body}");
+            assert!(p.scope_kinds.is_empty(), "{body}");
+            assert!(!p.autotranscribe, "{body}");
+        }
+    }
+
+    /// **ИМЕНА КЛЮЧЕЙ СОВПАДАЮТ С ПОЛЯМИ ХОСТА БУКВАЛЬНО.**
+    ///
+    /// Таблица [`PrefsKeys`] — единственное место, где эти строки написаны на
+    /// стороне плагина, и разойтись с хостом они могут только МОЛЧА: тумблер и
+    /// скоуп просто перестанут действовать. Поэтому здесь читается сам исходник
+    /// хоста. Если его рядом нет (крейт собирают отдельно от репозитория),
+    /// проверка пропускается — ронять чужую сборку она не должна.
+    #[test]
+    fn every_key_exists_in_the_host_source() {
+        let host = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tmux-web/src/user_settings.rs");
+        let Ok(src) = std::fs::read_to_string(&host) else {
+            return;
+        };
+        for keys in [VK, TELEGRAM, BITRIX] {
+            for key in [
+                keys.autotranscribe,
+                keys.filter_enabled,
+                keys.visible_kinds,
+                keys.visible_peers,
+                keys.scope_kinds,
+                keys.scope_peers,
+            ] {
+                assert!(
+                    src.contains(&format!("pub {key}:")),
+                    "поля {key} нет в user_settings.rs хоста"
+                );
+            }
+        }
     }
 
     /// Список чистится так же, как во фронте: без пустых, без дублей, числа

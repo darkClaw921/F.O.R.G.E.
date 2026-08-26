@@ -9,7 +9,8 @@
 //!
 //! ```text
 //! тумблер выключен ─▶ своё исходящее ─▶ не голосовое
-//!        ─▶ беседа скрыта ─▶ слишком длинное ─▶ РАЗБИРАЕМ
+//!        ─▶ беседа скрыта ─▶ беседа вне скоупа ─▶ слишком длинное
+//!        ─▶ РАЗБИРАЕМ
 //! ```
 //!
 //! Тумблер проверяется ПЕРВЫМ и стоит один разбор булева поля. Ни докачки, ни
@@ -58,6 +59,13 @@ pub enum Skip {
     NotVoice(String),
     /// Беседа вне белого списка видимости.
     Hidden,
+    /// Беседа вне белого списка АВТОРАЗБОРА (скоупа).
+    ///
+    /// Отдельная причина, а не [`Skip::Hidden`]: списки разные и вопросы
+    /// разные («не показывай мне этот чат» против «не трать GPU на этот чат»),
+    /// и человеку, ищущему в журнале, почему у него ничего не расшифровалось,
+    /// нужно знать, КАКУЮ из двух форм открывать.
+    OutOfScope,
     /// Запись длиннее потолка `max_duration_secs`.
     TooLong {
         /// Длительность записи, секунды.
@@ -76,6 +84,7 @@ impl Skip {
             Self::Outgoing => "outgoing",
             Self::NotVoice(_) => "not_voice",
             Self::Hidden => "hidden",
+            Self::OutOfScope => "out_of_scope",
             Self::TooLong { .. } => "too_long",
         }
     }
@@ -93,10 +102,15 @@ pub struct Candidate<'a> {
     pub duration_secs: Option<i64>,
     /// Идентификатор беседы в лексике настроек видимости.
     pub peer: &'a str,
-    /// Вид беседы в лексике настроек видимости (`user`/`chat`/`community` у
-    /// VK, `user`/`chat`/`task` у Bitrix); `None` — плагин его не выводит
-    /// (Telegram: принадлежность чата ПАПКЕ из одного id не следует).
-    pub peer_kind: Option<&'a str>,
+    /// ГРУППЫ беседы в лексике настроек — то, чем оперируют оба белых списка.
+    ///
+    /// У VK и Bitrix группа ровно одна (вид беседы: `user`/`chat`/`community`,
+    /// `user`/`chat`/`task`), у Telegram это ключи ПАПОК аккаунта, и их у чата
+    /// несколько (`inbox` плюс каждая пользовательская папка, которой чат
+    /// подходит). Пустой срез — «групп не знаем»: при действующем белом списке
+    /// такая беседа не проходит ни видимость, ни скоуп, и решает только
+    /// поимённый выбор.
+    pub peer_groups: &'a [&'a str],
 }
 
 /// Разбирать ли это вложение автоматически.
@@ -116,8 +130,15 @@ pub fn decide(prefs: &Prefs, cand: &Candidate, max_duration_secs: u64) -> Result
     if !gate::is_voice_kind(cand.kind) {
         return Err(Skip::NotVoice(cand.kind.trim().to_string()));
     }
-    if !prefs.peer_visible(cand.peer, cand.peer_kind) {
+    if !prefs.peer_visible(cand.peer, cand.peer_groups) {
         return Err(Skip::Hidden);
+    }
+    // Скоуп — ПОСЛЕ видимости и ДО длительности. После видимости, потому что
+    // скрытая беседа не должна проявляться в журнале даже причиной отказа; до
+    // длительности, потому что длительность у части площадок известна лишь
+    // после декодирования звука, а значит стоит дороже сравнения строк.
+    if !prefs.peer_in_scope(cand.peer, cand.peer_groups) {
+        return Err(Skip::OutOfScope);
     }
     if let Some(secs) = cand.duration_secs {
         if max_duration_secs > 0 && secs > max_duration_secs as i64 {
@@ -238,7 +259,7 @@ mod tests {
             outgoing: false,
             duration_secs: Some(12),
             peer: "2000000042",
-            peer_kind: Some("chat"),
+            peer_groups: &["chat"],
         }
     }
 
@@ -292,13 +313,14 @@ mod tests {
             filter_enabled: true,
             visible_kinds: vec!["user".into()],
             visible_peers: vec!["777".into()],
+            ..Prefs::default()
         };
         assert_eq!(decide(&prefs, &voice(), 900), Err(Skip::Hidden));
 
         // А отмеченная поимённо — разбирается.
         let cand = Candidate {
             peer: "777",
-            peer_kind: Some("user"),
+            peer_groups: &["user"],
             ..voice()
         };
         assert_eq!(decide(&prefs, &cand, 900), Ok(()));
@@ -329,6 +351,165 @@ mod tests {
             ..voice()
         };
         assert_eq!(decide(&on(), &unknown, 900), Ok(()));
+    }
+
+    /// **ПУСТОЙ СКОУП РАЗБИРАЕТ ВЕЗДЕ — ПОВЕДЕНИЕ ДО ФИЧИ НЕ ИЗМЕНИЛОСЬ.**
+    ///
+    /// Это главное обещание фазы: у человека, который новую форму ни разу не
+    /// открывал, лестница обязана давать РОВНО те же ответы, что и до неё.
+    #[test]
+    fn an_empty_scope_changes_nothing() {
+        for (peer, peer_groups) in [
+            ("2000000042", &["chat"][..]),
+            ("777", &["user"][..]),
+            ("chat7", &["task"][..]),
+            ("-99", &[][..]),
+        ] {
+            let cand = Candidate {
+                peer,
+                peer_groups,
+                ..voice()
+            };
+            assert_eq!(decide(&on(), &cand, 900), Ok(()), "{peer:?}/{peer_groups:?}");
+        }
+        // И прежние причины отказа остались прежними.
+        assert_eq!(decide(&Prefs::default(), &voice(), 900), Err(Skip::Disabled));
+        let out = Candidate {
+            outgoing: true,
+            ..voice()
+        };
+        assert_eq!(decide(&on(), &out, 900), Err(Skip::Outgoing));
+        let long = Candidate {
+            duration_secs: Some(1200),
+            ..voice()
+        };
+        assert_eq!(
+            decide(&on(), &long, 900),
+            Err(Skip::TooLong {
+                secs: 1200,
+                limit: 900
+            })
+        );
+    }
+
+    /// **НЕПУСТОЙ СКОУП — БЕЛЫЙ СПИСОК: ВЫБРАННОЕ РАЗБИРАЕТСЯ, ОСТАЛЬНОЕ НЕТ.**
+    #[test]
+    fn a_peer_outside_the_scope_is_skipped_by_its_own_reason() {
+        let prefs = Prefs {
+            autotranscribe: true,
+            scope_peers: vec!["777".into()],
+            ..Prefs::default()
+        };
+        // Выбранный поимённо — разбирается.
+        let chosen = Candidate {
+            peer: "777",
+            peer_groups: &["user"],
+            ..voice()
+        };
+        assert_eq!(decide(&prefs, &chosen, 900), Ok(()));
+        // Любой другой — нет, и причина называется своим словом.
+        let skipped = decide(&prefs, &voice(), 900).unwrap_err();
+        assert_eq!(skipped, Skip::OutOfScope);
+        assert_eq!(skipped.code(), "out_of_scope");
+        assert_ne!(skipped.code(), Skip::Hidden.code(), "не путать с видимостью");
+    }
+
+    /// **ВЫБОР ГРУППЫ ДЕЙСТВУЕТ НА ВСЕ БЕСЕДЫ ЭТОЙ ГРУППЫ.**
+    ///
+    /// Папка Telegram, тип беседы VK, вид диалога Bitrix — одна и та же
+    /// ступень: словарь групп плагин приводит сам.
+    #[test]
+    fn choosing_a_group_covers_every_peer_in_it() {
+        let prefs = Prefs {
+            autotranscribe: true,
+            scope_kinds: vec!["chat".into()],
+            ..Prefs::default()
+        };
+        for peer in ["2000000042", "2000000099", "chat7"] {
+            let cand = Candidate {
+                peer,
+                peer_groups: &["chat"],
+                ..voice()
+            };
+            assert_eq!(decide(&prefs, &cand, 900), Ok(()), "{peer}");
+        }
+        let other = Candidate {
+            peer: "42",
+            peer_groups: &["user"],
+            ..voice()
+        };
+        assert_eq!(decide(&prefs, &other, 900), Err(Skip::OutOfScope));
+        // Группа неизвестна (Telegram не выводит папку из id) — беседа вне
+        // скоупа, пока не выбрана поимённо.
+        let unknown = Candidate {
+            peer: "42",
+            peer_groups: &[],
+            ..voice()
+        };
+        assert_eq!(decide(&prefs, &unknown, 900), Err(Skip::OutOfScope));
+    }
+
+    /// **ВИДИМОСТЬ — ВЫШЕСТОЯЩИЙ ФИЛЬТР: СКРЫТАЯ БЕСЕДА НЕ РАЗБИРАЕТСЯ ДАЖЕ
+    /// ПОПАВ В СКОУП.**
+    ///
+    /// И причина в журнале именно `hidden`: про скрытую беседу мы не
+    /// рассказываем ничего сверх того, что она скрыта.
+    #[test]
+    fn visibility_outranks_the_scope() {
+        let prefs = Prefs {
+            autotranscribe: true,
+            filter_enabled: true,
+            visible_peers: vec!["777".into()],
+            scope_peers: vec!["2000000042".into()],
+            ..Prefs::default()
+        };
+        assert_eq!(decide(&prefs, &voice(), 900), Err(Skip::Hidden));
+    }
+
+    /// **ДЛИННОЕ ГОЛОСОВОЕ ВНЕ СКОУПА ДАЁТ `OutOfScope`, А НЕ `TooLong`.**
+    ///
+    /// Доказательство порядка ступеней: скоуп стоит ДО длительности. Обратный
+    /// порядок означал бы, что про беседу, которую человек не выбирал, мы
+    /// сначала выясняем длительность её записи.
+    #[test]
+    fn the_scope_is_checked_before_the_duration() {
+        let prefs = Prefs {
+            autotranscribe: true,
+            scope_peers: vec!["777".into()],
+            ..Prefs::default()
+        };
+        let long_and_foreign = Candidate {
+            duration_secs: Some(1200),
+            ..voice()
+        };
+        assert_eq!(decide(&prefs, &long_and_foreign, 900), Err(Skip::OutOfScope));
+        // А выбранная беседа с той же записью упирается уже в потолок.
+        let long_and_chosen = Candidate {
+            peer: "777",
+            peer_groups: &["user"],
+            duration_secs: Some(1200),
+            ..voice()
+        };
+        assert_eq!(
+            decide(&prefs, &long_and_chosen, 900),
+            Err(Skip::TooLong {
+                secs: 1200,
+                limit: 900
+            })
+        );
+    }
+
+    /// **ВЫКЛЮЧЕННЫЙ ТУМБЛЕР ОТСЕКАЕТ РАНЬШЕ СКОУПА.**
+    ///
+    /// Скоуп — это выбор, а не второй тумблер: при выключенном авторазборе
+    /// причина остаётся `disabled`, что бы в скоупе ни лежало.
+    #[test]
+    fn the_switch_still_wins_over_the_scope() {
+        let prefs = Prefs {
+            scope_peers: vec!["2000000042".into()],
+            ..Prefs::default()
+        };
+        assert_eq!(decide(&prefs, &voice(), 900), Err(Skip::Disabled));
     }
 
     /// **ОДИН КЛЮЧ БЕРЁТСЯ РОВНО ОДИН РАЗ.**

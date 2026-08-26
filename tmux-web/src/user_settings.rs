@@ -160,6 +160,38 @@
 //!     плагин читает ЭТОТ ЖЕ файл сам, модулем `forge_voice::prefs`, на каждое
 //!     входящее голосовое. Отсюда и «применяется без перезапуска».
 //!
+//!   - `vk_voice_scope_kinds` / `vk_voice_scope_peers`,
+//!     `telegram_voice_scope_folders` / `telegram_voice_scope_dialogs`,
+//!     `bitrix_voice_scope_kinds` / `bitrix_voice_scope_peers`
+//!     (Vec<String>, default пустой) — БЕЛЫЙ СПИСОК бесед, в которых
+//!     авторазбор работает. Гранулярность ровно та же, что у видимости:
+//!     группа площадки (тип беседы VK, папка аккаунта Telegram, вид диалога
+//!     Битрикс24) плюс отдельные беседы.
+//!
+//!     **ПУСТОЙ СПИСОК = РАЗБИРАТЬ ВЕЗДЕ, и отдельного тумблера включения у
+//!     скоупа НЕТ.** Это решение, а не недоделка: скоуп добавлен к уже
+//!     работающей фиче, и любое другое прочтение пустоты («ничего не
+//!     разбирать») молча выключило бы авторазбор у всех, кто его уже включил.
+//!     Тумблер же был бы третьим состоянием поверх двух списков — ровно та
+//!     двусмысленность, из-за которой у видимости пришлось вводить
+//!     `filter_active()` («включён, но пуст» = не фильтр).
+//!
+//!     Скоуп НЕ заменяет видимость и НЕ подчиняет её: видимость — вышестоящий
+//!     фильтр, скрытая беседа не разбирается, даже если попала в скоуп
+//!     (порядок ступеней — `forge_voice::auto::decide`). Списки намеренно
+//!     отдельные: «не показывай мне этот чат» и «не трать GPU на этот чат» —
+//!     разные просьбы, и общий список означал бы, что человек не может
+//!     смотреть чат, не оплачивая его расшифровку.
+//!
+//!     Санитайзер и лимиты — общие с видимостью ([`sanitize_visible_list`],
+//!     [`MAX_TELEGRAM_VISIBLE`], [`MAX_VISIBLE_ENTRY_LEN`]): записи там и там
+//!     одной природы (короткие id и ключи групп), а второй санитайзер разошёлся
+//!     бы с первым при первой же правке.
+//!
+//!     Читает эти поля не только фронт: плагин открывает ЭТОТ ЖЕ файл модулем
+//!     `forge_voice::prefs` (таблица `PrefsKeys`, поля `scope_kinds` /
+//!     `scope_peers`) на каждое входящее голосовое.
+//!
 //!     Выбор ДВИЖКА расшифровки (`local` / `cloud`) в этом файле НЕ живёт: он
 //!     общий для всех мессенджеров и лежит в `~/.config/forge/voice.toml`
 //!     рядом с ключом polza.ai (роут `…/voice/settings` у каждого плагина).
@@ -315,6 +347,10 @@ const MAX_VISIBLE_ENTRY_LEN: usize = 64;
 /// Используется ОБЕИМИ панелями: `telegram_visible_folders`/
 /// `telegram_visible_dialogs` и `vk_visible_kinds`/`vk_visible_peers`. Смысл
 /// записей у них разный, форма — одинаковая, поэтому санитайзер один.
+///
+/// Тем же санитайзером чистятся шесть списков СКОУПА авторазбора голосовых
+/// (`*_voice_scope_*`): записи там той же природы — ключи групп и короткие id
+/// бесед.
 ///
 /// Как и [`sanitize_hotkeys`], проверяет только ФОРМУ: смысл ключей (`inbox`,
 /// `archive`, `folder:<id>`, id чата) знает фронтенд. Неизвестная запись — не
@@ -517,6 +553,38 @@ pub struct UserSettings {
     /// То же для Битрикс24 (`bitrix_voice_autotranscribe`).
     #[serde(default)]
     pub bitrix_voice_autotranscribe: bool,
+    /// Белый список ТИПОВ бесед VK, в которых работает авторазбор:
+    /// `user` | `chat` | `community` — тот же словарь, что у
+    /// [`Self::vk_visible_kinds`].
+    ///
+    /// **ПУСТО = РАЗБИРАТЬ ВЕЗДЕ.** Тумблера включения у скоупа НЕТ и заводить
+    /// его не нужно: пустой список и означает «во всех беседах», иначе
+    /// появление поля молча выключило бы фичу у тех, кто её уже включил
+    /// (см. шапку модуля).
+    #[serde(default)]
+    pub vk_voice_scope_kinds: Vec<String>,
+    /// Белый список отдельных бесед VK для авторазбора: `peer_id` строками.
+    /// Пусто (вместе с [`Self::vk_voice_scope_kinds`]) = разбирать везде.
+    #[serde(default)]
+    pub vk_voice_scope_peers: Vec<String>,
+    /// Белый список ПАПОК аккаунта Telegram для авторазбора: `inbox`,
+    /// `archive`, `folder:<id>` — тот же словарь, что у
+    /// [`Self::telegram_visible_folders`]. Пусто = разбирать везде.
+    #[serde(default)]
+    pub telegram_voice_scope_folders: Vec<String>,
+    /// Белый список отдельных чатов Telegram для авторазбора (id в формате
+    /// `DialogDto.id`). Пусто = разбирать везде.
+    #[serde(default)]
+    pub telegram_voice_scope_dialogs: Vec<String>,
+    /// Белый список ВИДОВ диалогов Битрикс24 для авторазбора:
+    /// `user` | `chat` | `task` — тот же словарь, что у
+    /// [`Self::bitrix_visible_kinds`]. Пусто = разбирать везде.
+    #[serde(default)]
+    pub bitrix_voice_scope_kinds: Vec<String>,
+    /// Белый список отдельных диалогов Битрикс24 для авторазбора: `DIALOG_ID`
+    /// строками (`"chat7"`, `"19"`, `"sg12"`). Пусто = разбирать везде.
+    #[serde(default)]
+    pub bitrix_voice_scope_peers: Vec<String>,
     /// Авто-апрув интерактивных prompt'ов Claude Code в tmux-сессиях
     /// (см. [`crate::auto_approve`]). Default `false` — фича opt-in и
     /// нажимает клавиши за пользователя, см. инвариант в шапке модуля.
@@ -574,6 +642,12 @@ impl Default for UserSettings {
             vk_voice_autotranscribe: false,
             telegram_voice_autotranscribe: false,
             bitrix_voice_autotranscribe: false,
+            vk_voice_scope_kinds: Vec::new(),
+            vk_voice_scope_peers: Vec::new(),
+            telegram_voice_scope_folders: Vec::new(),
+            telegram_voice_scope_dialogs: Vec::new(),
+            bitrix_voice_scope_kinds: Vec::new(),
+            bitrix_voice_scope_peers: Vec::new(),
             auto_approve_enabled: false,
             auto_approve_broad: false,
             auto_approve_questions: default_auto_approve_questions(),
@@ -683,6 +757,27 @@ pub struct PatchUserSettingsReq {
     /// То же для Битрикс24.
     #[serde(default)]
     pub bitrix_voice_autotranscribe: Option<bool>,
+    /// Белый список типов бесед VK для авторазбора. Семантика — ПОЛНАЯ ЗАМЕНА
+    /// списка, как у всех соседних списков: снять галочку в merge-семантике
+    /// было бы нечем. Пустой список = «разбирать во всех беседах».
+    #[serde(default)]
+    pub vk_voice_scope_kinds: Option<Vec<String>>,
+    /// Белый список отдельных бесед VK для авторазбора. ПОЛНАЯ ЗАМЕНА списка.
+    #[serde(default)]
+    pub vk_voice_scope_peers: Option<Vec<String>>,
+    /// Белый список папок Telegram для авторазбора. ПОЛНАЯ ЗАМЕНА списка.
+    #[serde(default)]
+    pub telegram_voice_scope_folders: Option<Vec<String>>,
+    /// Белый список отдельных чатов Telegram для авторазбора. ПОЛНАЯ ЗАМЕНА.
+    #[serde(default)]
+    pub telegram_voice_scope_dialogs: Option<Vec<String>>,
+    /// Белый список видов диалогов Битрикс24 для авторазбора. ПОЛНАЯ ЗАМЕНА.
+    #[serde(default)]
+    pub bitrix_voice_scope_kinds: Option<Vec<String>>,
+    /// Белый список отдельных диалогов Битрикс24 для авторазбора. ПОЛНАЯ
+    /// ЗАМЕНА списка.
+    #[serde(default)]
+    pub bitrix_voice_scope_peers: Option<Vec<String>>,
     /// Включить/выключить авто-апрув prompt'ов Claude Code целиком.
     #[serde(default)]
     pub auto_approve_enabled: Option<bool>,
@@ -887,6 +982,28 @@ impl UserSettingsStore {
         }
         if let Some(v) = payload.bitrix_voice_autotranscribe {
             inner.settings.bitrix_voice_autotranscribe = v;
+        }
+        // Шесть списков СКОУПА авторазбора. Санитайзер тот же, что у видимости:
+        // записи одной природы (ключи групп и короткие id бесед), а второй
+        // санитайзер разошёлся бы с первым при первой же правке. Пустой список
+        // законен и означает «разбирать во всех беседах» (см. шапку модуля).
+        if let Some(v) = payload.vk_voice_scope_kinds {
+            inner.settings.vk_voice_scope_kinds = sanitize_visible_list(v);
+        }
+        if let Some(v) = payload.vk_voice_scope_peers {
+            inner.settings.vk_voice_scope_peers = sanitize_visible_list(v);
+        }
+        if let Some(v) = payload.telegram_voice_scope_folders {
+            inner.settings.telegram_voice_scope_folders = sanitize_visible_list(v);
+        }
+        if let Some(v) = payload.telegram_voice_scope_dialogs {
+            inner.settings.telegram_voice_scope_dialogs = sanitize_visible_list(v);
+        }
+        if let Some(v) = payload.bitrix_voice_scope_kinds {
+            inner.settings.bitrix_voice_scope_kinds = sanitize_visible_list(v);
+        }
+        if let Some(v) = payload.bitrix_voice_scope_peers {
+            inner.settings.bitrix_voice_scope_peers = sanitize_visible_list(v);
         }
         if let Some(v) = payload.auto_approve_enabled {
             inner.settings.auto_approve_enabled = v;
@@ -1349,6 +1466,100 @@ mod tests {
         let json: serde_json::Value = serde_json::from_str(&raw).unwrap();
         assert_eq!(json["vk_voice_autotranscribe"], true);
         assert_eq!(json["telegram_voice_autotranscribe"], false);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// **СТАРЫЙ ФАЙЛ БЕЗ ПОЛЕЙ СКОУПА ЧИТАЕТСЯ, И СКОУП ПУСТ.**
+    ///
+    /// Пустой скоуп = «разбирать везде», поэтому у человека, обновившего
+    /// devforge, поведение авторазбора не меняется НИ НА ШАГ. Провал этого
+    /// теста означал бы, что обновление молча выключило работающую фичу.
+    #[test]
+    fn test_voice_scope_is_empty_on_an_old_file() {
+        let path = tmp_path("voice_scope_old_file");
+        std::fs::write(
+            &path,
+            r#"{"vk_voice_autotranscribe":true,"vk_visible_peers":["2000000042"]}"#,
+        )
+        .unwrap();
+        let s = UserSettingsStore::new(path.clone()).get();
+        assert!(s.vk_voice_scope_kinds.is_empty());
+        assert!(s.vk_voice_scope_peers.is_empty());
+        assert!(s.telegram_voice_scope_folders.is_empty());
+        assert!(s.telegram_voice_scope_dialogs.is_empty());
+        assert!(s.bitrix_voice_scope_kinds.is_empty());
+        assert!(s.bitrix_voice_scope_peers.is_empty());
+        // Соседи уцелели: файл прочитан, а не заменён дефолтами.
+        assert!(s.vk_voice_autotranscribe);
+        assert_eq!(s.vk_visible_peers, vec!["2000000042"]);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// **СКОУП ЧИСТИТСЯ ТЕМ ЖЕ САНИТАЙЗЕРОМ, ЧТО И ВИДИМОСТЬ.**
+    ///
+    /// Пустые, слишком длинные, с недопустимыми символами и дубли — вон;
+    /// порядок оставшихся сохраняется (человек видит его списком).
+    #[test]
+    fn test_voice_scope_lists_are_sanitized() {
+        let path = tmp_path("voice_scope_sanitize");
+        let store = UserSettingsStore::new(path.clone());
+        let res = store
+            .patch(PatchUserSettingsReq {
+                vk_voice_scope_peers: Some(vec![
+                    " 2000000042 ".into(),
+                    "2000000042".into(),
+                    String::new(),
+                    "с пробелом".into(),
+                    "x".repeat(MAX_VISIBLE_ENTRY_LEN + 1),
+                    "-77".into(),
+                ]),
+                telegram_voice_scope_folders: Some(vec!["folder:12".into(), "inbox".into()]),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert_eq!(res.vk_voice_scope_peers, vec!["2000000042", "-77"]);
+        assert_eq!(res.telegram_voice_scope_folders, vec!["folder:12", "inbox"]);
+
+        // Переполнение обрезается по общему лимиту.
+        let many: Vec<String> = (0..(MAX_TELEGRAM_VISIBLE + 20)).map(|i| i.to_string()).collect();
+        let res = store
+            .patch(PatchUserSettingsReq {
+                bitrix_voice_scope_peers: Some(many),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert_eq!(res.bitrix_voice_scope_peers.len(), MAX_TELEGRAM_VISIBLE);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// **ВЫБОР ПЕРЕЖИВАЕТ ПЕРЕЧИТЫВАНИЕ ФАЙЛА БЕЗ ИЗМЕНЕНИЙ.**
+    ///
+    /// Плагин читает этот файл сам, поэтому патч обязан оказаться на диске
+    /// сразу и ровно в тех ключах, которые перечислены в `forge_voice::prefs`.
+    #[test]
+    fn test_voice_scope_round_trips_through_the_file() {
+        let path = tmp_path("voice_scope_roundtrip");
+        let store = UserSettingsStore::new(path.clone());
+        store
+            .patch(PatchUserSettingsReq {
+                vk_voice_scope_kinds: Some(vec!["chat".into()]),
+                vk_voice_scope_peers: Some(vec!["2000000042".into(), "777".into()]),
+                bitrix_voice_scope_peers: Some(vec!["chat7".into()]),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(json["vk_voice_scope_kinds"][0], "chat");
+        assert_eq!(json["vk_voice_scope_peers"][1], "777");
+
+        let reread = UserSettingsStore::new(path.clone()).get();
+        assert_eq!(reread.vk_voice_scope_kinds, vec!["chat"]);
+        assert_eq!(reread.vk_voice_scope_peers, vec!["2000000042", "777"]);
+        assert_eq!(reread.bitrix_voice_scope_peers, vec!["chat7"]);
+        // Скоуп и видимость — РАЗНЫЕ списки: патч скоупа не трогает видимость.
+        assert!(reread.vk_visible_peers.is_empty());
         let _ = std::fs::remove_file(&path);
     }
 

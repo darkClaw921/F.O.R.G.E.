@@ -53,6 +53,9 @@ import {
 import {
     getVoiceSettings as b24GetVoiceSettings, setVoiceSettings as b24SetVoiceSettings,
 } from '../bitrix/api.js';
+import {
+    B24_SCOPE_SOURCE, TELEGRAM_SCOPE_SOURCE, VK_SCOPE_SOURCE,
+} from './voice-scope-sources.js';
 import { buildMeetSettings } from './meet-tab.js';
 import {
     meetEnabled, getMeetConfig, putMeetConfig, getMeetStatus, getModels, downloadModel,
@@ -321,7 +324,9 @@ export function openSettingsModal(initialTab) {
         $telegramContent.appendChild(buildVisibilityForm(settingsArg, onSaved));
         $telegramContent.appendChild(buildHotkeysForm(settingsArg, onSaved, TELEGRAM_HOTKEYS_CONFIG));
         $telegramContent.appendChild(buildVoiceForm(settingsArg, onSaved, TELEGRAM_VOICE_CONFIG, {
-            getVoiceSettings: tgGetVoiceSettings, setVoiceSettings: tgSetVoiceSettings,
+            getVoiceSettings: tgGetVoiceSettings,
+            setVoiceSettings: tgSetVoiceSettings,
+            ...TELEGRAM_SCOPE_SOURCE,
         }));
     };
 
@@ -355,7 +360,9 @@ export function openSettingsModal(initialTab) {
         $vkContent.appendChild(buildVkVisibilityForm(settingsArg, onSaved));
         $vkContent.appendChild(buildHotkeysForm(settingsArg, onSaved, VK_HOTKEYS_CONFIG));
         $vkContent.appendChild(buildVoiceForm(settingsArg, onSaved, VK_VOICE_CONFIG, {
-            getVoiceSettings: vkGetVoiceSettings, setVoiceSettings: vkSetVoiceSettings,
+            getVoiceSettings: vkGetVoiceSettings,
+            setVoiceSettings: vkSetVoiceSettings,
+            ...VK_SCOPE_SOURCE,
         }));
     };
 
@@ -390,7 +397,9 @@ export function openSettingsModal(initialTab) {
         $bitrixContent.appendChild(buildBitrixVisibilityForm(settingsArg, onSaved));
         $bitrixContent.appendChild(buildHotkeysForm(settingsArg, onSaved, B24_HOTKEYS_CONFIG));
         $bitrixContent.appendChild(buildVoiceForm(settingsArg, onSaved, B24_VOICE_CONFIG, {
-            getVoiceSettings: b24GetVoiceSettings, setVoiceSettings: b24SetVoiceSettings,
+            getVoiceSettings: b24GetVoiceSettings,
+            setVoiceSettings: b24SetVoiceSettings,
+            ...B24_SCOPE_SOURCE,
         }));
     };
 

@@ -94,6 +94,8 @@ pub async fn on_new_message(state: &Arc<B24State>, msg: &MessageDto) -> usize {
     // голосовой: нас интересуют ровно те ступени, которые НЕ зависят от вида, —
     // тумблер, своё исходящее, видимость. Настоящий вид проверяется в задаче,
     // после единственного вызова портала.
+    // Группа у Битрикса ровно одна — вид диалога.
+    let groups = [visibility_kind(&msg.dialog_id)];
     let cand = Candidate {
         kind: media_kind::VOICE,
         outgoing: msg.out,
@@ -101,7 +103,7 @@ pub async fn on_new_message(state: &Arc<B24State>, msg: &MessageDto) -> usize {
         // декодированному звуку в `forge_voice::audio::prepare`.
         duration_secs: None,
         peer: &msg.dialog_id,
-        peer_kind: Some(visibility_kind(&msg.dialog_id)),
+        peer_groups: &groups,
     };
     if let Err(skip) = forge_voice::auto::decide(&prefs, &cand, 0) {
         log_skip(&msg.dialog_id, msg.id, &skip);

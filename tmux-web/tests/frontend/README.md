@@ -102,6 +102,9 @@ node tmux-web/tests/frontend/vk_analysis_prompt.test.mjs # попап анали
 node tmux-web/tests/frontend/vk_analysis.test.mjs        # стриминг разбора VK: фильтрация кадров, тред Q&A, отмена
 node tmux-web/tests/frontend/settings_hotkeys_form.test.mjs   # общая форма хоткеев (оба конфига, гейт дефолта)
 node tmux-web/tests/frontend/hotkeys_panel_owner.test.mjs     # гейт vim-навигации: список владельцев клавиатуры
+node tmux-web/tests/frontend/settings_voice_tab.test.mjs      # секция «Голосовые сообщения» в трёх вкладках: тумблер авторазбора и его поле, откат при отказе, селект движка, БЛОК ВЫБОРА ЧАТОВ (пустой список = разбирать везде, выбор переживает переоткрытие, незагруженные id не теряются, чистка только по нажатию, блок недоступен при выключенном тумблере)
+node tmux-web/tests/frontend/settings_peer_picker.test.mjs    # ⚠ СТРАЖ ФОРМЫ ВЫБОРА БЕСЕД: черновик хранит ВСЕ выбранные id, а не нарисованные; «Убрать несуществующие» — только по нажатию; отказ загрузки не стирает выбор; форма выключается целиком, а не прячется
+node tmux-web/tests/frontend/settings_voice_scope_sources.test.mjs # источники бесед для скоупа авторазбора на НАСТОЯЩИХ модулях панелей: у VK фоновый приоритет общего лимитера и один запрос, папки Telegram (inbox первым, archive последним), виды диалогов Битрикс24
 ```
 
 > **`messenger_shared_parity.test.mjs` — страж дублирования, а не обычный

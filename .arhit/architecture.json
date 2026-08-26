@@ -1,6 +1,6 @@
 {
   "root": "/Users/igorgerasimov/claudeWorkspace/F.O.R.G.E.",
-  "generatedAt": "2026-08-21T13:45:06.312Z",
+  "generatedAt": "2026-08-25T18:14:56.393Z",
   "nodes": [
     {
       "id": "tmux-web/static/app.js",
@@ -18879,7 +18879,7 @@
           "name": "openSettingsModal",
           "type": "function",
           "path": "tmux-web/static/js/settings/modal.js",
-          "line": 62,
+          "line": 65,
           "signature": "openSettingsModal(initialTab)",
           "exports": [
             "openSettingsModal"
@@ -18933,6 +18933,39 @@
           "exports": [
             "buildNotificationsForm"
           ]
+        }
+      ]
+    },
+    {
+      "id": "tmux-web/static/js/settings/peer-picker.js",
+      "name": "peer-picker.js",
+      "type": "file",
+      "path": "tmux-web/static/js/settings/peer-picker.js",
+      "exports": [
+        "buildPeerPicker"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/settings/peer-picker.js:buildPeerPicker",
+          "name": "buildPeerPicker",
+          "type": "function",
+          "path": "tmux-web/static/js/settings/peer-picker.js",
+          "line": 63,
+          "signature": "buildPeerPicker(o)",
+          "docComment": "Строит форму выбора.",
+          "exports": [
+            "buildPeerPicker"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/settings/peer-picker.js:toIds",
+          "name": "toIds",
+          "type": "function",
+          "path": "tmux-web/static/js/settings/peer-picker.js",
+          "line": 310,
+          "signature": "toIds(raw)",
+          "docComment": "Список строк без пустых и дублей, порядок сохраняется.",
+          "exports": []
         }
       ]
     },
@@ -19155,12 +19188,91 @@
       ]
     },
     {
+      "id": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "name": "voice-scope-sources.js",
+      "type": "file",
+      "path": "tmux-web/static/js/settings/voice-scope-sources.js",
+      "exports": [
+        "PEER_LIST_LIMIT",
+        "VK_SCOPE_SOURCE",
+        "TELEGRAM_SCOPE_SOURCE",
+        "B24_SCOPE_SOURCE"
+      ],
+      "children": [
+        {
+          "id": "tmux-web/static/js/settings/voice-scope-sources.js:marks",
+          "name": "marks",
+          "type": "function",
+          "path": "tmux-web/static/js/settings/voice-scope-sources.js",
+          "line": 35,
+          "signature": "marks(list)",
+          "docComment": "Пометки беседы одной строкой.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/settings/voice-scope-sources.js:kindsAsGroups",
+          "name": "kindsAsGroups",
+          "type": "function",
+          "path": "tmux-web/static/js/settings/voice-scope-sources.js",
+          "line": 40,
+          "signature": "kindsAsGroups(kinds)",
+          "docComment": "Группы из общего реестра видов: ключ, название, подсказка.",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/settings/voice-scope-sources.js:PEER_LIST_LIMIT",
+          "name": "PEER_LIST_LIMIT",
+          "type": "variable",
+          "path": "tmux-web/static/js/settings/voice-scope-sources.js",
+          "line": 32,
+          "docComment": "Сколько бесед просим у плагина для списка выбора.",
+          "exports": [
+            "PEER_LIST_LIMIT"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/settings/voice-scope-sources.js:VK_SCOPE_SOURCE",
+          "name": "VK_SCOPE_SOURCE",
+          "type": "variable",
+          "path": "tmux-web/static/js/settings/voice-scope-sources.js",
+          "line": 51,
+          "docComment": "VK: типы бесед и беседы.\n\nТип показывается ТОТ, по которому будет судить фильтр (он выводится из\n`peer_id`, а не из поля DTO) — иначе подпись и поведение разошлись бы на\nпервой же беседе с неожиданным `kind`.",
+          "exports": [
+            "VK_SCOPE_SOURCE"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/settings/voice-scope-sources.js:TELEGRAM_SCOPE_SOURCE",
+          "name": "TELEGRAM_SCOPE_SOURCE",
+          "type": "variable",
+          "path": "tmux-web/static/js/settings/voice-scope-sources.js",
+          "line": 78,
+          "docComment": "Telegram: папки аккаунта и чаты.\n\n`~/inbox` и `~/archive` — не папки Telegram, а пункты нашей навигации; в\nбелом списке они значат «все неархивные» и «весь архив». Порядок тот же, что\nв форме видимости: inbox — первым, archive — последним.",
+          "exports": [
+            "TELEGRAM_SCOPE_SOURCE"
+          ]
+        },
+        {
+          "id": "tmux-web/static/js/settings/voice-scope-sources.js:B24_SCOPE_SOURCE",
+          "name": "B24_SCOPE_SOURCE",
+          "type": "variable",
+          "path": "tmux-web/static/js/settings/voice-scope-sources.js",
+          "line": 115,
+          "docComment": "Битрикс24: виды диалогов и диалоги.\n\nВидов ТРИ, хотя у портала их семь: `sg`, `openline`, `copilot` и `collab`\nсведены к «чатам» (`filterKind`). Отдельного выбора «только чаты задач»\nповерх этого нет и быть не может: чат задачи по `DIALOG_ID` неотличим от\nобычного, и вид `task` — такая же группа в этом же списке.",
+          "exports": [
+            "B24_SCOPE_SOURCE"
+          ]
+        }
+      ]
+    },
+    {
       "id": "tmux-web/static/js/settings/voice-tab.js",
       "name": "voice-tab.js",
       "type": "file",
       "path": "tmux-web/static/js/settings/voice-tab.js",
       "exports": [
         "buildVoiceForm",
+        "SCOPE_HINT",
         "ENGINES",
         "SHARED_HINT",
         "VK_VOICE_CONFIG",
@@ -19173,7 +19285,7 @@
           "name": "buildVoiceForm",
           "type": "function",
           "path": "tmux-web/static/js/settings/voice-tab.js",
-          "line": 105,
+          "line": 150,
           "signature": "buildVoiceForm(settings, onSaved, config, api, doc)",
           "docComment": "Строит секцию «Голосовые сообщения».",
           "exports": [
@@ -19181,11 +19293,32 @@
           ]
         },
         {
+          "id": "tmux-web/static/js/settings/voice-tab.js:buildScope",
+          "name": "buildScope",
+          "type": "function",
+          "path": "tmux-web/static/js/settings/voice-tab.js",
+          "line": 347,
+          "signature": "buildScope(d, cfg, api, s, onSaved)",
+          "docComment": "Блок «В каких чатах разбирать автоматически».\n\nСобран на общей форме выбора (`peer-picker.js`) — той же, устройство которой\nтрижды написано руками в формах видимости. Здесь она параметризуется\nсловарём площадки: у VK это ТИПЫ бесед, у Telegram — ПАПКИ аккаунта, у\nБитрикс24 — ВИДЫ диалогов.\n\nИсточники данных приходят СНАРУЖИ (`api.listScopeGroups` /\n`api.listScopePeers`), а не собираются здесь: адреса и планировщики живут в\nмодулях панелей, и у VK список обязан идти ФОНОВЫМ приоритетом общего\nлимитера (3 rps на весь клиент). Собранный внутри этого модуля запрос обошёл\nбы и то, и другое.\n\nСохранение — своей кнопкой, а не по каждой галочке: выбор собирается из\nдесятков отметок, и «сохранить» здесь осмысленный момент (в отличие от\nчекбокса авторазбора, где щелчок и есть решение).",
+          "exports": []
+        },
+        {
+          "id": "tmux-web/static/js/settings/voice-tab.js:SCOPE_HINT",
+          "name": "SCOPE_HINT",
+          "type": "variable",
+          "path": "tmux-web/static/js/settings/voice-tab.js",
+          "line": 49,
+          "docComment": "Подпись блока выбора бесед — ОДНА на три панели.\n\nПустой список означает «во всех беседах», и сказать это надо вслух: белый\nсписок, который человек ни разу не открывал, читается как «ничего не\nвыбрано», а значит — как «ничего и не разбирается». Настройка работает\nровно наоборот, и молчаливое расхождение здесь стоило бы человеку\nуверенности в том, что фича вообще включена.",
+          "exports": [
+            "SCOPE_HINT"
+          ]
+        },
+        {
           "id": "tmux-web/static/js/settings/voice-tab.js:ENGINES",
           "name": "ENGINES",
           "type": "variable",
           "path": "tmux-web/static/js/settings/voice-tab.js",
-          "line": 49,
+          "line": 64,
           "docComment": "Значения селекта движка — в порядке показа.\n\nОблако первым и подписано «по умолчанию», потому что это СТАНДАРТ фичи:\nголосовое в чате живёт секунды и читается сразу, поэтому оно не должно ни\nждать очереди к GPU, ни требовать 574 МБ весов на машине. Локальный движок —\nосознанный выбор человека, а не то, куда можно съехать молча: бэкенд по той\nже причине НЕ наследует `stt_backend` из настроек встреч (см. шапку\n`plugins/voice/src/config.rs`).",
           "exports": [
             "ENGINES"
@@ -19196,7 +19329,7 @@
           "name": "SHARED_HINT",
           "type": "variable",
           "path": "tmux-web/static/js/settings/voice-tab.js",
-          "line": 55,
+          "line": 70,
           "docComment": "Подпись под селектом: настройка одна на все мессенджеры.",
           "exports": [
             "SHARED_HINT"
@@ -19207,7 +19340,7 @@
           "name": "VK_VOICE_CONFIG",
           "type": "variable",
           "path": "tmux-web/static/js/settings/voice-tab.js",
-          "line": 65,
+          "line": 80,
           "docComment": "Конфиг секции для панели VK.\n\n`api` передаётся ССЫЛКАМИ на функции панели, а не строкой пути: адреса живут\nв модулях `api.js` каждой панели, и контрактные тесты сверяют их с таблицей\nроутов плагина. Собранный здесь путь эту сверку обошёл бы.",
           "exports": [
             "VK_VOICE_CONFIG"
@@ -19218,7 +19351,7 @@
           "name": "TELEGRAM_VOICE_CONFIG",
           "type": "variable",
           "path": "tmux-web/static/js/settings/voice-tab.js",
-          "line": 75,
+          "line": 98,
           "docComment": "Конфиг секции для панели Telegram.",
           "exports": [
             "TELEGRAM_VOICE_CONFIG"
@@ -19229,7 +19362,7 @@
           "name": "B24_VOICE_CONFIG",
           "type": "variable",
           "path": "tmux-web/static/js/settings/voice-tab.js",
-          "line": 85,
+          "line": 119,
           "docComment": "Конфиг секции для панели Битрикс24.",
           "exports": [
             "B24_VOICE_CONFIG"

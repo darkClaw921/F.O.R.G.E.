@@ -106,6 +106,10 @@ pub async fn on_new_message(state: &Arc<VkState>, msg: &MessageDto) -> usize {
         0
     };
 
+    // Группа у VK ровно одна — вид беседы; срез собирается один раз на
+    // сообщение, а не на вложение.
+    let groups = [visibility_kind(peer_id)];
+
     let mut started = 0usize;
     for att in candidates {
         let cand = Candidate {
@@ -113,7 +117,7 @@ pub async fn on_new_message(state: &Arc<VkState>, msg: &MessageDto) -> usize {
             outgoing: msg.out,
             duration_secs: att.duration_secs.map(i64::from),
             peer: &msg.dialog_id,
-            peer_kind: Some(visibility_kind(peer_id)),
+            peer_groups: &groups,
         };
         match forge_voice::auto::decide(&prefs, &cand, max_duration_secs) {
             Ok(()) => {}
@@ -404,6 +408,86 @@ mod tests {
             "в сторе ничего не появилось"
         );
         assert_eq!(files_under(&dir.path().join("cache")), 0, "медиа-кэш пуст");
+    }
+
+    /// **ГЕЙТ ФАЗЫ: БЕСЕДА ВНЕ СКОУПА НЕ ВЫЗЫВАЕТ НИ ДОКАЧКИ, НИ ДВИЖКА.**
+    ///
+    /// Проверяется тем же способом, что и выключенный тумблер, и по той же
+    /// причине: обещание дано человеку про его трафик и его деньги. Отказ
+    /// принимается ДО `routes::voice::begin`, поэтому ни задачи, ни файла в
+    /// медиа-кэше, ни записи в сторе не появляется. Соседняя половина теста
+    /// показывает, что выбранная беседа при тех же настройках разбирается, —
+    /// иначе «ноль задач» доказывал бы лишь то, что фича сломана целиком.
+    #[tokio::test]
+    async fn the_gate_a_peer_outside_the_scope_downloads_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        write_settings(
+            dir.path(),
+            r#"{"vk_voice_autotranscribe":true,"vk_voice_scope_peers":["777"]}"#,
+        );
+        std::fs::write(
+            dir.path().join("voice.toml"),
+            "engine = \"cloud\"\npolza_api_key = \"pza_TESTnotArealKeyJustAFixture\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("meet.toml"), b"").unwrap();
+        let st = state(dir.path());
+
+        let foreign = message("2000000042", 7001, false, vec![voice_media(0, Some(12))]);
+        assert_eq!(on_new_message(&st, &foreign).await, 0);
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert_eq!(st.voice.active(), 0, "движок не запускался");
+        assert!(st.voice_seen.is_empty(), "ключ даже не занимался");
+        assert!(
+            st.voice_store()
+                .get(&voice_key(&CacheKey {
+                    peer_id: 2_000_000_042,
+                    message_id: 7001,
+                    index: 0,
+                    kind: MediaKind::Full,
+                }))
+                .is_none(),
+            "в сторе ничего не появилось"
+        );
+        assert_eq!(files_under(&dir.path().join("cache")), 0, "медиа-кэш пуст");
+
+        // А выбранная беседа при тех же настройках — разбирается.
+        let chosen = message("777", 7002, false, vec![voice_media(0, Some(12))]);
+        assert_eq!(on_new_message(&st, &chosen).await, 1);
+    }
+
+    /// **ГЕЙТ ФАЗЫ: ПУСТОЙ СКОУП НЕ МЕНЯЕТ ПОВЕДЕНИЕ СУЩЕСТВУЮЩИХ УСТАНОВОК.**
+    ///
+    /// Ровно та конфигурация, что лежит на диске у человека, обновившего
+    /// devforge: тумблер включён, полей скоупа в файле нет вовсе. Разбираться
+    /// обязано всё, что разбиралось до фазы, — в беседе, в личных и в
+    /// сообществе.
+    #[tokio::test]
+    async fn the_gate_an_empty_scope_keeps_the_old_behaviour() {
+        let dir = tempfile::tempdir().unwrap();
+        write_settings(dir.path(), r#"{"vk_voice_autotranscribe":true}"#);
+        std::fs::write(
+            dir.path().join("voice.toml"),
+            "engine = \"cloud\"\npolza_api_key = \"pza_TESTnotArealKeyJustAFixture\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("meet.toml"), b"").unwrap();
+        let st = state(dir.path());
+
+        for (n, dialog) in ["2000000042", "777", "-42"].iter().enumerate() {
+            let msg = message(dialog, 8000 + n as i32, false, vec![voice_media(0, Some(12))]);
+            assert_eq!(on_new_message(&st, &msg).await, 1, "{dialog}");
+        }
+
+        // И пустые списки в файле читаются так же, как их отсутствие.
+        write_settings(
+            dir.path(),
+            r#"{"vk_voice_autotranscribe":true,"vk_voice_scope_kinds":[],
+                "vk_voice_scope_peers":[]}"#,
+        );
+        let msg = message("2000000099", 8100, false, vec![voice_media(0, Some(12))]);
+        assert_eq!(on_new_message(&st, &msg).await, 1);
     }
 
     /// Сколько файлов лежит под каталогом (рекурсивно). Отсутствующий каталог —

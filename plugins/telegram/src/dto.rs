@@ -74,6 +74,22 @@ pub fn kind_of(id: PeerId) -> &'static str {
     }
 }
 
+/// Приводит строку категории к статическому варианту контракта.
+///
+/// `None` ⇒ строка не из набора `user` / `group` / `channel`. Нужен там, где
+/// категория приезжает строкой (DTO диалога) и кладётся в кэш, из которого
+/// её потом читает [`NotifyDefaults::for_kind`]: неизвестная строка молча
+/// разрешилась бы в «не заглушено», и промах кэша выглядел бы как ответ.
+#[must_use]
+pub fn kind_static(kind: &str) -> Option<&'static str> {
+    match kind {
+        "user" => Some("user"),
+        "group" => Some("group"),
+        "channel" => Some("channel"),
+        _ => None,
+    }
+}
+
 /// `user | group | channel` для [`Peer`].
 ///
 /// Отличается от [`kind_of`] на megagroup'ах: у них `PeerKind::Channel`, но
@@ -1212,10 +1228,23 @@ pub fn notify_muted_with_default(
     now: i64,
     default_muted: bool,
 ) -> bool {
-    if settings.silent.is_none() && settings.mute_until.is_none() {
+    if notify_settings_inherited(settings) {
         return default_muted;
     }
     notify_muted(settings, now)
+}
+
+/// Пусты ли настройки уведомлений peer'а целиком («как в категории»).
+///
+/// Вынесено из [`notify_muted_with_default`] отдельной функцией, потому что
+/// вызывающему бывает нужен не сам ответ, а факт: значение получится ЧИСТОЙ
+/// догадкой по категории. Когда категория при этом неизвестна (мегагруппа
+/// против broadcast-канала по одному лишь `PeerId`), такую догадку нельзя ни
+/// класть в кэш, ни рассылать во фронт — см.
+/// [`crate::updates::notify_outcome`].
+#[must_use]
+pub fn notify_settings_inherited(settings: &tl::types::PeerNotifySettings) -> bool {
+    settings.silent.is_none() && settings.mute_until.is_none()
 }
 
 /// [`notify_muted`] для сырого `tl::enums::Dialog`.
@@ -1676,6 +1705,122 @@ pub struct FolderDto {
     pub exclude_read: bool,
     /// Прятать архив.
     pub exclude_archived: bool,
+}
+
+/// Ключ пункта «все неархивные» в белых списках настроек.
+pub const DIR_INBOX: &str = "inbox";
+/// Ключ пункта «архив».
+pub const DIR_ARCHIVE: &str = "archive";
+/// Префикс ключа пользовательской папки: `folder:<id>`.
+pub const FOLDER_KEY_PREFIX: &str = "folder:";
+
+/// Ключ пользовательской папки для белых списков.
+///
+/// Ровно тот же, что строит фронт (`telegram/visibility.js::folderKey`):
+/// строки из `user_settings.json` сравниваются буквально, и второе написание
+/// разошлось бы с формой молча.
+#[must_use]
+pub fn folder_key(id: i32) -> String {
+    format!("{FOLDER_KEY_PREFIX}{id}")
+}
+
+/// Категория диалога в терминах флагов папки Telegram.
+///
+/// Ровно ОДНА: категории у Telegram взаимоисключающие, и бот, сидящий в
+/// контактах, относится к `bot`, а не к `contact` (в TDLib проверка
+/// `is_user_bot` стоит раньше `is_user_contact`).
+///
+/// В отличие от фронта варианта «сервер не сказал» здесь нет: `bot` и
+/// `contact` у [`DialogDto`] — обычные `bool`, они всегда заполнены.
+#[must_use]
+pub fn dialog_category(d: &DialogDto) -> &'static str {
+    match d.kind.as_str() {
+        "group" => "group",
+        "channel" => "channel",
+        _ if d.bot => "bot",
+        _ if d.contact => "contact",
+        _ => "non_contact",
+    }
+}
+
+/// Совпала ли категория диалога с категорийными флагами папки.
+fn category_matches(category: &str, f: &FolderDto) -> bool {
+    match category {
+        "group" => f.groups,
+        "channel" => f.broadcasts,
+        "bot" => f.bots,
+        "contact" => f.contacts,
+        _ => f.non_contacts,
+    }
+}
+
+/// Принадлежит ли диалог ПОЛЬЗОВАТЕЛЬСКОЙ папке Telegram.
+///
+/// Зеркало фронтового `telegram/format.js::dialogInFolder`; порядок правил —
+/// семантика Telegram, и расходиться этим двум написаниям нельзя: по ним
+/// принимаются разные половины одного решения (что показать в панели и что
+/// разобрать автоматически).
+///
+/// 1. `exclude_ids` — абсолютное исключение, сильнее include;
+/// 2. `pinned_ids` ∪ `include_ids` входят ВСЕГДА — минуя и категории, и
+///    `exclude_*`-флаги (явно добавленный заглушённый чат остаётся в папке);
+/// 3. флаги категорий — ровно одна категория на диалог
+///    ([`dialog_category`]);
+/// 4. `exclude_muted` / `exclude_read` / `exclude_archived` убирают из
+///    КАТЕГОРИЙНЫХ совпадений заглушённые, прочитанные и архивные.
+///
+/// Общая папка-ссылка (`Chatlist`) приходит со всеми флагами `false` и
+/// работает чисто по include/pinned — это покрывается правилом 2.
+#[must_use]
+pub fn dialog_in_folder(d: &DialogDto, f: &FolderDto) -> bool {
+    let id = d.id.as_str();
+    if f.exclude_ids.iter().any(|x| x == id) {
+        return false;
+    }
+    if f.pinned_ids.iter().any(|x| x == id) || f.include_ids.iter().any(|x| x == id) {
+        return true;
+    }
+    if !category_matches(dialog_category(d), f) {
+        return false;
+    }
+    if f.exclude_muted && d.muted {
+        return false;
+    }
+    if f.exclude_read && d.unread_count <= 0 {
+        return false;
+    }
+    if f.exclude_archived && d.archived {
+        return false;
+    }
+    true
+}
+
+/// ВСЕ ключи белых списков, которым подходит диалог.
+///
+/// Это «группы» диалога в лексике [`forge_voice::prefs`]: `inbox` ЛИБО
+/// `archive` (они взаимоисключающие — архив и есть вторая peer-папка
+/// Telegram) плюс каждая пользовательская папка, которой чат подходит.
+///
+/// Список, а не одно значение, потому что чат лежит сразу в нескольких
+/// папках, и белый список обязан срабатывать по ЛЮБОЙ отмеченной
+/// ([`forge_voice::prefs::Prefs::peer_in_scope`]).
+#[must_use]
+pub fn dialog_group_keys(d: &DialogDto, folders: &[FolderDto]) -> Vec<String> {
+    let mut out = Vec::with_capacity(folders.len() + 1);
+    out.push(
+        if d.archived {
+            DIR_ARCHIVE
+        } else {
+            DIR_INBOX
+        }
+        .to_string(),
+    );
+    for f in folders {
+        if dialog_in_folder(d, f) {
+            out.push(folder_key(f.id));
+        }
+    }
+    out
 }
 
 /// `InputPeer` папки → строковый dialog_id нашего контракта.
@@ -2293,6 +2438,164 @@ mod tests {
             stories_android_sound: None,
             stories_other_sound: None,
         }
+    }
+
+    /// Диалог для проверок правил папок.
+    fn folder_dialog(id: &str, kind: &str) -> DialogDto {
+        DialogDto {
+            id: id.into(),
+            kind: kind.into(),
+            ..DialogDto::default()
+        }
+    }
+
+    /// **КАТЕГОРИЯ ДИАЛОГА — РОВНО ОДНА, И БОТ СИЛЬНЕЕ КОНТАКТА.**
+    ///
+    /// Порядок тот же, что в TDLib и во фронте: бот, сидящий в контактах, —
+    /// это `bot`. Разойтись эти два написания не имеют права: по ним
+    /// считается одно и то же — попадает ли чат в папку.
+    #[test]
+    fn a_dialog_has_exactly_one_folder_category() {
+        assert_eq!(dialog_category(&folder_dialog("-1", "group")), "group");
+        assert_eq!(
+            dialog_category(&folder_dialog("-1001234567890", "channel")),
+            "channel"
+        );
+        let bot_contact = DialogDto {
+            bot: true,
+            contact: true,
+            ..folder_dialog("777000", "user")
+        };
+        assert_eq!(dialog_category(&bot_contact), "bot", "бот сильнее контакта");
+        let contact = DialogDto {
+            contact: true,
+            ..folder_dialog("777000", "user")
+        };
+        assert_eq!(dialog_category(&contact), "contact");
+        assert_eq!(dialog_category(&folder_dialog("777000", "user")), "non_contact");
+    }
+
+    /// **ПРАВИЛА ПАПКИ: include/exclude СИЛЬНЕЕ КАТЕГОРИЙ, `exclude_*` — СЛАБЕЕ
+    /// ЯВНОГО ВКЛЮЧЕНИЯ.**
+    #[test]
+    fn folder_membership_follows_telegram_rules() {
+        let groups_folder = FolderDto {
+            id: 10,
+            groups: true,
+            ..FolderDto::default()
+        };
+        let group = folder_dialog("-1001234567890", "group");
+        assert!(dialog_in_folder(&group, &groups_folder), "подходит по категории");
+
+        // exclude сильнее всего.
+        let excluded = FolderDto {
+            exclude_ids: vec!["-1001234567890".into()],
+            ..groups_folder.clone()
+        };
+        assert!(!dialog_in_folder(&group, &excluded));
+
+        // include/pinned входят, даже если категория чужая.
+        let included = FolderDto {
+            id: 11,
+            include_ids: vec!["777000".into()],
+            ..FolderDto::default()
+        };
+        let user = folder_dialog("777000", "user");
+        assert!(dialog_in_folder(&user, &included));
+        let pinned = FolderDto {
+            pinned_ids: vec!["777000".into()],
+            ..FolderDto::default()
+        };
+        assert!(dialog_in_folder(&user, &pinned));
+
+        // …и переживают exclude_muted, который убил бы КАТЕГОРИЙНОЕ совпадение.
+        let muted_user = DialogDto {
+            muted: true,
+            ..user.clone()
+        };
+        let included_strict = FolderDto {
+            exclude_muted: true,
+            ..included.clone()
+        };
+        assert!(dialog_in_folder(&muted_user, &included_strict));
+
+        // exclude_muted / exclude_read / exclude_archived режут категорийные.
+        let strict = FolderDto {
+            exclude_muted: true,
+            exclude_read: true,
+            exclude_archived: true,
+            ..groups_folder.clone()
+        };
+        let unread = DialogDto {
+            unread_count: 3,
+            ..group.clone()
+        };
+        assert!(dialog_in_folder(&unread, &strict), "непрочитанная и не заглушена");
+        assert!(!dialog_in_folder(&group, &strict), "прочитанная выпадает");
+        assert!(
+            !dialog_in_folder(
+                &DialogDto { muted: true, ..unread.clone() },
+                &strict
+            ),
+            "заглушённая выпадает"
+        );
+        assert!(
+            !dialog_in_folder(
+                &DialogDto { archived: true, ..unread.clone() },
+                &strict
+            ),
+            "архивная выпадает"
+        );
+
+        // Общая папка-ссылка: все флаги false, работает только по include.
+        let chatlist = FolderDto {
+            id: 12,
+            include_ids: vec!["-1001234567890".into()],
+            ..FolderDto::default()
+        };
+        assert!(dialog_in_folder(&group, &chatlist));
+        assert!(!dialog_in_folder(&user, &chatlist));
+    }
+
+    /// **КЛЮЧИ ГРУПП: inbox ЛИБО archive ПЛЮС КАЖДАЯ ПОДХОДЯЩАЯ ПАПКА.**
+    ///
+    /// Это те самые строки, которые лежат в `user_settings.json`
+    /// (`telegram_voice_scope_folders`), и по ним авторазбор решает, брать ли
+    /// голосовое. Формат ключа папки обязан совпадать с фронтовым
+    /// `folderKey` буквально.
+    #[test]
+    fn group_keys_mix_the_directory_with_the_folders() {
+        let folders = vec![
+            FolderDto {
+                id: 10,
+                groups: true,
+                ..FolderDto::default()
+            },
+            FolderDto {
+                id: 11,
+                broadcasts: true,
+                ..FolderDto::default()
+            },
+        ];
+        let group = folder_dialog("-1001234567890", "group");
+        assert_eq!(
+            dialog_group_keys(&group, &folders),
+            vec!["inbox".to_string(), "folder:10".to_string()]
+        );
+
+        let archived_channel = DialogDto {
+            archived: true,
+            ..folder_dialog("-1001111111111", "channel")
+        };
+        assert_eq!(
+            dialog_group_keys(&archived_channel, &folders),
+            vec!["archive".to_string(), "folder:11".to_string()],
+            "архив вместо inbox, но папку это не отменяет"
+        );
+
+        // Без папок остаётся только пункт навигации — и он есть ВСЕГДА.
+        assert_eq!(dialog_group_keys(&group, &[]), vec!["inbox".to_string()]);
+        assert_eq!(folder_key(7), "folder:7");
     }
 
     fn raw_dialog(
