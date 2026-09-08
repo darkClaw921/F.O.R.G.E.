@@ -13,10 +13,10 @@
 
 globalThis.window = { location: { origin: 'http://localhost' } };
 
-/** Что уехало в сеть. */
+/** Что уехало в сеть: адрес И заголовки (портал Битрикса едет заголовком). */
 const requests = [];
-globalThis.fetch = async (url) => {
-    requests.push(String(url));
+globalThis.fetch = async (url, init) => {
+    requests.push({ url: String(url), headers: (init && init.headers) || {} });
     return {
         ok: true,
         status: 200,
@@ -75,8 +75,8 @@ function ok(cond, label) {
 
     eq(priorities, [PRIORITY_BG], 'запрос списка бесед VK идёт ФОНОВЫМ приоритетом');
     eq(requests.length, 1, 'ровно один запрос за показ формы — поллинга нет');
-    ok(requests[0].includes('/api/vk/dialogs'), 'адрес тот же, что у формы видимости');
-    ok(requests[0].includes(`limit=${S.PEER_LIST_LIMIT}`), 'лимит списка передан');
+    ok(requests[0].url.includes('/api/vk/dialogs'), 'адрес тот же, что у формы видимости');
+    ok(requests[0].url.includes(`limit=${S.PEER_LIST_LIMIT}`), 'лимит списка передан');
     eq(peers.length, 3, 'беседы разобраны');
     eq(peers[0].id, '2000000042', 'id беседы — строкой');
     ok(String(peers[0].marks).includes('беседы'), 'тип беседы показан пометкой');
@@ -98,7 +98,7 @@ function ok(cond, label) {
 
     const peers = await S.TELEGRAM_SCOPE_SOURCE.listScopePeers();
     eq(peers.length, 3, 'чаты разобраны');
-    ok(requests.some((u) => u.includes('/api/telegram/dialogs')), 'адрес чатов — телеграмный');
+    ok(requests.some((r) => r.url.includes('/api/telegram/dialogs')), 'адрес чатов — телеграмный');
 }
 
 // ── Битрикс24: виды диалогов ────────────────────────────────────────────────
@@ -111,7 +111,60 @@ function ok(cond, label) {
 
     const peers = await S.B24_SCOPE_SOURCE.listScopePeers();
     eq(peers.length, 3, 'диалоги разобраны');
-    ok(requests.some((u) => u.includes('/api/bitrix/dialogs')), 'адрес диалогов — портальный');
+    ok(requests.some((r) => r.url.includes('/api/bitrix/dialogs')), 'адрес диалогов — портальный');
+}
+
+// ── Битрикс24: ПОРТАЛ едет заголовком, а выбор лежит в записи портала (Ф7.5) ─
+//
+// У площадки несколько порталов, и `DIALOG_ID` у них свои. Значит форма
+// настроек обязана и спрашивать список ТОГО портала, который правит человек, и
+// сохранять выбор в его запись — иначе галочки уедут случайному чату соседнего
+// портала.
+
+{
+    const PORTAL = await import(
+        new URL('../../static/js/settings/bitrix-settings-portal.js', import.meta.url).href
+    );
+    const API = await import(new URL('../../static/js/bitrix/api.js', import.meta.url).href);
+
+    // Панель открыта на `acme`, а настройки правят `beta` — ровно тот случай,
+    // ради которого переключатель и добавлен.
+    API.setActivePortal('acme');
+    eq(PORTAL.settingsPortal(), 'acme', 'умолчание — активный портал панели');
+    PORTAL.setSettingsPortal('beta');
+    eq(PORTAL.settingsPortal(), 'beta', 'явный выбор сильнее умолчания');
+
+    requests.length = 0;
+    await S.B24_SCOPE_SOURCE.listScopePeers();
+    const b24 = requests.find((r) => r.url.includes('/api/bitrix/dialogs'));
+    eq(b24.headers['X-Forge-Portal'], 'beta',
+        'список диалогов запрошен с ЯВНЫМ заголовком выбранного портала');
+
+    // Сохранённый выбор читается из записи ПОРТАЛА, а не из корня настроек.
+    const settings = {
+        bitrix_voice_scope_peers: ['19'],
+        bitrix_portal_prefs: {
+            acme: { voice_scope_peers: ['chat1'] },
+            beta: { voice_scope_kinds: ['task'], voice_scope_peers: ['chat7'] },
+        },
+    };
+    eq(S.B24_SCOPE_SOURCE.scopeInitial(settings),
+        { groups: ['task'], peers: ['chat7'] },
+        'выбор читается из записи выбранного портала');
+
+    // Тело сохранения адресовано ТОЛЬКО ему: слияние карты делает бэкенд,
+    // записи остальных порталов не трогаются.
+    eq(S.B24_SCOPE_SOURCE.scopePayload(['user'], ['chat9']),
+        { bitrix_portal_prefs: { beta: { voice_scope_kinds: ['user'], voice_scope_peers: ['chat9'] } } },
+        'сохранение уходит в запись выбранного портала');
+
+    // Соседние площадки такого не умеют и уметь не должны: их два поля лежат в
+    // корне настроек, и лишний слой карты был бы там чистым усложнением.
+    ok(!S.VK_SCOPE_SOURCE.scopePayload && !S.TELEGRAM_SCOPE_SOURCE.scopePayload,
+        'у VK и Telegram портального слоя нет');
+
+    PORTAL.setSettingsPortal('');
+    API.setActivePortal('');
 }
 
 if (failures > 0) {

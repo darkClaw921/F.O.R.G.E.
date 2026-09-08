@@ -138,6 +138,38 @@
                     <button id="daily-summary-generate" class="daily-summary-generate" type="button">Сгенерировать</button>
                 </div>
             </div>
+            <div id="analytics" class="analytics" style="display:none">
+                <div class="analytics-head">
+                    <button id="analytics-back" class="analytics-back" type="button" title="Закрыть аналитику (Esc)">← Назад</button>
+                    <div class="analytics-filters">
+                        <label class="analytics-filter">
+                            <span class="analytics-filter-label">Период</span>
+                            <select id="analytics-range" class="analytics-select" title="Период выборки">
+                                <option value="7">7 дней</option>
+                                <option value="30" selected>30 дней</option>
+                                <option value="90">90 дней</option>
+                                <option value="all">Всё время</option>
+                            </select>
+                        </label>
+                        <label class="analytics-filter">
+                            <span class="analytics-filter-label">Проект</span>
+                            <select id="analytics-project" class="analytics-select" title="Проект">
+                                <option value="">Все проекты</option>
+                            </select>
+                        </label>
+                    </div>
+                    <button id="analytics-rescan" class="analytics-rescan" type="button" title="Пересобрать индекс транскриптов">↻ Пересобрать индекс</button>
+                </div>
+                <div class="analytics-hero">
+                    <div class="analytics-eyebrow">Аналитика Claude Code</div>
+                    <h1 id="analytics-title" class="analytics-title">Как я работаю с ассистентом</h1>
+                    <div id="analytics-meta" class="analytics-meta"></div>
+                </div>
+                <div id="analytics-progress" class="analytics-progress" hidden></div>
+                <div id="analytics-error" class="analytics-error" hidden></div>
+                <div id="analytics-kpi" class="analytics-kpi"></div>
+                <div id="analytics-grid" class="analytics-grid"></div>
+            </div>
             <div id="screensaver" class="screensaver" style="display:none">
                 <div class="ss-head">
                     <button id="screensaver-back" class="ss-back" type="button" title="Закрыть заставку (Esc)">← Назад</button>
@@ -723,6 +755,28 @@
                     <button id="b24-theme-toggle" class="b24-icon-btn" type="button" title="Тема панели: авто / тёмная / светлая" aria-label="Переключить тему панели">◐</button>
                     <button id="b24-logout" class="b24-icon-btn" type="button" title="Отвязать вебхук Битрикс24" aria-label="Отвязать вебхук Битрикс24" hidden>⏻</button>
                 </div>
+                <!-- СТРОКА ВКЛАДОК ПОРТАЛОВ (мультипортальность).
+
+                     Отдельный ряд ПОД титлбаром и НАД телом панели. Видна
+                     всегда, включая мобильную раскладку, где колонка
+                     #b24-contacts уезжает под ☰: на узком экране вкладка
+                     портала — единственный способ понять, в чей чат уйдёт
+                     сообщение.
+
+                     Ряд статичен и не прячется даже пустым: кнопка `+` —
+                     единственный вход в добавление ВТОРОГО портала, а `id`
+                     резолвятся один раз при импорте js/core/dom.js. -->
+                <div id="b24-portals">
+                    <ul id="b24-portal-tabs" class="b24-portal-tabs"></ul>
+                    <button id="b24-portal-add" class="b24-icon-btn b24-portal-add" type="button" title="Подключить ещё один портал" aria-label="Подключить ещё один портал">+</button>
+                    <!-- Контекстное меню вкладки. Живёт ВНУТРИ ряда, потому что
+                         позиционируется от его угла: панель не обязана занимать
+                         весь экран (remote-режим показывает её в сетке). -->
+                    <div id="b24-portal-menu" class="b24-portal-menu" hidden>
+                        <button id="b24-portal-rename" class="b24-portal-menu-item" type="button">переименовать</button>
+                        <button id="b24-portal-remove" class="b24-portal-menu-item b24-portal-menu-danger" type="button">отвязать</button>
+                    </div>
+                </div>
                 <div id="b24-body">
                     <!-- tabindex=-1: на мобильных фокус переносится сюда при
                          открытии панели по ☰. -->
@@ -800,7 +854,12 @@
                      (Ф3) — секрет не должен задерживаться во фронте. -->
                 <div id="b24-login" hidden>
                     <div class="b24-login-box">
-                        <div class="b24-login-title">BITRIX24 // CONNECT</div>
+                        <!-- Заголовок переключается между «CONNECT» и «ADD
+                             PORTAL»: экран подключения ПЕРЕИСПОЛЬЗУЕТСЯ для
+                             добавления второго и последующих порталов (Ф8).
+                             Второго места, где через фронт проходит секрет, в
+                             проекте не заводится. -->
+                        <div id="b24-login-title" class="b24-login-title">BITRIX24 // CONNECT</div>
                         <div id="b24-login-step-webhook">
                             <!-- Текст подсказки приходит С БЭКЕНДА (поле
                                  `hint` в /api/bitrix/status): интерфейс
@@ -825,6 +884,10 @@
                                 <input id="b24-webhook" type="password" autocomplete="off" spellcheck="false" placeholder="https://портал.bitrix24.ru/rest/1/код/">
                             </label>
                             <button id="b24-login-webhook-submit" class="b24-login-btn" type="button">CONNECT</button>
+                            <!-- Виден только в режиме добавления портала: у
+                                 первого подключения отменять нечего — без
+                                 вебхука панель всё равно пуста. -->
+                            <button id="b24-login-cancel" class="b24-login-btn b24-login-btn-ghost" type="button" hidden>CANCEL</button>
                             <div id="b24-login-status" class="b24-login-status"></div>
                             <div id="b24-login-error" class="b24-login-error" hidden></div>
                             <div id="b24-login-countdown" class="b24-login-countdown" hidden></div>

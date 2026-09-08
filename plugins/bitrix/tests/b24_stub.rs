@@ -1245,7 +1245,14 @@ struct LoginHarness {
     _dir: tempfile::TempDir,
     /// Путь конфига — по нему проверяются права и содержимое.
     config_path: std::path::PathBuf,
+    /// Слот, с которого стенд НАЧИНАЕТ, — пустой (вебхука нет).
+    ///
+    /// После первого подключения он больше не портал: занятие пустого слота
+    /// ПЕРЕСОБИРАЕТ состояние, потому что дисковые пути выведены из
+    /// идентификатора портала и лежат в неизменяемом `BitrixConfig` (Ф6).
+    /// Живой портал спрашивают у реестра — [`LoginHarness::registry`].
     state: Arc<forge_bitrix::state::B24State>,
+    registry: Arc<forge_bitrix::B24Registry>,
     app: Router,
 }
 
@@ -1282,11 +1289,13 @@ fn login_harness(stub: &Stub) -> LoginHarness {
         ..BitrixConfig::default()
     };
     let state = forge_bitrix::state::B24State::new(cfg);
-    let app = forge_bitrix::routes::build_router(state.clone());
+    let registry = forge_bitrix::B24Registry::single(state.clone());
+    let app = forge_bitrix::routes::build_router(registry.clone());
     LoginHarness {
         _dir: dir,
         config_path,
         state,
+        registry,
         app,
     }
 }
@@ -1599,19 +1608,58 @@ async fn logout_wipes_the_webhook_locally_without_calling_the_portal() {
 /// Вставка вебхука В РАНТАЙМЕ доезжает до подписчиков БЕЗ переподключения:
 /// именно на этом держится живой экран подключения в соседних вкладках (и,
 /// с Ф7, поднятие realtime без рестарта процесса).
+///
+/// # Два разных пути, и оба проверяются здесь
+///
+/// 1. **Первое подключение занимает пустой слот**, а с Ф6 занятие ПЕРЕСОБИРАЕТ
+///    состояние (дисковые пути выведены из идентификатора портала). Подписчик,
+///    сидевший на пустом слоте, поэтому не увидит переходов нового портала — и
+///    не должен: сокет узнаёт о смене состава сигналом
+///    (`subscribe_composition`), переподписывается по `Arc::ptr_eq`
+///    (`PortalFanIn::sync`) и берёт СНИМОК состояния уже после подписки.
+///    Потерять итоговое состояние на этом пути невозможно, и проверяется
+///    именно это: сигнал был, живой портал авторизован.
+/// 2. **Повторное подключение УЖЕ известного портала** состояние не
+///    пересобирает — вкладка та же. Здесь подписчик обязан увидеть оба
+///    перехода по порядку, и ровно это утверждала исходная версия теста.
 #[tokio::test]
 async fn connecting_at_runtime_pushes_login_state_to_existing_subscribers() {
     let stub = start_stub().await;
     let h = login_harness(&stub);
 
+    // -- путь 1: пустой слот превращается в портал ------------------------
+    let composition = h.registry.subscribe_composition();
+    let (_, body) = connect(&h.app, WEBHOOK_INPUT).await;
+    assert_eq!(body["state"], "authorized", "{body}");
+
+    assert!(
+        composition.has_changed().unwrap_or(false),
+        "смена состава обязана объявляться сигналом, иначе сокет не переподпишется"
+    );
+    let portal = h.registry.primary();
+    assert!(
+        !Arc::ptr_eq(&portal, &h.state),
+        "занятый слот пересобран (Ф6)"
+    );
+    assert_eq!(
+        portal.login_state_dto().await.state,
+        "authorized",
+        "снимок, который сокет возьмёт после переподписки, уже авторизован"
+    );
+
+    // -- путь 2: тот же портал подключают ещё раз -------------------------
     // Подписка ДО подключения — ровно как у уже открытого WS-клиента.
-    let mut rx = h.state.subscribe();
+    let mut rx = portal.subscribe();
     // Воркер (Ф7) ждёт на этом же уведомлении, не делая сетевых вызовов.
-    let notified = h.state.authorized_notify.notified();
+    let notified = portal.authorized_notify.notified();
     tokio::pin!(notified);
 
     let (_, body) = connect(&h.app, WEBHOOK_INPUT).await;
     assert_eq!(body["state"], "authorized", "{body}");
+    assert!(
+        Arc::ptr_eq(&portal, &h.registry.primary()),
+        "известный портал пересобирать не за чем: идентификатор не менялся"
+    );
 
     let mut states = Vec::new();
     while let Ok(msg) = rx.try_recv() {
@@ -1640,15 +1688,18 @@ async fn changing_the_webhook_invalidates_the_cached_client() {
     let stub = start_stub().await;
     let h = login_harness(&stub);
 
+    // Клиент спрашивается у ЖИВОГО портала: первое подключение занимает пустой
+    // слот и пересобирает его состояние (Ф6), поэтому `h.state` после него —
+    // уже не портал.
     connect(&h.app, WEBHOOK_INPUT).await;
-    let first = h.state.api_client().await.unwrap();
+    let first = h.registry.primary().api_client().await.unwrap();
 
     connect(
         &h.app,
         "https://login-stand.bitrix24.ru/rest/1/otherc0de9999/",
     )
     .await;
-    let second = h.state.api_client().await.unwrap();
+    let second = h.registry.primary().api_client().await.unwrap();
     assert!(
         !Arc::ptr_eq(&first, &second),
         "второй клиент = второй троттлер = двойной бюджет запросов"
@@ -3313,7 +3364,7 @@ async fn subscribe_is_called_once_and_is_idempotent() {
         "после повторной подписки поток обязан продолжиться"
     );
 
-    forge_bitrix::shutdown(&state).await;
+    forge_bitrix::registry::shutdown_portal(&state).await;
 }
 
 /// `offset` — ЭТО ПОДТВЕРЖДЕНИЕ, А НЕ ПОЗИЦИЯ ЧТЕНИЯ.
@@ -3415,7 +3466,7 @@ async fn duplicate_message_ids_are_deduplicated() {
             ids.push(message.id);
         }
     }
-    forge_bitrix::shutdown(&state).await;
+    forge_bitrix::registry::shutdown_portal(&state).await;
 
     assert_eq!(ids, vec![63, 65], "дубль обязан отсеяться, соседи — нет");
 }
@@ -3458,7 +3509,7 @@ async fn the_cursor_survives_a_process_restart() {
         wait_for(Duration::from_secs(3), || stub.state.acked() >= 6).await,
         "первый процесс не подтвердил событие"
     );
-    forge_bitrix::shutdown(&first).await;
+    forge_bitrix::registry::shutdown_portal(&first).await;
     assert_eq!(shown_before, vec![63]);
 
     // Курсор лежит на диске в <cache_dir>/events.json.
@@ -3484,7 +3535,7 @@ async fn the_cursor_survives_a_process_restart() {
         .await,
         "второй процесс не пошёл в поток"
     );
-    forge_bitrix::shutdown(&second).await;
+    forge_bitrix::registry::shutdown_portal(&second).await;
 
     // Первый же запрос после рестарта НЕСЁТ сохранённый offset — то есть
     // холодного старта не было.
@@ -3552,7 +3603,7 @@ async fn a_stale_cursor_triggers_a_full_resync() {
         wait_for(Duration::from_secs(3), || stub.state.count_of("im.v2.Event.get") >= 2).await,
         "воркер не поднялся"
     );
-    forge_bitrix::shutdown(&state).await;
+    forge_bitrix::registry::shutdown_portal(&state).await;
 
     let frames = drain(&mut rx);
     assert!(
@@ -3649,7 +3700,7 @@ async fn a_webhook_inserted_at_runtime_brings_realtime_up_without_a_restart() {
         "сообщение не доехало до подписчиков"
     );
 
-    forge_bitrix::shutdown(&state).await;
+    forge_bitrix::registry::shutdown_portal(&state).await;
 }
 
 /// КАДЕНС (Р4): `hasMore: true` укорачивает паузу до двух секунд.
@@ -3698,7 +3749,7 @@ async fn has_more_shortens_the_interval_to_two_seconds() {
         wait_for(Duration::from_secs(3), || stub.state.count_of("im.v2.Event.get") >= 4).await,
         "очередь не продренировалась"
     );
-    forge_bitrix::shutdown(&state).await;
+    forge_bitrix::registry::shutdown_portal(&state).await;
 
     let calls = stub.state.calls_of("im.v2.Event.get");
     // Пока `hasMore` был истиной (первые три ответа), паузы обязаны быть
@@ -3783,7 +3834,7 @@ async fn without_ws_subscribers_the_interval_drops_to_idle() {
         "с подписчиком пауза обязана быть короткой, а была {active_gap:?}"
     );
 
-    forge_bitrix::shutdown(&state).await;
+    forge_bitrix::registry::shutdown_portal(&state).await;
 }
 
 /// ПРАВКА ПРИЕЗЖАЕТ МЕДЛЕННЫМ ВОРКЕРОМ, А НЕ СОБЫТИЕМ.
@@ -3836,7 +3887,7 @@ async fn an_edit_is_delivered_by_the_slow_sync_worker_not_by_events() {
         .await,
         "правка не доехала фолбэк-воркером"
     );
-    forge_bitrix::shutdown(&state).await;
+    forge_bitrix::registry::shutdown_portal(&state).await;
 
     let message = edited.unwrap();
     assert_eq!(message.id, 95);

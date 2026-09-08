@@ -57,9 +57,24 @@ use crate::voice::voice_key;
 
 /// Настройки панели Битрикс24 из `user_settings.json` — читаются на каждое
 /// сообщение с вложением, чтобы тумблер действовал без перезапуска.
+///
+/// Белый список и скоуп берутся у СВОЕГО портала (мультипортальность, Ф7):
+/// `DIALOG_ID` полиморфен и у разных порталов означает разные чаты, поэтому
+/// общие на все порталы списки разбирали бы голосовые в чате, который на этом
+/// портале никто не отмечал. Идентичность портала берётся из
+/// [`B24State::portal_id`] — источника истины, а не из `config.portal_id`,
+/// который переживает пере-подключение вебхука не всегда.
+///
+/// Тумблер `bitrix_voice_autotranscribe` при этом остаётся ГЛОБАЛЬНЫМ: его
+/// читает та же функция из корня файла (см. `forge_voice::prefs`).
 #[must_use]
 pub fn prefs(state: &B24State) -> Prefs {
-    forge_voice::prefs::read(&state.config.user_settings_path, forge_voice::prefs::BITRIX)
+    let portal = state.portal_id();
+    forge_voice::prefs::read_portal(
+        &state.config.user_settings_path,
+        forge_voice::prefs::BITRIX,
+        Some(portal.as_str()),
+    )
 }
 
 /// Вид диалога в лексике настроек видимости (`user` | `chat`).

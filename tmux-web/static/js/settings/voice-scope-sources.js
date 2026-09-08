@@ -25,8 +25,10 @@ import { getDialogs as tgGetDialogs, listFolders as tgListFolders } from '../tel
 import { DIR_ARCHIVE, DIR_INBOX, folderKey } from '../telegram/visibility.js';
 import { getDialogs as b24GetDialogs } from '../bitrix/api.js';
 import {
-    filterKind, kindLabel as b24KindLabel, VISIBLE_KINDS as B24_KINDS,
+    filterKind, kindLabel as b24KindLabel, portalPrefs, portalPrefsPatch,
+    VISIBLE_KINDS as B24_KINDS,
 } from '../bitrix/visibility.js';
+import { settingsPortal } from './bitrix-settings-portal.js';
 
 /** Сколько бесед просим у плагина для списка выбора. */
 export const PEER_LIST_LIMIT = 200;
@@ -105,19 +107,46 @@ export const TELEGRAM_SCOPE_SOURCE = {
 };
 
 /**
- * Битрикс24: виды диалогов и диалоги.
+ * Битрикс24: виды диалогов и диалоги ВЫБРАННОГО В НАСТРОЙКАХ ПОРТАЛА.
  *
  * Видов ТРИ, хотя у портала их семь: `sg`, `openline`, `copilot` и `collab`
  * сведены к «чатам» (`filterKind`). Отдельного выбора «только чаты задач»
  * поверх этого нет и быть не может: чат задачи по `DIALOG_ID` неотличим от
  * обычного, и вид `task` — такая же группа в этом же списке.
+ *
+ * ЧЕМ ЭТА ПЛОЩАДКА ОТЛИЧАЕТСЯ ОТ ДВУХ СОСЕДНИХ (Ф7.5). Порталов у неё
+ * несколько, и скоуп авторазбора у каждого свой — он лежит не в корне
+ * настроек, а в записи портала (`bitrix_portal_prefs`). Отсюда три отличия,
+ * которых нет ни у VK, ни у Telegram:
+ *
+ *   • список диалогов запрашивается с ЯВНЫМ порталом — иначе в форме,
+ *     открытой на портале B, отмечались бы чаты портала A;
+ *   • сохранённый выбор читается `scopeInitial` из записи портала;
+ *   • тело PATCH собирает `scopePayload` — общая форма про карту не знает.
+ *
+ * Портал берётся у переключателя формы настроек
+ * (`bitrix-settings-portal.js`), а не у панели: настраивать можно и тот
+ * портал, который сейчас не открыт.
+ *
+ * Тумблер `bitrix_voice_autotranscribe` при этом остаётся ГЛОБАЛЬНЫМ и уходит
+ * в корень настроек как раньше — он не ссылается ни на какой диалог.
  */
 export const B24_SCOPE_SOURCE = {
     async listScopeGroups() {
         return kindsAsGroups(B24_KINDS);
     },
+    scopeInitial(settings) {
+        const prefs = portalPrefs(settings, settingsPortal());
+        return { groups: prefs.voice_scope_kinds, peers: prefs.voice_scope_peers };
+    },
+    scopePayload(groups, peers) {
+        return portalPrefsPatch(settingsPortal(), {
+            voice_scope_kinds: groups,
+            voice_scope_peers: peers,
+        });
+    },
     async listScopePeers() {
-        const resp = await b24GetDialogs({ limit: PEER_LIST_LIMIT });
+        const resp = await b24GetDialogs({ limit: PEER_LIST_LIMIT, portal: settingsPortal() });
         const list = Array.isArray(resp && resp.dialogs) ? resp.dialogs : [];
         return list.map((dg) => ({
             id: String(dg.id),

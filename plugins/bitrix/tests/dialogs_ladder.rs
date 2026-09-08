@@ -88,7 +88,7 @@ fn app_with(f: impl FnOnce(&mut BitrixConfig)) -> (tempfile::TempDir, Arc<B24Sta
     };
     f(&mut cfg);
     let state = B24State::new(cfg);
-    let app = forge_bitrix::routes::build_router(state.clone());
+    let app = forge_bitrix::routes::build_router(forge_bitrix::B24Registry::single(state.clone()));
     (dir, state, app)
 }
 

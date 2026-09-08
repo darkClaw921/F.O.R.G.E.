@@ -554,3 +554,89 @@ fn the_live_history_page_deserialises_completely() {
     assert_eq!(users.len(), 1);
     assert_eq!(users[0].id.as_i64(), Some(1));
 }
+
+// ---------------------------------------------------------------------------
+// ЛОВУШКА 12: явный `null` (и `false`) на месте вложенной СТРУКТУРЫ.
+// ---------------------------------------------------------------------------
+
+/// ЯВНЫЙ `null` НА МЕСТЕ СТРУКТУРЫ ОБНУЛЯЛ ВЕСЬ СПИСОК ДИАЛОГОВ.
+///
+/// Найдено живой проверкой Ф9 на двух стендах: один чат с `entity_link: null`
+/// давал панель без ЕДИНОГО диалога — и ни строчки в логе.
+///
+/// Механика в трёх шагах, и каждый по отдельности выглядит безобидно:
+///
+/// 1. `#[serde(default)]` покрывает только ОТСУТСТВУЮЩИЙ ключ. Явный `null` на
+///    месте структуры — это `invalid type: null`, то есть ошибка разбора ВСЕГО
+///    документа, а не одного поля. Пустой PHP-массив `[]` при этом проходит
+///    (serde принимает seq-форму структуры), и именно поэтому ловушка не
+///    ловилась глазами: `[]` и `null` в ответах портала стоят рядом.
+/// 2. Ошибка глохнет в `methods.rs`: `from_value::<Vec<RecentItemRaw>>(…).ok()
+///    .unwrap_or_default()` превращает её в пустой вектор без лога.
+/// 3. Воркер синхронизации пишет строку только при непустом результате, так
+///    что нулевой проход не оставляет следа вовсе.
+///
+/// Итог для пользователя: `GET /api/bitrix/dialogs` отвечает `200
+/// {"dialogs":[]}`, панель пуста, в логе тишина. ОДИН чат роняет ВЕСЬ список —
+/// не себя, а список.
+///
+/// Тест проверяет обе формы «значения нет» (`null` и `false`) на всех
+/// структурных полях строки списка и требует, чтобы соседняя строка выжила.
+#[test]
+fn a_null_in_place_of_a_nested_object_must_not_wipe_the_whole_list() {
+    let healthy = serde_json::json!({
+        "id": "chat7",
+        "chat_id": 7,
+        "title": "Живой чат",
+        "chat": { "id": 7, "entity_type": "", "entity_link": {} },
+        "message": { "id": 1, "text": "привет", "author_id": 1 }
+    });
+
+    // Все структурные поля, у которых `#[serde(default)]` НЕ спасает от `null`.
+    for field in [
+        "chat", "message", "avatar", "user",
+    ] {
+        for empty in [serde_json::Value::Null, serde_json::Value::Bool(false)] {
+            let mut broken = healthy.clone();
+            broken[field] = empty.clone();
+            let page = serde_json::json!([broken, healthy.clone()]);
+
+            let rows: Vec<RecentItemRaw> = serde_json::from_value(page).unwrap_or_else(|e| {
+                panic!("recent[].{field} = {empty}: разбор списка упал целиком: {e}")
+            });
+            assert_eq!(
+                rows.len(),
+                2,
+                "recent[].{field} = {empty}: строки потерялись"
+            );
+            assert_eq!(
+                rows[1].chat.id, Some(7),
+                "recent[].{field} = {empty}: соседняя ЗДОРОВАЯ строка пострадала"
+            );
+        }
+    }
+
+    // То же внутри `chat` — там ловушка и была найдена живьём.
+    for field in ["entity_link", "restrictions", "mute_list", "manager_list"] {
+        for empty in [serde_json::Value::Null, serde_json::Value::Bool(false)] {
+            let mut broken = healthy.clone();
+            broken["chat"][field] = empty.clone();
+            let page = serde_json::json!([broken, healthy.clone()]);
+
+            let rows: Vec<RecentItemRaw> = serde_json::from_value(page).unwrap_or_else(|e| {
+                panic!("chat.{field} = {empty}: разбор списка упал целиком: {e}")
+            });
+            assert_eq!(rows.len(), 2, "chat.{field} = {empty}: строки потерялись");
+        }
+    }
+
+    // `send` по умолчанию РАЗРЕШЁН, и обнулённые ограничения не имеют права
+    // молча запереть поле ввода.
+    let mut broken = healthy.clone();
+    broken["chat"]["restrictions"] = serde_json::Value::Null;
+    let rows: Vec<RecentItemRaw> = serde_json::from_value(serde_json::json!([broken])).unwrap();
+    assert!(
+        rows[0].chat.restrictions.send,
+        "обнулённые ограничения обязаны читаться как «писать можно»"
+    );
+}

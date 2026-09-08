@@ -95,6 +95,16 @@ pub type MessagePayload = crate::dto::MessageDto;
 /// карточка выглядит иначе, чем после перезагрузки вкладки (Ф10).
 pub type TaskPayload = crate::tasks::TaskDto;
 
+/// Вкладка портала — то же DTO, что отдаёт `GET /api/bitrix/portals`.
+///
+/// Алиас, а не отдельный тип, по той же причине, что и [`DialogPayload`]:
+/// строка вкладок рисуется и по ответу роута, и по кадру
+/// [`B24ServerMsg::Portals`], и расхождение форм означало бы, что вкладка,
+/// приехавшая realtime'ом, выглядит иначе, чем после перезагрузки страницы.
+/// Секрета в ней нет по построению — ни вебхука, ни отпечатка, ни хоста (см.
+/// шапку [`crate::routes::portals`]).
+pub type PortalPayload = crate::routes::portals::PortalDto;
+
 /// То, что летит в broadcast-канал [`crate::state::B24State`] и дальше —
 /// каждому WS-подписчику.
 ///
@@ -109,6 +119,30 @@ pub enum B24ServerMsg {
     /// Текущее состояние подключения. Отправляется ПЕРВЫМ кадром после
     /// апгрейда и при каждом переходе [`crate::state::LoginFlow`].
     LoginState(LoginStateDto),
+
+    /// Состав или статусы порталов изменились (Ф5).
+    ///
+    /// Отправляется снапшотом сразу после `login_state` каждого слота, затем
+    /// на каждое изменение состава реестра — добавление, отвязку,
+    /// переименование, перестановку вкладок
+    /// ([`crate::registry::B24Registry::subscribe_composition`]) — и на каждый
+    /// переход автомата подключения любого портала (сменился `connected`).
+    ///
+    /// А вот на `counters` — НЕТ: они идут постоянно, и полный список вкладок
+    /// на каждый счётчик был бы чистым шумом. Бейдж вкладки фронт двигает
+    /// самим кадром `counters` (у того есть `portal_id`), а поле `unread`
+    /// здесь — снимок для холодного старта.
+    ///
+    /// Полный список, а не патч, — в отличие от `dialogs_patch`: вкладок
+    /// единицы, а порядок в списке И ЕСТЬ порядок вкладок, и собирать его из
+    /// приращений значило бы заново решать задачу, которую реестр уже решил.
+    ///
+    /// Форма строки — ровно та же, что у `GET /api/bitrix/portals`
+    /// ([`PortalPayload`]): ни вебхука, ни его отпечатка, ни хоста портала.
+    Portals {
+        /// Вкладки В ПОРЯДКЕ РЕЕСТРА.
+        portals: Vec<PortalPayload>,
+    },
 
     /// Изменились строки списка диалогов.
     ///
@@ -460,6 +494,49 @@ pub enum B24ServerMsg {
     Ping,
 }
 
+/// Кадр НА ПРОВОДЕ: [`B24ServerMsg`] плюс обязательный `portal_id` (Ф5).
+///
+/// # Почему конверт, а не поле в каждом варианте
+///
+/// Сокет `/ws/bitrix` один на все порталы, и по `portal_id` фронт решает,
+/// рисовать ли кадр в открытой ленте или поднять бейдж соседней вкладки. Поле
+/// обязано быть в КАЖДОМ кадре — включая те, что появятся в будущих фазах.
+/// Разложи его по двум десяткам вариантов enum'а — и первый же новый вариант
+/// приехал бы без него, причём МОЛЧА: кадр без `portal_id` не отличим от кадра
+/// активного портала, то есть чужая переписка утекла бы в открытую ленту.
+///
+/// Конверт делает это невозможным по типам: в сокет отправляется только он
+/// ([`crate::ws::send_server_msg`]), а собрать его без `portal_id` нельзя.
+///
+/// # Почему `flatten`, а не вложенный объект
+///
+/// `{"type":"message_new","portal_id":"acme",…}`, а не
+/// `{"portal_id":"acme","msg":{…}}`: форма ВСЕХ существующих кадров остаётся
+/// прежней, и фронт (а он читает `msg.dialog_id`, а не `msg.msg.dialog_id`)
+/// продолжает работать, ничего не зная о новом поле, пока Ф8 не научит его им
+/// пользоваться.
+///
+/// Заимствует, а не владеет: кадры бывают тяжёлыми (`message_new` с полным
+/// текстом), и оборачивание не повод их клонировать.
+#[derive(Debug, Clone, Serialize)]
+pub struct B24Frame<'a> {
+    /// Кому принадлежит событие. НИКОГДА не пуст: у слота без портала это
+    /// [`crate::ws::VACANT_PORTAL_ID`], у служебных кадров сокета —
+    /// [`crate::ws::SOCKET_PORTAL_ID`].
+    pub portal_id: &'a str,
+    /// Сам кадр, разложенный в том же объекте.
+    #[serde(flatten)]
+    pub msg: &'a B24ServerMsg,
+}
+
+impl<'a> B24Frame<'a> {
+    /// Собирает кадр для отправки.
+    #[must_use]
+    pub fn new(portal_id: &'a str, msg: &'a B24ServerMsg) -> Self {
+        Self { portal_id, msg }
+    }
+}
+
 /// Мост между ядром анализа и broadcast-каналом плагина
 /// ([`forge_chat_analysis::AnalysisSink`]).
 ///
@@ -694,10 +771,21 @@ mod tests {
     /// ЗАМОРОЖЕННЫЙ КОНТРАКТ: набор тегов дословно совпадает с константой
     /// `SERVER_FRAMES` во фронтовом `js/bitrix/ws.js`. Переименование обязано
     /// валить тест, а не приводить к молчаливому «no handler».
-    #[test]
-    fn server_frame_tags_are_frozen() {
-        let all = [
+    /// По одному экземпляру КАЖДОГО кадра, в порядке объявления.
+    ///
+    /// Общий источник для двух замороженных проверок сразу: состав тегов
+    /// ([`server_frame_tags_are_frozen`]) и обязательный `portal_id`
+    /// ([`every_frame_on_the_wire_carries_a_portal_id`]). Разойдись эти два
+    /// списка — новый кадр проверялся бы только одним из правил.
+    fn all_server_frames() -> Vec<B24ServerMsg> {
+        vec![
             B24ServerMsg::LoginState(LoginStateDto::default()),
+            B24ServerMsg::Portals {
+                portals: vec![crate::routes::portals::PortalDto {
+                    id: "acme".into(),
+                    ..Default::default()
+                }],
+            },
             B24ServerMsg::DialogsPatch {
                 dialogs: vec![],
                 removed: vec![],
@@ -827,12 +915,18 @@ mod tests {
             },
             B24ServerMsg::Resync,
             B24ServerMsg::Ping,
-        ];
+        ]
+    }
+
+    #[test]
+    fn server_frame_tags_are_frozen() {
+        let all = all_server_frames();
         let tags: Vec<String> = all.iter().map(tag).collect();
         assert_eq!(
             tags,
             vec![
                 "login_state",
+                "portals",
                 "dialogs_patch",
                 "message_new",
                 "message_update",
@@ -858,6 +952,55 @@ mod tests {
                 "ping",
             ]
         );
+    }
+
+    /// ЗАМОРОЖЕННЫЙ КОНТРАКТ Ф5: на проводе у КАЖДОГО кадра есть непустой
+    /// `portal_id`, и добавление поля не изменило форму самого кадра.
+    ///
+    /// Пустое значение здесь так же опасно, как отсутствующее: фронт не смог
+    /// бы отличить «кадр слота без портала» от «кадр активной вкладки» и
+    /// показал бы чужое событие в открытой ленте.
+    #[test]
+    fn every_frame_on_the_wire_carries_a_portal_id() {
+        for msg in all_server_frames() {
+            let v = serde_json::to_value(B24Frame::new("acme", &msg)).unwrap();
+            assert_eq!(
+                v["portal_id"], "acme",
+                "кадр без portal_id: {v}"
+            );
+            // Конверт плоский: тег остался на верхнем уровне, поля кадра — тоже.
+            assert_eq!(v["type"], tag(&msg), "тег кадра съеден конвертом: {v}");
+            assert!(
+                v.get("msg").is_none(),
+                "кадр не должен уезжать вложенным объектом: {v}"
+            );
+        }
+    }
+
+    /// Кадр `portals` несёт ту же форму, что `GET /api/bitrix/portals`, и ни
+    /// следа секрета.
+    #[test]
+    fn the_portals_frame_never_leaks_a_webhook() {
+        let msg = B24ServerMsg::Portals {
+            portals: vec![crate::routes::portals::PortalDto {
+                id: "acme".into(),
+                title: "Акме".into(),
+                connected: true,
+                login: LoginStateDto::default(),
+                unread: 3,
+            }],
+        };
+        let v = serde_json::to_value(B24Frame::new("acme", &msg)).unwrap();
+        assert_eq!(v["type"], "portals");
+        assert_eq!(v["portals"][0]["id"], "acme");
+        assert_eq!(v["portals"][0]["unread"], 3);
+        let text = serde_json::to_string(&v).unwrap();
+        for forbidden in ["webhook", "rest/", "host", "fingerprint"] {
+            assert!(
+                !text.contains(forbidden),
+                "в кадре portals появилось поле {forbidden}: {text}"
+            );
+        }
     }
 
     #[test]

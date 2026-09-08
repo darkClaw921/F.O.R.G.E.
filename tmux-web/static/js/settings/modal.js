@@ -3,8 +3,8 @@
 // Диспетчер табов: Notifications (global notifier-config), Themes,
 // TODO behavior, Echo, Сводка дня, Интерфейс, Telegram (видимость чатов +
 // горячие клавиши), VK (видимость бесед + горячие клавиши), Битрикс24
-// (видимость диалогов + горячие клавиши) и опциональный Remote servers tab в
-// remote-mode.
+// (видимость диалогов + горячие клавиши), Аналитика (сводка по транскриптам
+// Claude Code) и опциональный Remote servers tab в remote-mode.
 //
 // Форма горячих клавиш ОДНА на все три панели и параметризуется конфигом
 // (см. hotkeys-tab.js): вторая копия дала бы третью точку правки при каждом
@@ -13,7 +13,9 @@
 // Реестра табов здесь нет — каждый захардкожен в шести местах (кнопка, панель,
 // селектор контента, объект состояния, ветка в showTab, whitelist initialTab).
 // Это норма файла: добавление таба — механическая копия шести строк, а реестр
-// ради восьми вкладок был бы абстракцией дороже задачи.
+// ради десяти вкладок был бы абстракцией дороже задачи. Полнота регистрации
+// проверяется стражами тестов (settings_meet_tab / settings_analytics_tab):
+// пропуск любой из точек даёт молча неработающую вкладку.
 //
 // ДВЕ вкладки условные и рисуются не всегда: «Remote servers» (только в
 // remote-mode) и «Встречи» (только когда devforge запущен с `--meet`).
@@ -61,6 +63,10 @@ import {
     meetEnabled, getMeetConfig, putMeetConfig, getMeetStatus, getModels, downloadModel,
     recheckDeps, getCloudModels, getCloudBalance, resetMeetProfile,
 } from '../meet/api.js';
+import { renderAnalyticsTab } from './analytics-tab.js';
+import {
+    getAnalyticsSummary, getAnalyticsStatus, rescanAnalytics,
+} from '../analytics/api.js';
 
 export function openSettingsModal(initialTab) {
     const overlay = buildModalOverlay();
@@ -124,6 +130,7 @@ export function openSettingsModal(initialTab) {
             <button type="button" class="modal-tab-btn" data-tab="telegram" role="tab">Telegram</button>
             <button type="button" class="modal-tab-btn" data-tab="vk" role="tab">VK</button>
             <button type="button" class="modal-tab-btn" data-tab="bitrix" role="tab">Битрикс24</button>
+            <button type="button" class="modal-tab-btn" data-tab="analytics" role="tab">Аналитика</button>
             ${meetTabBtn}
             ${remoteTabBtn}
         </div>
@@ -167,6 +174,10 @@ export function openSettingsModal(initialTab) {
             <h2>Битрикс24</h2>
             <div class="bitrix-settings-content" id="ps-bitrix-content"></div>
         </div>
+        <div class="modal-tab-panel" id="ps-panel-analytics" data-panel="analytics" hidden>
+            <h2>Аналитика</h2>
+            <div class="analytics-settings-content" id="ps-analytics-content"></div>
+        </div>
         ${meetPanel}
         ${remotePanel}
         <div class="modal-actions">
@@ -195,6 +206,7 @@ export function openSettingsModal(initialTab) {
     const $vkContent = card.querySelector('#ps-vk-content');
     const $bitrixContent = card.querySelector('#ps-bitrix-content');
     const $meetContent = card.querySelector('#ps-meet-content');
+    const $analyticsContent = card.querySelector('#ps-analytics-content');
 
     // TODO behavior tab state: рендерим форму один раз при первом клике.
     // userSettings fetch выполняется лениво, если bootstrap-preload не успел
@@ -222,6 +234,9 @@ export function openSettingsModal(initialTab) {
         loaded: false,
     };
     const meetTabState = {
+        loaded: false,
+    };
+    const analyticsTabState = {
         loaded: false,
     };
 
@@ -386,21 +401,34 @@ export function openSettingsModal(initialTab) {
                 await fetchUserSettings();
             } catch (_) { /* fetchUserSettings swallows errors itself */ }
         }
-        $bitrixContent.innerHTML = '';
         // Пустой объект при недоступном backend: форма видимости покажет фильтр
         // выключенным, а форма клавиш — тумблер ВКЛЮЧЁННЫМ (дефолты этих двух
         // настроек намеренно разные, см. user_settings.rs).
-        const settingsArg = state.userSettings || {};
         const onSaved = (updated) => {
             if (updated) state.userSettings = updated;
         };
-        $bitrixContent.appendChild(buildBitrixVisibilityForm(settingsArg, onSaved));
-        $bitrixContent.appendChild(buildHotkeysForm(settingsArg, onSaved, B24_HOTKEYS_CONFIG));
-        $bitrixContent.appendChild(buildVoiceForm(settingsArg, onSaved, B24_VOICE_CONFIG, {
-            getVoiceSettings: b24GetVoiceSettings,
-            setVoiceSettings: b24SetVoiceSettings,
-            ...B24_SCOPE_SOURCE,
-        }));
+
+        // Формы вкладки собираются функцией, потому что переключатель ПОРТАЛА
+        // в шапке формы видимости меняет содержимое и СОСЕДНЕЙ формы: скоуп
+        // авторазбора голосовых тоже пер-портальный (Ф7.5). Перерисовка целиком
+        // — самый дешёвый способ не заводить второй переключатель и не
+        // синхронизировать два состояния руками.
+        const paint = () => {
+            const settingsArg = state.userSettings || {};
+            $bitrixContent.innerHTML = '';
+            $bitrixContent.appendChild(
+                buildBitrixVisibilityForm(settingsArg, onSaved, () => paint()),
+            );
+            $bitrixContent.appendChild(
+                buildHotkeysForm(settingsArg, onSaved, B24_HOTKEYS_CONFIG),
+            );
+            $bitrixContent.appendChild(buildVoiceForm(settingsArg, onSaved, B24_VOICE_CONFIG, {
+                getVoiceSettings: b24GetVoiceSettings,
+                setVoiceSettings: b24SetVoiceSettings,
+                ...B24_SCOPE_SOURCE,
+            }));
+        };
+        paint();
     };
 
     // Вкладка «Встречи»: настройки плагина forge-meet. В отличие от соседей
@@ -418,6 +446,26 @@ export function openSettingsModal(initialTab) {
         void buildMeetSettings($meetContent, {
             getMeetConfig, putMeetConfig, getMeetStatus, getModels, downloadModel, recheckDeps,
             getCloudModels, getCloudBalance, resetMeetProfile,
+        });
+    };
+
+    // Вкладка «Аналитика»: компактная сводка по транскриптам Claude Code за
+    // последние 30 дней и дверь в полноэкранный дашборд.
+    //
+    // Рендер ЛЕНИВЫЙ и это принципиально, а не ради экономии: первый же запрос
+    // к /api/analytics/* запускает индексацию ~/.claude/projects. Рисуй мы
+    // вкладку при открытии модалки — скан стартовал бы у каждого, кто зашёл
+    // поменять тему.
+    //
+    // Сеть приходит инъекцией (как у «Встреч»), поэтому вкладка проверяется в
+    // голом Node. Список обязан покрывать ВСЕ три роута: пропущенное имя
+    // вкладка переживает молча — кнопка пересбора просто ничего не делает.
+    const renderAnalyticsPanel = () => {
+        if (analyticsTabState.loaded || !$analyticsContent) return;
+        analyticsTabState.loaded = true;
+        renderAnalyticsTab($analyticsContent, {
+            getAnalyticsSummary, getAnalyticsStatus, rescanAnalytics,
+            onClose: close,
         });
     };
 
@@ -503,6 +551,9 @@ export function openSettingsModal(initialTab) {
         }
         if (name === 'meet') {
             renderMeetPanel();
+        }
+        if (name === 'analytics') {
+            renderAnalyticsPanel();
         }
     };
     $tabBtns.forEach((btn) => {
@@ -633,7 +684,7 @@ export function openSettingsModal(initialTab) {
         });
     }
 
-    if (initialTab && (initialTab === 'notifications' || initialTab === 'themes' || initialTab === 'todo' || initialTab === 'echo' || initialTab === 'daily-summary' || initialTab === 'interface' || initialTab === 'telegram' || initialTab === 'vk' || initialTab === 'bitrix' || (initialTab === 'meet' && meetEnabled()) || (initialTab === 'remotes' && isRemoteMode()))) {
+    if (initialTab && (initialTab === 'notifications' || initialTab === 'themes' || initialTab === 'todo' || initialTab === 'echo' || initialTab === 'daily-summary' || initialTab === 'interface' || initialTab === 'telegram' || initialTab === 'vk' || initialTab === 'bitrix' || initialTab === 'analytics' || (initialTab === 'meet' && meetEnabled()) || (initialTab === 'remotes' && isRemoteMode()))) {
         showTab(initialTab);
     }
 

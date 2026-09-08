@@ -106,7 +106,7 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::Path;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
@@ -123,8 +123,10 @@ use crate::analysis::{
     AnalysisError, StartRequest, KIND_ANALYZE, KIND_ASK, KIND_REFRESH, REASON_CANCELLED,
 };
 use crate::dto;
+use crate::registry::B24Registry;
 use crate::routes::dialogs::{require_authorized, require_dialog_id, require_ready};
 use crate::routes::error::ApiError;
+use crate::routes::Portal;
 use crate::state::B24State;
 use crate::ws::protocol::B24ServerMsg;
 
@@ -283,7 +285,7 @@ pub struct CancelResp {
 }
 
 /// Роуты анализа.
-pub fn router() -> Router<Arc<B24State>> {
+pub fn router() -> Router<Arc<B24Registry>> {
     // Имя параметра `:id` — то же, что у соседних роутов
     // `/api/bitrix/dialogs/*`: axum паникует при сборке, если один сегмент
     // назван по-разному.
@@ -335,7 +337,7 @@ fn resp(prompt: Option<crate::analysis::prompts::ChatPrompt>) -> Json<PromptResp
 ///
 /// `409 not_authorized`, `404 unknown_dialog`.
 pub async fn get_prompt(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path(id): Path<String>,
 ) -> Result<Json<PromptResp>, ApiError> {
     let key = local_ladder(&state, &id).await?;
@@ -356,7 +358,7 @@ pub async fn get_prompt(
 /// `409 not_authorized`, `404 unknown_dialog`, `400 invalid_input` (нет тела
 /// или оно не разобралось), `500 storage_failed`.
 pub async fn put_prompt(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path(id): Path<String>,
     body: Option<Json<PromptReq>>,
 ) -> Result<Json<PromptResp>, ApiError> {
@@ -434,7 +436,7 @@ fn saved_resp(analysis: Option<ChatAnalysis>, thread: Vec<StoredTurn>) -> Json<S
 ///
 /// `409 not_authorized`, `404 unknown_dialog`.
 pub async fn get_analysis(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path(id): Path<String>,
 ) -> Result<Json<SavedAnalysisResp>, ApiError> {
     let key = local_ladder(&state, &id).await?;
@@ -454,7 +456,7 @@ pub async fn get_analysis(
 ///
 /// `409 not_authorized`, `404 unknown_dialog`, `500 storage_failed`.
 pub async fn delete_analysis(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path(id): Path<String>,
 ) -> Result<Json<ClearAnalysisResp>, ApiError> {
     let key = local_ladder(&state, &id).await?;
@@ -481,7 +483,7 @@ pub async fn delete_analysis(
 ///
 /// `409 not_authorized`, `404 unknown_dialog`, `500 storage_failed`.
 pub async fn delete_thread(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path(id): Path<String>,
 ) -> Result<Json<ClearThreadResp>, ApiError> {
     let key = local_ladder(&state, &id).await?;
@@ -514,7 +516,7 @@ pub async fn delete_thread(
 /// `409 invalid_state` (заняты все слоты ДРУГИМИ диалогами), плюс любая
 /// ошибка портала при выгрузке истории — своим кодом.
 pub async fn post_analysis(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path(id): Path<String>,
     body: Option<Json<AnalysisReq>>,
 ) -> Result<Json<AnalysisResp>, ApiError> {
@@ -675,7 +677,7 @@ pub async fn post_analysis(
 ///
 /// `409 not_authorized`, `503 not_connected`, `404 unknown_dialog`.
 pub async fn post_analysis_cancel(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path(id): Path<String>,
     body: Option<Json<CancelReq>>,
 ) -> Result<Json<CancelResp>, ApiError> {

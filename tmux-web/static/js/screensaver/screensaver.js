@@ -720,6 +720,11 @@ export function showScreensaver() {
         if (window.ForgeApp && typeof window.ForgeApp.hideDailySummary === 'function') {
             window.ForgeApp.hideDailySummary();
         }
+        // То же и для дашборда аналитики: вью #main взаимоисключающие, а
+        // оставленный под заставкой дашборд продолжал бы поллить статус.
+        if (window.ForgeApp && typeof window.ForgeApp.hideAnalytics === 'function') {
+            window.ForgeApp.hideAnalytics();
+        }
     } catch (_) { /* no-op */ }
 
     $screensaver.style.display = 'flex';

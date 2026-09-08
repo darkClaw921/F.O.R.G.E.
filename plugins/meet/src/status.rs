@@ -265,14 +265,36 @@ pub fn can_transition(from: MeetStatus, to: MeetStatus) -> bool {
 
     // ПОВТОР ЭТАПА — единственный выход из терминального состояния, и он
     // всегда начинается с явного действия человека. Что именно разрешено,
-    // решает не «терминальность», а наличие данных на диске: у `ready` есть и
-    // звук, и транскрипт, у `failed` — только звук, у `cancelled` не осталось
-    // ничего.
+    // решает не «терминальность», а НАЛИЧИЕ ДАННЫХ: у `ready` есть и звук, и
+    // транскрипт, у `failed` — обычно только звук.
+    //
+    // `cancelled` раньше выхода не имел вовсе — по предположению «у отменённой
+    // встречи не осталось ничего». Живой кейс 07.09.2026 (Телемост,
+    // f61cfa7a…) его опроверг: запись остановили кнопкой (`user_stop`),
+    // пост-обработка отработала до конца — на диске звук, транскрипт и
+    // саммари, — а статус после этого стал `cancelled`. Пересчитать саммари по
+    // готовому транскрипту было нельзя: гейт отвечал `invalid_state`, хотя
+    // данные лежали рядом.
+    //
+    // Поэтому терминальные состояния перечисляют один и тот же набор этапов, а
+    // фактическое наличие файлов проверяет вызывающий (`routes::meetings::
+    // start_stage`): статус — ярлык, а данные — на диске, и решать должен
+    // диск.
     if from == Ready {
         return matches!(to, Transcoding | Transcribing | Summarizing);
     }
+    // У `failed` транскрипта нет ПО ПОСТРОЕНИЮ: провал саммари даёт `ready`
+    // плюс `SummaryStatus::Failed`, а до `failed` доходят только отказы на
+    // записи и расшифровке. Поэтому саммари отсюда по-прежнему закрыто.
     if from == Failed {
         return matches!(to, Transcoding | Transcribing);
+    }
+    // `cancelled` может нести ЧТО УГОДНО: отмену жмут и на пустой комнате, и
+    // после готовой пост-обработки. Поэтому набор этапов здесь такой же, как у
+    // `ready`, а есть ли нужный файл — решает `routes::meetings::start_stage`
+    // по диску.
+    if from == Cancelled {
+        return matches!(to, Transcoding | Transcribing | Summarizing);
     }
 
     // Из остальных терминальных состояний выхода нет.
@@ -378,17 +400,31 @@ mod tests {
         /* tcod */ [false, false, false, false, false, false, false, true,  false, false, true,  true,  false],
         /* tscr */ [false, false, false, false, false, false, false, false, true,  true,  true,  true,  false],
         /* summ */ [false, false, false, false, false, false, false, false, false, true,  false, true,  false],
-        // Три единицы в строке `ready` и две в `failed` — это ПОВТОР ЭТАПА
-        // (`retry?from=`), единственный выход из терминального состояния.
-        // Разница между строками ровно одна — `summarizing`: у `failed`
-        // транскрипта нет по определению, и суммировать нечего.
+        // Единицы в строках `ready`, `failed` и `cancelled` — это ПОВТОР
+        // ЭТАПА (`retry?from=`), единственный выход из терминального
+        // состояния.
+        //
+        // `failed` отличается от двух других ровно одним нулём — `summarizing`:
+        // транскрипта у него нет ПО ПОСТРОЕНИЮ, потому что провал саммари даёт
+        // `ready` плюс `SummaryStatus::Failed`, а до `failed` доходят только
+        // отказы на записи и расшифровке.
+        //
+        // `cancelled` раньше был пустой строкой — по предположению «отменили,
+        // значит данных не осталось». Живой кейс 07.09.2026 (Телемост,
+        // f61cfa7a…) его опроверг: запись остановили кнопкой, пост-обработка
+        // дошла до конца, а статус после этого стал `cancelled`; на диске
+        // лежало всё, но пересчёт саммари отвечал `invalid_state`. Отмену жмут
+        // и на пустой комнате, и после готовой обработки — ярлык статуса о
+        // содержимом диска не знает, поэтому здесь набор такой же, как у
+        // `ready`, а наличие конкретного файла проверяет
+        // `routes::meetings::missing_input`.
         //
         // Последний столбец — ВЫЧИСТКА ФАЙЛОВ ретенцией. Она возможна ровно из
         // трёх законченных состояний и ни из одного идущего: у активной записи
         // файлы пишутся прямо сейчас, а у пост-обработки они на входе.
         /* ready*/ [false, false, false, false, false, false, true,  true,  true,  false, false, false, true ],
         /* fail */ [false, false, false, false, false, false, true,  true,  false, false, false, false, true ],
-        /* canc */ [false, false, false, false, false, false, false, false, false, false, false, false, true ],
+        /* canc */ [false, false, false, false, false, false, true,  true,  true,  false, false, false, true ],
         // Из `pruned` не ведёт НИЧЕГО: повтор этапа невозможен не по правилу,
         // а физически — на диске ничего не осталось.
         /* prun */ [false, false, false, false, false, false, false, false, false, false, false, false, false],
@@ -482,18 +518,46 @@ mod tests {
             assert_eq!(on_command(from, MeetCommand::Stop), None);
             assert_eq!(on_command(from, MeetCommand::Cancel), None);
         }
+        // Из `cancelled` возможны ровно вычистка и повтор этапа.
+        //
+        // Раньше здесь стоял запрет на ВСЁ, кроме `pruned`, по предположению
+        // «отменили — значит данных не осталось». Живой кейс 07.09.2026
+        // (Телемост, f61cfa7a…) его опроверг: запись остановили кнопкой,
+        // пост-обработка отработала до конца, а статус после этого стал
+        // `cancelled` — на диске лежали и звук, и транскрипт, и саммари, но
+        // пересчитать саммари было нельзя. Что именно доступно, решает диск:
+        // см. `routes::meetings::missing_input`.
+        let allowed_from_cancelled = [Pruned, Transcoding, Transcribing, Summarizing];
         for to in MeetStatus::ALL {
-            // Единственное исключение — вычистка файлов ретенцией: у отменённой
-            // встречи каталог всё равно остаётся на диске (пустой либо с
-            // обрывком), и подмести его должно быть можно.
-            if to == Pruned {
-                continue;
-            }
-            assert!(
-                !can_transition(Cancelled, to),
-                "cancelled → {}: «прерви и выброси» означает, что данных не осталось",
+            assert_eq!(
+                can_transition(Cancelled, to),
+                allowed_from_cancelled.contains(&to),
+                "cancelled → {}",
                 to.as_str()
             );
+        }
+    }
+
+    /// Живой кейс 07.09.2026 (Телемост, f61cfa7a…): запись остановили кнопкой
+    /// (`user_stop`), пост-обработка дошла до конца — на диске звук, транскрипт
+    /// и саммари, — а статус после этого стал `cancelled`. Пересчёт саммари
+    /// отвечал `invalid_state`, хотя данные лежали рядом.
+    ///
+    /// Отмену жмут и на пустой комнате, и после готовой обработки, поэтому
+    /// набор этапов у `cancelled` тот же, что у `ready`. Что доступно на самом
+    /// деле, решает диск: `routes::meetings::missing_input`.
+    #[test]
+    fn a_cancelled_meeting_can_still_be_resummarised() {
+        assert!(can_transition(Cancelled, Summarizing));
+        assert!(can_transition(Cancelled, Transcribing));
+        assert!(can_transition(Cancelled, Transcoding));
+
+        // А вот у `failed` транскрипта нет по построению — саммари закрыто.
+        assert!(!can_transition(Failed, Summarizing));
+
+        // Из `pruned` по-прежнему не ведёт ничего: файлов физически нет.
+        for to in MeetStatus::ALL {
+            assert!(!can_transition(Pruned, to), "pruned → {}", to.as_str());
         }
     }
 

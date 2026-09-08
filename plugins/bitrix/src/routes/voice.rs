@@ -39,7 +39,7 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Path, RawQuery, State};
+use axum::extract::{Path, RawQuery};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
@@ -47,9 +47,11 @@ use serde::{Deserialize, Serialize};
 use forge_voice::{TranscribeJob, VoiceRequest};
 
 use crate::media_cache::{self, CacheKey, CachedMedia, DialogKey};
+use crate::registry::B24Registry;
 use crate::routes::dialogs::{require_authorized, require_client, require_connected};
 use crate::routes::error::ApiError;
 use crate::routes::media::{download_attachment, fetch_cached};
+use crate::routes::Portal;
 use crate::state::B24State;
 use crate::voice::{cache_stem, kind_of, map_voice_error, voice_key, KIND_VOICE};
 
@@ -87,7 +89,7 @@ pub struct TranscriptResp {
 }
 
 /// Роуты расшифровки.
-pub fn router() -> Router<Arc<B24State>> {
+pub fn router() -> Router<Arc<B24Registry>> {
     Router::new()
         .route(
             "/api/bitrix/voice/:dialog/:mid/:index/transcribe",
@@ -146,7 +148,7 @@ fn force_requested(raw: Option<&str>) -> bool {
 /// `409 voice_no_ffmpeg` / `voice_no_whisper` / `voice_no_model` /
 /// `voice_no_key` / `voice_busy`, `500 voice_config`.
 pub async fn post_transcribe(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path((dialog, mid, index)): Path<(String, String, String)>,
     RawQuery(query): RawQuery,
 ) -> Result<Json<TranscribeResp>, ApiError> {
@@ -294,7 +296,7 @@ fn dir_name(key: &CacheKey) -> String {
 /// `409 not_authorized`, `404 unknown_dialog` / `unknown_message`,
 /// `400 invalid_input`.
 pub async fn get_transcript(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path((dialog, mid, index)): Path<(String, String, String)>,
 ) -> Result<Json<TranscriptResp>, ApiError> {
     require_authorized(&state).await?;
@@ -376,7 +378,7 @@ pub struct SetVoiceSettingsReq {
 ///
 /// `500 voice_config` — `voice.toml` или `meet.toml` не разбираются.
 pub async fn get_settings(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
 ) -> Result<Json<VoiceSettingsResp>, ApiError> {
     let cfg = state.voice_config().map_err(|e| map_voice_error(&e))?;
     Ok(Json(forge_voice::settings::describe(&cfg).into()))
@@ -394,7 +396,7 @@ pub async fn get_settings(
 /// `400 invalid_input` — слово движка не `local` и не `cloud`;
 /// `500 voice_config` — файл не разбирается либо не пишется.
 pub async fn put_settings(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Json(req): Json<SetVoiceSettingsReq>,
 ) -> Result<Json<VoiceSettingsResp>, ApiError> {
     let engine = forge_voice::settings::parse_engine(&req.engine).ok_or_else(|| {
@@ -447,7 +449,7 @@ mod tests {
     }
 
     async fn send(state: Arc<B24State>, method: &str, uri: &str) -> axum::response::Response {
-        crate::routes::build_router(state)
+        crate::routes::build_router(B24Registry::single(state))
             .oneshot(
                 Request::builder()
                     .method(method)

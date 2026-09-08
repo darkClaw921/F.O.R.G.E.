@@ -84,6 +84,7 @@ export const MEET_ROUTES = [
     { method: 'POST', path: '/api/meet/meetings/:id/summary', fn: 'regenerateSummary', phase: '6' },
     { method: 'GET', path: '/api/meet/meetings/:id/audio', fn: 'fetchMeetingAudio', phase: '7' },
     { method: 'POST', path: '/api/meet/meetings/:id/retry', fn: 'retryMeeting', phase: '6' },
+    { method: 'POST', path: '/api/meet/meetings/:id/source', fn: 'attachMeetingSource', phase: '6' },
     { method: 'GET', path: '/api/meet/models', fn: 'getModels', phase: '5' },
     { method: 'POST', path: '/api/meet/models/:name/download', fn: 'downloadModel', phase: '5' },
     { method: 'DELETE', path: '/api/meet/models/:name', fn: 'deleteModel', phase: '5' },
@@ -150,6 +151,20 @@ export function fetchBadgeRange(q) {
  */
 export function startMeeting(payload) {
     return call('/api/meet/meetings', jsonInit('POST', payload));
+}
+
+/**
+ * `POST /api/meet/meetings/:id/source` — привязать готовую встречу к сообщению.
+ *
+ * Нужно там, где связь потерялась: кнопка в ленте строится только из неё, и
+ * без привязки повторный клик заводит новую пустую запись вместо показа уже
+ * записанной встречи.
+ *
+ * @param {string} id — идентификатор встречи
+ * @param {{plugin:string, chat_id:string, message_id:number}} source
+ */
+export function attachMeetingSource(id, source) {
+    return call(`/api/meet/meetings/${seg(id)}/source`, jsonInit('POST', source));
 }
 
 /** `POST /api/meet/meetings/:id/stop` — «встреча кончилась, обработай». */

@@ -129,6 +129,25 @@ export const $dailySummarySuggestions = document.getElementById('daily-summary-s
 export const $dailySummaryEmpty = document.getElementById('daily-summary-empty');
 export const $dailySummaryGenerate = document.getElementById('daily-summary-generate');
 
+// ---- Аналитика Claude Code (полноэкранный вью, Фаза 5) ----
+//
+// Селекторы вью #analytics — соседа #daily-summary внутри #main. Видимость
+// переключает js/analytics/analytics.js::showAnalytics той же механикой, что
+// у «Сводки дня»: вью занимает #main целиком, скрывая #home и placeholder.
+//
+// Все ref'ы вычисляются один раз при импорте модуля; узла нет в DOM —
+// переменная null, и весь вью просто не открывается (проверка в showAnalytics).
+export const $analytics = document.getElementById('analytics');
+export const $analyticsBack = document.getElementById('analytics-back');
+export const $analyticsRange = document.getElementById('analytics-range');
+export const $analyticsProject = document.getElementById('analytics-project');
+export const $analyticsRescan = document.getElementById('analytics-rescan');
+export const $analyticsMeta = document.getElementById('analytics-meta');
+export const $analyticsProgress = document.getElementById('analytics-progress');
+export const $analyticsError = document.getElementById('analytics-error');
+export const $analyticsKpi = document.getElementById('analytics-kpi');
+export const $analyticsGrid = document.getElementById('analytics-grid');
+
 // ---- Echo plugin (Phase 5c) ----
 //
 // Селекторы для DOM-узлов Echo-вкладки. Совпадают с id из index.html.
@@ -404,6 +423,17 @@ export const $b24Titlebar = document.getElementById('b24-titlebar');
 export const $b24SelfUser = document.getElementById('b24-self-user');
 export const $b24ThemeToggle = document.getElementById('b24-theme-toggle');
 export const $b24Logout = document.getElementById('b24-logout');
+// СТРОКА ВКЛАДОК ПОРТАЛОВ (js/bitrix/portals.js, мультипортальность).
+//
+// Отдельный ряд ПОД титлбаром, видимый ВСЕГДА — включая мобильную раскладку,
+// где колонка #b24-contacts уезжает под ☰. На узком экране вкладка портала —
+// единственный способ понять, в чей чат уйдёт сообщение.
+export const $b24Portals = document.getElementById('b24-portals');
+export const $b24PortalTabs = document.getElementById('b24-portal-tabs');
+export const $b24PortalAdd = document.getElementById('b24-portal-add');
+export const $b24PortalMenu = document.getElementById('b24-portal-menu');
+export const $b24PortalRename = document.getElementById('b24-portal-rename');
+export const $b24PortalRemove = document.getElementById('b24-portal-remove');
 // АНАЛИЗ ЧАТА ЧЕРЕЗ CLAUDE (js/bitrix/analysis.js).
 //
 // Ref'ы объявлены здесь, а не резолвятся в самом модуле: разметка попапа
@@ -492,6 +522,10 @@ export const $b24Lat = document.getElementById('b24-lat');
 // трёх форм ввода живёт ТОЛЬКО на бэкенде (Ф3).
 export const $b24Login = document.getElementById('b24-login');
 export const $b24LoginStepWebhook = document.getElementById('b24-login-step-webhook');
+// Заголовок и CANCEL нужны РЕЖИМУ ДОБАВЛЕНИЯ портала: экран подключения
+// переиспользуется кнопкой `+` строки вкладок (js/bitrix/portals.js).
+export const $b24LoginTitle = document.getElementById('b24-login-title');
+export const $b24LoginCancel = document.getElementById('b24-login-cancel');
 // Текст подсказки приходит с бэкенда (`hint` в /api/bitrix/status):
 // интерфейс портала меняется, а разметку браузер держит в кэше PWA неделями.
 export const $b24LoginHint = document.getElementById('b24-login-hint');

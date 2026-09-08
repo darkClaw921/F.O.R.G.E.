@@ -232,7 +232,7 @@ async fn harness() -> Harness {
             portal: "stub".into(),
         })
         .await;
-    let app = forge_bitrix::routes::build_router(state.clone());
+    let app = forge_bitrix::routes::build_router(forge_bitrix::B24Registry::single(state.clone()));
     Harness {
         _dir: dir,
         stub: stub.state,
@@ -541,7 +541,7 @@ async fn the_ladder_rejects_before_reading_the_body() {
             portal: "stub".into(),
         })
         .await;
-    let app = forge_bitrix::routes::build_router(state.clone());
+    let app = forge_bitrix::routes::build_router(forge_bitrix::B24Registry::single(state.clone()));
 
     let resp = post_upload(&app, "big.bin", &[0u8; 64]).await;
     assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
@@ -575,7 +575,7 @@ async fn an_unauthorized_upload_is_rejected_first() {
         config_path: dir.path().join("bitrix.toml"),
         ..BitrixConfig::default()
     });
-    let app = forge_bitrix::routes::build_router(state.clone());
+    let app = forge_bitrix::routes::build_router(forge_bitrix::B24Registry::single(state.clone()));
 
     let resp = post_upload(&app, "a.txt", b"hello").await;
     assert_eq!(resp.status(), StatusCode::CONFLICT);

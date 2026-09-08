@@ -591,7 +591,7 @@ async fn shutdown_kills_a_running_analysis() {
 
     // Полный teardown плагина, а не только хаба: проверяется именно то, что
     // `forge_bitrix::shutdown` до хаба доходит.
-    forge_bitrix::shutdown(&state).await;
+    forge_bitrix::registry::shutdown_portal(&state).await;
 
     // Снова опрос: смерть процесса — событие ядра, не таймер теста.
     wait_until!(
@@ -606,7 +606,7 @@ async fn shutdown_kills_a_running_analysis() {
     );
 
     // Идемпотентность: второй teardown не паникует и не находит, что убивать.
-    forge_bitrix::shutdown(&state).await;
+    forge_bitrix::registry::shutdown_portal(&state).await;
     assert_eq!(state.analysis.active_count().await, 0);
 }
 

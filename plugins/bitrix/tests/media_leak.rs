@@ -305,7 +305,7 @@ async fn the_media_routes_never_answer_with_a_location_header() {
             portal: PORTAL.into(),
         })
         .await;
-    let app: Router = forge_bitrix::routes::build_router(state);
+    let app: Router = forge_bitrix::routes::build_router(forge_bitrix::B24Registry::single(state));
 
     for uri in [
         "/api/bitrix/media/chat27/113/0",

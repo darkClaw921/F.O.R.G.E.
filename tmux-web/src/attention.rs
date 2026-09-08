@@ -375,7 +375,11 @@ pub fn detect_claude_prompt(pane: &str) -> bool {
         return false;
     }
     let norm = normalize_ws(pane);
-    detect_permission_prompt(&norm) || detect_plan_prompt(&norm) || detect_question_prompt(&norm)
+    // Permission разбирается ПОСТРОЧНО, поэтому получает сырую панель:
+    // `normalize_ws` схлопывает переносы в пробелы, и всё меню слилось бы в
+    // один «пункт». Перенос длинного пункта парсер склеивает сам, а plan и
+    // question по-прежнему ищутся по footer'у — им нормализация нужна.
+    detect_permission_prompt(pane) || detect_plan_prompt(&norm) || detect_question_prompt(&norm)
 }
 
 /// Гейт против «процитированного prompt'а»: настоящий prompt Claude Code
@@ -398,13 +402,14 @@ pub fn detect_claude_prompt(pane: &str) -> bool {
 ///
 /// Берутся последние 4 непустые строки: в узком терминале footer переносится
 /// по словам, и «Esc to cancel» может уехать со своей строки на соседнюю.
-/// Перед этим с конца срезается TODO-виджет ([`todo_widget_start`]) — он
-/// рисуется ПОД prompt'ом и иначе выталкивает footer за это окно.
-/// Набор искомых footer-фраз — [`BOTTOM_FOOTER_MARKERS`].
+/// Перед этим с конца срезаются виджеты, которые Claude Code рисует ПОД
+/// prompt'ом и которые иначе выталкивают footer за это окно, — см.
+/// [`trim_bottom_widgets`]. Набор искомых footer-фраз —
+/// [`BOTTOM_FOOTER_MARKERS`].
 pub(crate) fn prompt_at_bottom(pane: &str) -> bool {
     let lines: Vec<&str> = pane.lines().filter(|l| !l.trim().is_empty()).collect();
-    // Всё, что ниже начала TODO-виджета, — не часть prompt'а.
-    let end = todo_widget_start(&lines).unwrap_or(lines.len());
+    // Всё, что ниже виджетов, — не часть prompt'а.
+    let end = trim_bottom_widgets(&lines);
     let mut tail: Vec<&str> = lines[..end].iter().rev().take(4).copied().collect();
     // Возвращаем исходный порядок строк: footer мог перенестись («… Esc to» /
     // «cancel»), и склейка в обратном порядке разорвала бы искомую фразу.
@@ -442,6 +447,123 @@ pub(crate) fn prompt_at_bottom(pane: &str) -> bool {
 const BOTTOM_FOOTER_MARKERS: &[&str] =
     &["Esc to cancel", "to edit in Vim", "shift+tab to approve"];
 
+/// Граница «настоящего низа панели» для [`prompt_at_bottom`]: индекс первой
+/// строки хвостовых виджетов в списке непустых строк, либо `lines.len()`,
+/// если виджетов внизу нет.
+///
+/// Claude Code рисует под prompt'ом сразу несколько блоков, и они идут в
+/// произвольном сочетании: список задач ([`todo_widget_start`]) и полоса
+/// фоновых агентов ([`agents_widget_start`]). Поэтому срез итеративный —
+/// каждый распознанный виджет отодвигает границу вверх, и следующий
+/// разбирается уже под новой границей. Цикл сходится: обе функции
+/// возвращают индекс СТРОГО меньше переданной длины, иначе граница не
+/// двигается и цикл выходит.
+fn trim_bottom_widgets(lines: &[&str]) -> usize {
+    let mut end = lines.len();
+    loop {
+        let head = &lines[..end];
+        let next = todo_widget_start(head).or_else(|| agents_widget_start(head));
+        match next {
+            Some(i) if i < end => end = i,
+            _ => return end,
+        }
+    }
+}
+
+/// Максимум строк полосы фоновых агентов, которые [`agents_widget_start`]
+/// готов срезать с конца панели.
+///
+/// Развёрнутая полоса (`ctrl+o`) показывает по строке на агента; больше
+/// пары десятков одновременных агентов в панель физически не помещается, а
+/// всё, что глубже, — уже чужой текст.
+const AGENTS_WIDGET_MAX_LINES: usize = 24;
+
+/// Маркер строки фонового агента в полосе: `◯ run-phase (+6) …`.
+///
+/// Взят отдельно от [`TODO_ITEM_MARKERS`] намеренно: `◯` встречается ТОЛЬКО
+/// в этой полосе, тогда как `⏺` — ещё и маркер обычного сообщения ассистента
+/// в потоке вывода. Именно поэтому строка `⏺` засчитывается лишь как
+/// заголовок полосы, и лишь когда под ней уже нашлась хотя бы одна строка
+/// `◯` (см. [`agents_widget_start`]).
+const AGENT_ROW_MARKER: char = '◯';
+
+/// Маркер строки-заголовка полосы фоновых агентов — основной диалог
+/// (`⏺ main`), который Claude Code рисует первой строкой блока.
+const AGENT_HEAD_MARKER: char = '⏺';
+
+/// Маркеры строки режима — второй формы заголовка полосы агентов.
+///
+/// В 2.1.26x полосу, поднятую агентами workflow, Claude Code рисует БЕЗ
+/// строки `⏺ main`: над ней оказывается сама строка режима со счётчиком —
+/// `⏸ plan mode on · 1 shell · ← 2 agents` или `⏵⏵ auto mode on (shift+tab to
+/// cycle) · ← 2 agents · /diff to hide diff`. Пока заголовком считалась
+/// только `⏺`, полоса не срезалась, футер prompt'а уезжал за окно из четырёх
+/// хвостовых строк, и `prompt_at_bottom` отвечал `false`: свечение не
+/// загоралось, авто-апрув молчал. Живой кейс — сессия `main` (apistend) с
+/// двумя агентами workflow и висящим MCP-разрешением.
+const MODE_LINE_MARKERS: &[char] = &['⏵', '⏸'];
+
+/// Строка-заголовок полосы фоновых агентов: либо `⏺ main`, либо строка
+/// режима, в которой Claude Code показывает счётчик агентов.
+///
+/// Счётчик обязателен: строка режима без агентов — обычный статус-бар, и
+/// срезать его нельзя, иначе за виджет примут любой низ экрана.
+fn is_agents_head(t: &str) -> bool {
+    if t.starts_with(AGENT_HEAD_MARKER) {
+        return true;
+    }
+    t.starts_with(MODE_LINE_MARKERS) && t.contains("agents")
+}
+
+/// Индекс первой строки полосы фоновых агентов в хвосте `lines` (только
+/// непустые строки), либо `None` — полосы внизу нет.
+///
+/// Полоса — это заголовок `⏺ main`, под которым идут только строки агентов
+/// с маркером [`AGENT_ROW_MARKER`]:
+///
+/// ```text
+///   ⏺ main
+///   ◯ run-phase (+6)  Delegating CrmRecurrenceRules…   3h 41m · ↓ 718.3k tokens
+/// ```
+///
+/// Claude Code держит её ПОД областью ввода всё время, пока живы фоновые
+/// агенты, из-за чего footer prompt'а уезжает за окно из четырёх хвостовых
+/// строк и гейт [`prompt_at_bottom`] переставал признавать prompt нижним:
+/// авто-апрув молчал, свечение не загоралось. Живой кейс — сессия `213`
+/// (`aira`) с backgrounded `run-phase` и шестью потомками: полоса из двух
+/// строк плюс двухстрочный статус-бар выталкивали `Esc to cancel` на пятую
+/// позицию снизу.
+///
+/// Защита от процитированного prompt'а сохраняется: требование «под
+/// заголовком ТОЛЬКО строки `◯`» плюс сам заголовок означают, что одиночная
+/// строка `⏺ Готово` из потока вывода полосой не считается, а под цитатой в
+/// diff/логе всегда идут поле ввода и статус-бар (`───`, `⏵⏵ auto mode on`),
+/// которые под маркеры не подходят — срез не происходит и гейт по-прежнему
+/// отвечает `false`.
+fn agents_widget_start(lines: &[&str]) -> Option<usize> {
+    let mut rows = 0usize;
+    for (offset, line) in lines.iter().rev().enumerate() {
+        if offset >= AGENTS_WIDGET_MAX_LINES {
+            return None;
+        }
+        let t = line.trim_start();
+        if t.starts_with(AGENT_ROW_MARKER) {
+            rows += 1;
+            continue;
+        }
+        // Заголовок засчитывается только вместе со строками агентов: `⏺` —
+        // ещё и маркер обычного сообщения ассистента, и срезать такую строку
+        // саму по себе означало бы принять УЖЕ ОТВЕЧЕННЫЙ prompt, оставшийся
+        // выше на экране, за активный. То же и для строки режима: без строк
+        // `◯` под ней это просто статус-бар.
+        if rows > 0 && is_agents_head(t) {
+            return Some(lines.len() - 1 - offset);
+        }
+        return None;
+    }
+    None
+}
+
 /// Максимум строк TODO-виджета, которые [`todo_widget_start`] готов срезать
 /// с конца панели.
 ///
@@ -456,7 +578,9 @@ const TODO_WIDGET_MAX_LINES: usize = 24;
 ///
 /// `⏺` и `◯` в набор НЕ входят намеренно: `⏺` — маркер обычного сообщения
 /// ассистента в потоке вывода, и срезать такие строки означало бы принять
-/// УЖЕ ОТВЕЧЕННЫЙ prompt, оставшийся выше на экране, за активный.
+/// УЖЕ ОТВЕЧЕННЫЙ prompt, оставшийся выше на экране, за активный. Полосу
+/// фоновых агентов, где эти два символа и встречаются, разбирает отдельная
+/// [`agents_widget_start`] — с обязательным заголовком `⏺` над строками `◯`.
 const TODO_ITEM_MARKERS: &[char] = &['◼', '◻', '☑', '☐', '✓', '✔'];
 
 /// Индекс первой строки TODO-виджета в хвосте `lines` (только непустые
@@ -513,8 +637,280 @@ pub(crate) fn normalize_ws(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+// ==========================================================================
+// Разбор меню prompt'а
+// ==========================================================================
+
+/// Роль пункта меню — что произойдёт, если его выбрать.
+///
+/// Роль определяется по ТЕКСТУ пункта, а не по его номеру. Номера в Claude
+/// Code не стабильны: за месяц отказ переезжал с третьего пункта на
+/// четвёртый (добавился «Yes, and switch to auto mode»), а расширяющих «Yes»
+/// стало два. Каждая такая редакция ломала детекторы, привязанные к номеру,
+/// и авто-апрув молча переставал работать.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ItemRole {
+    /// Разовое согласие: `Yes`, `Allow`.
+    Approve,
+    /// Согласие, расширяющее ЭТО разрешение: `Yes, and don't ask again …`,
+    /// `Yes, and always allow access to <путь> from this project`,
+    /// `Allow all actions on <host> for this session`.
+    ApproveBroad,
+    /// Согласие, меняющее РЕЖИМ работы CLI: `Yes, and switch to auto mode`,
+    /// пункты плана `auto-accept edits` / `manually approve edits`.
+    ///
+    /// Автоматически не нажимается никогда, даже в broad-режиме: такой пункт
+    /// меняет поведение и для будущих запросов, которых человек ещё не видел.
+    ModeSwitch,
+    /// Отказ: `No`, `Deny`, `No, keep planning`.
+    Refuse,
+    /// Ничего из перечисленного — форма незнакомая.
+    Unknown,
+}
+
+/// Пункт меню: номер (то, что надо нажать) и его роль.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MenuItem {
+    pub(crate) number: u8,
+    pub(crate) text: String,
+    pub(crate) role: ItemRole,
+}
+
+/// Меню prompt'а: пункты в порядке показа плюс признак курсора.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Menu {
+    pub(crate) items: Vec<MenuItem>,
+    /// Был ли в блоке маркер `❯`. У активного меню он есть всегда; его
+    /// отсутствие означает обрывок текста, а не вопрос к человеку.
+    pub(crate) has_cursor: bool,
+}
+
+impl Menu {
+    /// Первый пункт заданной роли.
+    pub(crate) fn first(&self, role: ItemRole) -> Option<&MenuItem> {
+        self.items.iter().find(|i| i.role == role)
+    }
+
+    /// Есть ли в меню отказ.
+    pub(crate) fn has_refusal(&self) -> bool {
+        self.items.iter().any(|i| i.role == ItemRole::Refuse)
+    }
+
+    /// Номера идут подряд с единицы — защита от обрывка.
+    ///
+    /// `2. Yes, and don't ask` + `3. No`, оставшиеся на экране от прошлого
+    /// запроса или попавшие в diff, номерами себя и выдают: настоящее меню
+    /// всегда начинается с первого пункта.
+    pub(crate) fn numbering_is_intact(&self) -> bool {
+        self.items
+            .iter()
+            .enumerate()
+            .all(|(i, it)| it.number as usize == i + 1)
+    }
+
+    /// Форма Claude in Chrome (`Allow` / `Allow all actions on …`).
+    ///
+    /// Отдельный признак нужен потому, что у неё НЕТ пункта отказа: выйти
+    /// предлагается по `esc`, и требовать отказ, как у `Yes`-форм, нельзя.
+    pub(crate) fn is_chrome_form(&self) -> bool {
+        self.items
+            .first()
+            .is_some_and(|i| i.text.trim().to_lowercase().starts_with("allow"))
+    }
+
+    /// Меню — это активный вопрос «делать или нет», а не обрывок текста.
+    pub(crate) fn is_actionable(&self) -> bool {
+        let approves = self
+            .items
+            .iter()
+            .any(|i| matches!(i.role, ItemRole::Approve | ItemRole::ApproveBroad));
+        if !approves || !self.has_cursor || !self.numbering_is_intact() {
+            return false;
+        }
+        // У `Yes`-форм отказ есть всегда; у Chrome-формы его нет вовсе.
+        self.has_refusal() || (self.is_chrome_form() && self.items.len() >= 2)
+    }
+}
+
+/// Маркер курсора в меню Claude Code.
+const CURSOR_MARKER: char = '❯';
+
+/// Строки, на которых разбор меню останавливается: ниже них пунктов уже нет.
+const MENU_STOP_MARKERS: &[&str] = &["Esc to cancel", "Enter to select", "to edit in Vim"];
+
+/// Разбирает меню в НИЖНЕЙ части панели.
+///
+/// Возвращает `None`, если нумерованных пунктов внизу нет.
+///
+/// Разбор идёт от последней строки с курсором `❯`, а не от первой найденной:
+/// настоящий prompt всегда внизу, а выше на экране легко остаётся чужое такое
+/// же меню — `cat` фикстуры, diff, лог прошлого запроса.
+///
+/// Пункт может занимать НЕСКОЛЬКО строк: длинный путь в «Yes, and always allow
+/// access to /very/long/path from this project» переносится по словам. Строки
+/// без номера, идущие за пунктом, присоединяются к нему.
+pub(crate) fn parse_menu(pane: &str) -> Option<Menu> {
+    let lines: Vec<&str> = pane.lines().collect();
+
+    // Якорь — последняя СТРОКА-ПУНКТ, а не последний `❯`: курсором помечено
+    // поле ввода под prompt'ом, и поиск по нему уводил разбор ниже меню.
+    let is_item = |i: usize| parse_item_head(strip_cursor(lines[i])).is_some();
+    let anchor = (0..lines.len()).rev().find(|&i| {
+        if MENU_STOP_MARKERS.iter().any(|m| lines[i].contains(m)) {
+            return false;
+        }
+        is_item(i)
+    })?;
+
+    // Вниз: продолжения последнего пункта (перенос длинного пути по словам).
+    let mut end = anchor;
+    for (idx, line) in lines.iter().enumerate().skip(anchor + 1) {
+        if parse_item_head(strip_cursor(line)).is_some() || is_continuation(line) {
+            end = idx;
+            continue;
+        }
+        break;
+    }
+
+    // Вверх: предыдущие пункты. Курсор может стоять НЕ на первом пункте —
+    // человек подвинул выбор стрелками, — поэтому подъём идёт по номерам, а
+    // не по `❯`. Строка-продолжение между пунктами подъём не прерывает.
+    let mut start = anchor;
+    let mut i = anchor;
+    while i > 0 {
+        let j = i - 1;
+        if is_item(j) {
+            start = j;
+            i = j;
+            continue;
+        }
+        if is_continuation(lines[j]) && j > 0 && is_item(j - 1) {
+            i = j;
+            continue;
+        }
+        break;
+    }
+
+    let mut items: Vec<MenuItem> = Vec::new();
+    let has_cursor = lines[start..=end].iter().any(|l| l.contains(CURSOR_MARKER));
+    for raw in &lines[start..=end] {
+        let t = strip_cursor(raw);
+        match parse_item_head(t) {
+            Some((number, text)) => items.push(MenuItem {
+                number,
+                text: text.to_string(),
+                role: ItemRole::Unknown,
+            }),
+            None => {
+                if let Some(last) = items.last_mut() {
+                    let cont = t.trim();
+                    if !cont.is_empty() {
+                        last.text.push(' ');
+                        last.text.push_str(cont);
+                    }
+                }
+            }
+        }
+    }
+
+    if items.is_empty() {
+        return None;
+    }
+    for item in &mut items {
+        item.role = classify_item(&item.text);
+    }
+    Some(Menu { items, has_cursor })
+}
+
+/// Снимает отступ и маркер курсора: `  ❯ 1. Yes` → `1. Yes`.
+fn strip_cursor(line: &str) -> &str {
+    line.trim_start()
+        .trim_start_matches(CURSOR_MARKER)
+        .trim_start()
+}
+
+/// Строка-продолжение пункта: непустая, без номера, не рамка и не футер.
+fn is_continuation(line: &str) -> bool {
+    let t = strip_cursor(line);
+    let trimmed = t.trim();
+    if trimmed.is_empty() || MENU_STOP_MARKERS.iter().any(|m| trimmed.contains(m)) {
+        return false;
+    }
+    !trimmed.starts_with('─') && !trimmed.starts_with('│') && parse_item_head(t).is_none()
+}
+
+/// Начало пункта: `1. текст` (номер 1..9). Возвращает номер и остаток строки.
+fn parse_item_head(t: &str) -> Option<(u8, &str)> {
+    let mut chars = t.char_indices();
+    let (_, first) = chars.next()?;
+    let digit = first.to_digit(10)?;
+    if digit == 0 {
+        return None;
+    }
+    let (dot_at, dot) = chars.next()?;
+    if dot != '.' {
+        return None;
+    }
+    let rest = t[dot_at + 1..].trim_start();
+    if rest.is_empty() {
+        return None;
+    }
+    Some((digit as u8, rest))
+}
+
+/// Признаки пункта, меняющего режим CLI, а не одно разрешение.
+const MODE_SWITCH_MARKERS: &[&str] = &[
+    "switch to auto mode",
+    "auto mode handles",
+    "auto-accept edits",
+    "manually approve edits",
+    "use auto mode",
+];
+
+/// Признаки расширяющего согласия — оно раздвигает границы ЭТОГО разрешения.
+const BROAD_MARKERS: &[&str] = &[
+    "don't ask again",
+    "dont ask again",
+    "always allow",
+    "allow all",
+    "for this session",
+    "from this project",
+    "during this session",
+];
+
+/// Определяет роль пункта по его тексту.
+///
+/// Апострофы нормализуются: Claude Code рисует типографский `don’t` (U+2019),
+/// а не ASCII-кавычку, и сравнение с `don't ask again` без этого промахивалось
+/// — расширяющий пункт выглядел как обычное «Yes».
+fn classify_item(text: &str) -> ItemRole {
+    let t = text
+        .trim()
+        .to_lowercase()
+        .replace(['\u{2019}', '\u{2018}', '\u{02BC}'], "'");
+    if t.starts_with("no") || t.starts_with("deny") || t.starts_with("cancel") {
+        return ItemRole::Refuse;
+    }
+    let affirmative = t.starts_with("yes") || t.starts_with("allow");
+    if !affirmative {
+        return ItemRole::Unknown;
+    }
+    // Смена режима проверяется РАНЬШЕ расширения: «Yes, and switch to auto
+    // mode · auto mode handles these prompts for you» подходит и под то, и
+    // под другое, но нажимать его автоматически нельзя.
+    if MODE_SWITCH_MARKERS.iter().any(|m| t.contains(m)) {
+        return ItemRole::ModeSwitch;
+    }
+    if BROAD_MARKERS.iter().any(|m| t.contains(m)) {
+        return ItemRole::ApproveBroad;
+    }
+    ItemRole::Approve
+}
+
 /// Permission prompt во всех известных формах:
 /// - трёхопционный: `❯ 1. Yes` + `2. Yes,` + `3. No`;
+/// - четырёхопционный: `❯ 1. Yes` + `2. Yes,` + `3. Yes, and switch to auto
+///   mode` + `4. No`;
 /// - двухопционный: `❯ 1. Yes` + `2. No` (короткий `Do you want to proceed?`);
 /// - Claude in Chrome: `❯ 1. Allow` + `2. Deny` / `2. Allow all`.
 ///
@@ -522,13 +918,13 @@ pub(crate) fn normalize_ws(s: &str) -> String {
 /// оставленный человеку блоклистом авто-апрува, не зажигал свечение — тот же
 /// набор форм распознаёт `auto_approve::classify_prompt`.
 fn detect_permission_prompt(pane: &str) -> bool {
-    if pane.contains("❯ 1. Yes") {
-        return (pane.contains("2. Yes,") && pane.contains("3. No")) || pane.contains("2. No");
-    }
-    if pane.contains("❯ 1. Allow") {
-        return pane.contains("2. Deny") || pane.contains("2. Allow all");
-    }
-    false
+    // РАЗБОР МЕНЮ, А НЕ ПОИСК НОМЕРОВ. Прежняя проверка искала дословные
+    // `❯ 1. Yes` + `2. Yes,` + `3. No`, и каждая редакция CLI, добавлявшая
+    // пункт, гасила и свечение, и авто-апрув: в 2.1.26x между согласием и
+    // отказом появился `3. Yes, and switch to auto mode`, отказ уехал на
+    // четвёртый пункт, и форма перестала опознаваться. Теперь форма — это
+    // «есть согласие И есть отказ», независимо от их номеров и количества.
+    parse_menu(pane).is_some_and(|m| m.is_actionable())
 }
 
 /// Plan prompt (`ExitPlanMode`) в обеих известных редакциях: старой — footer
@@ -659,6 +1055,70 @@ Do you want to make this edit?
  Esc to cancel · Tab to amend · ctrl+e to explain
 ";
 
+    /// Живой кейс 07.09.2026, сессия `main` (проект apistend): разрешение на
+    /// MCP-инструмент, поднятое агентом workflow, и полоса из двух фоновых
+    /// агентов ПОД prompt'ом.
+    ///
+    /// Отличие от [`AGENTS_WIDGET_FIXTURE`] — заголовок полосы. Строки
+    /// `⏺ main` здесь НЕТ: над агентами идёт сама строка режима со счётчиком
+    /// (`⏸ plan mode on · 1 shell · ← 2 agents`). Пока заголовком считалась
+    /// только `⏺`, полоса не срезалась, footer уезжал за окно из четырёх
+    /// хвостовых строк — свечение не горело, авто-апрув молчал.
+    const AGENTS_MODE_HEAD_FIXTURE: &str = "\
+ Tool use · from the \"apistend-research\" workflow
+
+   b24-dev-mcp — Bitrix-Method-Details Tool: (MCP)
+
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and don't ask again for b24-dev-mcp — Bitrix-Method-Details commands
+      in /Users/igorgerasimov/claudeWorkspace/apistend
+   3. No
+
+ Esc to cancel · Tab to amend
+  …/claudeWorkspace/apistend/design-handoff │ 20%: 171k[▓▓░░░░░░░░]663k │ ~$27.70
+  ⏸ plan mode on · 1 shell · ← 2 agents
+
+  ◯ apistend-research  Исследование API Bitrix24/Ozon/WB и точных значений макета
+  ◯ apistend-specs     Проверка доступности машиночитаемых спецификаций Ozon/WB
+";
+
+    /// Строка режима БЕЗ счётчика агентов — обычный статус-бар. Срезать его
+    /// нельзя: иначе за виджет принимается любой низ экрана, и процитированный
+    /// в diff'е prompt снова становится «нижним».
+    const MODE_LINE_NO_AGENTS_FIXTURE: &str = "\
+   ❯ 1. Yes
+     2. No
+   Esc to cancel
+ diff --git a/src/x.rs b/src/x.rs
+ +  ❯ 1. Yes
+ +  2. No
+────────────────────────────────────────────────────────────────────────────────
+❯ расскажи про это
+────────────────────────────────────────────────────────────────────────────────
+  ~/project │ main
+  ⏵⏵ auto mode on (shift+tab to cycle)
+";
+
+    /// Полоса агентов под prompt'ом со СТРОКОЙ РЕЖИМА вместо `⏺ main`
+    /// срезается, и footer снова попадает в окно гейта.
+    #[test]
+    fn the_agents_strip_is_trimmed_when_the_mode_line_heads_it() {
+        assert!(
+            prompt_at_bottom(AGENTS_MODE_HEAD_FIXTURE),
+            "полоса агентов workflow с заголовком-строкой режима должна срезаться"
+        );
+        assert!(detect_claude_prompt(AGENTS_MODE_HEAD_FIXTURE));
+    }
+
+    /// Строка режима без счётчика агентов заголовком не считается: низ экрана
+    /// не срезается, и цитата prompt'а из diff'а не принимается за активную.
+    #[test]
+    fn a_mode_line_without_agents_is_not_a_widget_head() {
+        assert!(!prompt_at_bottom(MODE_LINE_NO_AGENTS_FIXTURE));
+        assert!(!detect_claude_prompt(MODE_LINE_NO_AGENTS_FIXTURE));
+    }
+
     #[test]
     fn detects_full_prompt() {
         assert!(detect_claude_prompt(PROMPT_FIXTURE));
@@ -711,18 +1171,82 @@ Do you want to proceed?
         assert!(detect_claude_prompt(&pane));
     }
 
-    /// Строки НИЖЕ prompt'а (виджет фоновых агентов, который Claude Code
-    /// рисует под областью ввода) уводят footer за окно из четырёх хвостовых
-    /// строк — гейт перестаёт признавать prompt нижним. Тест фиксирует
-    /// известную границу: если такая раскладка встретится живьём, авто-апрув
-    /// и свечение по ней не сработают, и лечится это расширением гейта, а не
-    /// правкой классификатора. TODO-виджет из этой границы уже вынут — см.
-    /// [`bottom_gate_ignores_todo_widget_below_prompt`]; агентские `⏺`/`◯`
-    /// намеренно оставлены (см. [`TODO_ITEM_MARKERS`]).
+    /// Живой кейс: полоса фоновых агентов под prompt'ом. Claude Code рисует
+    /// её ПОД областью ввода всё время, пока живы backgrounded-агенты, и она
+    /// уводила footer за окно из четырёх хвостовых строк — авто-апрув молчал
+    /// и свечение не загоралось. Срезается [`agents_widget_start`].
     #[test]
-    fn bottom_gate_stops_at_widgets_below_prompt() {
+    fn bottom_gate_ignores_agents_widget_below_prompt() {
         let pane = format!("{PROMPT_FIXTURE}⏺ main\n◯ run-phase Фаза 1\n◯ e2e-writer тесты\n◯ security-audit\n");
+        assert!(prompt_at_bottom(&pane));
+        assert!(detect_claude_prompt(&pane));
+    }
+
+    /// Полная раскладка сессии `213` (`aira`): под prompt'ом остаются ДВЕ
+    /// строки статус-бара плюс двухстрочная полоса агентов — footer уезжал
+    /// на пятую позицию снизу. Именно этот кейс и не подтверждался.
+    #[test]
+    fn bottom_gate_ignores_agents_widget_under_status_bar() {
+        let pane = "\
+Bash command · from the general-purpose agent
+  cd ~/claudeWorkspace/aira && grep -n '\\.vk\\b' Sources/Crm/*.swift
+Do you want to proceed?
+❯ 1. Yes
+  2. No
+ Esc to cancel · Tab to amend · ctrl+e to explain
+  …/claudeWorkspace/airo │ feat/aira-native-backend ✗ │ 28%: 242k
+  ⏵⏵ auto mode on · 5 shells · ← 2 agents
+
+  ⏺ main
+  ◯ run-phase (+6)  Delegating CrmRecurrenceRules   3h 41m · ↓ 718.3k tokens
+";
+        assert!(prompt_at_bottom(pane));
+        assert!(detect_claude_prompt(pane));
+    }
+
+    /// Полоса и TODO-виджет одновременно: срез итеративный, граница едет
+    /// вверх через оба блока (см. [`trim_bottom_widgets`]).
+    #[test]
+    fn bottom_gate_ignores_todo_widget_and_agents_widget_together() {
+        let pane = format!(
+            "{PROMPT_FIXTURE}\
+  2 tasks (0 done, 1 in progress, 1 open)
+  ◼ Починить гейт
+  ◻ Прогнать тесты
+  ⏺ main
+  ◯ run-phase Фаза 17
+"
+        );
+        assert!(prompt_at_bottom(&pane));
+    }
+
+    /// Одинокая строка `⏺ …` внизу — обычное сообщение ассистента, а не
+    /// полоса агентов. Срезать её нельзя: выше на экране может висеть УЖЕ
+    /// ОТВЕЧЕННЫЙ prompt, и срез принял бы его за активный.
+    #[test]
+    fn agents_widget_needs_rows_under_head() {
+        let pane = format!("{PROMPT_FIXTURE}\n\n⏺ Готово, тесты зелёные\n⏺ Ещё сообщение\n⏺ И ещё\n⏺ И ещё одно\n");
         assert!(!prompt_at_bottom(&pane));
+    }
+
+    /// Процитированный prompt: под ним поле ввода, статус-бар и полоса
+    /// агентов. Полоса срезается, но открывшийся низ — статус-бар, а не
+    /// footer, поэтому гейт по-прежнему отвечает `false`.
+    #[test]
+    fn agents_widget_trim_keeps_quoted_prompt_protection() {
+        let pane = "\
+Do you want to proceed?
+❯ 1. Yes
+  2. No
+ Esc to cancel · Tab to amend · ctrl+e to explain
+───────────────────────────────────────────────
+❯ покажи фикстуру
+───────────────────────────────────────────────
+  ~/proj │ master ✗ │ ⏵⏵ auto mode on · ← 2 agents
+  ⏺ main
+  ◯ run-phase Фаза 1
+";
+        assert!(!prompt_at_bottom(pane));
     }
 
     /// Живой кейс: plan-prompt редакции 2.1.x. Footer'а `Enter to select ·

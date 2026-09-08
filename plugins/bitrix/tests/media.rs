@@ -372,7 +372,7 @@ async fn harness() -> (tempfile::TempDir, Arc<StubState>, Arc<B24State>, Router)
             portal: "stub".into(),
         })
         .await;
-    let router = forge_bitrix::routes::build_router(state.clone());
+    let router = forge_bitrix::routes::build_router(forge_bitrix::B24Registry::single(state.clone()));
     (dir, stub.state, state, router)
 }
 
@@ -830,7 +830,7 @@ async fn media_hits_auth_before_any_parsing() {
         config_path: dir.path().join("bitrix.toml"),
         ..BitrixConfig::default()
     };
-    let app = forge_bitrix::routes::build_router(B24State::new(cfg));
+    let app = forge_bitrix::routes::build_router(forge_bitrix::B24Registry::single(B24State::new(cfg)));
 
     for uri in [
         "/api/bitrix/media/chat27/113/0",

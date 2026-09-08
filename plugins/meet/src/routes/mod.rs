@@ -31,6 +31,7 @@
 //! | POST   | `/api/meet/meetings/:id/summary`          | **Ф6** | пересчитать саммари = `retry?from=summarizing` |
 //! | GET    | `/api/meet/meetings/:id/audio`            | **Ф7** | архивный микс; **честный Range**, 206/416/HEAD |
 //! | POST   | `/api/meet/meetings/:id/retry`            | **Ф6** | повтор этапа (`?from=`) |
+//! | POST   | `/api/meet/meetings/:id/source`           | **Ф6** | привязать готовую встречу к сообщению (плагин + чат + сообщение) |
 //! | GET    | `/api/meet/models`                        | Ф5 | список моделей whisper |
 //! | POST   | `/api/meet/models/:name/download`         | Ф5 | скачать модель — **только по явному действию** |
 //! | DELETE | `/api/meet/models/:name`                  | Ф5 | удалить модель с диска |
@@ -135,6 +136,10 @@ pub fn build_router(state: Arc<MeetState>) -> Router {
         // расхождение двух таблиц ради выборки файла.
         .route("/api/meet/meetings/:id/audio", get(audio::audio))
         .route("/api/meet/meetings/:id/retry", post(meetings::retry))
+        .route(
+            "/api/meet/meetings/:id/source",
+            post(meetings::attach_source),
+        )
         .route("/api/meet/models", get(models::list))
         .route("/api/meet/models/:name/download", post(models::download))
         .route("/api/meet/models/:name", axum::routing::delete(models::remove))

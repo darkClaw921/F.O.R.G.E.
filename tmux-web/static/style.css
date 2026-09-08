@@ -39,6 +39,9 @@
 /* === 6b. Daily summary: сводка дня (markdown) в #main === */
 @import url('./css/daily-summary.css');
 
+/* === 6b2. Аналитика Claude Code: полноэкранный дашборд в #main === */
+@import url('./css/analytics.css');
+
 /* === 6c. Screensaver: ASCII-заставка «таверна дворфов» в #main === */
 @import url('./css/screensaver.css');
 

@@ -437,6 +437,13 @@ export function showDailySummary(day) {
     if (!$dailySummary) return;
     bindControls();
     _currentDay = day || todayStr();
+    // Дашборд аналитики — такой же вью в #main; открытый одновременно, он
+    // продолжал бы поллить статус индексации из-под сводки.
+    try {
+        if (window.ForgeApp && typeof window.ForgeApp.hideAnalytics === 'function') {
+            window.ForgeApp.hideAnalytics();
+        }
+    } catch (_) { /* no-op */ }
     $dailySummary.style.display = 'flex';
     if ($home) $home.style.display = 'none';
     showPlaceholder(false);

@@ -673,6 +673,38 @@ textarea.ds-prompt-textarea {
     margin: 12px 0 4px;
 }
 
+/* Переключатель ПОРТАЛА в шапке формы видимости Битрикс24 (Ф7.5). Аналога у
+   соседних панелей нет и не будет: аккаунт у них один, и вопрос «чьи это
+   настройки» там не возникает. Ряд остаётся на месте и при единственном
+   портале — он ОТВЕЧАЕТ на вопрос, а не только переключает. */
+
+.b24-visibility-portal-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.b24-visibility-portal-row .b24-visibility-group {
+    margin: 0;
+}
+
+.b24-visibility-portal {
+    flex: 1 1 auto;
+    min-width: 0;
+    font: inherit;
+    font-size: 0.78rem;
+    color: var(--fg);
+    background: var(--bg-header-alt);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 3px 6px;
+}
+
+.b24-visibility-portal:disabled {
+    color: var(--fg-mute);
+}
+
 .tg-visibility-list,
 .vk-visibility-list,
 .b24-visibility-list,
@@ -830,4 +862,67 @@ textarea.ds-prompt-textarea {
 .voice-scope-save-ok {
     color: var(--ok, #3fa34d);
     margin-bottom: 6px;
+}
+
+/* ── Вкладка «Аналитика» ───────────────────────────────────────────────────
+   Вкладка намеренно почти не имеет своего CSS: плитки, прогресс-бар и дельты
+   она берёт КЛАССАМИ полноэкранного вью (`css/analytics.css`), чтобы сводка в
+   модалке и дашборд не разъезжались по виду при первой же правке палитры.
+   Здесь только то, что от ширины модалки и правда зависит. */
+
+/* Сетка вью рассчитана на 1400px и от 150px на плитку; в панели настроек это
+   даёт одну колонку в столбик. Здесь шаг мельче, а hero-плитки не занимают
+   двойную ширину — иначе шесть плиток вытягиваются в ленту на пол-экрана. */
+/*
+ * `fieldset` — единственный элемент, у которого браузерное умолчание
+ * `min-width: min-content` НЕ переопределяется каскадом обычных правил: без
+ * явного сброса он раздувается под самый широкий потомок и тянет за собой всю
+ * модалку. Сетка плиток внутри просила 1392px при панели в 762px — карточка
+ * настроек уезжала за экран, а третья плитка обрезалась по краю.
+ */
+.analytics-settings-content .notify-fieldset {
+    min-width: 0;
+}
+
+.analytics-tab-kpi {
+    grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+    gap: 8px;
+    margin-bottom: 12px;
+    /* Ограничитель полноэкранного вью (1400px) в модалке только вредит. */
+    max-width: 100%;
+}
+
+.analytics-tab-kpi[hidden] {
+    display: none;
+}
+
+.analytics-tab-kpi .analytics-tile-hero {
+    grid-column: span 2;
+}
+
+.analytics-tab-kpi .analytics-tile-hero .analytics-tile-value {
+    font-size: 1.4rem;
+}
+
+/*
+ * Спарклайн: высоту задаёт SVG через viewBox, контейнеру нужен лишь отступ.
+ * Пропорции viewBox полноразмерного чарта (720×260) в панели шириной 760px
+ * дают почти 200px высоты — половину видимой части вкладки под одну линию.
+ * Ограничиваем: витрине хватает силуэта, детали смотрят в дашборде.
+ */
+.analytics-tab-spark {
+    margin-bottom: 10px;
+    max-width: 100%;
+}
+
+.analytics-tab-spark svg {
+    max-height: 96px;
+}
+
+.analytics-tab-spark[hidden] {
+    display: none;
+}
+
+.analytics-tab-meta {
+    margin-bottom: 8px;
 }

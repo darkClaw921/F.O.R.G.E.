@@ -7,6 +7,7 @@
 //! привязаны к корню (`paths::resolve_root` от cwd сессии). Группировка
 //! сессий — только folder-headers (`SessionDto.folder_id/folder_label`).
 
+mod analytics;
 mod attention;
 mod auth;
 // Авто-апрув интерактивных prompt'ов Claude Code в tmux-сессиях (opt-in,
@@ -195,6 +196,15 @@ struct AppState {
     /// (Arc<RwLock> внутри). Используется REST-handler'ами
     /// `/api/user-settings` и `promote_todo` (кастомный plan_mode_suffix).
     user_settings: UserSettingsStore,
+    /// Аналитика использования Claude Code (`~/.claude/projects/**/*.jsonl`).
+    /// Cheap-clonable (`Arc` внутри [`analytics::AnalyticsStore`]).
+    /// Используется REST-роутами `/api/analytics/*`.
+    ///
+    /// ИНДЕКСАЦИЯ ЛЕНИВАЯ: на старте вызывается только `init_lazy()` —
+    /// подъём снимка `~/.forge/analytics-cache.json`. Каталог транскриптов
+    /// (2.7 ГБ) на старте НЕ читается: первый скан запускает первый же
+    /// запрос к любому роуту аналитики через `ensure_scan()`.
+    analytics: analytics::AnalyticsStore,
     /// Phase 3 — глобальный конфиг notifier'а
     /// (`~/.config/forge/notifier.json`). Cheap-clonable (Arc<RwLock> внутри).
     /// Используется `promote_todo` (template/delay/wait_previous/session) и
@@ -482,6 +492,13 @@ async fn main() -> anyhow::Result<()> {
         "user_settings store initialized"
     );
 
+    // Аналитика Claude Code. `init_lazy()` читает ТОЛЬКО снимок
+    // `~/.forge/analytics-cache.json`; `~/.claude/projects` здесь не
+    // открывается ни разу — иначе каждый старт devforge платил бы обходом
+    // 2.7 ГБ транскриптов за вкладку, которую могут не открыть.
+    let analytics_store = analytics::AnalyticsStore::with_default_paths();
+    analytics_store.init_lazy().await;
+
     // PWA-контекст (opt-in, флаг `--pwa`). ЖЁСТКИЙ ИНВАРИАНТ: всё внутри
     // блока гейтится под `pwa_enabled` — без флага create_dir_all /
     // load_or_generate НЕ вызываются, поэтому `~/.forge/vapid.json` не
@@ -613,6 +630,7 @@ async fn main() -> anyhow::Result<()> {
         // см. построение `http_client` выше.
         http: http_client,
         user_settings: user_settings_store,
+        analytics: analytics_store,
         notifier_config: notifier_config_store,
         history: history_store,
         // In-memory; persist намеренно не делаем (MVP). `std::sync::RwLock`
@@ -834,6 +852,13 @@ async fn main() -> anyhow::Result<()> {
             "/api/user-settings",
             get(get_user_settings).patch(patch_user_settings),
         )
+        // Аналитика использования Claude Code. Роуты ЛЕНИВЫЕ: первый же
+        // запрос к любому из них запускает индексацию транскриптов, поэтому
+        // старт devforge остаётся таким же, каким был до фичи.
+        .route("/api/analytics/status", get(get_analytics_status))
+        .route("/api/analytics/projects", get(get_analytics_projects))
+        .route("/api/analytics/summary", get(get_analytics_summary))
+        .route("/api/analytics/rescan", post(post_analytics_rescan))
         // Журнал авто-апрувов (кнопка «История» в настройках интерфейса):
         // что именно воркер подтвердил, в какой сессии и в каком окне.
         .route("/api/auto-approve/history", get(get_auto_approve_history))
@@ -1001,14 +1026,17 @@ async fn main() -> anyhow::Result<()> {
     // `/api/bitrix/*` просто отсутствуют и отдают 404, а фронт прячет кнопку.
     // Использовать здесь `?` ЗАПРЕЩЕНО: он превратил бы опечатку в конфиге
     // плагина в отказ всего devforge.
-    let mut bitrix_state: Option<std::sync::Arc<forge_bitrix::B24State>> = None;
+    let mut bitrix_state: Option<std::sync::Arc<forge_bitrix::B24Registry>> = None;
     let app = if bitrix_enabled {
-        match forge_bitrix::init(forge_bitrix::BitrixConfig::load()) {
-            Ok(state) => {
-                let app = forge_bitrix::register_routes(app, state.clone());
-                forge_bitrix::spawn_workers(&state).await;
-                tracing::info!("forge-bitrix: plugin registered");
-                bitrix_state = Some(state);
+        // На вход идёт КОРНЕВОЙ конфиг: он описывает все порталы разом
+        // (массив `[[portals]]`), а плагин отдаёт реестр их состояний.
+        match forge_bitrix::init(forge_bitrix::BitrixRootConfig::load()) {
+            Ok(registry) => {
+                let portals = registry.connected().len();
+                let app = forge_bitrix::register_routes(app, registry.clone());
+                forge_bitrix::spawn_workers(&registry).await;
+                tracing::info!(portals, "forge-bitrix: plugin registered");
+                bitrix_state = Some(registry);
                 app
             }
             Err(e) => {
@@ -3953,6 +3981,79 @@ async fn get_auto_approve_history(
     Json(state.approvals.snapshot())
 }
 
+// =============================================================================
+// Analytics endpoints (~/.claude/projects/**/*.jsonl → индекс в памяти)
+// =============================================================================
+
+/// `GET /api/analytics/status` — состояние и прогресс индексации.
+///
+/// **Этот запрос ЗАПУСКАЕТ ленивый скан**, если он ещё не запускался: другого
+/// момента для старта нет, потому что на старте devforge каталог транскриптов
+/// намеренно не читается. Хендлер при этом НЕ ждёт конца скана — он отдаёт
+/// текущее состояние сразу, а фронт поллит его до `state: "ready"`.
+///
+/// Ошибок у эндпоинта нет: нет `$HOME`, нет каталога транскриптов, снимок
+/// битый — всё это валидные состояния с пустым индексом.
+async fn get_analytics_status(State(state): State<AppState>) -> Json<analytics::StatusDto> {
+    state.analytics.ensure_scan(false).await;
+    Json(state.analytics.status().await)
+}
+
+/// `GET /api/analytics/projects` — список проектов для селектора дашборда.
+///
+/// Отсортирован по последней активности (новые сверху). Во время скана
+/// отдаёт то, что уже известно — из снимка кэша или из прошлого прохода;
+/// пустой массив тоже валиден и означает «индекса ещё нет».
+async fn get_analytics_projects(
+    State(state): State<AppState>,
+) -> Json<Vec<analytics::ProjectDto>> {
+    state.analytics.ensure_scan(false).await;
+    Json(state.analytics.projects().await)
+}
+
+/// `GET /api/analytics/summary?from&to&project&bucket=day|week` — KPI и серии.
+///
+/// Параметры (все опциональны, все невалидные значения молча заменяются
+/// умолчаниями — см. [`analytics::SummaryParams`]):
+/// * `from` / `to` — `YYYY-MM-DD` включительно; без них берётся весь
+///   диапазон, который есть в индексе;
+/// * `project` — закодированное имя каталога из `/api/analytics/projects`;
+///   пусто — все проекты;
+/// * `bucket` — `day` (умолчание) или `week` (корзина = понедельник недели).
+///
+/// **Ответ во время индексации — 200, а не ошибка.** `state` = `"scanning"`,
+/// `progress.done`/`progress.total` заполнены, серии пустые: фронт рисует
+/// прогресс-бар. 202 или 503 заставили бы каждого клиента лечить это
+/// состояние отдельной веткой, и первая же забытая ветка показала бы
+/// пустой экран без объяснения.
+///
+/// Ответ строится ЦЕЛИКОМ по индексу в памяти — ни одного обращения к диску.
+async fn get_analytics_summary(
+    State(state): State<AppState>,
+    Query(params): Query<analytics::SummaryParams>,
+) -> Json<analytics::SummaryDto> {
+    state.analytics.ensure_scan(false).await;
+    Json(state.analytics.summary(&params).await)
+}
+
+/// `POST /api/analytics/rescan` — форс полного пересбора индекса.
+///
+/// Удаляет снимок `~/.forge/analytics-cache.json`, отбрасывает накопленные
+/// роллапы и запускает скан с нуля (не инкрементальный). Отвечает СРАЗУ,
+/// текущим [`analytics::StatusDto`] со `state: "scanning"`; дальше фронт
+/// поллит `/api/analytics/status`.
+///
+/// Повторный вызов во время идущего скана второго прохода не порождает —
+/// возвращает текущий прогресс. Гарантия атомарная: флаг `running`
+/// захватывается compare-exchange'ем в `analytics::scan::try_begin`.
+///
+/// CSRF навешивается слоем на все `POST /api/*` — отдельно здесь ничего
+/// делать не нужно.
+async fn post_analytics_rescan(State(state): State<AppState>) -> Json<analytics::StatusDto> {
+    tracing::info!("analytics: запрошен полный пересбор индекса");
+    Json(state.analytics.rescan().await)
+}
+
 /// `PATCH /api/user-settings` — частичное обновление настроек.
 ///
 /// Тело: [`PatchUserSettingsReq`] — все поля опциональные, применяются
@@ -4766,6 +4867,9 @@ mod tests {
             remotes: Arc::new(RwLock::new(remotes)),
             http: reqwest::Client::new(),
             user_settings,
+            // Пустой store БЕЗ путей: юнит-тесты не должны ни читать
+            // `~/.claude/projects`, ни писать снимок в `~/.forge`.
+            analytics: analytics::AnalyticsStore::new(None, None, None),
             notifier_config,
             history,
             auto_chain: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),

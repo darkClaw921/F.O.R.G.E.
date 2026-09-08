@@ -15,3 +15,18 @@
 Связи: core/dom.js (ref'ы #b24-login*), js/bitrix/api.js (loginWebhook/logout), js/bitrix/main.js (applyLoginState делегирует сюда оверлей). Тесты: tmux-web/tests/frontend/bitrix_login.test.mjs (58 проверок на фейковом DOM). Серверная сторона — plugins/bitrix/src/{login,routes/login}.rs, страница bitrix-login.
 
 ФАЗА 5. Переход в authorized запускает загрузку данных панели (main.js::loadPanelData), а падение из authorized — resetChat(): лента чужого портала не должна оставаться на экране.
+
+## МУЛЬТИПОРТАЛЬНОСТЬ (Ф5/Ф8)
+
+Экран подключения панели «Битрикс24» (оверлей #b24-login). Один шаг и одно поле: адрес входящего вебхука.
+
+АВТОМАТ ОТОБРАЖЕНИЯ (source of truth — поле state ответа сервера): not_configured / checking / invalid_url / invalid_credentials / scope_missing / throttled / disconnected / authorized. renderLoginState(dto) ИДЕМПОТЕНТНА — её зовут из /status, из WS-кадра login_state и из ответа каждого POST'а подключения.
+
+ТРИ ПРАВИЛА: разбор вставленного адреса живёт ТОЛЬКО на бэкенде (ни одного split/match/replace — это проверяет bitrix_contract.test.mjs); секрет не задерживается в DOM и не попадает в сторадж (поле очищается немедленно после успеха); автоповтора нет — пока тикает обратный отсчёт throttled, ни один запрос не уходит.
+
+ДВА РЕЖИМА ОДНОГО ЭКРАНА (мультипортальность, Ф8):
+- 'connect' — подключение АДРЕСУЕМОГО портала (POST /api/bitrix/login/webhook); экран открыт, пока состояние не authorized;
+- 'add' — добавление ЕЩЁ ОДНОГО портала (POST /api/bitrix/portals), открывается кнопкой + строки вкладок через openAddPortal(), закрывается успехом или cancelAddPortal().
+Второго экрана НЕ заводится: это единственное место, где через фронт проходит СЕКРЕТ, и вся работа с ним написана здесь один раз. В режиме 'add' renderLoginState НЕ ДЕЛАЕТ НИЧЕГО — снимки /status и кадры login_state в этот момент описывают ПЕРВЫЙ портал и закрыли бы экран прямо под руками, стерев введённое. Неудачная проверка вебхука портал не откатывает, поэтому успешный ответ POST /portals закрывает экран в ЛЮБОМ состоянии подключения.
+SCREEN_TITLE — заголовки режимов ('BITRIX24 // CONNECT' / 'BITRIX24 // ADD PORTAL'), узлы #b24-login-title и #b24-login-cancel.
+Колбэки initB24Login: onAuthorized, onLoggedOut, onPortalAdded(portalId), onAddCancelled.

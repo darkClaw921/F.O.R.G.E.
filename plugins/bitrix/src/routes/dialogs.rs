@@ -102,7 +102,7 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Path, RawQuery, State};
+use axum::extract::{Path, RawQuery};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
@@ -111,7 +111,9 @@ use crate::actions::{now_ms, READ_DEBOUNCE_MS, TYPING_INTERVAL_MS};
 use crate::api::methods::LikeAction;
 use crate::api::{to_api_error, B24Client, B24Error};
 use crate::dto::{self, CountersDto, DialogDto, MessageDto};
+use crate::registry::B24Registry;
 use crate::routes::error::ApiError;
+use crate::routes::Portal;
 use crate::state::B24State;
 
 /// Директории одного списка (Р2). Порядок — порядок показа в колонке.
@@ -348,7 +350,7 @@ pub struct AckResp {
 /// иллюзию, что операция ограничена этим диалогом. Диалог всё же нужен, но
 /// только ради ПЕРЕЧИТЫВАНИЯ строки, поэтому он и приезжает необязательным
 /// полем тела — ровно как `?dialog_id` у `GET /api/bitrix/messages/:mid`.
-pub fn router() -> Router<Arc<B24State>> {
+pub fn router() -> Router<Arc<B24Registry>> {
     Router::new()
         .route("/api/bitrix/filters", get(get_filters))
         .route("/api/bitrix/dialogs", get(get_dialogs))
@@ -549,7 +551,7 @@ fn dir_unread(dir: &str, c: &CountersDto) -> i64 {
 /// `409 not_authorized`, `503 not_connected`, плюс всё, чем может ответить
 /// портал на `im.counters.get`.
 pub async fn get_filters(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
 ) -> Result<Json<FiltersResp>, ApiError> {
     let client = require_ready(&state).await?;
     let now = dto::now_unix();
@@ -598,7 +600,7 @@ pub async fn get_filters(
 /// `409 not_authorized`, `503 not_connected`, `400 invalid_input` (мусор в
 /// `limit`/`offset`), плюс ошибки портала.
 pub async fn get_dialogs(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     RawQuery(raw): RawQuery,
 ) -> Result<Json<DialogsResp>, ApiError> {
     // Ступени 1–2. Разбор параметров — ПОСЛЕ них и только после них.
@@ -796,7 +798,7 @@ pub(crate) async fn load_page(
 /// похож ни на одну форму платформы), `400 invalid_input` (мусор в
 /// `limit`/`before_id`/`after_id`), плюс ошибки портала.
 pub async fn get_messages(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path(id): Path<String>,
     RawQuery(raw): RawQuery,
 ) -> Result<Json<MessagesResp>, ApiError> {
@@ -850,7 +852,7 @@ pub async fn get_messages(
 /// `404 unknown_message` (`:mid` не число либо сообщения нет), `400` (мусор в
 /// query), плюс ошибки портала.
 pub async fn get_message(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path(mid): Path<String>,
     RawQuery(raw): RawQuery,
 ) -> Result<Json<MessageDto>, ApiError> {
@@ -1103,7 +1105,7 @@ fn synthesized_message(
 /// `409 invalid_state` (`upload_id` неизвестен, потрачен или протух), плюс
 /// ошибки портала (`409 send_forbidden` — нет прав писать в этот чат).
 pub async fn post_message(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path(id): Path<String>,
     body: Option<Json<SendReq>>,
 ) -> Result<Json<MessageResp>, ApiError> {
@@ -1236,7 +1238,7 @@ pub async fn post_message(
 /// `409 invalid_state` (`CANT_EDIT_MESSAGE`: истекло окно правки либо
 /// сообщение чужое).
 pub async fn patch_message(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path(mid): Path<String>,
     body: Option<Json<EditReq>>,
 ) -> Result<Json<MessageResp>, ApiError> {
@@ -1308,7 +1310,7 @@ pub async fn patch_message(
 /// `409 not_authorized`, `503`, `404 unknown_message`, `409 invalid_state`
 /// (`CANT_EDIT_MESSAGE`: чужое сообщение либо истекло окно).
 pub async fn delete_message(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path(mid): Path<String>,
 ) -> Result<Json<AckResp>, ApiError> {
     let client = require_ready(&state).await?;
@@ -1346,7 +1348,7 @@ pub async fn delete_message(
 /// (нет разбираемого `dialog_id` в теле), `400 invalid_input` (незнакомый
 /// `action`), плюс ошибки портала.
 pub async fn post_like(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path(mid): Path<String>,
     body: Option<Json<LikeReq>>,
 ) -> Result<Json<MessageResp>, ApiError> {
@@ -1398,7 +1400,7 @@ pub async fn post_like(
 /// `404 unknown_message`, плюс ошибки портала (в т.ч. `BOT_ID_ERROR`,
 /// `COMMAND_ERROR` — их отдаёт `map_portal_error`).
 pub async fn post_command(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path(mid): Path<String>,
     Json(req): Json<CommandReq>,
 ) -> Result<Json<AckResp>, ApiError> {
@@ -1446,7 +1448,7 @@ pub async fn post_command(
 ///
 /// `409 not_authorized`, `503`, `404 unknown_dialog`, плюс ошибки портала.
 pub async fn post_read(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path(id): Path<String>,
     body: Option<Json<MarkReq>>,
 ) -> Result<Json<AckResp>, ApiError> {
@@ -1499,7 +1501,7 @@ pub async fn post_read(
 /// `409 not_authorized`, `503`, `404 unknown_dialog`, `400 invalid_input`
 /// (нет `message_id`), плюс ошибки портала.
 pub async fn post_unread(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path(id): Path<String>,
     body: Option<Json<MarkReq>>,
 ) -> Result<Json<AckResp>, ApiError> {
@@ -1549,7 +1551,7 @@ pub async fn post_unread(
 ///
 /// `409 not_authorized`, `503`, `404 unknown_dialog`, плюс ошибки портала.
 pub async fn post_typing(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path(id): Path<String>,
 ) -> Result<Json<AckResp>, ApiError> {
     let client = require_ready(&state).await?;
@@ -1585,7 +1587,7 @@ pub async fn post_typing(
 ///
 /// `409 not_authorized`, `503`, `404 unknown_dialog`, плюс ошибки портала.
 pub async fn post_pin(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path(id): Path<String>,
     body: Option<Json<PinReq>>,
 ) -> Result<Json<AckResp>, ApiError> {
@@ -1623,7 +1625,7 @@ pub async fn post_pin(
 ///
 /// `409 not_authorized`, `503`, `404 unknown_dialog`, плюс ошибки портала.
 pub async fn post_hide(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path(id): Path<String>,
 ) -> Result<Json<AckResp>, ApiError> {
     let client = require_ready(&state).await?;

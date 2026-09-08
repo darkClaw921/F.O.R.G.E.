@@ -1,6 +1,6 @@
 [package]
 name = "devforge"
-version = "0.1.73"
+version = "0.1.74"
 edition = "2021"
 description = "Web-viewer для tmux сессий через WebSocket + xterm.js"
 license = "MIT"
@@ -109,6 +109,12 @@ forge-bitrix = { path = "../plugins/bitrix" }
 # forge-meet, и прямое ребро из бинаря сделало бы подмену реализации CDP
 # правкой в двух местах вместо одного.
 forge-meet = { path = "../plugins/meet" }
+# Атомарная запись приватного файла (`temp` + `fsync` + `rename` + 0600) —
+# ей пишется снимок индекса аналитики `~/.forge/analytics-cache.json`
+# (`analytics::cache::save`). Самый листовой крейт workspace: единственная
+# внешняя зависимость — anyhow, поэтому подключение бесплатно и своей копии
+# `tmp+rename` в бинаре не появляется.
+forge-atomic = { path = "../plugins/atomic" }
 # async-trait нужен в tmux-web потому что EchoHostAdapter имплементит
 # echo_host_api::HostApi (trait объявлен через #[async_trait]).
 async-trait = "0.1"

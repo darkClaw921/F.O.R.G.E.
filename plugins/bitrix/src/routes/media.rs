@@ -86,7 +86,7 @@ use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
 
 use axum::body::Body;
-use axum::extract::{Path, State};
+use axum::extract::Path;
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::Response;
 use axum::routing::get;
@@ -100,10 +100,12 @@ use crate::api::B24Client;
 use crate::attach::MediaDto;
 use crate::media_cache::{self, CacheKey, CachedMedia, DialogKey, MediaMeta};
 use crate::progress::DownloadReporter;
+use crate::registry::B24Registry;
 use crate::routes::dialogs::{
     load_page, map_portal_error, require_authorized, require_client, require_connected,
 };
 use crate::routes::error::ApiError;
+use crate::routes::Portal;
 use crate::state::B24State;
 
 /// `Cache-Control` вложения: год плюс `immutable`.
@@ -139,7 +141,7 @@ pub const STREAM_CHUNK: usize = 64 * 1024;
 /// `…/media/…` — та, которой адресуются соседние панели. Коллизии нет:
 /// сегментов разное число, а `avatar` в позиции `:dialog` не разбирается в
 /// идентификатор диалога.
-pub fn router() -> Router<Arc<B24State>> {
+pub fn router() -> Router<Arc<B24Registry>> {
     Router::new()
         .route(
             "/api/bitrix/media/file/:dialog/:mid/:index",
@@ -167,7 +169,7 @@ pub fn router() -> Router<Arc<B24State>> {
 /// - `429 flood_wait` / `502` — портал ограничил или отказал;
 /// - `503 not_connected` — связи нет, а в кэше пусто.
 pub async fn get_attachment(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path((dialog, mid, index)): Path<(String, String, String)>,
 ) -> Result<Response, ApiError> {
     // Ступень 1: подключение. Строго ДО разбора — иначе роут работал бы
@@ -394,7 +396,7 @@ fn guess_mime(media: &MediaDto) -> Option<String> {
 ///   нет (фронт рисует инициалы на цвете из `color`);
 /// - `503 not_connected` — связи нет, а в кэше пусто.
 pub async fn get_avatar(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path(raw_user): Path<String>,
 ) -> Result<Response, ApiError> {
     require_authorized(&state).await?;

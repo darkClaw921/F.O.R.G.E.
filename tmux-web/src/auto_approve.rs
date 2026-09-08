@@ -23,6 +23,7 @@
 //! | Тип ([`PromptKind`]) | Маркеры (после `normalize_ws`) | Выбор |
 //! |---|---|---|
 //! | `Permission3` | `❯ 1. Yes` + `2. Yes,` + `3. No` | `1`, в broad-режиме `2` |
+//! | `Permission4` | `❯ 1. Yes` + `2. Yes,` + `3. Yes,` + `4. No` | `1`, в broad-режиме `2` |
 //! | `Permission2` | `❯ 1. Yes` + `2. No` | всегда `1` |
 //! | `AllowDeny` | `❯ 1. Allow` + `2. Deny` | всегда `1` |
 //! | `AllowBroad` | `❯ 1. Allow` + `2. Allow all actions on` | `1`, в broad-режиме `2` |
@@ -224,6 +225,9 @@ impl ApprovalHistory {
 pub enum PromptKind {
     /// Permission с тремя пунктами: `Yes` / `Yes, and don't ask again` / `No`.
     Permission3,
+    /// Permission с четырьмя пунктами: `Yes` / `Yes, and always allow <…>` /
+    /// `Yes, and switch to auto mode` / `No`.
+    Permission4,
     /// Permission с двумя пунктами: `Yes` / `No`.
     Permission2,
     /// Claude in Chrome: `Allow` / `Deny`.
@@ -277,29 +281,41 @@ pub fn classify_prompt(pane: &str) -> Option<PromptKind> {
         }
     }
 
-    if norm.contains("❯ 1. Allow") {
-        if norm.contains("2. Allow all") {
-            return Some(PromptKind::AllowBroad);
-        }
-        if norm.contains("2. Deny") {
-            return Some(PromptKind::AllowDeny);
-        }
+    // ФОРМА ОПОЗНАЁТСЯ ПО РАЗОБРАННОМУ МЕНЮ, А НЕ ПО НОМЕРАМ ПУНКТОВ.
+    //
+    // Прежние ветки искали дословные `❯ 1. Yes` + `2. Yes,` + `3. No`, и
+    // каждая редакция CLI, добавлявшая пункт, выключала авто-апрув целиком:
+    // в 2.1.26x между согласием и отказом появился `3. Yes, and switch to
+    // auto mode`, отказ уехал на четвёртый пункт — и форма перестала
+    // опознаваться. Разбор (`attention::parse_menu`) смотрит на РОЛИ пунктов,
+    // поэтому переносит и добавление пунктов, и их перестановку, и сдвиг
+    // курсора стрелками.
+    let menu = crate::attention::parse_menu(pane)?;
+    if !menu.is_actionable() {
         return None;
     }
-
-    if norm.contains("❯ 1. Yes") {
-        // `2. Yes,` — это «Yes, and don't ask again …»: единственная форма, в
-        // которой второй пункт расширяет разрешение, а не отказывает.
-        if norm.contains("2. Yes,") && norm.contains("3. No") {
-            return Some(PromptKind::Permission3);
-        }
-        if norm.contains("2. No") {
-            return Some(PromptKind::Permission2);
-        }
-        return None;
+    let broad_item = menu.first(crate::attention::ItemRole::ApproveBroad);
+    if menu.is_chrome_form() {
+        return Some(if broad_item.is_some() {
+            PromptKind::AllowBroad
+        } else {
+            PromptKind::AllowDeny
+        });
     }
+    Some(match (broad_item.is_some(), menu.items.len()) {
+        (false, _) => PromptKind::Permission2,
+        (true, n) if n >= 4 => PromptKind::Permission4,
+        (true, _) => PromptKind::Permission3,
+    })
+}
 
-    None
+/// Номер пункта строкой — то, что уходит в `tmux send-keys`.
+///
+/// Таблица вместо `format!`: [`Decision`] носит `&'static str`, и выбор
+/// пункта не должен тянуть за собой аллокацию на каждом тике воркера.
+fn digit(n: u8) -> Option<&'static str> {
+    const DIGITS: [&str; 9] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+    DIGITS.get(n.checked_sub(1)? as usize).copied()
 }
 
 /// Результат [`decide`]: что делать с распознанным prompt'ом.
@@ -334,9 +350,41 @@ pub fn decide(kind: PromptKind, pane: &str, s: &UserSettings) -> Decision {
         _ => {}
     }
 
-    let broad =
-        s.auto_approve_broad && matches!(kind, PromptKind::Permission3 | PromptKind::AllowBroad);
-    let choice = if broad { "2" } else { "1" };
+    // НОМЕР ПУНКТА БЕРЁТСЯ ИЗ МЕНЮ, А НЕ ИЗ КОНСТАНТЫ.
+    //
+    // Раньше здесь были литералы «1» и «2». Они верны ровно до следующей
+    // редакции CLI: в четырёхопционной форме второй пункт — «Yes, and always
+    // allow access to <путь>», третий — «Yes, and switch to auto mode», и
+    // сдвиг на один пункт означал бы переключение режима вместо разрешения
+    // доступа. Теперь роль пункта решает, что нажать, а номер берётся у него
+    // же.
+    let Some(menu) = crate::attention::parse_menu(pane) else {
+        return Decision::Skip;
+    };
+    use crate::attention::ItemRole;
+
+    let broad_allowed = s.auto_approve_broad;
+    // Расширяющее согласие — только настоящее расширение ЭТОГО разрешения.
+    // Пункт `ModeSwitch` («Yes, and switch to auto mode») в выбор не входит
+    // никогда: он меняет поведение и для будущих запросов, которых человек
+    // ещё не видел.
+    let picked = if broad_allowed {
+        // Broad предпочитает расширение, но довольствуется разовым «Yes»,
+        // если расширяющего пункта в форме нет.
+        menu.first(ItemRole::ApproveBroad)
+            .or_else(|| menu.first(ItemRole::Approve))
+    } else {
+        // Без broad расширяющий пункт не жмётся НИКОГДА — даже если он
+        // единственное согласие в меню. Это и есть смысл выключенной
+        // настройки: разрешение выдаётся ровно на один раз.
+        menu.first(ItemRole::Approve)
+    };
+    let Some(item) = picked else {
+        return Decision::Skip;
+    };
+    let Some(choice) = digit(item.number) else {
+        return Decision::Skip;
+    };
 
     if is_dangerous(pane, &s.auto_approve_blocklist) {
         return Decision::Blocked(choice);
@@ -1767,6 +1815,253 @@ Do you want to proceed?
  Esc to cancel · Tab to amend · ctrl+e to explain
 ";
         assert_eq!(classify_prompt(pane), Some(PromptKind::Permission3));
+    }
+
+    // =====================================================================
+    // Краевые ситуации разбора меню
+    // =====================================================================
+    //
+    // Каждый случай здесь — либо уже случившийся живой отказ, либо форма,
+    // которую CLI может показать завтра. Разбор по РОЛЯМ пунктов вместо
+    // поиска номеров затевался ровно ради них.
+
+    /// Живой кейс 07.09.2026: к трём пунктам добавился «switch to auto mode»,
+    /// и отказ уехал на четвёртый. Нажать надо ВТОРОЙ пункт — расширение
+    /// доступа к пути, а не смену режима CLI.
+    const PERMISSION4: &str = "\
+Bash command
+  rm -f /tmp/.sshpw && echo \"временный файл удалён\"
+Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and always allow access to /private/tmp from this project
+   3. Yes, and switch to auto mode · auto mode handles these prompts for you
+   4. No
+ Esc to cancel · Tab to amend
+";
+
+    #[test]
+    fn a_fourth_option_does_not_break_the_form() {
+        assert_eq!(classify_prompt(PERMISSION4), Some(PromptKind::Permission4));
+    }
+
+    /// ГЛАВНОЕ ПРАВИЛО ЧЕТЫРЁХОПЦИОННОЙ ФОРМЫ: broad жмёт расширение доступа
+    /// (пункт 2), а НЕ «switch to auto mode» (пункт 3). Смена режима меняет
+    /// поведение и для будущих запросов, которых человек ещё не видел.
+    #[test]
+    fn broad_never_switches_the_cli_mode() {
+        let mut s = UserSettings::default();
+        s.auto_approve_broad = true;
+        assert_eq!(
+            decide(PromptKind::Permission4, PERMISSION4, &s),
+            Decision::Press("2")
+        );
+
+        s.auto_approve_broad = false;
+        assert_eq!(
+            decide(PromptKind::Permission4, PERMISSION4, &s),
+            Decision::Press("1")
+        );
+    }
+
+    /// Курсор стоит НЕ на первом пункте: человек подвинул выбор стрелками и
+    /// отошёл. Меню от этого не перестаёт быть меню, а нажимать всё равно
+    /// нужно свой пункт по номеру, а не «тот, где курсор».
+    #[test]
+    fn a_moved_cursor_does_not_hide_the_menu() {
+        let pane = "\
+Bash command
+  ls -la
+Do you want to proceed?
+   1. Yes
+   2. Yes, and don't ask again for: ls commands
+ ❯ 3. No
+ Esc to cancel · Tab to amend
+";
+        assert_eq!(classify_prompt(pane), Some(PromptKind::Permission3));
+        let mut s = UserSettings::default();
+        s.auto_approve_broad = true;
+        assert_eq!(decide(PromptKind::Permission3, pane, &s), Decision::Press("2"));
+    }
+
+    /// Длинный пункт переносится по словам — номер остаётся на первой строке,
+    /// а признак расширения («from this project») уезжает на вторую. Без
+    /// склейки продолжения пункт выглядел бы как обычное «Yes».
+    #[test]
+    fn a_wrapped_option_keeps_its_role() {
+        let pane = "\
+Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and always allow access to
+      /Users/igor/very/long/path/that/wraps from this project
+   3. No
+ Esc to cancel · Tab to amend
+";
+        assert_eq!(classify_prompt(pane), Some(PromptKind::Permission3));
+        let mut s = UserSettings::default();
+        s.auto_approve_broad = true;
+        assert_eq!(decide(PromptKind::Permission3, pane, &s), Decision::Press("2"));
+    }
+
+    /// Обрывок меню без первого пункта — не prompt. Номера выдают его: у
+    /// настоящего меню нумерация начинается с единицы.
+    #[test]
+    fn a_menu_fragment_is_not_a_prompt() {
+        let pane = "\
+   2. Yes, and don't ask again
+   3. No
+ Esc to cancel · Tab to amend
+";
+        assert_eq!(classify_prompt(pane), None);
+    }
+
+    /// Форма, где расширяющий пункт ЕДИНСТВЕННОЕ согласие, а broad выключен.
+    /// Жать нечего: разового «Yes» нет, а расширять разрешение без спроса
+    /// нельзя — это ровно то, что настройка запрещает.
+    #[test]
+    fn without_broad_a_broad_only_menu_is_left_to_the_human() {
+        let pane = "\
+Claude in Chrome wants to navigate on example.com
+ ❯ 1. Allow all actions on example.com for this session
+   2. Deny (esc)
+";
+        let kind = classify_prompt(pane).expect("форма опознаётся");
+        let mut s = UserSettings::default();
+        s.auto_approve_broad = false;
+        assert_eq!(decide(kind, pane, &s), Decision::Skip);
+
+        s.auto_approve_broad = true;
+        assert_eq!(decide(kind, pane, &s), Decision::Press("1"));
+    }
+
+    /// Пункт «switch to auto mode» без единого обычного «Yes» — жать нечего.
+    /// Такой формы у CLI сегодня нет, но её появление не должно приводить к
+    /// молчаливому переключению режима.
+    #[test]
+    fn a_mode_switch_only_menu_is_never_pressed() {
+        let pane = "\
+Do you want to proceed?
+ ❯ 1. Yes, and switch to auto mode
+   2. No
+ Esc to cancel · Tab to amend
+";
+        let mut s = UserSettings::default();
+        s.auto_approve_broad = true;
+        match classify_prompt(pane) {
+            None => {}
+            Some(kind) => assert_eq!(decide(kind, pane, &s), Decision::Skip),
+        }
+    }
+
+    /// ИНСТРУМЕНТ ДИАГНОСТИКИ, а не проверка: прогоняет разбор по реальным
+    /// панелям всех tmux-сессий машины и печатает, что видит воркер — меню,
+    /// роли пунктов, гейт, свечение, форму.
+    ///
+    /// Держится в наборе намеренно: три из четырёх отказов авто-апрува за
+    /// месяц диагностировались именно так — захватом живой панели, а не
+    /// чтением кода. `#[ignore]`, потому что зависит от машины.
+    ///
+    /// Запуск: cargo test -p devforge live_panes -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn live_panes() {
+        let out = std::process::Command::new("tmux")
+            .args(["list-panes", "-a", "-F", "#{session_name}:#{window_index}.#{pane_index}"])
+            .output()
+            .expect("tmux");
+        for target in String::from_utf8_lossy(&out.stdout).lines() {
+            let cap = std::process::Command::new("tmux")
+                .args(["capture-pane", "-p", "-J", "-t", target])
+                .output()
+                .expect("capture");
+            let pane = String::from_utf8_lossy(&cap.stdout);
+            let menu = crate::attention::parse_menu(&pane);
+            let kind = classify_prompt(&pane);
+            let bottom = crate::attention::prompt_at_bottom(&pane);
+            let glow = crate::attention::detect_claude_prompt(&pane);
+            eprintln!(
+                "{target}: меню={} гейт={bottom} свечение={glow} форма={kind:?}",
+                menu.as_ref().map(|m| m.items.len()).unwrap_or(0),
+            );
+            if let Some(m) = menu {
+                for it in &m.items {
+                    eprintln!("      {}. [{:?}] {}", it.number, it.role, it.text.chars().take(70).collect::<String>());
+                }
+            }
+        }
+    }
+
+    /// Живой кейс 07.09.2026: разрешение MCP-инструмента, поднятое агентом
+    /// workflow. Заголовок блока здесь не `Bash command`, а `Tool use · from
+    /// the "…" workflow`, второй пункт называет имя MCP-сервера и путь.
+    #[test]
+    fn an_mcp_permission_from_a_workflow_agent_is_classified() {
+        let pane = "\
+ Tool use · from the \"apistend-research\" workflow
+
+   b24-dev-mcp — Bitrix-Method-Details Tool: (MCP)
+
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and don't ask again for b24-dev-mcp — Bitrix-Method-Details commands
+      in /Users/igorgerasimov/claudeWorkspace/apistend
+   3. No
+
+ Esc to cancel · Tab to amend
+";
+        assert_eq!(classify_prompt(pane), Some(PromptKind::Permission3));
+        let mut s = UserSettings::default();
+        s.auto_approve_broad = true;
+        assert_eq!(decide(PromptKind::Permission3, pane, &s), Decision::Press("2"));
+    }
+
+    /// Пять пунктов с двумя разными расширениями: жмётся ПЕРВОЕ расширяющее,
+    /// а не последнее и не смена режима. Такой формы у CLI сегодня нет —
+    /// тест держит поведение на случай, когда она появится.
+    #[test]
+    fn with_several_widening_options_the_first_one_wins() {
+        let pane = "\
+Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and always allow access to /tmp from this project
+   3. Yes, and don't ask again for: ls commands
+   4. Yes, and switch to auto mode
+   5. No
+ Esc to cancel · Tab to amend
+";
+        let kind = classify_prompt(pane).expect("форма опознаётся");
+        let mut s = UserSettings::default();
+        s.auto_approve_broad = true;
+        assert_eq!(decide(kind, pane, &s), Decision::Press("2"));
+        s.auto_approve_broad = false;
+        assert_eq!(decide(kind, pane, &s), Decision::Press("1"));
+    }
+
+    /// План остаётся неприкосновенным и в новой форме с четырьмя пунктами:
+    /// его пункты («auto-accept edits», «keep planning») опознаются раньше
+    /// любой permission-ветки.
+    #[test]
+    fn the_plan_prompt_is_still_never_approved() {
+        let pane = "\
+Ready to code?
+ ❯ 1. Yes, and auto-accept edits
+   2. Yes, and manually approve edits
+   3. Yes, and switch to auto mode
+   4. No, keep planning
+ Esc to cancel · Tab to amend
+";
+        assert_eq!(classify_prompt(pane), Some(PromptKind::Plan));
+        let mut s = UserSettings::default();
+        s.auto_approve_broad = true;
+        assert_eq!(decide(PromptKind::Plan, pane, &s), Decision::Skip);
+    }
+
+    /// Девятый пункт — верхняя граница таблицы номеров. Меню с номером за
+    /// её пределами не должно приводить к нажатию мусора.
+    #[test]
+    fn an_out_of_range_number_is_not_pressed() {
+        assert_eq!(digit(9), Some("9"));
+        assert_eq!(digit(10), None);
+        assert_eq!(digit(0), None);
     }
 
     /// Prompt без меню в панели вообще (`Plan`/`Question` рисуют свои

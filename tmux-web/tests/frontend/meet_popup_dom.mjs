@@ -61,6 +61,10 @@ export function makeEl(tag) {
         dataset: {},
         attributes: {},
         listeners: new Map(),
+        // У настоящего элемента `style` есть ВСЕГДА; код прода поэтому пишет
+        // `el.style.width = …` без проверок, и без этого поля такая строка
+        // роняет тест на ровном месте.
+        style: {},
         className: '',
         hidden: false,
         title: '',
@@ -101,6 +105,16 @@ export function makeEl(tag) {
     });
     Object.defineProperty(node, 'children', {
         get: () => node.childNodes.filter((c) => c.nodeType === 1),
+    });
+    // `firstChild`/`lastChild` — не украшение: очистка узла в проде пишется как
+    // `while (n.firstChild) n.removeChild(n.firstChild)` (единственный способ
+    // опустошить контейнер без innerHTML), и без этих геттеров такой цикл в
+    // тестах молча не делает НИЧЕГО — узлы копятся, а проверки зеленеют.
+    Object.defineProperty(node, 'firstChild', {
+        get: () => node.childNodes[0] || null,
+    });
+    Object.defineProperty(node, 'lastChild', {
+        get: () => node.childNodes[node.childNodes.length - 1] || null,
     });
     node.appendChild = (child) => {
         // Фрагмент (nodeType 11) РАСТВОРЯЕТСЯ: в дерево уходят его дети, а не

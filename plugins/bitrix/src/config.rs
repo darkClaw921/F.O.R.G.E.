@@ -22,7 +22,7 @@
 //!
 //! # Как секрет попадает на диск (Ф3)
 //!
-//! Ровно одним путём — [`save_webhook_to`], и у него четыре инварианта:
+//! Ровно одним путём — [`save_portals_to`], и у него четыре инварианта:
 //!
 //! 1. **read-modify-write** — остальные ключи пользовательского
 //!    `bitrix.toml` (интервалы, лимиты, любые незнакомые) переживают запись;
@@ -38,8 +38,36 @@
 //! руками через `echo >`, скопировать с другой машины или достать из бэкапа —
 //! тогда `0644` чинится на `0600` с warn'ом.
 //!
-//! Мультипортальности в v1 нет (Р5): поле вебхука одно, повторное сохранение
-//! перезаписывает его.
+//! # Мультипортальность: `[[portals]]`
+//!
+//! Файл описывает N подключений массивом таблиц:
+//!
+//! ```toml
+//! poll_active_secs = 4          # общие настройки — один раз на машину
+//! cache_dir = "~/.forge/bitrix"
+//!
+//! [[portals]]
+//! id = "acme"                   # выводится из ХОСТА, секрета не содержит
+//! title = "Acme"                # необязательно
+//! webhook = "https://acme.bitrix24.ru/rest/1/…/"
+//!
+//! [[portals]]
+//! id = "beta"
+//! webhook = "https://beta.bitrix24.ru/rest/9/…/"
+//! ```
+//!
+//! Разделение уровней принципиально: корневые ключи — настройки МАШИНЫ,
+//! `[[portals]]` — список подключений. [`BitrixRootConfig::portal_configs`]
+//! раздаёт общие настройки КОПИЕЙ в пер-портальные [`BitrixConfig`], поэтому
+//! `B24State::new(cfg)` и весь код под ним о мультипортальности не знают.
+//!
+//! **Совместимость.** Верхнеуровневый ключ `webhook` остаётся ЧИТАЕМЫМ: файл
+//! без `[[portals]]` даёт ровно один портал с идентификатором, выведенным из
+//! хоста. Миграция происходит при первой ЗАПИСИ ([`save_portals_to`] снимает
+//! верхнеуровневый ключ), а не при чтении: однократный диагностический запуск
+//! не должен переписывать чужой файл. Идентификатор портала-мигранта
+//! детерминирован — на него завязаны подкаталоги кэша и пер-портальные
+//! настройки.
 //!
 //! # «Анализ чата через Claude»
 //!
@@ -547,7 +575,314 @@ impl From<String> for WebhookUrl {
     }
 }
 
-/// Конфигурация плагина.
+// ---------------------------------------------------------------------------
+// Мультипортальность: `[[portals]]` и вывод идентификатора портала.
+// ---------------------------------------------------------------------------
+
+/// Идентификатор портала, когда вывести его из вебхука не удалось.
+///
+/// Уникальность всё равно обеспечивает [`unique_portal_id`], поэтому два
+/// нераспознанных вебхука дадут `portal` и `portal-2`, а не молча сольются.
+pub const FALLBACK_PORTAL_ID: &str = "portal";
+
+/// Одна запись `[[portals]]` в `bitrix.toml`.
+///
+/// Три поля и ни одного лишнего:
+///
+/// - `id` — стабильный идентификатор портала, выведенный из ХОСТА вебхука
+///   ([`portal_id_from_webhook`]). Секрета не содержит: его можно отдавать во
+///   фронт, класть в WS-кадры и писать в логи. На этом свойстве держатся
+///   заголовок `X-Forge-Portal`, пер-портальные подкаталоги кэша и
+///   пер-портальные настройки;
+/// - `title` — необязательное человеческое имя вкладки. Пусто ⇒ фронт
+///   показывает хост портала;
+/// - `webhook` — СЕКРЕТ целиком, тип [`WebhookUrl`] (без `Serialize`).
+///
+/// `id` в файле необязателен: отсутствующий или пустой выводится из вебхука
+/// при загрузке, а на диск попадает уже явным — чтобы правка вебхука руками
+/// не переименовала портал и не отвязала от него кэш и настройки.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct PortalConfig {
+    /// Стабильный идентификатор портала. Пусто ⇒ выводится из вебхука.
+    pub id: String,
+
+    /// Отображаемое имя. Пусто ⇒ показывается хост портала.
+    pub title: String,
+
+    /// URL входящего вебхука — секрет целиком.
+    pub webhook: WebhookUrl,
+}
+
+impl PortalConfig {
+    /// Портал с идентификатором, выведенным из вебхука.
+    pub fn from_webhook(webhook: &WebhookUrl, title: Option<&str>) -> Self {
+        Self {
+            id: portal_id_from_webhook(webhook),
+            title: title.unwrap_or_default().trim().to_string(),
+            webhook: webhook.clone(),
+        }
+    }
+
+    /// Имя для интерфейса: `title`, иначе хост, иначе идентификатор.
+    ///
+    /// Секрета не содержит ни в одной из трёх веток: хост — единственная часть
+    /// вебхука, которую можно показывать (см. [`WebhookUrl::portal_host`]).
+    ///
+    /// **В HTTP-ответ не годится.** Хост портала границу HTTP не пересекает
+    /// вовсе — ни `GET /api/bitrix/status`, ни `GET /api/bitrix/portals` его не
+    /// отдают (шапка `crate::routes::portals`). Подпись вкладки во фронте
+    /// собирается из `title` с фолбэком на `id`; эта функция — для лога и
+    /// серверных текстов.
+    pub fn display_name(&self) -> String {
+        if !self.title.trim().is_empty() {
+            return self.title.trim().to_string();
+        }
+        self.webhook
+            .portal_host()
+            .unwrap_or_else(|| self.id.clone())
+    }
+}
+
+/// Приводит произвольную строку к виду идентификатора: нижний регистр,
+/// только `[a-z0-9-]`, без сдвоенных и краевых дефисов.
+///
+/// Всё, что не ASCII-буквоцифра (включая кириллицу IDN-домена), становится
+/// дефисом, поэтому результат может оказаться ПУСТЫМ — вызывающий обязан
+/// подставить фолбэк.
+pub fn normalize_portal_id(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    for ch in raw.chars() {
+        let c = ch.to_ascii_lowercase();
+        if c.is_ascii_alphanumeric() {
+            out.push(c);
+        } else if !out.is_empty() && !out.ends_with('-') {
+            out.push('-');
+        }
+    }
+    while out.ends_with('-') {
+        out.pop();
+    }
+    out
+}
+
+/// Имя ПОДКАТАЛОГА (или суффикса файла), которым портал адресует свои данные
+/// на диске (Ф6).
+///
+/// # Почему это не просто `portal_id`
+///
+/// Идентификатор портала попадает в путь на файловой системе, а значит это
+/// источник path traversal: `id`, равный `..`, увёл бы кэш на уровень выше
+/// общего каталога, а `a/b` — в чужой подкаталог. [`normalize_portal_id`] уже
+/// оставляет только `[a-z0-9-]`, и после неё ни разделителя, ни `.`, ни `..`
+/// в строке не остаётся ФИЗИЧЕСКИ. Но полагаться на это молча нельзя: правка
+/// нормализации (например, «разрешим точку в имени портала») тихо превратила
+/// бы её в дыру за один коммит. Поэтому компонент нормализуется ЗАНОВО прямо
+/// здесь, и результат ещё раз проверяется на разделители и на `.`/`..`.
+///
+/// # Пустой идентификатор
+///
+/// Слот без портала (свежая установка, экран подключения) идентификатора не
+/// имеет — ему достаётся [`crate::ws::VACANT_PORTAL_ID`]. Значение
+/// зарезервировано: у настоящего портала `id` начинаться с подчёркивания не
+/// может, потому что [`normalize_portal_id`] подчёркивание вырезает. Писать
+/// туда практически нечего (без вебхука портал не ходит в сеть), но каталог
+/// обязан быть ОПРЕДЕЛЁН: иначе пустой слот писал бы в общий корень, вперемешку
+/// с подкаталогами настоящих порталов.
+#[must_use]
+pub fn portal_dir_component(portal_id: &str) -> String {
+    let safe = normalize_portal_id(portal_id);
+    let rejected = safe.is_empty()
+        || safe == "."
+        || safe == ".."
+        || safe.contains(std::path::MAIN_SEPARATOR)
+        || safe.contains('/')
+        || safe.contains('\\')
+        || safe.contains('\0');
+    if rejected {
+        return crate::ws::VACANT_PORTAL_ID.to_string();
+    }
+    safe
+}
+
+/// Каталог данных ОДНОГО портала внутри общего `cache_dir`.
+///
+/// `~/.forge/bitrix-cache` + `acme` ⇒ `~/.forge/bitrix-cache/acme`. Внутри него
+/// лежит ровно то же, что раньше лежало в корне: `media/`, `uploads/`,
+/// `events.json`, `voice/`.
+#[must_use]
+pub fn portal_cache_dir(cache_root: &Path, portal_id: &str) -> PathBuf {
+    cache_root.join(portal_dir_component(portal_id))
+}
+
+/// Файл заметок и разборов ОДНОГО портала: `<стем>-<portal>.<расширение>`.
+///
+/// `~/.forge/bitrix-chat-prompts.json` + `acme` ⇒
+/// `~/.forge/bitrix-chat-prompts-acme.json`.
+///
+/// Суффикс, а не подкаталог: базовый путь задаёт пользователь (или
+/// `FORGE_BITRIX_PROMPTS_PATH`), и он вправе указать конкретный ФАЙЛ. Превратив
+/// его в каталог, мы бы сломали и то, и другое ожидание сразу.
+#[must_use]
+pub fn portal_prompts_path(prompts_root: &Path, portal_id: &str) -> PathBuf {
+    let component = portal_dir_component(portal_id);
+    let stem = prompts_root
+        .file_stem()
+        .map_or_else(|| "bitrix-chat-prompts".to_string(), |s| s.to_string_lossy().into_owned());
+    let name = match prompts_root.extension() {
+        Some(ext) => format!("{stem}-{component}.{}", ext.to_string_lossy()),
+        None => format!("{stem}-{component}"),
+    };
+    prompts_root.with_file_name(name)
+}
+
+/// FNV-1a (32 бита от 64-битного состояния) в hex — детерминированный на все
+/// времена фолбэк-суффикс.
+///
+/// Намеренно НЕ `DefaultHasher`: у того нет гарантии стабильности между
+/// версиями Rust, а идентификатор портала обязан пережить обновление
+/// тулчейна — на него завязаны каталоги кэша и пер-портальные настройки.
+fn fnv1a_hex(s: &str) -> String {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in s.as_bytes() {
+        h ^= u64::from(*b);
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("{:08x}", ((h >> 32) ^ h) as u32)
+}
+
+/// Выводит идентификатор портала из ХОСТА вебхука.
+///
+/// `https://test-work-2.bitrix24.ru/rest/1/abcdef/` ⇒ `test-work-2`.
+///
+/// **Из пути вебхука не берётся ничего**: ни `user_id`, ни код. Это ключевое
+/// свойство — идентификатор уезжает во фронт и в логи.
+///
+/// Нераспознанный вебхук даёт [`FALLBACK_PORTAL_ID`]: где в такой строке код,
+/// мы не знаем, и хэшировать её (а значит, публиковать функцию от секрета)
+/// незачем.
+pub fn portal_id_from_webhook(webhook: &WebhookUrl) -> String {
+    match webhook.portal_host() {
+        Some(host) => portal_id_from_host(&host),
+        None => FALLBACK_PORTAL_ID.to_string(),
+    }
+}
+
+/// Идентификатор из голого хоста (порт отбрасывается).
+///
+/// Обычный домен ⇒ первая метка (`test.bitrix24.ru` ⇒ `test`): именно её
+/// пользователь называет «своим порталом». IP-литерал ⇒ хост целиком
+/// (`192.168.1.5` ⇒ `192-168-1-5`), иначе стенды на `127.0.0.1:8081` и
+/// `127.0.0.1:8082` слились бы в `127`.
+pub fn portal_id_from_host(host: &str) -> String {
+    let host = host.trim();
+    if host.is_empty() {
+        return FALLBACK_PORTAL_ID.to_string();
+    }
+
+    // `[::1]:8080` ⇒ `::1`; `example.com:8443` ⇒ `example.com`; голый IPv6
+    // без скобок остаётся как есть (двоеточий больше одного).
+    let bare = if let Some(rest) = host.strip_prefix('[') {
+        rest.split(']').next().unwrap_or(rest)
+    } else {
+        match host.rsplit_once(':') {
+            Some((h, port))
+                if !h.is_empty()
+                    && !h.contains(':')
+                    && !port.is_empty()
+                    && port.bytes().all(|b| b.is_ascii_digit()) =>
+            {
+                h
+            }
+            _ => host,
+        }
+    };
+
+    let is_literal =
+        bare.contains(':') || (!bare.is_empty() && bare.bytes().all(|b| b.is_ascii_digit() || b == b'.'));
+    let candidate = if is_literal {
+        bare
+    } else {
+        bare.split('.').next().unwrap_or(bare)
+    };
+
+    let id = normalize_portal_id(candidate);
+    if !id.is_empty() {
+        return id;
+    }
+    // Первая метка не дала ничего печатного (например, IDN-домен): пробуем
+    // хост целиком, и только потом — детерминированный хэш ХОСТА.
+    let whole = normalize_portal_id(bare);
+    if !whole.is_empty() {
+        return whole;
+    }
+    format!("{FALLBACK_PORTAL_ID}-{}", fnv1a_hex(bare))
+}
+
+/// Разрешает коллизию идентификаторов суффиксом `-2`, `-3`, …
+///
+/// Уже занятые идентификаторы НЕ меняются: два вебхука одного портала (разные
+/// `user_id`) дают `acme` и `acme-2`, и первый портал не переезжает — иначе
+/// вместе с ним переехали бы его кэш и настройки.
+pub fn unique_portal_id(base: &str, taken: &[String]) -> String {
+    let base = if base.is_empty() {
+        FALLBACK_PORTAL_ID.to_string()
+    } else {
+        base.to_string()
+    };
+    if !taken.iter().any(|t| t == &base) {
+        return base;
+    }
+    for n in 2u32..=10_000 {
+        let candidate = format!("{base}-{n}");
+        if !taken.iter().any(|t| t == &candidate) {
+            return candidate;
+        }
+    }
+    // Десять тысяч порталов на одну машину — это не сценарий, а авария;
+    // хэш от порядкового номера всё равно даёт уникальное имя.
+    format!("{base}-{}", fnv1a_hex(&format!("{base}{}", taken.len())))
+}
+
+/// Присваивает порталам окончательные идентификаторы и выбрасывает записи без
+/// вебхука.
+///
+/// Пустой вебхук в `[[portals]]` — это не «портал в процессе настройки», а
+/// мусор: подключиться по нему нельзя, а вкладка с ним висела бы вечно
+/// сломанной.
+fn resolve_portal_ids(portals: Vec<PortalConfig>) -> Vec<PortalConfig> {
+    let mut taken: Vec<String> = Vec::with_capacity(portals.len());
+    let mut out: Vec<PortalConfig> = Vec::with_capacity(portals.len());
+    for mut p in portals {
+        if p.webhook.is_empty() {
+            tracing::warn!(
+                target: "forge_bitrix",
+                portal = %p.id,
+                "forge-bitrix: a [[portals]] entry has no webhook; skipped"
+            );
+            continue;
+        }
+        let base = if p.id.trim().is_empty() {
+            portal_id_from_webhook(&p.webhook)
+        } else {
+            normalize_portal_id(p.id.trim())
+        };
+        let id = unique_portal_id(&base, &taken);
+        taken.push(id.clone());
+        p.id = id;
+        p.title = p.title.trim().to_string();
+        out.push(p);
+    }
+    out
+}
+
+/// Конфигурация плагина ОДНОГО портала.
+///
+/// Структура остаётся пер-портальной и после введения `[[portals]]`: общие
+/// настройки файла (тайминги, лимиты, `cache_dir`, пути) раздаются КОПИЕЙ в
+/// каждый экземпляр (см. [`BitrixRootConfig::portal_configs`]). Благодаря
+/// этому сигнатура `B24State::new(cfg)` и весь код под ней не знают о
+/// мультипортальности вовсе.
 ///
 /// Все поля имеют `#[serde(default)]`: пользователь правит только то, что ему
 /// нужно, а отсутствующий файл эквивалентен полным дефолтам.
@@ -555,7 +890,22 @@ impl From<String> for WebhookUrl {
 #[serde(default)]
 pub struct BitrixConfig {
     /// URL входящего вебхука. Пусто ⇒ состояние `not_configured`.
+    ///
+    /// В файле живёт внутри `[[portals]]`; верхнеуровневый ключ `webhook`
+    /// остаётся читаемым ради legacy-конфигов (см. [`BitrixRootConfig`]).
     pub webhook: WebhookUrl,
+
+    /// Идентификатор портала, которому принадлежит эта конфигурация.
+    ///
+    /// `#[serde(skip)]` — из ВЕРХНЕГО уровня TOML не читается: он приходит из
+    /// записи `[[portals]]` или выводится из вебхука. Секрета не содержит.
+    #[serde(skip)]
+    pub portal_id: String,
+
+    /// Отображаемое имя портала (пусто ⇒ фронт показывает хост). Из верхнего
+    /// уровня TOML не читается по той же причине, что [`Self::portal_id`].
+    #[serde(skip)]
+    pub portal_title: String,
 
     /// Переопределение базового URL портала — ЕДИНСТВЕННЫЙ способ
     /// протестировать транспорт без живого портала (стенд `tests/b24_stub.rs`,
@@ -567,9 +917,35 @@ pub struct BitrixConfig {
     /// `FORGE_BITRIX_CONFIG_PATH` (см. [`is_isolated_env`]).
     pub base_url_override: String,
 
-    /// Каталог файлового кэша: байты вложений, staging загрузок, курсор
-    /// событий.
+    /// Каталог файлового кэша ЭТОГО портала: байты вложений, staging загрузок,
+    /// курсор событий, расшифровки голосовых.
+    ///
+    /// С Ф6 указывает в ПОДКАТАЛОГ портала внутри
+    /// [`Self::cache_root`] — см. [`Self::for_portal`]. Из TOML читается
+    /// по-прежнему ОБЩИЙ корень: пользователь настраивает «где кэш», а не «где
+    /// кэш каждого портала».
     pub cache_dir: PathBuf,
+
+    /// Общий корень кэша, из которого выведен [`Self::cache_dir`] (Ф6).
+    ///
+    /// `#[serde(skip)]` и пустой по умолчанию. Пусто означает «этот конфиг ещё
+    /// не разведён по порталам, и `cache_dir` сам себе корень» — ровно так
+    /// выглядят общие настройки сразу после чтения файла и любой конфиг из
+    /// тестовой фикстуры.
+    ///
+    /// # Зачем хранить корень, а не вычислять его отсечением компонента
+    ///
+    /// [`Self::for_portal`] обязана быть ИДЕМПОТЕНТНОЙ: её зовут и при сборке
+    /// реестра из файла, и при добавлении портала в рантайме
+    /// ([`crate::B24Registry::add`]), причём во втором случае «общие настройки»
+    /// могут прийти из конфига, который уже разведён (реестр, собранный
+    /// `from_states` поверх готового состояния). Без явного корня повторное
+    /// применение давало бы `<кэш>/<портал>/<портал>`, и портал после рестарта
+    /// не нашёл бы ни своих медиа, ни своего курсора. Отсекать же «последний
+    /// компонент» нельзя: имя каталога кэша пользователь задаёт сам, и оно
+    /// вполне может совпасть с идентификатором портала.
+    #[serde(skip)]
+    pub cache_root: PathBuf,
 
     /// Интервал опроса событий при наличии WS-подписчиков, секунды (Р4).
     #[serde(default = "default_poll_active_secs")]
@@ -634,8 +1010,22 @@ pub struct BitrixConfig {
     /// [`prompts_path`]). Хранится ОТДЕЛЬНЫМ полем, а не вызовом
     /// [`prompts_path`] в момент записи: иначе изменение переменной окружения
     /// на середине жизни процесса раскидало бы заметки по двум файлам.
+    /// С Ф6 — файл ЭТОГО портала (`bitrix-chat-prompts-<portal>.json`),
+    /// выведенный из [`Self::prompts_root`] в [`Self::for_portal`].
     #[serde(skip, default = "prompts_path")]
     pub prompts_path: PathBuf,
+
+    /// Базовый путь заметок, из которого выведен [`Self::prompts_path`] (Ф6).
+    ///
+    /// Пусто ⇒ `prompts_path` сам себе база. Существует по той же причине, что
+    /// и [`Self::cache_root`]: без него повторное применение
+    /// [`Self::for_portal`] дало бы `bitrix-chat-prompts-acme-acme.json`.
+    ///
+    /// Именно СЮДА попадает `FORGE_BITRIX_PROMPTS_PATH`: переопределение
+    /// берётся за БАЗУ, а имя портала подставляется уже в него — поэтому
+    /// герметичность тестов сохраняется и при N порталах.
+    #[serde(skip)]
+    pub prompts_root: PathBuf,
 
     /// Файл пользовательских настроек хоста (`~/.forge/user_settings.json`).
     ///
@@ -677,8 +1067,11 @@ impl Default for BitrixConfig {
     fn default() -> Self {
         Self {
             webhook: WebhookUrl::default(),
+            portal_id: String::new(),
+            portal_title: String::new(),
             base_url_override: String::new(),
             cache_dir: default_cache_dir(),
+            cache_root: PathBuf::new(),
             poll_active_secs: DEFAULT_POLL_ACTIVE_SECS,
             poll_idle_secs: DEFAULT_POLL_IDLE_SECS,
             recent_sync_secs: DEFAULT_RECENT_SYNC_SECS,
@@ -690,6 +1083,7 @@ impl Default for BitrixConfig {
             request_timeout_secs: DEFAULT_REQUEST_TIMEOUT_SECS,
             config_path: config_path(),
             prompts_path: prompts_path(),
+            prompts_root: PathBuf::new(),
             user_settings_path: user_settings_path(),
             claude_cli_path: default_claude_cli_path(),
             analysis_timeout_secs: default_analysis_timeout_secs(),
@@ -700,6 +1094,58 @@ impl Default for BitrixConfig {
 }
 
 impl BitrixConfig {
+    /// Общие настройки + личность ОДНОГО портала: единственная точка, где
+    /// дисковые пути разводятся по порталам (Ф6).
+    ///
+    /// Возвращает КОПИЮ: `BitrixConfig` остаётся пер-портальной структурой, и
+    /// именно на этом держится неизменность всего кода под `B24State` — ни
+    /// [`crate::media_cache`], ни [`crate::routes::upload`], ни
+    /// [`crate::events`] не знают, что порталов стало много. Они по-прежнему
+    /// строят путь от `cache_dir`; разница лишь в том, что `cache_dir` теперь у
+    /// каждого свой.
+    ///
+    /// Разводятся ДВА пути:
+    ///
+    /// - [`Self::cache_dir`] ⇒ `<общий кэш>/<портал>/` — медиа, staging
+    ///   загрузок, курсор событий, расшифровки голосовых;
+    /// - [`Self::prompts_path`] ⇒ `<база>-<портал>.json` — заметки и разборы
+    ///   анализа.
+    ///
+    /// Корни (`cache_root`, `prompts_root`) запоминаются, поэтому функция
+    /// ИДЕМПОТЕНТНА: применённая к уже разведённому конфигу, она перестраивает
+    /// пути от того же корня, а не вкладывает подкаталог в подкаталог.
+    ///
+    /// # Что НЕ разводится
+    ///
+    /// `config_path` (файл секретов у всех порталов один — массив `[[portals]]`
+    /// в нём же), `user_settings_path` (настройки хоста общие) и `voice.toml`
+    /// рядом с конфигом (потолки расшифровки — настройка машины, а не портала).
+    #[must_use]
+    pub fn for_portal(&self, id: &str, title: &str, webhook: &WebhookUrl) -> Self {
+        let mut cfg = self.clone();
+        cfg.webhook = webhook.clone();
+        cfg.portal_id = id.to_string();
+        cfg.portal_title = title.trim().to_string();
+
+        let cache_root = if cfg.cache_root.as_os_str().is_empty() {
+            cfg.cache_dir.clone()
+        } else {
+            cfg.cache_root.clone()
+        };
+        cfg.cache_dir = portal_cache_dir(&cache_root, id);
+        cfg.cache_root = cache_root;
+
+        let prompts_root = if cfg.prompts_root.as_os_str().is_empty() {
+            cfg.prompts_path.clone()
+        } else {
+            cfg.prompts_root.clone()
+        };
+        cfg.prompts_path = portal_prompts_path(&prompts_root, id);
+        cfg.prompts_root = prompts_root;
+
+        cfg
+    }
+
     /// Полная загрузка: defaults → optional TOML → env-override →
     /// validate_and_fix.
     ///
@@ -708,64 +1154,20 @@ impl BitrixConfig {
     /// большинства пользователей `bitrix.toml` не существует, вебхук
     /// вставляется в UI.
     pub fn load() -> Self {
-        let path = config_path();
-        let mut cfg = Self::load_from_file(&path);
-        // Читаем и пишем ОДИН файл: иначе logout стирал бы вебхук не оттуда,
-        // откуда он был прочитан.
-        cfg.config_path = path;
-        cfg.apply_env();
-        cfg.validate_and_fix();
-        cfg
+        BitrixRootConfig::load().primary()
     }
 
-    /// Читает конфиг из TOML-файла.
+    /// Читает конфиг ПЕРВОГО портала из TOML-файла.
     ///
     /// Файла нет — дефолты (не ошибка). Файл битый — warn и ПОЛНЫЕ дефолты:
     /// частичного применения нет, иначе половина конфига оказалась бы из
     /// файла, а половина — из головы, и объяснить поведение стало бы нечем.
+    ///
+    /// Вебхук берётся из первой записи `[[portals]]`, а при её отсутствии — из
+    /// верхнеуровневого legacy-ключа `webhook`. Все порталы разом читает
+    /// [`BitrixRootConfig::load_from_file`].
     pub fn load_from_file(path: &Path) -> Self {
-        // Права чинятся ДО чтения: файл мог быть создан руками (`echo >`),
-        // скопирован с другой машины или восстановлен из архива, и тогда
-        // секрет уже лежит доступным для чтения всей группе.
-        tighten_perms_if_needed(path);
-        match std::fs::read_to_string(path) {
-            Ok(body) => match toml::from_str::<BitrixConfig>(&body) {
-                Ok(c) => {
-                    tracing::info!(
-                        target: "forge_bitrix",
-                        path = %path.display(),
-                        "forge-bitrix: loaded config from TOML"
-                    );
-                    c
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        target: "forge_bitrix",
-                        path = %path.display(),
-                        error = %e,
-                        "forge-bitrix: failed to parse bitrix.toml; using defaults"
-                    );
-                    Self::default()
-                }
-            },
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                tracing::debug!(
-                    target: "forge_bitrix",
-                    path = %path.display(),
-                    "forge-bitrix: bitrix.toml not found, using defaults"
-                );
-                Self::default()
-            }
-            Err(e) => {
-                tracing::warn!(
-                    target: "forge_bitrix",
-                    path = %path.display(),
-                    error = %e,
-                    "forge-bitrix: failed to read bitrix.toml; using defaults"
-                );
-                Self::default()
-            }
-        }
+        BitrixRootConfig::load_from_file(path).primary()
     }
 
     /// Применяет env-override `FORGE_BITRIX_*`.
@@ -956,6 +1358,15 @@ impl BitrixConfig {
             self.base_url_override.clear();
         }
         self.cache_dir = expand_tilde(&self.cache_dir);
+        // Корни чинятся ровно так же, как выведенные из них пути: в штатном
+        // порядке (`validate_and_fix` → `for_portal`) они ещё пусты, но конфиг
+        // валидируют и повторно, уже разведённым по порталам.
+        if !self.cache_root.as_os_str().is_empty() {
+            self.cache_root = expand_tilde(&self.cache_root);
+        }
+        if !self.prompts_root.as_os_str().is_empty() {
+            self.prompts_root = expand_tilde(&self.prompts_root);
+        }
         if self.config_path.as_os_str().is_empty() {
             self.config_path = config_path();
         }
@@ -1072,6 +1483,234 @@ impl BitrixConfig {
 }
 
 // ---------------------------------------------------------------------------
+// Верхний уровень файла: общие настройки + массив порталов.
+// ---------------------------------------------------------------------------
+
+/// Разобранный `bitrix.toml` целиком: общие настройки и список порталов.
+///
+/// # Зачем отдельный тип
+///
+/// В файле ДВА уровня: корневые ключи — это настройки МАШИНЫ (тайминги
+/// опроса, лимиты, `cache_dir`, пути к CLI и хранилищам), а `[[portals]]` —
+/// список подключений. Разводить их по типам нужно затем, чтобы общие
+/// настройки не пришлось дублировать в каждой записи портала: пользователь
+/// правит `poll_active_secs` один раз, а получают его все порталы.
+///
+/// [`Self::portal_configs`] раздаёт общие настройки КОПИЕЙ в пер-портальные
+/// [`BitrixConfig`] — поэтому `B24State` продолжает получать ровно ту же
+/// структуру, что и до мультипортальности.
+///
+/// # Legacy
+///
+/// Файл без `[[portals]]`, но с верхнеуровневым `webhook`, читается как ОДИН
+/// портал (`migrated_from_legacy = true`). Чтение неразрушающее: файл
+/// переписывается только при первой ЗАПИСИ (см. [`save_portals_to`]).
+#[derive(Debug, Clone, Default)]
+pub struct BitrixRootConfig {
+    /// Общие настройки. Поле `webhook` здесь — legacy-ключ верхнего уровня
+    /// (или значение `FORGE_BITRIX_WEBHOOK`); пер-портальный вебхук берётся
+    /// из [`Self::portals`].
+    pub shared: BitrixConfig,
+
+    /// Порталы в порядке файла, с уже присвоенными уникальными `id`.
+    pub portals: Vec<PortalConfig>,
+
+    /// Список порталов синтезирован из legacy-ключа `webhook`.
+    pub migrated_from_legacy: bool,
+}
+
+impl BitrixRootConfig {
+    /// Полная загрузка: файл → env-override → `validate_and_fix`.
+    ///
+    /// Непустой `FORGE_BITRIX_WEBHOOK` ПОБЕЖДАЕТ файл целиком и даёт ровно
+    /// один портал: переменная существует ради тестового стенда, и «стенд
+    /// плюс живые порталы пользователя» — не режим, а способ случайно сходить
+    /// в боевой портал из теста.
+    pub fn load() -> Self {
+        let path = config_path();
+        let mut root = Self::load_from_file(&path);
+        // Читаем и пишем ОДИН файл: иначе logout стирал бы вебхук не оттуда,
+        // откуда он был прочитан.
+        root.shared.config_path = path;
+        root.shared.apply_env();
+        root.shared.validate_and_fix();
+        if let Ok(v) = std::env::var("FORGE_BITRIX_WEBHOOK") {
+            if !v.trim().is_empty() {
+                root.portals = vec![PortalConfig::from_webhook(&root.shared.webhook, None)];
+                root.migrated_from_legacy = false;
+            }
+        }
+        root
+    }
+
+    /// Читает файл: права → чтение → разбор общих настроек и `[[portals]]`.
+    ///
+    /// Ни env-override, ни `validate_and_fix` здесь НЕ применяются — это
+    /// делает [`Self::load`]. Тесты пользуются этим, чтобы увидеть ровно то,
+    /// что лежит в файле.
+    pub fn load_from_file(path: &Path) -> Self {
+        // Права чинятся ДО чтения: файл мог быть создан руками (`echo >`),
+        // скопирован с другой машины или восстановлен из архива, и тогда
+        // секрет уже лежит доступным для чтения всей группе.
+        tighten_perms_if_needed(path);
+
+        let body = match std::fs::read_to_string(path) {
+            Ok(body) => body,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                tracing::debug!(
+                    target: "forge_bitrix",
+                    path = %path.display(),
+                    "forge-bitrix: bitrix.toml not found, using defaults"
+                );
+                return Self::defaults_at(path);
+            }
+            Err(e) => {
+                tracing::warn!(
+                    target: "forge_bitrix",
+                    path = %path.display(),
+                    error = %e,
+                    "forge-bitrix: failed to read bitrix.toml; using defaults"
+                );
+                return Self::defaults_at(path);
+            }
+        };
+
+        // Один разбор на оба уровня: сырая таблица нужна для `[[portals]]`
+        // (она же используется на записи), типизированная — для общих
+        // настроек.
+        let table = match toml::from_str::<toml::Table>(&body) {
+            Ok(t) => t,
+            Err(e) => {
+                tracing::warn!(
+                    target: "forge_bitrix",
+                    path = %path.display(),
+                    error = %e,
+                    "forge-bitrix: failed to parse bitrix.toml; using defaults"
+                );
+                return Self::defaults_at(path);
+            }
+        };
+
+        let mut shared = match toml::Value::Table(table.clone()).try_into::<BitrixConfig>() {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    target: "forge_bitrix",
+                    path = %path.display(),
+                    error = %e,
+                    "forge-bitrix: failed to parse bitrix.toml; using defaults"
+                );
+                BitrixConfig::default()
+            }
+        };
+        shared.config_path = path.to_path_buf();
+
+        let (portals, migrated_from_legacy) = portals_from_table(&table);
+        tracing::info!(
+            target: "forge_bitrix",
+            path = %path.display(),
+            portals = portals.len(),
+            legacy = migrated_from_legacy,
+            "forge-bitrix: loaded config from TOML"
+        );
+        Self {
+            shared,
+            portals,
+            migrated_from_legacy,
+        }
+    }
+
+    fn defaults_at(path: &Path) -> Self {
+        Self {
+            shared: BitrixConfig {
+                config_path: path.to_path_buf(),
+                ..BitrixConfig::default()
+            },
+            portals: Vec::new(),
+            migrated_from_legacy: false,
+        }
+    }
+
+    /// Идентификаторы порталов в порядке файла. Секрета не содержат.
+    pub fn portal_ids(&self) -> Vec<String> {
+        self.portals.iter().map(|p| p.id.clone()).collect()
+    }
+
+    /// Пер-портальные конфигурации: общие настройки КОПИЕЙ + вебхук, `id` и
+    /// `title` конкретного портала.
+    ///
+    /// Копия, а не ссылка, намеренно: Ф6 разводит `cache_dir` по подкаталогам
+    /// порталов, и для этого пер-портальной структуре нужно СВОЁ значение
+    /// поля, а не общее на всех. Разведением занимается
+    /// [`BitrixConfig::for_portal`].
+    pub fn portal_configs(&self) -> Vec<BitrixConfig> {
+        self.portals
+            .iter()
+            .map(|p| self.shared.for_portal(&p.id, &p.title, &p.webhook))
+            .collect()
+    }
+
+    /// Конфигурация первого портала — совместимость с однопортальным кодом.
+    ///
+    /// Порталов нет ⇒ общие настройки с ПУСТЫМ вебхуком: состояние
+    /// `not_configured`, ровно как до мультипортальности.
+    pub fn primary(&self) -> BitrixConfig {
+        match self.portal_configs().into_iter().next() {
+            Some(cfg) => cfg,
+            // Пустой слот тоже получает СВОЙ каталог (зарезервированный
+            // `_vacant`): писать в общий корень, вперемешку с подкаталогами
+            // порталов, не должен никто.
+            None => self
+                .shared
+                .for_portal("", "", &WebhookUrl::default()),
+        }
+    }
+}
+
+/// Достаёт порталы из сырой таблицы, мигрируя legacy-ключ В ПАМЯТИ.
+///
+/// Возвращает `(порталы, миграция_из_legacy)`. Файл при этом не трогается:
+/// чтение обязано оставаться неразрушающим — конфиг читают и однократные
+/// диагностические запуски, которым нечего переписывать чужой файл.
+fn portals_from_table(table: &toml::Table) -> (Vec<PortalConfig>, bool) {
+    let listed: Vec<PortalConfig> = table
+        .get(PORTALS_KEY)
+        .and_then(toml::Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| match v.clone().try_into::<PortalConfig>() {
+                    Ok(p) => Some(p),
+                    Err(e) => {
+                        tracing::warn!(
+                            target: "forge_bitrix",
+                            error = %e,
+                            "forge-bitrix: a [[portals]] entry is malformed; skipped"
+                        );
+                        None
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let resolved = resolve_portal_ids(listed);
+    if !resolved.is_empty() {
+        return (resolved, false);
+    }
+
+    // Legacy: верхнеуровневый `webhook` — это ровно один портал.
+    let legacy = table
+        .get(WEBHOOK_KEY)
+        .and_then(toml::Value::as_str)
+        .map(WebhookUrl::new)
+        .filter(|w| !w.is_empty());
+    match legacy {
+        Some(w) => (resolve_portal_ids(vec![PortalConfig::from_webhook(&w, None)]), true),
+        None => (Vec::new(), false),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Запись секрета на диск: единственный путь, которым вебхук покидает процесс.
 // ---------------------------------------------------------------------------
 
@@ -1080,7 +1719,20 @@ impl BitrixConfig {
 /// создало бы ВТОРОЙ ключ вместо перезаписи первого.
 pub const WEBHOOK_KEY: &str = "webhook";
 
-/// Атомарно записывает вебхук в TOML-файл `path` с правами `0600`.
+/// Ключ массива порталов в TOML-файле (`[[portals]]`).
+pub const PORTALS_KEY: &str = "portals";
+
+/// Ключ идентификатора портала внутри записи `[[portals]]`.
+pub const PORTAL_ID_KEY: &str = "id";
+
+/// Ключ отображаемого имени портала внутри записи `[[portals]]`.
+pub const PORTAL_TITLE_KEY: &str = "title";
+
+/// Атомарно записывает ВЕСЬ список порталов в TOML-файл `path` с правами
+/// `0600`.
+///
+/// Единственная функция, которая кладёт секреты в файл; [`save_webhook_to`],
+/// [`add_portal_to`] и [`remove_portal_from`] — обёртки над ней.
 ///
 /// Инварианты (ради них функция и существует отдельно от `serde`) перечислены
 /// в шапке модуля. Ключевые следствия:
@@ -1088,33 +1740,284 @@ pub const WEBHOOK_KEY: &str = "webhook";
 /// - каталог (`~/.config/forge`) создаётся при необходимости;
 /// - остальные ключи файла сохраняются как есть — пользователь мог задать
 ///   `poll_active_secs`, `cache_dir` и что угодно ещё;
-/// - повторное сохранение ПЕРЕЗАПИСЫВАЕТ значение: мультипортальности в v1
-///   нет (Р5), поле одно;
-/// - в лог уходит только [`WebhookUrl::fingerprint`], никогда сам URL.
+/// - массив `[[portals]]` перезаписывается ЦЕЛИКОМ значением аргумента:
+///   вызывающий всегда работает от свежепрочитанного списка;
+/// - верхнеуровневый legacy-ключ `webhook` СНИМАЕТСЯ — иначе тот же секрет
+///   остался бы в файле в двух экземплярах, и стереть его пришлось бы дважды;
+/// - в лог уходят только `id` и [`WebhookUrl::fingerprint`], никогда сам URL.
 ///
 /// # Errors
 ///
-/// Пустой вебхук (стирать нужно через [`clear_webhook_to`]); невозможность
-/// создать каталог или файл; ошибка записи, `fsync` или `rename`.
-pub fn save_webhook_to(path: &Path, webhook: &WebhookUrl) -> anyhow::Result<()> {
-    if webhook.is_empty() {
-        anyhow::bail!("the webhook must not be empty");
+/// Пустой вебхук у любой записи (стирать нужно через [`clear_webhook_to`] или
+/// [`remove_portal_from`]); невозможность создать каталог или файл; ошибка
+/// записи, `fsync` или `rename`.
+pub fn save_portals_to(path: &Path, portals: &[PortalConfig]) -> anyhow::Result<()> {
+    // Проверка ДО чтения файла: отказ не должен оставлять после себя ни
+    // созданного каталога, ни пустого конфига.
+    for p in portals {
+        if p.webhook.is_empty() {
+            anyhow::bail!("the webhook must not be empty");
+        }
     }
+
     let mut doc = read_table(path)?;
-    doc.insert(
-        WEBHOOK_KEY.into(),
-        // ЕДИНСТВЕННОЕ место во всём крейте, где секрет превращается в
-        // сериализуемое значение.
-        toml::Value::String(webhook.expose().to_string()),
-    );
+    // Миграция legacy: первая же запись убирает верхнеуровневый ключ.
+    let had_legacy = doc.remove(WEBHOOK_KEY).is_some();
+
+    if portals.is_empty() {
+        doc.remove(PORTALS_KEY);
+    } else {
+        let arr: Vec<toml::Value> = portals
+            .iter()
+            .map(|p| {
+                let mut t = toml::Table::new();
+                t.insert(
+                    PORTAL_ID_KEY.into(),
+                    toml::Value::String(p.id.clone()),
+                );
+                if !p.title.trim().is_empty() {
+                    t.insert(
+                        PORTAL_TITLE_KEY.into(),
+                        toml::Value::String(p.title.trim().to_string()),
+                    );
+                }
+                t.insert(
+                    WEBHOOK_KEY.into(),
+                    // ЕДИНСТВЕННОЕ место во всём крейте, где секрет
+                    // превращается в сериализуемое значение.
+                    toml::Value::String(p.webhook.expose().to_string()),
+                );
+                toml::Value::Table(t)
+            })
+            .collect();
+        doc.insert(PORTALS_KEY.into(), toml::Value::Array(arr));
+    }
+
     write_table(path, &doc)?;
     tracing::info!(
         target: "forge_bitrix",
         path = %path.display(),
-        webhook = %webhook.fingerprint(),
-        "forge-bitrix: saved the webhook (only the fingerprint is ever logged)"
+        portals = portals.len(),
+        migrated = had_legacy,
+        ids = %portals.iter().map(|p| p.id.as_str()).collect::<Vec<_>>().join(","),
+        fingerprints = %portals.iter().map(|p| p.webhook.fingerprint()).collect::<Vec<_>>().join(","),
+        "forge-bitrix: saved the portals (only fingerprints are ever logged)"
     );
     Ok(())
+}
+
+/// Читает список порталов из файла ДЛЯ ЗАПИСИ, мигрируя legacy-ключ.
+///
+/// Отличается от [`BitrixRootConfig::load_from_file`] только тем, что общие
+/// настройки не разбираются вовсе: обновление секрета не должно падать
+/// из-за опечатки в `poll_active_secs`.
+fn portals_for_write(path: &Path) -> anyhow::Result<Vec<PortalConfig>> {
+    let doc = read_table(path)?;
+    Ok(portals_from_table(&doc).0)
+}
+
+/// Сохраняет ЕДИНСТВЕННЫЙ портал, заменяя весь список (совместимость).
+///
+/// Семантика та же, что была до мультипортальности: повторный вход по другому
+/// вебхуку ЗАМЕНЯЕТ подключение, а не добавляет второе. Добавление —
+/// отдельная и явная операция [`add_portal_to`], иначе кнопка «подключить» в
+/// старом экране входа тихо плодила бы порталы.
+///
+/// # Errors
+///
+/// См. [`save_portals_to`].
+pub fn save_webhook_to(path: &Path, webhook: &WebhookUrl) -> anyhow::Result<()> {
+    if webhook.is_empty() {
+        anyhow::bail!("the webhook must not be empty");
+    }
+    save_portals_to(path, &[PortalConfig::from_webhook(webhook, None)])
+}
+
+/// Добавляет портал к уже записанным, не трогая их секреты.
+///
+/// Идемпотентна по вебхуку: тот же URL не создаёт второй записи, а лишь
+/// обновляет `title`. Идентификатор нового портала выводится из хоста и при
+/// коллизии получает суффикс — уже существующие идентификаторы НЕ меняются.
+///
+/// Возвращает записанный портал (в частности, его окончательный `id`).
+///
+/// # Errors
+///
+/// Пустой вебхук; ошибки чтения/записи конфига.
+pub fn add_portal_to(
+    path: &Path,
+    webhook: &WebhookUrl,
+    title: Option<&str>,
+) -> anyhow::Result<PortalConfig> {
+    if webhook.is_empty() {
+        anyhow::bail!("the webhook must not be empty");
+    }
+    let mut portals = portals_for_write(path)?;
+
+    let existing = portals.iter().position(|p| p.webhook == *webhook);
+    let idx = match existing {
+        Some(i) => {
+            if let Some(t) = title {
+                portals[i].title = t.trim().to_string();
+            }
+            i
+        }
+        None => {
+            let taken: Vec<String> = portals.iter().map(|p| p.id.clone()).collect();
+            let id = unique_portal_id(&portal_id_from_webhook(webhook), &taken);
+            portals.push(PortalConfig {
+                id,
+                title: title.unwrap_or_default().trim().to_string(),
+                webhook: webhook.clone(),
+            });
+            portals.len() - 1
+        }
+    };
+
+    let saved = portals[idx].clone();
+    save_portals_to(path, &portals)?;
+    Ok(saved)
+}
+
+/// Убирает один портал по идентификатору. Возвращает `true`, если он там был.
+///
+/// Отсутствующий портал и отсутствующий файл — НЕ ошибка: удаление обязано
+/// быть идемпотентным, иначе повторный клик по «отключить» превращался бы в
+/// красный тост.
+///
+/// **На портал при этом не ходим** — по той же причине, что и в
+/// [`clear_webhook_to`].
+///
+/// # Errors
+///
+/// Ошибки чтения/записи конфига.
+pub fn remove_portal_from(path: &Path, id: &str) -> anyhow::Result<bool> {
+    let portals = portals_for_write(path)?;
+    let rest: Vec<PortalConfig> = portals.iter().filter(|p| p.id != id).cloned().collect();
+    if rest.len() == portals.len() {
+        // Ничего не удалили. Файла может не быть вовсе — создавать его незачем.
+        if !path.exists() {
+            return Ok(false);
+        }
+        // Файл есть: он мог содержать legacy-ключ, и переписать его всё же
+        // стоит только если состав порталов изменился. Не изменился — выходим.
+        return Ok(false);
+    }
+    save_portals_to(path, &rest)?;
+    Ok(true)
+}
+
+/// Переименовывает портал: меняет ТОЛЬКО `title`, не трогая ни `id`, ни секрет.
+///
+/// Возвращает `true`, если портал с таким `id` в файле нашёлся. Отсутствующий
+/// портал — не ошибка и не повод переписывать файл.
+///
+/// Пустое (или из одних пробелов) имя означает «вернуть автоматическую
+/// подпись»: ключ `title` из записи исчезает, и фронт снова показывает хост
+/// портала ([`PortalConfig::display_name`]).
+///
+/// # Errors
+///
+/// Ошибки чтения/записи конфига (см. [`save_portals_to`]).
+pub fn rename_portal_in(path: &Path, id: &str, title: &str) -> anyhow::Result<bool> {
+    let mut portals = portals_for_write(path)?;
+    let Some(slot) = portals.iter_mut().find(|p| p.id == id) else {
+        return Ok(false);
+    };
+    let next = title.trim().to_string();
+    if slot.title == next {
+        // Идемпотентность без лишней записи: переписывать файл, чтобы получить
+        // ровно те же байты, значит зря рисковать секретом.
+        return Ok(true);
+    }
+    slot.title = next;
+    save_portals_to(path, &portals)?;
+    Ok(true)
+}
+
+/// Меняет СЕКРЕТ уже записанного портала, не трогая ни `id`, ни `title`, ни
+/// его место в списке.
+///
+/// Возвращает `true`, если портал с таким `id` в файле нашёлся.
+///
+/// # Зачем отдельный примитив
+///
+/// Ровно один сценарий: вебхук отозвали на портале и выпустили заново. Хост
+/// тот же, код другой — то есть это ТА ЖЕ вкладка, а не новая. Пара
+/// «[`remove_portal_from`] + [`add_portal_to`]» дала бы тот же файл, но ценой
+/// двух записей (между ними портал на диске не существует) и потерянных `title`
+/// с позицией: `add_portal_to` дописывает в хвост.
+///
+/// Секрет соседей при этом не читается и не переписывается — как и во всех
+/// остальных примитивах записи, файл собирается целиком из уже разобранных
+/// записей ([`save_portals_to`], и все четыре его инварианта наследуются).
+///
+/// # Errors
+///
+/// Пустой вебхук; ошибки чтения/записи конфига.
+pub fn replace_portal_webhook_in(
+    path: &Path,
+    id: &str,
+    webhook: &WebhookUrl,
+) -> anyhow::Result<bool> {
+    if webhook.is_empty() {
+        anyhow::bail!("the webhook must not be empty");
+    }
+    let mut portals = portals_for_write(path)?;
+    let Some(slot) = portals.iter_mut().find(|p| p.id == id) else {
+        return Ok(false);
+    };
+    if slot.webhook == *webhook {
+        // Идемпотентность без лишней записи: переписывать файл, чтобы получить
+        // ровно те же байты, значит зря рисковать секретом.
+        return Ok(true);
+    }
+    slot.webhook = webhook.clone();
+    save_portals_to(path, &portals)?;
+    Ok(true)
+}
+
+/// Переставляет порталы в файле в порядке `ids` (порядок вкладок во фронте).
+///
+/// Порядок в файле — ЕДИНСТВЕННОЕ место, где он живёт, поэтому перестановка
+/// вкладок обязана доезжать до диска: иначе она забывалась бы при каждом
+/// перезапуске devforge.
+///
+/// Устойчива к неполному и грязному списку: неизвестные `id` игнорируются, а
+/// не перечисленные порталы уезжают в хвост, сохраняя относительный порядок.
+/// Ни один портал не теряется — список приходит из фронта, а фронт мог
+/// отстать от состава реестра на один запрос.
+///
+/// # Errors
+///
+/// Ошибки чтения/записи конфига (см. [`save_portals_to`]).
+pub fn reorder_portals_in(path: &Path, ids: &[String]) -> anyhow::Result<()> {
+    let portals = portals_for_write(path)?;
+    if portals.is_empty() {
+        return Ok(());
+    }
+    let ordered = reorder_by_ids(portals, ids, |p| p.id.clone());
+    save_portals_to(path, &ordered)
+}
+
+/// Переставляет `portals` в порядке `ids`, дописывая непомянутых в хвост.
+///
+/// Вынесена отдельно, потому что тем же правилом пользуется и реестр в памяти
+/// ([`crate::B24Registry::reorder`]): разойдись эти два порядка — вкладки после
+/// перезапуска встали бы иначе, чем их только что перетащили.
+pub(crate) fn reorder_by_ids<T>(
+    mut items: Vec<T>,
+    ids: &[String],
+    key: impl Fn(&T) -> String,
+) -> Vec<T> {
+    let mut out = Vec::with_capacity(items.len());
+    for want in ids {
+        if let Some(i) = items.iter().position(|it| &key(it) == want) {
+            out.push(items.remove(i));
+        }
+    }
+    out.append(&mut items);
+    out
 }
 
 /// Убирает вебхук из TOML-файла `path` (logout).
@@ -1133,7 +2036,12 @@ pub fn save_webhook_to(path: &Path, webhook: &WebhookUrl) -> anyhow::Result<()> 
 /// Ошибка чтения/записи конфига.
 pub fn clear_webhook_to(path: &Path) -> anyhow::Result<()> {
     let mut doc = read_table(path)?;
-    if doc.remove(WEBHOOK_KEY).is_none() && !path.exists() {
+    // Снимаются ОБА представления: и legacy-ключ, и весь массив порталов.
+    // Logout старого экрана входа отвязывает подключение целиком; убрать один
+    // портал из нескольких умеет [`remove_portal_from`].
+    let had_legacy = doc.remove(WEBHOOK_KEY).is_some();
+    let had_portals = doc.remove(PORTALS_KEY).is_some();
+    if !had_legacy && !had_portals && !path.exists() {
         return Ok(());
     }
     write_table(path, &doc)?;
@@ -1629,11 +2537,20 @@ mod tests {
     /// [`prompts_path`]: прогон `cargo test` может идти с уже выставленным
     /// `FORGE_BITRIX_PROMPTS_PATH` (герметичный стенд), и жёсткое сравнение с
     /// `~/.forge/...` красило бы тест в зависимости от окружения.
+    ///
+    /// С Ф6 сверка идёт с [`portal_prompts_path`] от той же базы: файл заметок
+    /// стал ПЕР-ПОРТАЛЬНЫМ, а `load_from_file` отдаёт конфиг первого портала —
+    /// здесь его нет вовсе, поэтому суффикс достаётся пустому слоту.
     #[test]
     fn analysis_defaults_apply_without_a_file() {
         let dir = tempfile::tempdir().unwrap();
         let cfg = BitrixConfig::load_from_file(&dir.path().join("nope.toml"));
-        assert_eq!(cfg.prompts_path, prompts_path());
+        assert_eq!(cfg.prompts_path, portal_prompts_path(&prompts_path(), ""));
+        assert_eq!(
+            cfg.prompts_root,
+            prompts_path(),
+            "переопределение FORGE_BITRIX_PROMPTS_PATH остаётся БАЗОЙ"
+        );
         assert_eq!(cfg.claude_cli_path, default_claude_cli_path());
         assert_eq!(cfg.analysis_timeout_secs, DEFAULT_ANALYSIS_TIMEOUT_SECS);
         assert_eq!(cfg.analysis_max_chars, DEFAULT_ANALYSIS_MAX_CHARS);
@@ -1660,10 +2577,29 @@ mod tests {
                 "analysis_max_chars = 12345\n",
                 "analysis_model = \"opus\"\n",
                 "prompts_path = \"/tmp/hijacked.json\"\n",
+                // Корни Ф6 — тоже #[serde(skip)], и по той же причине: из них
+                // строятся ПУТИ НА ДИСКЕ, а конфиг мог быть скопирован с чужой
+                // машины или восстановлен из архива.
+                "cache_root = \"/tmp/hijacked-cache\"\n",
+                "prompts_root = \"/tmp/hijacked-root.json\"\n",
             ),
         )
         .unwrap();
         let cfg = BitrixConfig::load_from_file(&path);
+        assert_ne!(
+            cfg.cache_root,
+            PathBuf::from("/tmp/hijacked-cache"),
+            "cache_root помечен #[serde(skip)] и из TOML читаться не смеет"
+        );
+        assert_ne!(
+            cfg.prompts_root,
+            PathBuf::from("/tmp/hijacked-root.json"),
+            "prompts_root помечен #[serde(skip)] и из TOML читаться не смеет"
+        );
+        assert!(
+            !cfg.cache_dir.starts_with("/tmp/hijacked-cache"),
+            "и подставиться в cache_dir через разведение по порталам — тоже"
+        );
         assert_eq!(cfg.claude_cli_path, PathBuf::from("/opt/claude"));
         assert_eq!(cfg.analysis_timeout_secs, 42);
         assert_eq!(cfg.analysis_max_chars, 12_345);
@@ -1721,6 +2657,53 @@ mod tests {
                 Some(v) => std::env::set_var(k, v),
                 None => std::env::remove_var(k),
             }
+        }
+    }
+
+    /// `FORGE_BITRIX_PROMPTS_PATH` продолжает изолировать тесты и при N
+    /// порталах: переопределение берётся ЗА БАЗУ, имя портала подставляется в
+    /// него.
+    ///
+    /// Без этого свойства Ф6 тихо пробила бы герметичность: подставь мы имя
+    /// портала в `default_prompts_path()` вместо переопределения — и первый же
+    /// `cargo test`, дёрнувший сохранение заметки, начал бы писать в живой
+    /// `~/.forge/bitrix-chat-prompts-<портал>.json` разработчика.
+    ///
+    /// Ветка сериализована тем же мьютексом и восстанавливает прежние
+    /// значения — переменные процесса общие на все тесты крейта.
+    #[test]
+    fn the_prompts_path_override_stays_the_base_for_every_portal() {
+        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+        const KEY: &str = "FORGE_BITRIX_PROMPTS_PATH";
+        let previous = std::env::var_os(KEY);
+        let sandbox = tempfile::tempdir().unwrap();
+        let base = sandbox.path().join("hermetic-prompts.json");
+        std::env::set_var(KEY, &base);
+
+        let mut shared = BitrixConfig::default();
+        shared.apply_env();
+        assert_eq!(shared.prompts_path, base, "переопределение прочитано");
+
+        let alpha = shared.for_portal("alpha", "", &WebhookUrl::default());
+        let beta = shared.for_portal("beta", "", &WebhookUrl::default());
+
+        assert_eq!(alpha.prompts_path, base.with_file_name("hermetic-prompts-alpha.json"));
+        assert_eq!(beta.prompts_path, base.with_file_name("hermetic-prompts-beta.json"));
+        assert_ne!(alpha.prompts_path, beta.prompts_path);
+        for cfg in [&alpha, &beta] {
+            assert_eq!(cfg.prompts_root, base, "база сохранена целиком");
+            assert!(
+                cfg.prompts_path.starts_with(sandbox.path()),
+                "заметки обязаны остаться в песочнице: {}",
+                cfg.prompts_path.display()
+            );
+        }
+
+        match previous {
+            Some(v) => std::env::set_var(KEY, v),
+            None => std::env::remove_var(KEY),
         }
     }
 
@@ -1938,8 +2921,14 @@ mod tests {
         assert!(!BitrixConfig::load_from_file(&path).has_webhook());
     }
 
-    /// Повторное сохранение ПЕРЕЗАПИСЫВАЕТ: мультипортальности в v1 нет (Р5),
-    /// второго ключа появиться не должно.
+    /// Повторное сохранение ПЕРЕЗАПИСЫВАЕТ: у legacy-ключа верхнего уровня
+    /// значение ровно одно, второго ключа появиться не должно.
+    ///
+    /// Речь именно о [`BitrixConfig::save_webhook`] — записи ОДНОГО секрета в
+    /// корень файла. Список порталов живёт в массиве `[[portals]]` и пишется
+    /// другими функциями ([`add_portal_to`], [`save_portals_to`]); ограничение
+    /// «портал ровно один» (Р5) снято мультипортальностью и на этот тест
+    /// больше не распространяется.
     #[test]
     fn saving_twice_overwrites_instead_of_appending() {
         let dir = tempfile::tempdir().unwrap();
@@ -1995,6 +2984,515 @@ mod tests {
         let path = dir.path().join("bitrix.toml");
         assert!(save_webhook_to(&path, &WebhookUrl::default()).is_err());
         assert!(!path.exists());
+    }
+
+    // -------------------------------------------------------------------
+    // Мультипортальность: массив [[portals]] и общие настройки (Ф1.1).
+    // -------------------------------------------------------------------
+
+    /// Два портала разбираются в две пер-портальные конфигурации, и общие
+    /// настройки достаются ОБЕИМ — ради этого `[[portals]]` и вынесен в
+    /// отдельный уровень.
+    #[test]
+    fn two_portals_share_the_common_settings_and_differ_only_by_the_portal() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bitrix.toml");
+        std::fs::write(
+            &path,
+            r#"
+poll_active_secs = 9
+recent_sync_secs = 111
+max_upload_bytes = 12345
+base_url_override = "https://stand.example/rest/1/x"
+
+[[portals]]
+title = "Первый"
+webhook = "https://acme.bitrix24.ru/rest/1/aaa111aaa111/"
+
+[[portals]]
+id = "beta"
+webhook = "https://beta.bitrix24.ru/rest/9/bbb222bbb222/"
+"#,
+        )
+        .unwrap();
+
+        let root = BitrixRootConfig::load_from_file(&path);
+        assert_eq!(root.portal_ids(), vec!["acme", "beta"]);
+        assert!(!root.migrated_from_legacy);
+
+        let cfgs = root.portal_configs();
+        assert_eq!(cfgs.len(), 2);
+        for c in &cfgs {
+            // Общие настройки СКОПИРОВАНЫ, а не потеряны на N=2.
+            assert_eq!(c.poll_active_secs, 9);
+            assert_eq!(c.recent_sync_secs, 111);
+            assert_eq!(c.max_upload_bytes, 12345);
+            assert_eq!(c.base_url_override, "https://stand.example/rest/1/x");
+            assert_eq!(c.config_path, path);
+        }
+        // Различаются ровно порталом.
+        assert_eq!(cfgs[0].portal_id, "acme");
+        assert_eq!(cfgs[0].portal_title, "Первый");
+        assert_eq!(
+            cfgs[0].webhook.expose(),
+            "https://acme.bitrix24.ru/rest/1/aaa111aaa111/"
+        );
+        assert_eq!(cfgs[1].portal_id, "beta");
+        assert_eq!(cfgs[1].portal_title, "");
+        assert_eq!(
+            cfgs[1].webhook.expose(),
+            "https://beta.bitrix24.ru/rest/9/bbb222bbb222/"
+        );
+
+        // Однопортальный код видит первый портал и ведёт себя как раньше.
+        let primary = BitrixConfig::load_from_file(&path);
+        assert_eq!(primary.portal_id, "acme");
+        assert!(primary.has_webhook());
+    }
+
+    /// `WebhookUrl` не сериализуем — положить его в DTO нельзя.
+    ///
+    /// Проверка компилируемая: функция принимает только `T: Serialize`, и
+    /// раскомментированный вызов с `WebhookUrl` перестал бы собираться. Тест
+    /// сторожит ИМЕННО отсутствие impl'а: добавить `#[derive(Serialize)]`
+    /// молча уже не выйдет — рядом лежит утверждение о `PortalConfig`.
+    #[test]
+    fn the_webhook_still_cannot_be_serialized() {
+        fn assert_serializable<T: serde::Serialize>(_: &T) {}
+        // Сериализуемое — сериализуется.
+        assert_serializable(&String::from("ok"));
+        // А это не компилируется, и так и должно быть:
+        // assert_serializable(&WebhookUrl::new("https://p/rest/1/x/"));
+        // assert_serializable(&PortalConfig::default());
+        // assert_serializable(&BitrixConfig::default());
+
+        // Единственный путь наружу — expose(), и он же единственный, по
+        // которому секрет попадает в TOML-значение.
+        let w = WebhookUrl::new("https://p.bitrix24.ru/rest/1/abc123/");
+        assert_eq!(w.expose(), "https://p.bitrix24.ru/rest/1/abc123/");
+        assert_eq!(format!("{w:?}"), "<redacted>");
+    }
+
+    /// Запись `[[portals]]` без вебхука — мусор, а не «портал в настройке».
+    #[test]
+    fn a_portal_without_a_webhook_is_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bitrix.toml");
+        std::fs::write(
+            &path,
+            "[[portals]]\nid = \"empty\"\nwebhook = \"\"\n\n[[portals]]\nwebhook = \"https://ok.bitrix24.ru/rest/1/ccc333ccc333/\"\n",
+        )
+        .unwrap();
+
+        let root = BitrixRootConfig::load_from_file(&path);
+        assert_eq!(root.portal_ids(), vec!["ok"]);
+    }
+
+    /// Порталов нет вовсе ⇒ `not_configured` и пустой список, а не паника.
+    #[test]
+    fn a_config_without_portals_yields_an_empty_registry() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bitrix.toml");
+        std::fs::write(&path, "poll_idle_secs = 33\n").unwrap();
+
+        let root = BitrixRootConfig::load_from_file(&path);
+        assert!(root.portals.is_empty());
+        let primary = root.primary();
+        assert!(!primary.has_webhook());
+        assert_eq!(primary.portal_id, "");
+        assert_eq!(primary.poll_idle_secs, 33);
+    }
+
+    // -------------------------------------------------------------------
+    // Вывод идентификатора портала (Ф1.2).
+    // -------------------------------------------------------------------
+
+    /// Идентификатор берётся из ХОСТА и ни одной подстроки пути в себе не
+    /// несёт — на этом держится право показывать его во фронте и в логах.
+    #[test]
+    fn the_portal_id_comes_from_the_host_and_never_from_the_path() {
+        let w = WebhookUrl::new("https://test-work-2.bitrix24.ru/rest/1387/qwertyuiopas/");
+        let id = portal_id_from_webhook(&w);
+        assert_eq!(id, "test-work-2");
+        assert!(!id.contains("1387"), "{id}");
+        assert!(!id.contains("qwertyuiopas"), "{id}");
+
+        // И наоборот: ни один кусок пути не встречается в идентификаторе.
+        let (_, uid, code) = w.parts().unwrap();
+        for n in 3..=code.len() {
+            assert!(!id.contains(&code[..n]), "код просочился в id: {id}");
+        }
+        assert!(!id.contains(uid), "{id}");
+    }
+
+    /// Коллизия разрешается суффиксом, а ПЕРВЫЙ идентификатор не переезжает:
+    /// вместе с ним переехали бы его кэш и настройки.
+    #[test]
+    fn two_webhooks_of_the_same_portal_get_distinct_ids() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bitrix.toml");
+        let first = WebhookUrl::new("https://acme.bitrix24.ru/rest/1/aaa111aaa111/");
+        let second = WebhookUrl::new("https://acme.bitrix24.ru/rest/77/bbb222bbb222/");
+
+        let a = add_portal_to(&path, &first, None).unwrap();
+        let b = add_portal_to(&path, &second, None).unwrap();
+        assert_eq!(a.id, "acme");
+        assert_eq!(b.id, "acme-2");
+
+        let root = BitrixRootConfig::load_from_file(&path);
+        assert_eq!(root.portal_ids(), vec!["acme", "acme-2"]);
+        // Первый портал сохранил и идентификатор, и секрет.
+        assert_eq!(root.portals[0].webhook.expose(), first.expose());
+        assert_eq!(root.portals[1].webhook.expose(), second.expose());
+    }
+
+    /// Экзотические хосты дают валидный идентификатор: IP, порт, поддомены,
+    /// IPv6 и IDN.
+    #[test]
+    fn exotic_hosts_still_yield_a_usable_id() {
+        let cases = [
+            ("test.bitrix24.ru", "test"),
+            ("TEST-Work-2.bitrix24.ru", "test-work-2"),
+            ("a.b.c.example.com", "a"),
+            ("192.168.1.5", "192-168-1-5"),
+            ("192.168.1.5:8081", "192-168-1-5"),
+            ("127.0.0.1:8080", "127-0-0-1"),
+            ("[::1]:8080", "1"),
+            ("example.com:8443", "example"),
+        ];
+        for (host, want) in cases {
+            let got = portal_id_from_host(host);
+            assert_eq!(got, want, "host={host}");
+            assert!(
+                !got.is_empty()
+                    && got
+                        .bytes()
+                        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-'),
+                "host={host} id={got}"
+            );
+        }
+
+        // IDN: ни одной ASCII-буквоцифры — детерминированный фолбэк.
+        let idn = portal_id_from_host("портал.рф");
+        assert!(idn.starts_with("portal-"), "{idn}");
+        assert_eq!(idn, portal_id_from_host("портал.рф"), "фолбэк не стабилен");
+        assert_ne!(idn, portal_id_from_host("другой.рф"));
+
+        // Нераспознанный вебхук не хэшируется вовсе — хэшировать было бы
+        // нечего, кроме секрета.
+        assert_eq!(
+            portal_id_from_webhook(&WebhookUrl::new("не вебхук вовсе")),
+            FALLBACK_PORTAL_ID
+        );
+    }
+
+    /// Явно заданный в файле `id` нормализуется, но не выдумывается заново.
+    #[test]
+    fn an_explicit_id_is_normalized_and_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bitrix.toml");
+        std::fs::write(
+            &path,
+            "[[portals]]\nid = \"My Portal!\"\nwebhook = \"https://acme.bitrix24.ru/rest/1/aaa111aaa111/\"\n",
+        )
+        .unwrap();
+        assert_eq!(BitrixRootConfig::load_from_file(&path).portal_ids(), vec!["my-portal"]);
+    }
+
+    // -------------------------------------------------------------------
+    // Запись N порталов (Ф1.3).
+    // -------------------------------------------------------------------
+
+    /// Добавление второго портала не трогает ни секрет первого, ни посторонние
+    /// ключи файла.
+    #[test]
+    fn adding_a_second_portal_touches_neither_the_first_secret_nor_foreign_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bitrix.toml");
+        std::fs::write(
+            &path,
+            "poll_active_secs = 7\nsomething_from_the_future = \"keep me\"\n",
+        )
+        .unwrap();
+
+        let first = WebhookUrl::new("https://acme.bitrix24.ru/rest/1/aaa111aaa111/");
+        let second = WebhookUrl::new("https://beta.bitrix24.ru/rest/9/bbb222bbb222/");
+        add_portal_to(&path, &first, Some("Acme")).unwrap();
+        add_portal_to(&path, &second, None).unwrap();
+
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert!(body.contains("poll_active_secs = 7"), "{body}");
+        assert!(body.contains("something_from_the_future"), "{body}");
+        assert!(body.contains("aaa111aaa111"), "секрет первого портала потерян");
+        assert!(body.contains("bbb222bbb222"), "{body}");
+
+        let root = BitrixRootConfig::load_from_file(&path);
+        assert_eq!(root.portal_ids(), vec!["acme", "beta"]);
+        assert_eq!(root.portals[0].title, "Acme");
+        assert_eq!(root.shared.poll_active_secs, 7);
+
+        // Тот же вебхук второй раз — не второй портал, а обновление имени.
+        let again = add_portal_to(&path, &first, Some("Acme Inc")).unwrap();
+        assert_eq!(again.id, "acme");
+        let root = BitrixRootConfig::load_from_file(&path);
+        assert_eq!(root.portal_ids(), vec!["acme", "beta"]);
+        assert_eq!(root.portals[0].title, "Acme Inc");
+    }
+
+    /// Права `0600` держатся и на файле, созданном с нуля записью МАССИВА, и
+    /// на испорченном снаружи.
+    #[cfg(unix)]
+    #[test]
+    fn writing_several_portals_keeps_the_file_owner_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config/forge/bitrix.toml");
+        let portals = vec![
+            PortalConfig::from_webhook(
+                &WebhookUrl::new("https://acme.bitrix24.ru/rest/1/aaa111aaa111/"),
+                Some("Acme"),
+            ),
+            PortalConfig::from_webhook(
+                &WebhookUrl::new("https://beta.bitrix24.ru/rest/9/bbb222bbb222/"),
+                None,
+            ),
+        ];
+
+        save_portals_to(&path, &portals).unwrap();
+        assert_eq!(mode_of(&path), 0o600, "секрет обязан лежать 0600");
+
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        save_portals_to(&path, &portals).unwrap();
+        assert_eq!(mode_of(&path), 0o600);
+    }
+
+    /// Отказ на этапе записи не оставляет ни временного файла, ни изменённого
+    /// целевого.
+    #[test]
+    fn a_failed_write_leaves_no_temporary_file_behind() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bitrix.toml");
+        let good = PortalConfig::from_webhook(
+            &WebhookUrl::new("https://acme.bitrix24.ru/rest/1/aaa111aaa111/"),
+            None,
+        );
+        save_portals_to(&path, std::slice::from_ref(&good)).unwrap();
+
+        // Пустой вебхук отбраковывается ДО чтения и записи.
+        let bad = PortalConfig::default();
+        assert!(save_portals_to(&path, &[good.clone(), bad]).is_err());
+        assert!(!tmp_path_for(&path).exists());
+
+        // Каталог только для чтения: ошибка приходит уже из ФС.
+        #[cfg(unix)]
+        {
+            let ro = dir.path().join("ro");
+            std::fs::create_dir(&ro).unwrap();
+            let target = ro.join("bitrix.toml");
+            save_portals_to(&target, std::slice::from_ref(&good)).unwrap();
+            std::fs::set_permissions(&ro, std::fs::Permissions::from_mode(0o500)).unwrap();
+
+            let other = PortalConfig::from_webhook(
+                &WebhookUrl::new("https://beta.bitrix24.ru/rest/9/bbb222bbb222/"),
+                None,
+            );
+            assert!(save_portals_to(&target, &[other]).is_err());
+            assert!(!tmp_path_for(&target).exists(), "tmp остался после ошибки");
+
+            std::fs::set_permissions(&ro, std::fs::Permissions::from_mode(0o700)).unwrap();
+            // Целевой файл остался прежним.
+            let entries: Vec<String> = std::fs::read_dir(&ro)
+                .unwrap()
+                .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+                .collect();
+            assert_eq!(entries, vec!["bitrix.toml".to_string()], "{entries:?}");
+            assert_eq!(
+                BitrixRootConfig::load_from_file(&target).portals[0]
+                    .webhook
+                    .expose(),
+                good.webhook.expose()
+            );
+        }
+
+        // Первый портал на месте и невредим.
+        let root = BitrixRootConfig::load_from_file(&path);
+        assert_eq!(root.portal_ids(), vec!["acme"]);
+        assert_eq!(root.portals[0].webhook.expose(), good.webhook.expose());
+    }
+
+    /// Удаление одного портала оставляет остальные и идемпотентно.
+    #[test]
+    fn removing_one_portal_keeps_the_others() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bitrix.toml");
+        add_portal_to(
+            &path,
+            &WebhookUrl::new("https://acme.bitrix24.ru/rest/1/aaa111aaa111/"),
+            None,
+        )
+        .unwrap();
+        add_portal_to(
+            &path,
+            &WebhookUrl::new("https://beta.bitrix24.ru/rest/9/bbb222bbb222/"),
+            None,
+        )
+        .unwrap();
+
+        assert!(remove_portal_from(&path, "acme").unwrap());
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert!(!body.contains("aaa111aaa111"), "{body}");
+        assert!(body.contains("bbb222bbb222"), "{body}");
+        assert_eq!(BitrixRootConfig::load_from_file(&path).portal_ids(), vec!["beta"]);
+
+        // Повторное удаление — не ошибка.
+        assert!(!remove_portal_from(&path, "acme").unwrap());
+        assert!(!remove_portal_from(&dir.path().join("nope.toml"), "acme").unwrap());
+    }
+
+    /// Перевыпущенный вебхук меняет ТОЛЬКО секрет своего портала: `id`, имя,
+    /// место в списке и секреты соседей целы.
+    #[test]
+    fn replacing_a_webhook_keeps_the_identity_the_place_and_the_neighbours() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bitrix.toml");
+        add_portal_to(
+            &path,
+            &WebhookUrl::new("https://acme.bitrix24.ru/rest/1/aaa111aaa111/"),
+            Some("Рабочий"),
+        )
+        .unwrap();
+        add_portal_to(
+            &path,
+            &WebhookUrl::new("https://beta.bitrix24.ru/rest/9/bbb222bbb222/"),
+            None,
+        )
+        .unwrap();
+
+        let reissued = WebhookUrl::new("https://acme.bitrix24.ru/rest/1/ccc333ccc333/");
+        assert!(replace_portal_webhook_in(&path, "acme", &reissued).unwrap());
+
+        let root = BitrixRootConfig::load_from_file(&path);
+        assert_eq!(root.portal_ids(), vec!["acme", "beta"], "порядок сбит");
+        assert_eq!(root.portals[0].title, "Рабочий", "имя потеряно");
+        assert_eq!(root.portals[0].webhook.expose(), reissued.expose());
+        assert_eq!(
+            root.portals[1].webhook.expose(),
+            "https://beta.bitrix24.ru/rest/9/bbb222bbb222/",
+            "тронут секрет соседа"
+        );
+
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert!(!body.contains("aaa111aaa111"), "старый секрет остался: {body}");
+
+        // Незнакомый портал — не ошибка и не повод переписывать файл.
+        assert!(!replace_portal_webhook_in(&path, "nope", &reissued).unwrap());
+        // Пустой вебхук — отказ: «отвязать» умеет remove_portal_from.
+        assert!(replace_portal_webhook_in(&path, "acme", &WebhookUrl::default()).is_err());
+    }
+
+    // -------------------------------------------------------------------
+    // Миграция legacy-конфига (Ф1.4).
+    // -------------------------------------------------------------------
+
+    /// Legacy-файл читается как ОДИН портал, и чтение ничего не переписывает.
+    #[test]
+    fn a_legacy_config_reads_as_a_single_portal_without_rewriting_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bitrix.toml");
+        let body = "webhook = \"https://legacy.bitrix24.ru/rest/1/aaa111aaa111/\"\npoll_active_secs = 5\n";
+        std::fs::write(&path, body).unwrap();
+
+        let root = BitrixRootConfig::load_from_file(&path);
+        assert!(root.migrated_from_legacy);
+        assert_eq!(root.portal_ids(), vec!["legacy"]);
+        assert_eq!(root.shared.poll_active_secs, 5);
+
+        let cfg = BitrixConfig::load_from_file(&path);
+        assert!(cfg.has_webhook(), "поведение плагина обязано не измениться");
+        assert_eq!(
+            cfg.webhook.expose(),
+            "https://legacy.bitrix24.ru/rest/1/aaa111aaa111/"
+        );
+        assert_eq!(cfg.portal_id, "legacy");
+        assert_eq!(cfg.poll_active_secs, 5);
+
+        // ЧТЕНИЕ НЕРАЗРУШАЮЩЕЕ: файл байт в байт прежний.
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), body);
+    }
+
+    /// Миграция происходит при первой ЗАПИСИ, идемпотентна, и секрет после неё
+    /// лежит в файле ровно один раз.
+    #[test]
+    fn the_first_write_migrates_the_legacy_key_exactly_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bitrix.toml");
+        std::fs::write(
+            &path,
+            "webhook = \"https://legacy.bitrix24.ru/rest/1/aaa111aaa111/\"\nkeep_me = true\n",
+        )
+        .unwrap();
+        #[cfg(unix)]
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        // Любая запись мигрирует: добавляем ВТОРОЙ портал.
+        let added = add_portal_to(
+            &path,
+            &WebhookUrl::new("https://beta.bitrix24.ru/rest/9/bbb222bbb222/"),
+            None,
+        )
+        .unwrap();
+        assert_eq!(added.id, "beta");
+
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert!(body.contains("[[portals]]"), "{body}");
+        assert!(body.contains("keep_me = true"), "{body}");
+        // Верхнеуровневый ключ снят, а секрет не продублирован.
+        assert_eq!(body.matches("aaa111aaa111").count(), 1, "{body}");
+        assert!(
+            !body
+                .lines()
+                .any(|l| l.trim_start().starts_with("webhook = \"https://legacy")
+                    && !body.contains("[[portals]]")),
+            "{body}"
+        );
+        #[cfg(unix)]
+        assert_eq!(mode_of(&path), 0o600);
+        assert!(!tmp_path_for(&path).exists());
+
+        let root = BitrixRootConfig::load_from_file(&path);
+        assert!(!root.migrated_from_legacy, "второй раз мигрировать нечего");
+        assert_eq!(root.portal_ids(), vec!["legacy", "beta"]);
+
+        // Повторная миграция идемпотентна: id портала-мигранта не сменился.
+        add_portal_to(
+            &path,
+            &WebhookUrl::new("https://legacy.bitrix24.ru/rest/1/aaa111aaa111/"),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            BitrixRootConfig::load_from_file(&path).portal_ids(),
+            vec!["legacy", "beta"]
+        );
+    }
+
+    /// Идентификатор портала-мигранта детерминирован: на него завязаны
+    /// миграции кэша (Ф6) и настроек (Ф7).
+    #[test]
+    fn the_migrant_portal_id_is_deterministic() {
+        let w = WebhookUrl::new("https://legacy.bitrix24.ru/rest/1/aaa111aaa111/");
+        let first = portal_id_from_webhook(&w);
+        for _ in 0..3 {
+            assert_eq!(portal_id_from_webhook(&w), first);
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        for n in 0..3 {
+            let path = dir.path().join(format!("bitrix{n}.toml"));
+            std::fs::write(&path, format!("webhook = \"{}\"\n", w.expose())).unwrap();
+            assert_eq!(BitrixRootConfig::load_from_file(&path).portal_ids(), vec![first.clone()]);
+            save_webhook_to(&path, &w).unwrap();
+            assert_eq!(BitrixRootConfig::load_from_file(&path).portal_ids(), vec![first.clone()]);
+        }
     }
 
     #[test]

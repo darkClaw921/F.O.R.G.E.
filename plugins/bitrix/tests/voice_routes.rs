@@ -184,7 +184,7 @@ fn wav(secs: f32) -> Vec<u8> {
 }
 
 async fn send(state: Arc<B24State>, method: &str, uri: &str) -> axum::response::Response {
-    build_router(state)
+    build_router(forge_bitrix::B24Registry::single(state))
         .oneshot(
             Request::builder()
                 .method(method)

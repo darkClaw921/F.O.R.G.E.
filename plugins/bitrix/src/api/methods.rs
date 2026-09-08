@@ -697,21 +697,17 @@ impl B24Client {
         }
         let outcome = self.batch(calls).await?;
 
-        let recent = outcome
-            .get(COLD_START_RECENT_KEY)
-            .and_then(|v| serde_json::from_value::<Vec<RecentItemRaw>>(v.clone()).ok())
+        let recent = decode_part::<Vec<RecentItemRaw>>(&outcome, COLD_START_RECENT_KEY)
             .unwrap_or_default();
-        let counters = outcome
-            .get(COLD_START_COUNTERS_KEY)
-            .and_then(|v| serde_json::from_value::<CountersRaw>(v.clone()).ok())
-            .unwrap_or_default();
-        let tasks = outcome
-            .get(SYNC_TASK_COUNTERS_KEY)
-            .and_then(|v| serde_json::from_value::<super::schema::TaskCountersRaw>(v.clone()).ok());
+        let counters =
+            decode_part::<CountersRaw>(&outcome, COLD_START_COUNTERS_KEY).unwrap_or_default();
+        let tasks =
+            decode_part::<super::schema::TaskCountersRaw>(&outcome, SYNC_TASK_COUNTERS_KEY);
         Ok((recent, counters, tasks))
     }
 
     // -----------------------------------------------------------------
+
     // Ф6: цикл переписки.
     // -----------------------------------------------------------------
 
@@ -1186,6 +1182,46 @@ impl B24Client {
     }
 }
 
+/// Разбирает одну часть пакетного ответа, ГРОМКО жалуясь на неудачу.
+///
+/// # Почему это не `from_value(…).ok()`
+///
+/// Раньше здесь стояло именно оно, и неудачный разбор превращался в пустое
+/// значение молча. Живая проверка Ф9 показала, чем это кончается: один чат с
+/// `entity_link: null` ронял разбор ВСЕГО списка диалогов, панель показывала
+/// ноль чатов, а в логе не оставалось НИ ОДНОЙ строки — воркер синхронизации
+/// тоже молчит, потому что пишет только при непустом результате. Дефект
+/// невозможно было ни увидеть, ни продиагностировать по логу.
+///
+/// Поведение при отказе НЕ изменилось (часть пакета пропадает, соседние
+/// доезжают): падать целиком из-за одного поля — ровно та крайность, от
+/// которой это место и защищает. Изменилось одно: отказ теперь ВИДЕН.
+///
+/// # Секрет в тексте ошибки
+///
+/// Сообщение serde цитирует значение, а в сырье портала попадаются поля с
+/// кодом вебхука внутри (`downloadUrl`). Поэтому текст пропускается через
+/// [`super::error::scrub_urls`] — тот же страж, что чистит ошибки транспорта.
+/// Само значение в лог не уходит НИКОГДА.
+fn decode_part<T: serde::de::DeserializeOwned>(
+    outcome: &super::batch::BatchOutcome,
+    key: &str,
+) -> Option<T> {
+    let raw = outcome.get(key)?;
+    match serde_json::from_value::<T>(raw.clone()) {
+        Ok(v) => Some(v),
+        Err(e) => {
+            tracing::warn!(
+                target: "forge_bitrix",
+                part = key,
+                error = %super::error::scrub_urls(&e.to_string()),
+                "forge-bitrix: a part of the batch response did not match the schema; it is dropped"
+            );
+            None
+        }
+    }
+}
+
 /// Идентификатор сообщения из результата `im.message.add`.
 ///
 /// Живьём приезжает числом (`{"result":77}`), но строковая форма встречается у
@@ -1436,6 +1472,54 @@ pub fn has_task_scope(scopes: &[String]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Неудачный разбор части пакета обязан быть ВИДЕН в логе — и обязан
+    /// молчать про секрет.
+    ///
+    /// Обе половины найдены живой проверкой Ф9. Раньше здесь стояло
+    /// `from_value(…).ok()`, и один чат с `entity_link: null` обнулял весь
+    /// список диалогов, не оставив в логе ни строки. Но громкий лог сам по
+    /// себе — новый риск: сообщение serde цитирует значение, а в сырье портала
+    /// попадаются поля с кодом вебхука внутри (`downloadUrl`).
+    #[test]
+    fn a_part_that_does_not_match_the_schema_is_logged_without_the_secret() {
+        crate::testlog::install();
+        let mark = crate::testlog::mark();
+
+        let mut outcome = crate::api::batch::BatchOutcome::default();
+        outcome.ok.insert(
+            "recent".to_string(),
+            // Форма заведомо не та — и в тексте ошибки окажется URL с кодом.
+            json!("https://p.bitrix24.ru/rest/1/wqdzbfhmn83d23j4/im.recent.get.json"),
+        );
+
+        let parsed = decode_part::<Vec<RecentItemRaw>>(&outcome, "recent");
+        assert!(parsed.is_none(), "мусор не имеет права разобраться");
+
+        let text = crate::testlog::since(mark);
+        assert!(
+            text.contains("did not match the schema"),
+            "отказ обязан быть виден в логе: {text}"
+        );
+        assert!(text.contains("part=\"recent\""), "не назван ключ части: {text}");
+        assert!(
+            !text.contains("wqdzbfhmn83d23j4"),
+            "код вебхука утёк в лог: {text}"
+        );
+        assert!(
+            !text.contains("p.bitrix24.ru"),
+            "хост портала утёк в лог: {text}"
+        );
+
+        // Отсутствующий ключ — не отказ и в лог не пишется: часть пакета могли
+        // просто не запрашивать (счётчики задач без известного user_id).
+        let mark = crate::testlog::mark();
+        assert!(decode_part::<CountersRaw>(&outcome, "counters").is_none());
+        assert!(
+            crate::testlog::since(mark).is_empty(),
+            "непрошенная часть не повод для строки в логе"
+        );
+    }
 
     /// Имена методов — контракт с порталом: переименование обязано валить
     /// тест, а не отправлять запрос в никуда.

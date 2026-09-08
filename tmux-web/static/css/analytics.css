@@ -1,0 +1,525 @@
+/* tmux-web — полноэкранный дашборд аналитики Claude Code (Фаза 5)
+ *
+ * Контейнер #analytics живёт в #main соседом #daily-summary и показывается
+ * той же механикой (js/analytics/analytics.js::showAnalytics): вью занимает
+ * #main целиком, скрывая #home и placeholder терминала.
+ *
+ * ПАЛИТРА. Ни одного литерала цвета: всё через переменные темы из
+ * css/base.css. Тема здесь пользовательская — 11 переменных меняются одним
+ * setProperty на <html>, и дашборд обязан перекраситься вместе с остальным
+ * UI. Хардкод-хекс пережил бы смену темы и выглядел бы как баг ровно у того,
+ * кто тему и настроил.
+ *
+ * ШИРИНА. В отличие от «Сводки дня» (читаемая колонка 760px) дашборд
+ * растягивается до 1400px: чарты по 90 дней в узкой колонке превращаются в
+ * частокол, а плитки KPI — в вертикальный список из двадцати строк.
+ *
+ * СЕТКА. Карточки чартов раскладываются auto-fill'ом от 420px: на широком
+ * мониторе — три колонки, на ноутбуке — две, на планшете — одна. Отдельные
+ * карточки помечены классом .analytics-card-wide и всегда занимают всю
+ * ширину строки (чарты по дням за 90 дней читаются только широкими).
+ */
+
+.analytics {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 24px 64px;
+    overflow-y: auto;
+    background: var(--bg-elev);
+}
+
+/* Каждая прямая секция вью — центрированная колонка одной ширины. */
+.analytics-head,
+.analytics-hero,
+.analytics-progress,
+.analytics-error,
+.analytics-kpi,
+.analytics-grid {
+    width: 100%;
+    max-width: 1400px;
+}
+
+/* ---- Верхняя панель: назад · фильтры · пересбор ---- */
+
+.analytics-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}
+
+.analytics-back,
+.analytics-rescan {
+    background: transparent;
+    color: var(--fg-mute);
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 0.82rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+
+.analytics-back:hover,
+.analytics-rescan:hover {
+    background: var(--bg-pill);
+    color: var(--fg);
+}
+
+.analytics-rescan[disabled] {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.analytics-filters {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+.analytics-filter {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.analytics-filter-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--fg-dim);
+}
+
+.analytics-select {
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 0.82rem;
+    font-family: inherit;
+    max-width: 260px;
+}
+
+.analytics-select:hover {
+    border-color: var(--border-input-hover);
+}
+
+/* ---- Шапка страницы ---- */
+
+.analytics-hero {
+    margin-bottom: 20px;
+}
+
+.analytics-eyebrow {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--fg-dim);
+    margin-bottom: 4px;
+}
+
+.analytics-title {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--fg);
+}
+
+.analytics-meta {
+    margin-top: 6px;
+    font-size: 0.8rem;
+    color: var(--fg-dim);
+}
+
+/* ---- Прогресс первого скана ----
+ *
+ * Индексация транскриптов ленивая: она стартует по первому запросу к API, и
+ * на 2.7 ГБ файлов первый проход занимает секунды. Прогресс-бар — не
+ * украшение, а единственный способ отличить «идёт скан» от «сломалось».
+ */
+
+/* `display: flex` из авторской таблицы СИЛЬНЕЕ правила `[hidden]` браузерного
+   стиля, поэтому скрытие атрибутом надо объявить явно: без этих двух строк
+   `hidden = true` оставляет на экране пустую рамку с отступами. */
+.analytics-progress[hidden],
+.analytics-error[hidden] {
+    display: none;
+}
+
+.analytics-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 18px;
+    margin-bottom: 20px;
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+    background: var(--bg-header-alt);
+}
+
+.analytics-progress-label {
+    font-size: 0.86rem;
+    color: var(--fg);
+}
+
+.analytics-progress-track {
+    height: 6px;
+    border-radius: 3px;
+    background: var(--bg-pill);
+    overflow: hidden;
+}
+
+.analytics-progress-fill {
+    height: 100%;
+    width: 0;
+    border-radius: 3px;
+    background: var(--accent);
+    transition: width 0.25s ease;
+}
+
+.analytics-progress-hint {
+    font-size: 0.76rem;
+    color: var(--fg-dim);
+}
+
+/* ---- Ошибка сети ---- */
+
+.analytics-error {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    margin-bottom: 20px;
+    border: 1px solid var(--danger);
+    border-radius: 10px;
+    background: var(--danger-bg);
+    color: var(--fg);
+    font-size: 0.86rem;
+}
+
+.analytics-error-retry {
+    background: transparent;
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 0.8rem;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.analytics-error-retry:hover {
+    background: var(--bg-pill);
+}
+
+/* ---- KPI-плитки ----
+ *
+ * Плитка «доля ответов < 10 с» и медианная пауза — главные метрики запроса,
+ * поэтому они идут первыми и помечаются .analytics-tile-hero (крупнее
+ * остальных). Всё прочее — ровная сетка от 150px.
+ */
+
+.analytics-kpi {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+    margin-bottom: 24px;
+}
+
+.analytics-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 12px 14px;
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+    background: var(--bg-header-alt);
+}
+
+.analytics-tile-hero {
+    grid-column: span 2;
+    border-color: var(--accent);
+    background: var(--bg-toolbar);
+}
+
+.analytics-tile-label {
+    font-size: 0.72rem;
+    color: var(--fg-dim);
+    line-height: 1.25;
+}
+
+.analytics-tile-value {
+    font-size: 1.28rem;
+    font-weight: 600;
+    color: var(--fg);
+    line-height: 1.2;
+}
+
+.analytics-tile-hero .analytics-tile-value {
+    font-size: 1.7rem;
+}
+
+/* Дельта к предыдущему периоду. Цвет — по СМЫСЛУ метрики, а не по знаку:
+   рост стоимости не «зелёный», а падение медианной паузы не «хорошо». */
+.analytics-tile-delta {
+    font-size: 0.74rem;
+    color: var(--fg-dim);
+}
+
+.analytics-tile-delta.is-good {
+    color: var(--success);
+}
+
+.analytics-tile-delta.is-bad {
+    color: var(--danger);
+}
+
+.analytics-tile-note {
+    font-size: 0.72rem;
+    color: var(--fg-dim);
+}
+
+/* ---- Сетка карточек с чартами ---- */
+
+.analytics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+    gap: 14px;
+}
+
+.analytics-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px 16px 16px;
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+    background: var(--bg-header-alt);
+    min-width: 0;
+}
+
+.analytics-card-wide {
+    grid-column: 1 / -1;
+}
+
+.analytics-card-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.analytics-card-title {
+    margin: 0;
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--fg);
+}
+
+.analytics-card-note {
+    font-size: 0.74rem;
+    color: var(--fg-dim);
+}
+
+/* Переключатель метрики внутри карточки (топ проектов). */
+.analytics-card-switch {
+    display: flex;
+    gap: 4px;
+}
+
+.analytics-switch-btn {
+    background: transparent;
+    color: var(--fg-mute);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 0.74rem;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.analytics-switch-btn:hover {
+    background: var(--bg-pill);
+    color: var(--fg);
+}
+
+.analytics-switch-btn.is-active {
+    color: var(--fg-on-accent);
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+/* Хост SVG. Высота задаётся здесь, а не в разметке чарта: кит рисует в
+   единицах viewBox и растягивается на 100% ширины контейнера. */
+.analytics-plot {
+    width: 100%;
+    min-width: 0;
+}
+
+.analytics-plot .fchart {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+}
+
+/* Две диаграммы рядом внутри одной карточки (модели: доли и стоимость). */
+/*
+ * ДВА ЧАРТА В РЯД ТОЛЬКО ТАМ, ГДЕ ЕСТЬ МЕСТО.
+ *
+ * В обычной карточке (треть сетки, ~600px) пара давала по 278px на чарт: пять
+ * столбцов гистограммы и подписи дат в такую ширину не помещаются. Поэтому ряд
+ * из двух — привилегия широкой карточки, а в обычной плоты идут друг под
+ * другом и получают полную ширину.
+ */
+.analytics-plot-pair {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+}
+
+.analytics-card-wide .analytics-plot-pair {
+    grid-template-columns: 1fr 1fr;
+}
+
+/* Подпись отдельного плота в карточке, где чартов несколько. */
+.analytics-plot-slot {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.analytics-plot-label {
+    font-size: 0.74rem;
+    color: var(--fg-dim);
+}
+
+
+/* Пояснение под чартом: зачем метрика и как её читать.
+ *
+ * Карточка разнообразия — единственная, где числа сами по себе ничего не
+ * говорят: падение TTR и рост доли односложных подтверждений нужно назвать
+ * словами, иначе график остаётся красивым и бесполезным. */
+.analytics-card-hint {
+    margin-top: 6px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-soft);
+    font-size: 0.76rem;
+    line-height: 1.45;
+    color: var(--fg-dim);
+}
+
+.analytics-card-hint p {
+    margin: 0 0 6px;
+}
+
+.analytics-card-hint p:last-child {
+    margin-bottom: 0;
+}
+
+/* Полоса версий CLI: ячейки без обводки, соседние дни одной версии должны
+   читаться как единый отрезок. */
+.analytics-plot .fchart-band-cell {
+    shape-rendering: crispEdges;
+}
+
+/* Подсветка фигуры при наведении — зацепка от chart.js::tip.
+ *
+ * `brightness` в одиночку почти не читается на насыщенной заливке, поэтому у
+ * горизонтальных полос подсвечивается ещё и дорожка строки: она во всю ширину
+ * и делает отклик заметным даже у самых коротких полос в хвосте списка. */
+.analytics-plot .is-hover {
+    filter: brightness(1.18);
+}
+
+.analytics-plot .fchart-hbar-track {
+    transition: fill-opacity 0.1s ease;
+}
+
+.analytics-plot .fchart-hbar.is-hover .fchart-hbar-track {
+    fill-opacity: 0.09;
+}
+
+/* Слой наведения на графиках со шкалой времени: вертикаль по ближайшему дню
+   и коробка со значениями всех рядов. Мышь сквозь него проходит — иначе он
+   сам перекрывал бы события, которыми живёт. */
+.analytics-plot .fchart-hover {
+    pointer-events: none;
+}
+
+/* Осевые подписи и легенда кита. */
+.analytics-plot .fchart-axis-label,
+.analytics-plot .fchart-tick {
+    font-size: 10px;
+}
+
+/* ---- Пустое состояние всего вью ----
+ *
+ * Пустой период не должен выглядеть сломанным экраном: вместо сетки карточек
+ * показываем осмысленное объяснение и подсказку сменить фильтр.
+ */
+
+.analytics-empty {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 48px 24px;
+    border: 1px dashed var(--border-soft);
+    border-radius: 10px;
+    color: var(--fg-dim);
+    text-align: center;
+}
+
+.analytics-empty-icon {
+    font-size: 1.8rem;
+}
+
+.analytics-empty-title {
+    font-size: 0.96rem;
+    color: var(--fg);
+}
+
+.analytics-empty-hint {
+    font-size: 0.8rem;
+}
+
+/* ---- Узкие экраны ----
+ *
+ * Ниже 900px карточки становятся одноколоночными сами (auto-fill), но
+ * панель фильтров и hero-плитки нужно распустить руками.
+ */
+
+@media (max-width: 900px) {
+    .analytics {
+        padding: 16px 12px 48px;
+    }
+
+    .analytics-head {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .analytics-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .analytics-tile-hero {
+        grid-column: 1 / -1;
+    }
+
+    .analytics-plot-pair {
+        grid-template-columns: 1fr;
+    }
+}

@@ -184,7 +184,7 @@ impl VkClient {
             base_url: cfg.base_url.trim_end_matches('/').to_string(),
             token: cfg.access_token.clone(),
             api_version: cfg.api_version.clone(),
-            throttle: Arc::new(Throttle::new(f64::from(cfg.rate_limit_rps))),
+            throttle: Arc::new(Throttle::cold(f64::from(cfg.rate_limit_rps))),
             health,
             longpoll_wait_secs: cfg.longpoll_wait_secs,
             network_backoff: error::NETWORK_BACKOFF,
@@ -302,7 +302,7 @@ impl VkClient {
                 Retry::AfterOneSecond => attempt < error::MAX_CODE6_RETRIES,
             };
             if may_retry {
-                let delay = self.retry_delay(retry);
+                let delay = self.retry_delay(retry, attempt);
                 // В лог уходят метод, длительность и КОД ошибки — но никогда
                 // параметры: в них живёт токен.
                 tracing::warn!(
@@ -369,15 +369,25 @@ impl VkClient {
         parse_envelope(status, &body)
     }
 
-    /// Пауза перед повтором.
+    /// Пауза перед повтором номер `attempt` (нумерация с нуля).
     ///
     /// Джиттер нужен, чтобы N параллельных запросов, упавших от одного
     /// обрыва, не пошли на повтор в одну и ту же миллисекунду и не устроили
     /// второй залп по едва поднявшемуся серверу.
-    fn retry_delay(&self, retry: Retry) -> Duration {
+    ///
+    /// Код 6 ждёт по удвоенной лестнице (1 с, затем 2 с), а не одну секунду
+    /// каждый раз. Причина не в вежливости: повтор шлёт ТОТ ЖЕ метод с ТЕМИ
+    /// ЖЕ параметрами, а однотипные частые запросы VK эскалирует из кода 6
+    /// («часто», отпускает за секунду) в код 9 («flood control», держит
+    /// минутами и повторам не поддаётся вовсе). Две попытки через равную
+    /// секунду — ровно тот профиль, который VK и считает флудом.
+    fn retry_delay(&self, retry: Retry, attempt: u32) -> Duration {
         match retry {
             Retry::Never => Duration::ZERO,
-            Retry::AfterOneSecond => self.flood_retry_delay,
+            Retry::AfterOneSecond => {
+                let factor = 1u32 << attempt.min(error::MAX_CODE6_RETRIES);
+                self.flood_retry_delay * factor
+            }
             Retry::AfterNetworkBackoff => {
                 self.network_backoff + Duration::from_millis(jitter_ms(error::NETWORK_BACKOFF_JITTER_MS))
             }
@@ -681,10 +691,13 @@ mod tests {
     #[test]
     fn retry_delay_matches_the_policy() {
         let c = client();
-        assert_eq!(c.retry_delay(Retry::Never), Duration::ZERO);
-        assert_eq!(c.retry_delay(Retry::AfterOneSecond), Duration::from_secs(1));
+        assert_eq!(c.retry_delay(Retry::Never, 0), Duration::ZERO);
+        // Код 6: лестница 1 с → 2 с, чтобы однотипные повторы не эскалировали
+        // до кода 9 (flood control).
+        assert_eq!(c.retry_delay(Retry::AfterOneSecond, 0), Duration::from_secs(1));
+        assert_eq!(c.retry_delay(Retry::AfterOneSecond, 1), Duration::from_secs(2));
         for _ in 0..50 {
-            let d = c.retry_delay(Retry::AfterNetworkBackoff);
+            let d = c.retry_delay(Retry::AfterNetworkBackoff, 0);
             assert!(
                 d >= Duration::from_millis(500) && d <= Duration::from_millis(750),
                 "{d:?}"
@@ -696,8 +709,10 @@ mod tests {
     #[test]
     fn retry_delays_are_overridable() {
         let c = client().with_retry_delays(Duration::from_millis(5), Duration::from_millis(7));
-        assert_eq!(c.retry_delay(Retry::AfterOneSecond), Duration::from_millis(7));
-        assert!(c.retry_delay(Retry::AfterNetworkBackoff) >= Duration::from_millis(5));
+        assert_eq!(c.retry_delay(Retry::AfterOneSecond, 0), Duration::from_millis(7));
+        // Лестница повторов масштабируется вместе с подменённой базой.
+        assert_eq!(c.retry_delay(Retry::AfterOneSecond, 1), Duration::from_millis(14));
+        assert!(c.retry_delay(Retry::AfterNetworkBackoff, 0) >= Duration::from_millis(5));
     }
 
     /// Клиент и состояние обязаны смотреть в ОДНУ ячейку здоровья.

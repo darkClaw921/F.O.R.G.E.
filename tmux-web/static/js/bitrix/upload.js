@@ -528,6 +528,13 @@ function uploadToServer(item) {
         // вручную запрещено (forbidden header), а сервер без него отвечает 411.
         xhr.setRequestHeader('Content-Type', 'application/octet-stream');
         xhr.setRequestHeader(FILE_NAME_HEADER, encodeURIComponent(item.name));
+        // Адресация портала вручную — по той же причине, что и Bearer ниже: XHR
+        // идёт мимо `call` из api.js, где заголовок подмешивается всем
+        // остальным запросам панели. Имя заголовка берётся ОТТУДА же: второе
+        // место с этой строкой было бы вторым шансом разъехаться с сервером.
+        for (const [name, value] of Object.entries(b24Api.portalHeaders())) {
+            xhr.setRequestHeader(name, value);
+        }
         // Bearer вручную: XHR не проходит через подменённый fetch (core/auth.js).
         const token = getAuthToken();
         if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);

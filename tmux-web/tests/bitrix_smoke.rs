@@ -28,14 +28,35 @@
 //! заведомо закрытый порт 1, порог 500 мс); `shutdown` идемпотентна (три
 //! вызова подряд, третий — с уже пустым реестром воркеров).
 //!
-//! **WS.** Апгрейд `/ws/bitrix`, первый кадр `login_state`, ping/pong живёт
-//! дольше idle-таймаута (тайминги укорочены через
-//! `B24State::with_ws_timings`, иначе тест ждал бы боевую минуту),
-//! broadcast доезжает до клиента, битый входящий кадр НЕ рвёт соединение,
-//! закрытие по shutdown.
+//! **WS.** Апгрейд `/ws/bitrix`, первые кадры снапшота (`login_state` каждого
+//! слота и `portals`), ping/pong живёт дольше idle-таймаута (тайминги
+//! укорочены через `B24State::with_ws_timings`, иначе тест ждал бы боевую
+//! минуту), broadcast доезжает до клиента, битый входящий кадр НЕ рвёт
+//! соединение, закрытие по shutdown.
 //!
 //! **Конфиг.** Битый `bitrix.toml` не роняет `init` — плагин поднимается на
 //! дефолтах.
+//!
+//! # Что добавила мультипортальность
+//!
+//! Все четыре точки входа плагина работают с РЕЕСТРОМ порталов
+//! (`init(BitrixRootConfig) -> Arc<B24Registry>`, `register_routes(app,
+//! registry)`, `spawn_workers(&registry)`, `shutdown(&registry)`), поэтому
+//! стенд поднимает реестр, а состояние конкретного портала берёт из него
+//! (`registry.primary()` / `registry.get(id)`).
+//!
+//! Проверки, которых до мультипортальности быть не могло, и которые ловятся
+//! только ПО ПРОВОДУ:
+//!
+//! - [`test_the_portal_header_picks_the_state_over_the_wire`] — заголовок
+//!   `X-Forge-Portal` выбирает состояние на КАЖДЫЙ запрос, неизвестный `id`
+//!   даёт 404 (а не молчаливый сполз на первый портал), отсутствие заголовка
+//!   — первый слот;
+//! - [`test_ws_carries_every_portal_with_its_id`] — один сокет несёт кадры
+//!   обоих порталов, каждый со своим `portal_id`, плюс служебный кадр
+//!   `portals` под `_socket`;
+//! - [`test_the_portals_list_never_leaks_a_webhook`] — `GET
+//!   /api/bitrix/portals` не отдаёт наружу ни секрета, ни хоста портала.
 //!
 //! Тесты НЕ требуют сети и НЕ требуют вебхука. Пути конфига задаются прямо в
 //! [`BitrixConfig`], поэтому домашний каталог пользователя не затрагивается —
@@ -47,7 +68,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
-use forge_bitrix::config::{BitrixConfig, WebhookUrl};
+use forge_bitrix::config::{BitrixConfig, BitrixRootConfig, PortalConfig, WebhookUrl};
+use forge_bitrix::registry::B24Registry;
 use forge_bitrix::state::{B24State, B24UserDto, LoginFlow};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
@@ -58,8 +80,24 @@ use tokio_tungstenite::tungstenite::Message;
 const PORTAL: &str = "test-work-2.bitrix24.ru";
 const CODE: &str = "wqdzbfhmn83d23j4";
 
+/// Идентификатор, который плагин выведет из [`PORTAL`]
+/// (`config::portal_id_from_host`). Он НЕ секрет — это подпись вкладки, — но и
+/// полным хостом не является, поэтому страж утечки его не задевает.
+const PORTAL_ID: &str = "test-work-2";
+
+/// Второй портал: другой хост, другой код. Нужен ровно для того, ради чего
+/// затевалась мультипортальность, — проверить, что два состояния в одном
+/// процессе не пересекаются.
+const PORTAL_B: &str = "second-portal.bitrix24.ru";
+const CODE_B: &str = "kkqp41mzx7ru9tvb";
+const PORTAL_B_ID: &str = "second-portal";
+
 fn webhook() -> WebhookUrl {
     WebhookUrl::new(format!("https://{PORTAL}/rest/1/{CODE}/"))
+}
+
+fn webhook_b() -> WebhookUrl {
+    WebhookUrl::new(format!("https://{PORTAL_B}/rest/1/{CODE_B}/"))
 }
 
 // ---------------------------------------------------------------------------
@@ -67,8 +105,14 @@ fn webhook() -> WebhookUrl {
 // ---------------------------------------------------------------------------
 
 /// Живой сервер с примонтированным плагином.
+///
+/// Держит РЕЕСТР (точки входа плагина работают с ним) и отдельно —
+/// состояние первого слота: почти все проверки смотрят на один портал, и
+/// писать `h.registry.primary()` в каждой строке значило бы прятать смысл за
+/// обходом реестра.
 struct Harness {
     addr: SocketAddr,
+    registry: Arc<B24Registry>,
     state: Arc<B24State>,
     _tempdir: tempfile::TempDir,
     _serve: tokio::task::JoinHandle<()>,
@@ -79,6 +123,20 @@ impl Harness {
     fn base(&self) -> String {
         format!("http://{}", self.addr)
     }
+
+    /// Состояние адресуемого портала. Паникует на неизвестном `id` — в тесте
+    /// это опечатка, а не сценарий.
+    fn portal(&self, id: &str) -> Arc<B24State> {
+        self.registry
+            .get(id)
+            .unwrap_or_else(|| panic!("портал {id} не найден в реестре: {:?}", self.registry.ids()))
+    }
+
+    /// Гасит ВЕСЬ реестр — ровно так, как это делает хост в обработчике
+    /// сигнала.
+    async fn shutdown(&self) {
+        forge_bitrix::shutdown(&self.registry).await;
+    }
 }
 
 /// Настройки стенда. Собраны в структуру, а не в позиционные аргументы:
@@ -88,6 +146,8 @@ struct Opts {
     /// Класть ли вебхук в конфиг. Единственный способ достичь состояния
     /// `disconnected` без сети: сетевой проверки стенд не делает.
     webhook: Option<WebhookUrl>,
+    /// Несколько порталов сразу. Перевешивает [`Opts::webhook`].
+    portals: Vec<WebhookUrl>,
     /// Укороченные `(heartbeat, idle)` для WS-тестов.
     ws: Option<(Duration, Duration)>,
 }
@@ -115,22 +175,39 @@ async fn start_harness_opts(opts: Opts) -> Harness {
         // конфига здесь и так полная: `config_path` указывает во временный
         // каталог.
         base_url_override: "https://127.0.0.1:1/rest/1/stub".to_string(),
-        webhook: opts.webhook.unwrap_or_default(),
+        // Герметичность: без явных путей хранилище заметок анализа легло бы в
+        // живой `~/.forge/bitrix-chat-prompts.json` разработчика, а
+        // CLI-заглушка гарантирует, что стенд не запустит настоящий `claude`.
+        prompts_path: tempdir.path().join("prompts.json"),
+        claude_cli_path: tempdir.path().join("no-such-claude"),
+        webhook: if opts.portals.is_empty() {
+            opts.webhook.clone().unwrap_or_default()
+        } else {
+            // Legacy-ключ верхнего уровня при явном списке `[[portals]]` не
+            // используется вовсе, и заполнять его значило бы синтезировать
+            // лишний портал.
+            WebhookUrl::default()
+        },
         ..BitrixConfig::default()
     };
 
-    let state = match opts.ws {
+    let registry = match opts.ws {
         // `init` сам создаёт состояние боевым конструктором, поэтому для
-        // укороченных таймингов состояние собирается явно. Валидация конфига
-        // при этом не теряется — она вызывается тут же.
+        // укороченных таймингов состояние собирается явно, а реестр — из
+        // готового слота. Валидация конфига при этом не теряется: она
+        // вызывается тут же.
         Some((hb, idle)) => {
             cfg.validate().expect("конфиг стенда обязан быть валидным");
             let _ = cfg.ensure_dirs();
-            B24State::with_ws_timings(cfg, hb, idle)
+            B24Registry::single(B24State::with_ws_timings(cfg, hb, idle))
         }
-        None => forge_bitrix::init(cfg).expect("init must succeed on a valid config"),
+        None => forge_bitrix::init(root_of(cfg, &opts))
+            .expect("init must succeed on a valid config"),
     };
-    let app: Router = forge_bitrix::register_routes(Router::new(), state.clone());
+    // Роутер получает ВЕСЬ реестр: портал выбирается на каждый запрос
+    // экстрактором `Portal`, а не в момент сборки (см. шапку
+    // `plugins/bitrix/src/routes/portal.rs`).
+    let app: Router = forge_bitrix::register_routes(Router::new(), registry.clone());
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -139,11 +216,35 @@ async fn start_harness_opts(opts: Opts) -> Harness {
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 
+    let state = registry.primary();
     Harness {
         addr,
+        registry,
         state,
         _tempdir: tempdir,
         _serve: serve,
+    }
+}
+
+/// Корневой конфиг стенда: общие настройки плюс список порталов.
+///
+/// Пустой список — НЕ ошибка и не особый режим: реестр отдаёт один пустой слот
+/// («место для портала»), и панель показывает экран подключения ровно так же,
+/// как до мультипортальности.
+fn root_of(shared: BitrixConfig, opts: &Opts) -> BitrixRootConfig {
+    let webhooks: Vec<WebhookUrl> = if !opts.portals.is_empty() {
+        opts.portals.clone()
+    } else {
+        opts.webhook.clone().into_iter().collect()
+    };
+    BitrixRootConfig {
+        portals: webhooks
+            .iter()
+            .filter(|w| !w.is_empty())
+            .map(|w| PortalConfig::from_webhook(w, None))
+            .collect(),
+        shared,
+        migrated_from_legacy: false,
     }
 }
 
@@ -236,6 +337,10 @@ async fn test_routes_absent_without_the_plugin() {
         "/api/bitrix/dialogs/chat7/pin",
         "/api/bitrix/dialogs/chat7/hide",
         "/api/bitrix/messages/113/like",
+        // Реестр порталов (мультипортальность): CRUD вкладок обязан быть под
+        // тем же гейтом, что и всё остальное.
+        "/api/bitrix/portals",
+        "/api/bitrix/portals/test-work-2",
     ] {
         let resp = reqwest::get(format!("http://{addr}{path}")).await.unwrap();
         assert_eq!(
@@ -325,9 +430,20 @@ fn test_the_host_registers_the_plugin_only_behind_the_flag() {
     let branch_end = main_rs[gate..]
         .find("forge-bitrix: init failed")
         .expect("ветка warn при ошибке init не найдена");
+    //
+    // Проверка по хвосту `::load())?`, а не по полной строке вызова: тип
+    // корневого конфига уже сменился однажды (`BitrixConfig` →
+    // `BitrixRootConfig` в мультипортальности), и прибитая к имени типа
+    // проверка молча зазеленела бы на любом коде.
     assert!(
-        !main_rs[gate..gate + branch_end].contains("forge_bitrix::init(forge_bitrix::BitrixConfig::load())?"),
+        !main_rs[gate..gate + branch_end].contains("::load())?"),
         "init обязан обрабатываться match'ем с warn, а не `?`"
+    );
+    // А сам вызов — есть, и именно с корневым конфигом: реестр строится из
+    // всего файла, а не из одного портала.
+    assert!(
+        main_rs.contains("forge_bitrix::init(forge_bitrix::BitrixRootConfig::load())"),
+        "хост обязан строить реестр порталов из корневого конфига"
     );
 
     // Плагин гасится вместе с сервером — иначе курсор событий (Ф7) не
@@ -374,7 +490,7 @@ async fn test_status_is_not_configured() {
         "форма подключения без подсказки бесполезна: {body}"
     );
 
-    forge_bitrix::shutdown(&h.state).await;
+    h.shutdown().await;
 }
 
 /// С вебхуком стартовое состояние — `disconnected`: `init` синхронный и сети
@@ -393,7 +509,7 @@ async fn test_status_is_disconnected_with_a_webhook() {
         .await
         .unwrap();
     assert_eq!(body["login"]["state"], "disconnected");
-    forge_bitrix::shutdown(&h.state).await;
+    h.shutdown().await;
 }
 
 /// ИНВАРИАНТ БЕЗОПАСНОСТИ: `/status` не отдаёт ни кода вебхука, ни хоста
@@ -429,7 +545,7 @@ async fn test_status_never_leaks_the_webhook_in_any_state() {
         let body: Value = serde_json::from_str(&text).unwrap();
         assert_eq!(body["login"]["state"], kind);
 
-        forge_bitrix::shutdown(&h.state).await;
+        h.shutdown().await;
     }
 }
 
@@ -549,7 +665,7 @@ async fn test_status_carries_retry_after_and_user() {
     // продолжает работать без правок.
     assert!(body["login"].get("retry_after_secs").is_none(), "{body}");
 
-    forge_bitrix::shutdown(&h.state).await;
+    h.shutdown().await;
 }
 
 /// Тест фиксирует СОСТАВ реализованного, чтобы случайно смонтированный
@@ -595,7 +711,30 @@ async fn test_only_the_implemented_routes_are_mounted() {
         let resp = reqwest::get(format!("{}{path}", h.base())).await.unwrap();
         assert_eq!(resp.status(), 405, "{path} обязан быть смонтирован как POST");
     }
-    forge_bitrix::shutdown(&h.state).await;
+    // Реестр порталов: список читается ВСЕГДА и без подключения — на нём
+    // держится строка вкладок, и 409 здесь означал бы «панель не может
+    // показать даже собственный список».
+    let resp = reqwest::get(format!("{}/api/bitrix/portals", h.base()))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200, "список порталов обязан отвечать 200");
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(
+        body["portals"].as_array().map(Vec::len),
+        Some(0),
+        "пустой слот — не портал и в списке не показывается: {body}"
+    );
+    // Адресный роут вкладки — PATCH/DELETE-only: GET по нему даёт 405, а не
+    // 404. Разница принципиальна ровно по той же причине, что и выше.
+    let resp = reqwest::get(format!("{}/api/bitrix/portals/test-work-2", h.base()))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        405,
+        "адресный роут портала обязан быть смонтирован как PATCH/DELETE"
+    );
+    h.shutdown().await;
 }
 
 /// Подключение и выход ПО ПРОВОДУ: тела ответов не содержат секрета, а
@@ -650,7 +789,7 @@ async fn test_login_routes_reject_garbage_and_never_leak() {
         assert_no_secret_anywhere(&text, "logout");
     }
 
-    forge_bitrix::shutdown(&h.state).await;
+    h.shutdown().await;
 }
 
 // ---------------------------------------------------------------------------
@@ -675,25 +814,45 @@ async fn test_init_is_synchronous_and_offline() {
         ..BitrixConfig::default()
     };
 
+    // ДВА портала, а не один: с мультипортальностью `init` строит их все, и
+    // порог обязан держаться на всём реестре — иначе «init без сети» тихо
+    // превратился бы в «init без сети, если портал один».
+    let root = BitrixRootConfig {
+        portals: vec![
+            PortalConfig::from_webhook(&webhook(), None),
+            PortalConfig::from_webhook(&webhook_b(), None),
+        ],
+        shared: cfg,
+        migrated_from_legacy: false,
+    };
+
     let started = std::time::Instant::now();
-    let state = forge_bitrix::init(cfg).expect("init на валидном конфиге обязан пройти");
+    let registry = forge_bitrix::init(root).expect("init на валидном конфиге обязан пройти");
     let elapsed = started.elapsed();
     assert!(
         elapsed < Duration::from_millis(500),
         "init занял {elapsed:?} — он не должен ждать сеть"
     );
-    assert_eq!(state.login_state_dto().await.state, "disconnected");
+    assert_eq!(registry.ids(), vec![PORTAL_ID, PORTAL_B_ID]);
+    for state in registry.list() {
+        assert_eq!(
+            state.login_state_dto().await.state,
+            "disconnected",
+            "портал {}",
+            state.portal_id()
+        );
+    }
 
     // И `spawn_workers` тоже возвращается немедленно: хост зовёт его ДО
     // биндинга порта, и медленная сеть не имеет права задерживать старт.
     let started = std::time::Instant::now();
-    forge_bitrix::spawn_workers(&state).await;
+    forge_bitrix::spawn_workers(&registry).await;
     assert!(
         started.elapsed() < Duration::from_millis(500),
         "spawn_workers обязан возвращаться сразу"
     );
 
-    forge_bitrix::shutdown(&state).await;
+    forge_bitrix::shutdown(&registry).await;
 }
 
 /// `shutdown` идемпотентна: хост зовёт её из обработчика сигнала, а тот может
@@ -711,12 +870,12 @@ async fn test_shutdown_is_idempotent() {
         .await;
     assert!(!h.state.shutdown.is_cancelled());
 
-    forge_bitrix::shutdown(&h.state).await;
+    h.shutdown().await;
     assert!(h.state.shutdown.is_cancelled());
     assert!(h.state.workers.lock().await.is_empty());
 
     for attempt in 2..=3 {
-        tokio::time::timeout(Duration::from_secs(2), forge_bitrix::shutdown(&h.state))
+        tokio::time::timeout(Duration::from_secs(2), h.shutdown())
             .await
             .unwrap_or_else(|_| panic!("shutdown #{attempt} завис"));
     }
@@ -732,22 +891,70 @@ async fn test_a_broken_config_does_not_break_init() {
     let path = tempdir.path().join("bitrix.toml");
     std::fs::write(&path, "this is ] not [ toml").unwrap();
 
-    let cfg = BitrixConfig {
-        cache_dir: tempdir.path().join("cache"),
-        ..BitrixConfig::load_from_file(&path)
-    };
-    let state = forge_bitrix::init(cfg).expect("битый конфиг не должен ронять init");
+    // Читается тем же кодом, что и в бою (`BitrixRootConfig::load_from_file`),
+    // — иначе тест доказывал бы устойчивость не той функции: неразбираемый
+    // TOML не даёт ни общих настроек, ни списка `[[portals]]`, и обе половины
+    // обязаны честно упасть на дефолты.
+    let mut root = BitrixRootConfig::load_from_file(&path);
+    root.shared.cache_dir = tempdir.path().join("cache");
+    root.shared.prompts_path = tempdir.path().join("prompts.json");
+    root.shared.claude_cli_path = tempdir.path().join("no-such-claude");
+
+    let registry = forge_bitrix::init(root).expect("битый конфиг не должен ронять init");
+    assert!(root_has_no_portals(&registry), "битый файл не даёт порталов");
+    let state = registry.primary();
     assert_eq!(state.login_state_dto().await.state, "not_configured");
     assert_eq!(state.config.rate_limit_rps, 2);
-    forge_bitrix::shutdown(&state).await;
+    forge_bitrix::shutdown(&registry).await;
+}
+
+/// Реестр держит только пустой слот: порталов в файле не нашлось.
+///
+/// Именно слот, а не пустой список: список слотов не бывает пуст (см. шапку
+/// `plugins/bitrix/src/registry.rs`), и «нет порталов» выражается ровно так.
+fn root_has_no_portals(registry: &Arc<B24Registry>) -> bool {
+    registry.len() == 1 && registry.connected().is_empty()
 }
 
 // ---------------------------------------------------------------------------
 // WebSocket.
 // ---------------------------------------------------------------------------
 
-/// Первый кадр после апгрейда — `login_state`: клиенту не нужно ждать
-/// события, чтобы отрисовать экран подключения.
+/// Читает кадры, пока не встретит кадр типа `want`.
+///
+/// Отдельный помощник появился вместе с мультипортальностью и не косметика:
+/// снапшот соединения — это `login_state` КАЖДОГО слота плюс служебный кадр
+/// `portals`, поэтому «прочитать один кадр и посмотреть на него» больше не
+/// работает. Разбирать порядок кадров в каждом тесте значило бы прибивать
+/// тесты к числу порталов стенда.
+async fn next_frame_of<S>(ws: &mut S, want: &str) -> Value
+where
+    S: futures_util::Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
+{
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    while std::time::Instant::now() < deadline {
+        let next = tokio::time::timeout(Duration::from_secs(3), ws.next())
+            .await
+            .unwrap_or_else(|_| panic!("кадр {want} не пришёл"))
+            .expect("поток закрылся")
+            .expect("ошибка чтения");
+        let Message::Text(text) = next else {
+            continue;
+        };
+        let v: Value = serde_json::from_str(&text).expect("кадр обязан быть JSON");
+        if v["type"] == want {
+            return v;
+        }
+    }
+    panic!("кадр {want} не пришёл за 3 с");
+}
+
+/// Снапшот соединения: `login_state` каждого слота и строка вкладок.
+///
+/// Первым кадром идёт именно `login_state` — клиенту не нужно ждать события,
+/// чтобы отрисовать экран подключения. У ещё не занятого слота `portal_id`
+/// служебный (`_vacant`): пустая строка была бы неотличима от «поле забыли
+/// заполнить», а фронт различает вкладки именно по этому полю.
 #[tokio::test]
 async fn test_ws_first_frame_is_login_state() {
     let h = start_harness().await;
@@ -766,8 +973,19 @@ async fn test_ws_first_frame_is_login_state() {
     let v: Value = serde_json::from_str(&text).unwrap();
     assert_eq!(v["type"], "login_state");
     assert_eq!(v["state"], "not_configured");
+    assert_eq!(v["portal_id"], "_vacant", "кадр без адреса портала: {v}");
 
-    forge_bitrix::shutdown(&h.state).await;
+    // И следом — строка вкладок, под служебным адресом самого сокета: она
+    // относится к реестру целиком, а не к какому-то одному порталу.
+    let portals = next_frame_of(&mut ws, "portals").await;
+    assert_eq!(portals["portal_id"], "_socket", "{portals}");
+    assert_eq!(
+        portals["portals"].as_array().map(Vec::len),
+        Some(0),
+        "пустой слот вкладкой не считается: {portals}"
+    );
+
+    h.shutdown().await;
 }
 
 /// Событие из broadcast доезжает до клиента, а битый входящий кадр НЕ рвёт
@@ -779,10 +997,8 @@ async fn test_ws_delivers_events_and_survives_garbage() {
         .await
         .unwrap();
 
-    // Съедаем первый кадр (login_state).
-    let _ = tokio::time::timeout(Duration::from_secs(3), ws.next())
-        .await
-        .expect("нет первого кадра");
+    // Съедаем снапшот (login_state слота и строка вкладок).
+    let _ = next_frame_of(&mut ws, "portals").await;
 
     // Мусор от клиента: сервер обязан его проигнорировать.
     ws.send(Message::Text("{\"type\":\"who-knows\"}".into()))
@@ -795,19 +1011,10 @@ async fn test_ws_delivers_events_and_survives_garbage() {
     // Переход состояния — событие в broadcast.
     h.state.set_login(LoginFlow::Checking).await;
 
-    let frame = tokio::time::timeout(Duration::from_secs(3), ws.next())
-        .await
-        .expect("кадр не пришёл — мусор порвал соединение")
-        .expect("поток закрылся")
-        .expect("ошибка чтения");
-    let Message::Text(text) = frame else {
-        panic!("ожидался текстовый кадр");
-    };
-    let v: Value = serde_json::from_str(&text).unwrap();
-    assert_eq!(v["type"], "login_state");
-    assert_eq!(v["state"], "checking");
+    let v = next_frame_of(&mut ws, "login_state").await;
+    assert_eq!(v["state"], "checking", "мусор порвал соединение? {v}");
 
-    forge_bitrix::shutdown(&h.state).await;
+    h.shutdown().await;
 }
 
 /// Ping/pong держит соединение живым ДОЛЬШЕ idle-таймаута.
@@ -856,7 +1063,7 @@ async fn test_ws_ping_pong_outlives_the_idle_timeout() {
         .expect("ошибка чтения");
     assert!(matches!(frame, Message::Text(_)));
 
-    forge_bitrix::shutdown(&h.state).await;
+    h.shutdown().await;
 }
 
 /// Молчащий клиент закрывается по idle-таймауту — иначе повисшие вкладки
@@ -893,7 +1100,7 @@ async fn test_ws_closes_a_silent_client_by_idle() {
     .expect("сервер не закрыл молчащее соединение");
     assert!(closed);
 
-    forge_bitrix::shutdown(&h.state).await;
+    h.shutdown().await;
 }
 
 /// `shutdown` закрывает живые WS-соединения, а не оставляет их висеть до
@@ -908,7 +1115,7 @@ async fn test_ws_closes_on_shutdown() {
         .await
         .expect("нет первого кадра");
 
-    forge_bitrix::shutdown(&h.state).await;
+    h.shutdown().await;
 
     let closed = tokio::time::timeout(Duration::from_secs(3), async {
         while let Some(msg) = ws.next().await {
@@ -934,11 +1141,9 @@ async fn test_ws_broadcasts_to_every_client() {
     let (mut a, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
     let (mut b, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
 
-    for ws in [&mut a, &mut b] {
-        let _ = tokio::time::timeout(Duration::from_secs(3), ws.next())
-            .await
-            .expect("нет первого кадра");
-    }
+    // Снапшот целиком: он заканчивается строкой вкладок.
+    let _ = next_frame_of(&mut a, "portals").await;
+    let _ = next_frame_of(&mut b, "portals").await;
 
     h.state.set_login(LoginFlow::Checking).await;
 
@@ -955,7 +1160,202 @@ async fn test_ws_broadcasts_to_every_client() {
         assert_eq!(v["state"], "checking", "клиент {name}");
     }
 
-    forge_bitrix::shutdown(&h.state).await;
+    h.shutdown().await;
+}
+
+// ---------------------------------------------------------------------------
+// Мультипортальность ПО ПРОВОДУ.
+//
+// Всё, что ниже, до мультипортальности проверять было не на чем: состояние
+// выбиралось в момент сборки роутера, а сокет знал ровно один портал. Юнит-
+// тесты внутри плагина покрывают экстрактор и фан-ин `oneshot`'ом; здесь
+// важно, что то же самое работает через НАСТОЯЩИЙ заголовок и НАСТОЯЩИЙ
+// WS-апгрейд.
+// ---------------------------------------------------------------------------
+
+/// Стенд с ДВУМЯ порталами.
+async fn start_two_portals() -> Harness {
+    let h = start_harness_opts(Opts {
+        portals: vec![webhook(), webhook_b()],
+        ..Opts::default()
+    })
+    .await;
+    assert_eq!(
+        h.registry.ids(),
+        vec![PORTAL_ID, PORTAL_B_ID],
+        "порядок слотов — это порядок вкладок"
+    );
+    h
+}
+
+/// `X-Forge-Portal` выбирает состояние на КАЖДЫЙ запрос.
+///
+/// Три ветки резолва разом, и каждая — отдельное решение, которое легко
+/// случайно отменить:
+///
+/// 1. адресный запрос уходит в НАЗВАННЫЙ портал;
+/// 2. запрос без заголовка — в ПЕРВЫЙ слот (а не в первый подключённый:
+///    иначе на свежей установке `/status` отвечал бы 503 вместо
+///    `not_configured`, то есть панель не подключалась бы вовсе);
+/// 3. неизвестный `id` — 404, а не молчаливый сполз на первый портал.
+///    Сползание означало бы, что закрытая в соседнем окне вкладка продолжает
+///    «работать», показывая ЧУЖУЮ переписку под своим именем.
+#[tokio::test]
+async fn test_the_portal_header_picks_the_state_over_the_wire() {
+    let h = start_two_portals().await;
+    let client = reqwest::Client::new();
+
+    // Состояния разведены НАМЕРЕННО: одинаковые не отличили бы «выбрали тот
+    // портал» от «выбрали любой».
+    h.portal(PORTAL_ID)
+        .set_login(LoginFlow::Throttled {
+            retry_after_secs: Some(11),
+        })
+        .await;
+    h.portal(PORTAL_B_ID)
+        .set_login(LoginFlow::ScopeMissing {
+            error: Some("у вебхука нет права im".into()),
+        })
+        .await;
+
+    for (portal, want) in [(PORTAL_ID, "throttled"), (PORTAL_B_ID, "scope_missing")] {
+        let resp = client
+            .get(format!("{}/api/bitrix/status", h.base()))
+            .header("x-forge-portal", portal)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+        let text = resp.text().await.unwrap();
+        let body: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(body["login"]["state"], want, "портал {portal}");
+        // Адресный ответ не проговаривается ни секретом, ни хостом.
+        assert_no_secret_anywhere(&text, portal);
+    }
+
+    // Без заголовка — первый слот.
+    let body: Value = reqwest::get(format!("{}/api/bitrix/status", h.base()))
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        body["login"]["state"], "throttled",
+        "фолбэк обязан отдавать первый слот: {body}"
+    );
+
+    // Неизвестный портал — 404, а не фолбэк.
+    let resp = client
+        .get(format!("{}/api/bitrix/status", h.base()))
+        .header("x-forge-portal", "no-such-portal")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        404,
+        "неизвестный портал обязан быть 404, а не молчаливым фолбэком"
+    );
+
+    h.shutdown().await;
+}
+
+/// ОДИН сокет несёт кадры ВСЕХ порталов, каждый со своим `portal_id`.
+///
+/// До Ф5 сокет знал один портал, и второй молчал бы в открытой панели. Кадр
+/// без адреса здесь так же вреден, как отсутствующий: фронт маршрутизирует
+/// ленту именно по `portal_id`.
+#[tokio::test]
+async fn test_ws_carries_every_portal_with_its_id() {
+    let h = start_two_portals().await;
+    let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{}/ws/bitrix", h.addr))
+        .await
+        .expect("WS-апгрейд обязан пройти");
+
+    // Снапшот: по кадру `login_state` на каждый слот, потом строка вкладок.
+    let mut seen: Vec<String> = Vec::new();
+    for _ in 0..2 {
+        let v = next_frame_of(&mut ws, "login_state").await;
+        seen.push(v["portal_id"].as_str().unwrap_or_default().to_string());
+        assert_eq!(v["state"], "disconnected", "{v}");
+    }
+    seen.sort();
+    assert_eq!(seen, vec![PORTAL_B_ID, PORTAL_ID], "снапшот пропустил портал");
+
+    let portals = next_frame_of(&mut ws, "portals").await;
+    let text = serde_json::to_string(&portals).unwrap();
+    assert_eq!(portals["portal_id"], "_socket");
+    assert_eq!(portals["portals"].as_array().map(Vec::len), Some(2), "{text}");
+    assert_no_secret_anywhere(&text, "ws/portals");
+
+    // Переход состояния ОДНОГО портала приезжает под ЕГО адресом — и не
+    // выдаёт себя за соседний.
+    h.portal(PORTAL_B_ID).set_login(LoginFlow::Checking).await;
+    let v = next_frame_of(&mut ws, "login_state").await;
+    assert_eq!(v["portal_id"], PORTAL_B_ID, "{v}");
+    assert_eq!(v["state"], "checking", "{v}");
+
+    h.shutdown().await;
+}
+
+/// `GET /api/bitrix/portals` — список вкладок наружу, и в нём НЕТ ни секрета,
+/// ни хоста портала.
+///
+/// Тот же инвариант, что у `/status`, но по другому каналу: список собирается
+/// из `PortalConfig`, где вебхук лежит рядом с `id` и `title`, — то есть ровно
+/// в том месте, где новое поле утекает легче всего.
+#[tokio::test]
+async fn test_the_portals_list_never_leaks_a_webhook() {
+    let h = start_two_portals().await;
+
+    let resp = reqwest::get(format!("{}/api/bitrix/portals", h.base()))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let text = resp.text().await.unwrap();
+    assert_no_secret_anywhere(&text, "portals");
+    // Секрет второго портала — тоже: страж знает только про первый.
+    assert!(!text.contains(CODE_B), "код второго портала в списке: {text}");
+    assert!(!text.contains(PORTAL_B), "хост второго портала в списке: {text}");
+
+    let body: Value = serde_json::from_str(&text).unwrap();
+    let ids: Vec<&str> = body["portals"]
+        .as_array()
+        .expect("portals — массив")
+        .iter()
+        .map(|p| p["id"].as_str().unwrap_or_default())
+        .collect();
+    assert_eq!(ids, vec![PORTAL_ID, PORTAL_B_ID], "{text}");
+
+    h.shutdown().await;
+}
+
+/// Два портала не пересекаются НИ ОДНИМ файлом на диске.
+///
+/// Проверка по проводу невозможна в принципе — это дисковый инвариант, — но
+/// собрать оба состояния и сравнить пути можно только там, где они существуют
+/// одновременно. Одинаковые `dialog_id`/`message_id` на двух порталах —
+/// обычное дело (нумерация чатов у каждого портала своя), и общий каталог
+/// кэша означал бы, что вложение из одного портала показывается в другом.
+#[tokio::test]
+async fn test_two_portals_share_no_files_on_disk() {
+    let h = start_two_portals().await;
+
+    let a = h.portal(PORTAL_ID);
+    let b = h.portal(PORTAL_B_ID);
+
+    assert_ne!(a.config.cache_dir, b.config.cache_dir, "общий кэш медиа");
+    assert_ne!(a.config.prompts_path, b.config.prompts_path, "общие разборы");
+    assert!(
+        !a.config.cache_dir.starts_with(&b.config.cache_dir)
+            && !b.config.cache_dir.starts_with(&a.config.cache_dir),
+        "каталог одного портала не должен лежать внутри другого: {} и {}",
+        a.config.cache_dir.display(),
+        b.config.cache_dir.display()
+    );
+
+    h.shutdown().await;
 }
 
 // ---------------------------------------------------------------------------
@@ -1024,7 +1424,7 @@ async fn test_upload_rejects_before_reading_the_body() {
     assert!(text.starts_with("HTTP/1.1 409"), "ожидался 409: {text}");
     assert!(text.contains("\"not_authorized\""), "{text}");
 
-    forge_bitrix::shutdown(&h.state).await;
+    h.shutdown().await;
 }
 
 /// Стриминговая загрузка без `Content-Length` (`Transfer-Encoding: chunked`) —
@@ -1048,7 +1448,7 @@ async fn test_upload_chunked_without_content_length_is_411() {
     assert!(text.starts_with("HTTP/1.1 411"), "ожидался 411: {text}");
     assert!(text.contains("\"length_required\""), "{text}");
 
-    forge_bitrix::shutdown(&h.state).await;
+    h.shutdown().await;
 }
 
 /// `Content-Length` больше лимита ⇒ `413` ДО чтения тела.
@@ -1080,7 +1480,7 @@ async fn test_upload_over_limit_is_413_before_reading_the_body() {
     );
     assert!(h.state.uploads.lock().await.is_empty());
 
-    forge_bitrix::shutdown(&h.state).await;
+    h.shutdown().await;
 }
 
 /// Happy path по проводу: файл принят, `upload_id` выдан, `.part` лежит на
@@ -1123,7 +1523,7 @@ async fn test_upload_stages_a_unicode_name_over_the_wire() {
     assert_eq!(std::fs::read(&staged).unwrap(), payload);
     assert_eq!(h.state.uploads.lock().await.len(), 1);
 
-    forge_bitrix::shutdown(&h.state).await;
+    h.shutdown().await;
 }
 
 /// СТРАЖ ИСКЛЮЧЕНИЯ CSRF: `POST /api/bitrix/upload` обязан стоять в

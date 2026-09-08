@@ -612,7 +612,7 @@ dependencies = [
 
 [[package]]
 name = "devforge"
-version = "0.1.73"
+version = "0.1.74"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -622,6 +622,7 @@ dependencies = [
  "bytes",
  "chrono",
  "echo-host-api",
+ "forge-atomic",
  "forge-bitrix",
  "forge-echo",
  "forge-meet",

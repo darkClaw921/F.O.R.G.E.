@@ -361,6 +361,15 @@ function buildScope(d, cfg, api, s, onSaved) {
     hint.textContent = SCOPE_HINT;
     box.appendChild(hint);
 
+    // ОТКУДА БЕРЁТСЯ СОХРАНЁННЫЙ ВЫБОР. По умолчанию — из двух плоских ключей
+    // панели. Площадка, у которой настройки ПЕР-ПОРТАЛЬНЫЕ (Битрикс24: у
+    // каждого портала свои `DIALOG_ID`), подставляет свой `scopeInitial` —
+    // прочитать её карту прямо здесь было бы можно только протащив портал
+    // сквозь общий на три панели модуль, который про порталы не знает вовсе.
+    const initial = (typeof a.scopeInitial === 'function')
+        ? (a.scopeInitial(s) || {})
+        : { groups: s[sc.kindsKey], peers: s[sc.peersKey] };
+
     const picker = buildPeerPicker({
         doc: d,
         classPrefix: 'voice-scope',
@@ -368,8 +377,8 @@ function buildScope(d, cfg, api, s, onSaved) {
         peersTitle: sc.peersTitle,
         searchPlaceholder: sc.searchPlaceholder,
         searchAria: sc.searchAria,
-        initialGroups: Array.isArray(s[sc.kindsKey]) ? s[sc.kindsKey] : [],
-        initialPeers: Array.isArray(s[sc.peersKey]) ? s[sc.peersKey] : [],
+        initialGroups: Array.isArray(initial.groups) ? initial.groups : [],
+        initialPeers: Array.isArray(initial.peers) ? initial.peers : [],
         loadGroups: typeof a.listScopeGroups === 'function'
             ? () => a.listScopeGroups() : null,
         loadPeers: typeof a.listScopePeers === 'function'
@@ -420,10 +429,15 @@ function buildScope(d, cfg, api, s, onSaved) {
         // Списки уходят ЦЕЛИКОМ — снять галочку иначе нечем; уходят и
         // выбранные, но не загруженные id, иначе форма молча вычёркивала бы
         // беседы, до которых не дошёл список.
-        const payload = {
-            [sc.kindsKey]: picker.groups(),
-            [sc.peersKey]: picker.peers(),
-        };
+        //
+        // Пер-портальная площадка собирает тело сама (`scopePayload`): её два
+        // поля лежат не в корне настроек, а в записи ВЫБРАННОГО портала.
+        const payload = (typeof a.scopePayload === 'function')
+            ? a.scopePayload(picker.groups(), picker.peers())
+            : {
+                [sc.kindsKey]: picker.groups(),
+                [sc.peersKey]: picker.peers(),
+            };
         try {
             const updated = await updateUserSettings(payload);
             ok.style.display = '';

@@ -67,7 +67,7 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Path, RawQuery, State};
+use axum::extract::{Path, RawQuery};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
@@ -75,8 +75,10 @@ use serde_json::json;
 
 use crate::api::B24Client;
 use crate::dto;
+use crate::registry::B24Registry;
 use crate::routes::dialogs::{map_portal_error, query_i64, query_str, require_ready};
 use crate::routes::error::ApiError;
+use crate::routes::Portal;
 use crate::state::B24State;
 use crate::tasks::{self, ActionMatrix, TaskDto};
 use crate::ws::protocol::B24ServerMsg;
@@ -175,7 +177,7 @@ pub struct TaskActionResp {
 /// у `matchit` приоритетнее параметра, но полагаться на порядок объявления
 /// нельзя — тест `the_counters_route_is_not_shadowed_by_the_id_route`
 /// фиксирует поведение.
-pub fn router() -> Router<Arc<B24State>> {
+pub fn router() -> Router<Arc<B24Registry>> {
     Router::new()
         .route("/api/bitrix/tasks", get(get_tasks))
         .route("/api/bitrix/tasks/counters", get(get_task_counters))
@@ -287,7 +289,7 @@ pub fn format_portal_date(now: i64) -> String {
 /// `409 not_authorized`, `503 not_connected`, `400 invalid_input` (мусор в
 /// числовых параметрах), плюс ошибки портала.
 pub async fn get_tasks(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     RawQuery(raw): RawQuery,
 ) -> Result<Json<TasksResp>, ApiError> {
     // Ступени 1–2. Разбор параметров — ПОСЛЕ них и только после них.
@@ -356,7 +358,7 @@ pub async fn get_tasks(
 /// `409 not_authorized`, `503 not_connected`, `404 unknown_task`, плюс ошибки
 /// портала.
 pub async fn get_task(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path(id): Path<String>,
 ) -> Result<Json<TaskDto>, ApiError> {
     let client = require_ready(&state).await?;
@@ -376,7 +378,7 @@ pub async fn get_task(
 ///
 /// `409 not_authorized`, `503 not_connected`, плюс ошибки портала.
 pub async fn get_task_counters(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
 ) -> Result<Json<TaskCountersResp>, ApiError> {
     let client = require_ready(&state).await?;
     let now = dto::now_unix();
@@ -434,7 +436,7 @@ pub async fn get_task_counters(
 /// `404 unknown_task`, `400 invalid_input`, `501 method_unavailable`, плюс
 /// ошибки портала (`ACCESS_DENIED` → `409 send_forbidden`).
 pub async fn post_task_action(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path((id, action)): Path<(String, String)>,
 ) -> Result<Json<TaskActionResp>, ApiError> {
     let client = require_ready(&state).await?;

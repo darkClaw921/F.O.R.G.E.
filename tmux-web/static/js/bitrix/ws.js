@@ -15,10 +15,34 @@
 // Контракт кадров — plugins/bitrix/src/ws/protocol.rs. Константа
 // SERVER_FRAMES ниже обязана совпадать с тестом
 // `server_frame_tags_are_frozen` в том же файле.
+//
+// Соединение ОДНО на все порталы (мультипортальность, Ф5): в каждом кадре
+// сервер шлёт `portal_id`, по которому фронт решает, рисовать событие в
+// открытой ленте или поднять бейдж соседней вкладки. Служебные кадры сокета
+// (`ping`, `portals`) приходят с зарезервированным `_socket`, кадры ещё не
+// подключённого слота — с `_vacant`; пустым это поле не бывает никогда.
+//
+// РЕШЕНИЕ ПРИНИМАЕТСЯ ЗДЕСЬ, А НЕ В main.js (Ф8.4). Маршрутизация — свойство
+// транспорта: кадр чужого портала не должен доходить до обработчика ленты
+// ВООБЩЕ, иначе «не рисовать» пришлось бы помнить в каждом из двадцати
+// обработчиков, и один забытый давал бы чужое сообщение в открытом чате.
+// Чужие кадры уходят в один-единственный обработчик `foreign` (main.js);
+// чистая функция решения — `frameRoute`, она же и покрывается node-тестом.
 
 import { withWsToken } from '../core/auth.js';
 import { createWsClient } from '../messenger/ws-core.js';
+import { activePortal } from './api.js';
 import { b24State } from './state.js';
+
+/**
+ * Зарезервированные значения `portal_id` (protocol.rs).
+ *
+ * Настоящий идентификатор портала подчёркиваний не содержит по построению
+ * (нормализация — plugins/bitrix/src/routes/portal.rs), поэтому коллизии с
+ * реальным порталом нет и быть не может.
+ */
+export const SOCKET_PORTAL = '_socket';
+export const VACANT_PORTAL = '_vacant';
 
 /** Лестница реконнекта, мс. Последнее значение повторяется. */
 export const WS_BACKOFFS_MS = [1000, 2000, 5000, 10000];
@@ -42,7 +66,12 @@ export const PING_INTERVAL_MS = 15000;
  * будущем потребовало бы правки фронта, а сегодня даёт шум «no handler».
  */
 export const SERVER_FRAMES = [
-    'login_state', 'dialogs_patch', 'message_new', 'message_update',
+    // `portals` стоит сразу за `login_state`: оба описывают не ленту, а саму
+    // панель — состояние подключения и строку вкладок порталов
+    // (мультипортальность, Ф5). Обработчики им пишет Ф8, здесь только
+    // контракт; порядок побайтно сверяет с protocol.rs
+    // bitrix_contract.test.mjs.
+    'login_state', 'portals', 'dialogs_patch', 'message_new', 'message_update',
     'message_delete', 'reaction', 'typing', 'read', 'counters', 'presence',
     'task_update', 'upload_progress', 'download_progress',
     // Расшифровка голосовых (ГС-Ф3) — сразу за `download_progress`: она
@@ -82,8 +111,62 @@ function callHandler(name, arg) {
     }
 }
 
+/**
+ * Куда адресован кадр — ЧИСТАЯ функция, покрывается node-тестом без сокета.
+ *
+ * Сокет ОДИН на все порталы, и в каждом кадре сервер шлёт `portal_id`. Решений
+ * ровно четыре:
+ *
+ *   `socket`  — служебный кадр сокета (`ping`, `portals`): портала у него нет
+ *               по существу, и он идёт в обработчики как есть;
+ *   `active`  — кадр открытого портала: рисуется в ленте и списке;
+ *   `foreign` — кадр СОСЕДНЕЙ вкладки: в рендер НЕ идёт, а поднимает её бейдж
+ *               и (для нового сообщения) даёт тост с префиксом названия;
+ *   `invalid` — кадра без `portal_id` быть не может: сервер собирает конверт
+ *               так, что поле обязательно (`every_frame_on_the_wire_carries_a_
+ *               portal_id` в protocol.rs). Значит это ошибка протокола, и
+ *               рисовать такой кадр в активный портал НЕЛЬЗЯ — он мог прийти
+ *               откуда угодно.
+ *
+ * Пустой `activeId` (первые миллисекунды жизни панели, до ответа
+ * `GET /api/bitrix/portals`) означает «портал выбирает сервер»: все кадры
+ * считаются своими. Иначе панель молчала бы на старте — ровно тогда, когда
+ * показывает первый экран.
+ *
+ * Слот `_vacant` (портал ещё не подключён) — тоже `active`, если своего
+ * портала нет: его `login_state` и есть то, что рисует экран подключения.
+ *
+ * @param {object} msg — кадр целиком
+ * @param {string} activeId — активный портал (пусто — не выбран)
+ * @returns {'socket'|'active'|'foreign'|'invalid'}
+ */
+export function frameRoute(msg, activeId) {
+    const pid = (msg && typeof msg.portal_id === 'string') ? msg.portal_id : '';
+    if (!pid) return 'invalid';
+    if (pid === SOCKET_PORTAL) return 'socket';
+    const active = String(activeId || '');
+    if (!active) return 'active';
+    if (pid === VACANT_PORTAL) return 'active';
+    return pid === active ? 'active' : 'foreign';
+}
+
 /** Раскладывает кадр по обработчикам панели. */
 function onFrame(msg) {
+    const route = frameRoute(msg, activePortal());
+    if (route === 'invalid') {
+        // Не молча: кадр без адреса — расхождение фронта и сервера, и молчание
+        // здесь дало бы «панель иногда не обновляется» без единого следа.
+        console.warn('[b24-ws] кадр без portal_id — не рендерим', msg && msg.type, msg);
+        return;
+    }
+    if (route === 'foreign') {
+        // ЕДИНСТВЕННЫЙ вход кадров соседних вкладок. В ленту и список они не
+        // попадают ни при каких условиях: их данные принадлежат ДРУГОМУ
+        // порталу, и одинаковый `dialog_id` у двух порталов означает разные
+        // чаты.
+        callHandler('foreign', msg);
+        return;
+    }
     if (msg.type === 'ping') {
         // Ответ `pong` уже отправлен ядром; панели интересен лишь факт
         // живого соединения.

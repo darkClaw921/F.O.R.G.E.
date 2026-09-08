@@ -709,6 +709,10 @@ async fn run_worker(
         // Каденс выбирается ПО ЧИСЛУ ПОДПИСЧИКОВ (Р4), а idle-пауза вдобавок
         // прерывается их появлением: панель, открытая сразу после ухода в
         // idle, иначе ждала бы первое событие все двадцать секунд.
+        //
+        // Подписчики считаются У ЭТОГО ПОРТАЛА, хотя сокет один на все:
+        // соединение подписывается на broadcast каждого портала отдельно, и
+        // счётчик остаётся пер-портальным (см. `B24State::ws_subscribers`).
         let subscribers = state.ws_subscribers();
         let delay = next_interval(&state.poll, page.has_more, subscribers);
         let alive = if subscribers == 0 {

@@ -189,6 +189,31 @@ impl Stand {
         (code, json)
     }
 
+    /// POST с телом — для роутов, которым нужен не пустой `{}`.
+    async fn post_json(&self, uri: &str, body: Value) -> (StatusCode, Value) {
+        let resp = self
+            .app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(uri)
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let code = resp.status();
+        let bytes = axum::body::to_bytes(resp.into_body(), 1 << 22).await.unwrap();
+        let json = if bytes.is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null)
+        };
+        (code, json)
+    }
+
     async fn post(&self, uri: &str) -> (StatusCode, Value) {
         let resp = self
             .app
@@ -729,4 +754,111 @@ async fn every_new_route_is_reachable_and_declared() {
     // POST на тот же адрес саммари — другой обработчик, и он существует.
     let (code, _) = s.post(&format!("/api/meet/meetings/{}/summary", s.id)).await;
     assert_ne!(code, StatusCode::METHOD_NOT_ALLOWED);
+}
+
+/// Живой кейс 07.09.2026 (Телемост, f61cfa7a…): запись остановили кнопкой,
+/// пост-обработка дошла до конца — на диске звук, транскрипт и саммари, — а
+/// статус после этого стал `cancelled`. Пересчёт саммари отвечал 409
+/// `invalid_state`, хотя данные лежали рядом.
+#[tokio::test]
+async fn a_cancelled_meeting_with_a_transcript_can_be_resummarised() {
+    // Отмена приходит ВО ВРЕМЯ пост-обработки — ровно так было в живом кейсе:
+    // из терминального `ready` отмена запрещена, и правильно.
+    let s = Stand::at(MeetStatus::Summarizing).await;
+    mocks::mock_claude_success(&s.bin, "claude", "## Резюме после отмены").unwrap();
+
+    // Пути артефактов проставлены — так их оставляет прошедшая пост-обработка.
+    repo::meetings::set_paths(
+        &s.state,
+        &s.id,
+        Some(&s.dir.join("audio.m4a").display().to_string()),
+        Some(&s.dir.join("transcript.md").display().to_string()),
+        Some(&s.dir.join("summary.md").display().to_string()),
+    )
+    .await
+    .unwrap();
+    repo::meetings::set_status(&s.state, &s.id, MeetStatus::Cancelled, Some("user_cancel"))
+        .await
+        .unwrap();
+
+    let (code, body) = s.post(&format!("/api/meet/meetings/{}/summary", s.id)).await;
+    assert_eq!(code, StatusCode::OK, "отменённая встреча с транскриптом: {body}");
+    assert_eq!(body["from"], "summarizing");
+
+    assert_eq!(
+        s.wait_summary(SummaryStatus::Ready).await,
+        SummaryStatus::Ready,
+        "саммари не досчиталось"
+    );
+    let md = std::fs::read_to_string(s.dir.join("summary.md")).unwrap();
+    assert!(md.contains("Резюме после отмены"), "{md}");
+}
+
+/// Обратная сторона: отмена на пустой комнате не оставляет транскрипта, и
+/// суммировать нечего. Отказ должен быть внятным — с кодом про недостающий
+/// вход, а не падением внутри пайплайна.
+#[tokio::test]
+async fn a_cancelled_meeting_without_a_transcript_refuses_with_a_named_code() {
+    let s = Stand::at(MeetStatus::Summarizing).await;
+    mocks::mock_claude_success(&s.bin, "claude", "## Резюме").unwrap();
+    repo::meetings::set_status(&s.state, &s.id, MeetStatus::Cancelled, Some("alone_timeout"))
+        .await
+        .unwrap();
+
+    let (code, body) = s.post(&format!("/api/meet/meetings/{}/summary", s.id)).await;
+    assert_eq!(code, StatusCode::CONFLICT, "{body}");
+    assert_eq!(body["error"], "transcript_missing", "{body}");
+}
+
+/// Живой кейс 07.09.2026 (Телемост, f61cfa7a…): встреча записалась и
+/// обработалась, но связи с сообщением у неё не оказалось — кнопка в ленте
+/// показывала «можно записать», а клик заводил новую пустую запись вместо
+/// показа готовой. Привязать существующую встречу к сообщению было нечем.
+#[tokio::test]
+async fn an_existing_meeting_can_be_attached_to_a_message() {
+    let s = Stand::ready().await;
+
+    let (code, body) = s
+        .post_json(
+            &format!("/api/meet/meetings/{}/source", s.id),
+            serde_json::json!({"plugin": "vk", "chat_id": "71297061", "message_id": 213794}),
+        )
+        .await;
+    assert_eq!(code, StatusCode::OK, "{body}");
+    assert_eq!(body["attached"], true);
+    assert_eq!(body["meeting_id"], s.id);
+
+    // Бейдж обязан появиться сразу: кнопка в ленте читает индекс, а не базу.
+    let badge = s
+        .state
+        .badge_of(&forge_meet::db::repo::SourceKey::new("vk", "71297061", 213794))
+        .await;
+    assert!(badge.is_some(), "бейдж не опубликован — кнопка останется пустой");
+}
+
+/// Половина адреса хуже его отсутствия: бейдж повис бы на несуществующем
+/// сообщении, и кнопка вела бы в никуда.
+#[tokio::test]
+async fn attaching_with_an_incomplete_address_is_refused() {
+    let s = Stand::ready().await;
+    let (code, _) = s
+        .post_json(
+            &format!("/api/meet/meetings/{}/source", s.id),
+            serde_json::json!({"plugin": "", "chat_id": "7", "message_id": 1}),
+        )
+        .await;
+    assert_eq!(code, StatusCode::BAD_REQUEST);
+}
+
+/// Привязка к несуществующей встрече — 404, а не тихое создание строки.
+#[tokio::test]
+async fn attaching_to_an_unknown_meeting_is_not_found() {
+    let s = Stand::ready().await;
+    let (code, _) = s
+        .post_json(
+            "/api/meet/meetings/00000000-0000-0000-0000-000000000000/source",
+            serde_json::json!({"plugin": "vk", "chat_id": "7", "message_id": 1}),
+        )
+        .await;
+    assert_eq!(code, StatusCode::NOT_FOUND);
 }

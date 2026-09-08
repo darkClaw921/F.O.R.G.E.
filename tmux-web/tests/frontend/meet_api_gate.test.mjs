@@ -281,8 +281,11 @@ const STATUS_BODY = {
     // в Ф5: `POST /deps/recheck`; в Ф6: `POST /:id/summary` (пересчёт саммари);
     // в Ф8: `DELETE /profile` (сброс постоянного профиля браузера);
     // в Ф16: `GET /cloud/models` и `GET /cloud/balance` (каталог облачных
-    // моделей и остаток средств — ключ остаётся на сервере).
-    eq(API.MEET_ROUTES.length, 25, 'в таблице двадцать пять роутов');
+    // моделей и остаток средств — ключ остаётся на сервере);
+    // в Ф6: `POST /:id/source` (привязать готовую встречу к сообщению —
+    // без неё кнопка в ленте заводит новую пустую запись вместо показа уже
+    // записанной встречи).
+    eq(API.MEET_ROUTES.length, 26, 'в таблице двадцать шесть роутов');
     const seen = new Set();
     for (const r of API.MEET_ROUTES) {
         const sig = `${r.method} ${r.path}`;

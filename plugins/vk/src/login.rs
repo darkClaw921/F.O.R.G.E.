@@ -53,7 +53,10 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use crate::api::error::{VkError, CODE_ACCESS_DENIED, CODE_AUTH_FAILED, CODE_CAPTCHA};
+use crate::api::error::{
+    VkError, CODE_ACCESS_DENIED, CODE_AUTH_FAILED, CODE_CAPTCHA, CODE_FLOOD_CONTROL,
+    CODE_METHOD_QUOTA, RETRY_AFTER_FLOOD_CONTROL, RETRY_AFTER_METHOD_QUOTA,
+};
 use crate::api::methods::{Captcha, USER_FIELDS};
 use crate::api::schema::ProfileRaw;
 use crate::api::{Params, VkClient};
@@ -221,6 +224,35 @@ impl From<&VkError> for LoginError {
                     _ => Self::Vk {
                         message: with_vk_text("VK requires a captcha", *code, msg),
                     },
+                },
+                // Коды 9 и 29 — «слишком часто», а НЕ «токен плохой».
+                // Общий текст «VK rejected the request» читается как отказ по
+                // существу, и человек идёт добывать новый токен вместо того,
+                // чтобы просто подождать. Ведут они в тот же экран
+                // `disconnected`, что и обрыв связи, — действие пользователя
+                // ровно то же (повторить), поэтому вариант `Transport`, а не
+                // отдельное состояние.
+                CODE_FLOOD_CONTROL => Self::Transport {
+                    message: with_vk_text(
+                        &format!(
+                            "VK has temporarily throttled requests from this token (flood control); \
+                             the token itself is fine — wait about {} seconds and press CONNECT again",
+                            RETRY_AFTER_FLOOD_CONTROL
+                        ),
+                        *code,
+                        msg,
+                    ),
+                },
+                CODE_METHOD_QUOTA => Self::Transport {
+                    message: with_vk_text(
+                        &format!(
+                            "the hourly quota of this VK method is spent; the token itself is fine — \
+                             wait up to {} minutes and press CONNECT again",
+                            RETRY_AFTER_METHOD_QUOTA / 60
+                        ),
+                        *code,
+                        msg,
+                    ),
                 },
                 _ => Self::Vk {
                     message: with_vk_text("VK rejected the request", *code, msg),

@@ -55,6 +55,33 @@
 //!
 //! Видимость остаётся ВЫШЕСТОЯЩИМ фильтром: скрытая беседа не разбирается,
 //! даже если попала в скоуп ([`crate::auto::decide`], порядок ступеней).
+//!
+//! # У БИТРИКСА НАСТРОЙКИ ПЕР-ПОРТАЛЬНЫЕ (мультипортальность, Ф7)
+//!
+//! Порталов у панели Битрикс24 может быть несколько, и `DIALOG_ID` у них свои:
+//! `chat7` на одном портале и `chat7` на другом — РАЗНЫЕ чаты. Поэтому белый
+//! список и скоуп живут у Битрикса в карте [`PrefsKeys::portal_prefs`]
+//! (`bitrix_portal_prefs` в файле хоста), ключом которой служит `portal_id`.
+//!
+//! Читается это через [`read_portal`], и правило ровно то же, что у хоста
+//! (`tmux-web/src/user_settings.rs`) и фронта (`js/bitrix/visibility.js`) — три
+//! стороны обязаны совпадать дословно:
+//!
+//!   1. в карте есть запись портала ⇒ читается она;
+//!   2. карта ПУСТА ⇒ читаются ПЛОСКИЕ ключи (состояние до миграции, портал-
+//!      мигрант обязан увидеть свои прежние настройки);
+//!   3. карта непуста, а записи портала нет ⇒ ДЕФОЛТЫ (фильтра нет, скоуп пуст,
+//!      то есть «разбирать везде»).
+//!
+//! **VK И TELEGRAM ЭТОГО НЕ КАСАЕТСЯ.** У них портал один по определению
+//! (аккаунт), карты в [`PrefsKeys`] нет (`portal_prefs: None`), и [`read`] без
+//! портала ведёт себя ровно как раньше. Отдельная функция, а не изменённая
+//! сигнатура [`read`], именно поэтому: вызовы двух работающих панелей не
+//! трогаются вовсе.
+//!
+//! **ТУМБЛЕР `bitrix_voice_autotranscribe` ОСТАЁТСЯ ГЛОБАЛЬНЫМ** и читается из
+//! КОРНЯ файла при любом портале: он не ссылается ни на какой `dialog_id`, и
+//! «разбирать голосовые в Битриксе» — свойство панели, а не портала.
 
 use std::path::{Path, PathBuf};
 
@@ -81,7 +108,37 @@ pub struct PrefsKeys {
     pub scope_kinds: &'static str,
     /// Скоуп авторазбора по беседам (`vk_voice_scope_peers`, …).
     pub scope_peers: &'static str,
+    /// Карта ПЕР-ПОРТАЛЬНЫХ настроек (`bitrix_portal_prefs`) — только у
+    /// Битрикс24, у остальных `None`.
+    ///
+    /// `Option`, а не пустая строка: «панель мультипортальная» — это свойство
+    /// панели, и отсутствие карты должно быть невозможно спутать с опечаткой в
+    /// имени ключа. Имена ПОЛЕЙ внутри записи общие для всех порталов и живут
+    /// в [`PORTAL_FIELDS`].
+    pub portal_prefs: Option<&'static str>,
 }
+
+/// Имена полей ВНУТРИ записи `bitrix_portal_prefs`.
+///
+/// Отличаются от плоских ключей отсутствием префикса панели (`filter_enabled`
+/// против `bitrix_filter_enabled`): внутри записи портала префикс не различал
+/// бы ничего. Порядок полей тот же, что в [`PrefsKeys`], — читать их рядом.
+struct PortalFields {
+    filter_enabled: &'static str,
+    visible_kinds: &'static str,
+    visible_peers: &'static str,
+    scope_kinds: &'static str,
+    scope_peers: &'static str,
+}
+
+/// Поля записи портала — дословно как в `UserSettings::BitrixPortalPrefs`.
+const PORTAL_FIELDS: PortalFields = PortalFields {
+    filter_enabled: "filter_enabled",
+    visible_kinds: "visible_kinds",
+    visible_peers: "visible_peers",
+    scope_kinds: "voice_scope_kinds",
+    scope_peers: "voice_scope_peers",
+};
 
 /// Ключи панели VK.
 pub const VK: PrefsKeys = PrefsKeys {
@@ -91,6 +148,7 @@ pub const VK: PrefsKeys = PrefsKeys {
     visible_peers: "vk_visible_peers",
     scope_kinds: "vk_voice_scope_kinds",
     scope_peers: "vk_voice_scope_peers",
+    portal_prefs: None,
 };
 
 /// Ключи панели Telegram. «Виды» здесь — ПАПКИ аккаунта.
@@ -101,6 +159,7 @@ pub const TELEGRAM: PrefsKeys = PrefsKeys {
     visible_peers: "telegram_visible_dialogs",
     scope_kinds: "telegram_voice_scope_folders",
     scope_peers: "telegram_voice_scope_dialogs",
+    portal_prefs: None,
 };
 
 /// Ключи панели Битрикс24.
@@ -111,6 +170,7 @@ pub const BITRIX: PrefsKeys = PrefsKeys {
     visible_peers: "bitrix_visible_peers",
     scope_kinds: "bitrix_voice_scope_kinds",
     scope_peers: "bitrix_voice_scope_peers",
+    portal_prefs: Some("bitrix_portal_prefs"),
 };
 
 /// Настройки одной панели, которые видит авторазбор.
@@ -244,8 +304,29 @@ pub fn default_path() -> PathBuf {
 }
 
 /// Читает настройки панели. Любой отказ — это [`Prefs::default`].
+///
+/// Портала не знает: для VK и Telegram его и нет, а для Битрикса это чтение
+/// ПЛОСКИХ ключей, то есть состояния портала-мигранта. Панель с несколькими
+/// порталами обязана звать [`read_portal`].
 #[must_use]
 pub fn read(path: &Path, keys: PrefsKeys) -> Prefs {
+    read_portal(path, keys, None)
+}
+
+/// Читает настройки панели для КОНКРЕТНОГО портала (мультипортальность, Ф7).
+///
+/// `portal_id`:
+///
+/// - `None` (или пусто) — поведение [`read`]: плоские ключи, как было всегда.
+///   Именно это читают VK и Telegram, у которых портал один по определению;
+/// - `Some(id)` вместе с [`PrefsKeys::portal_prefs`] — карта пер-портальных
+///   настроек с фолбэком на плоские ключи по правилу из шапки модуля
+///   (запись → пустая карта значит плоские → иначе дефолты).
+///
+/// Тумблер авторазбора читается из КОРНЯ файла при любом портале: он
+/// глобальный.
+#[must_use]
+pub fn read_portal(path: &Path, keys: PrefsKeys, portal_id: Option<&str>) -> Prefs {
     let Ok(raw) = std::fs::read_to_string(path) else {
         return Prefs::default();
     };
@@ -257,14 +338,51 @@ pub fn read(path: &Path, keys: PrefsKeys) -> Prefs {
         );
         return Prefs::default();
     };
+
+    // Тумблер — вне портального разветвления: он один на панель.
+    let autotranscribe = flag(&json, keys.autotranscribe);
+
+    if let Some(record) = portal_record(&json, keys, portal_id) {
+        return Prefs {
+            autotranscribe,
+            filter_enabled: flag(&record, PORTAL_FIELDS.filter_enabled),
+            visible_kinds: list(&record, PORTAL_FIELDS.visible_kinds),
+            visible_peers: list(&record, PORTAL_FIELDS.visible_peers),
+            scope_kinds: list(&record, PORTAL_FIELDS.scope_kinds),
+            scope_peers: list(&record, PORTAL_FIELDS.scope_peers),
+        };
+    }
+
     Prefs {
-        autotranscribe: flag(&json, keys.autotranscribe),
+        autotranscribe,
         filter_enabled: flag(&json, keys.filter_enabled),
         visible_kinds: list(&json, keys.visible_kinds),
         visible_peers: list(&json, keys.visible_peers),
         scope_kinds: list(&json, keys.scope_kinds),
         scope_peers: list(&json, keys.scope_peers),
     }
+}
+
+/// Запись портала, которую нужно читать ВМЕСТО плоских ключей.
+///
+/// `None` означает «читай плоские» и возвращается в двух случаях: портала нет
+/// (VK, Telegram, вызов [`read`]) либо карта пуста, то есть миграция ещё не
+/// случилась. Портал, которого в НЕПУСТОЙ карте нет, получает пустой объект —
+/// это случай 3 из шапки: дефолты, а не чужие настройки.
+fn portal_record(
+    json: &serde_json::Value,
+    keys: PrefsKeys,
+    portal_id: Option<&str>,
+) -> Option<serde_json::Value> {
+    let id = portal_id.map(str::trim).filter(|id| !id.is_empty())?;
+    let map_key = keys.portal_prefs?;
+    let map = json.get(map_key).and_then(serde_json::Value::as_object)?;
+    if map.is_empty() {
+        return None;
+    }
+    Some(map.get(id).cloned().unwrap_or_else(|| {
+        serde_json::Value::Object(serde_json::Map::new())
+    }))
 }
 
 /// Булево поле; всё, что не `true`, — это `false` (как `=== true` во фронте).
@@ -284,7 +402,7 @@ fn list(json: &serde_json::Value, key: &str) -> Vec<String> {
             serde_json::Value::Number(n) => n.to_string(),
             _ => continue,
         };
-        if !s.is_empty() && !out.iter().any(|x| *x == s) {
+        if !s.is_empty() && !out.contains(&s) {
             out.push(s);
         }
     }
@@ -586,6 +704,163 @@ mod tests {
                     "поля {key} нет в user_settings.rs хоста"
                 );
             }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Пер-портальные настройки Битрикс24 (Ф7.3)
+    // -----------------------------------------------------------------------
+
+    /// **ДВА ПОРТАЛА — ДВА РАЗНЫХ РЕШЕНИЯ ПО ОДНОМУ И ТОМУ ЖЕ `DIALOG_ID`.**
+    ///
+    /// Ради этого фаза и затевалась: `chat7` у `acme` и `chat7` у `beta` —
+    /// разные чаты, и скоуп, собранный в одном портале, не имеет права
+    /// отправлять в облако голосовые из другого.
+    #[test]
+    fn two_portals_decide_differently_about_the_same_dialog_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write(
+            dir.path(),
+            r#"{"bitrix_voice_autotranscribe":true,
+                "bitrix_portal_prefs":{
+                  "acme":{"voice_scope_peers":["chat7"]},
+                  "beta":{"voice_scope_peers":["chat9"]}}}"#,
+        );
+
+        let acme = read_portal(&path, BITRIX, Some("acme"));
+        let beta = read_portal(&path, BITRIX, Some("beta"));
+        assert!(acme.autotranscribe && beta.autotranscribe, "тумблер ГЛОБАЛЬНЫЙ");
+        assert!(acme.peer_in_scope("chat7", &["chat"]));
+        assert!(!beta.peer_in_scope("chat7", &["chat"]), "чужой скоуп не действует");
+        assert!(beta.peer_in_scope("chat9", &["chat"]));
+        assert!(!acme.peer_in_scope("chat9", &["chat"]));
+    }
+
+    /// **ФАЙЛ ТОЛЬКО С ПЛОСКИМИ КЛЮЧАМИ — ПОРТАЛ-МИГРАНТ ВИДИТ СВОЁ ПРЕЖНЕЕ.**
+    ///
+    /// Пустая (отсутствующая) карта означает «миграции ещё не было», и
+    /// обновление devforge не имеет права молча снять белый список.
+    #[test]
+    fn a_file_with_only_flat_keys_is_read_by_any_portal() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write(
+            dir.path(),
+            r#"{"bitrix_voice_autotranscribe":true,
+                "bitrix_filter_enabled":true,
+                "bitrix_visible_peers":["chat7"],
+                "bitrix_voice_scope_peers":["chat7"]}"#,
+        );
+        for portal in [None, Some("acme"), Some("beta")] {
+            let p = read_portal(&path, BITRIX, portal);
+            assert!(p.filter_active(), "{portal:?}");
+            assert!(p.peer_visible("chat7", &["chat"]), "{portal:?}");
+            assert!(p.peer_in_scope("chat7", &["chat"]), "{portal:?}");
+        }
+        // Пустая карта читается так же, как её отсутствие.
+        let path = write(
+            dir.path(),
+            r#"{"bitrix_filter_enabled":true,"bitrix_visible_peers":["chat7"],
+                "bitrix_portal_prefs":{}}"#,
+        );
+        assert!(read_portal(&path, BITRIX, Some("acme")).peer_visible("chat7", &["chat"]));
+    }
+
+    /// **ПОРТАЛ, ПОДКЛЮЧЁННЫЙ ПОСЛЕ МИГРАЦИИ, ЧУЖОЙ СПИСОК НЕ НАСЛЕДУЕТ.**
+    ///
+    /// В карте есть кто-то другой ⇒ у нашего портала ДЕФОЛТЫ: фильтра нет,
+    /// скоуп пуст, то есть «разбирать везде». Наследование чужого белого списка
+    /// означало бы `DIALOG_ID` другого портала в фильтре, а при консервативном
+    /// правиле «неизвестное скрыто» — молчащий авторазбор на новом портале.
+    #[test]
+    fn a_portal_added_after_the_migration_starts_clean() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write(
+            dir.path(),
+            r#"{"bitrix_voice_autotranscribe":true,
+                "bitrix_filter_enabled":true,
+                "bitrix_visible_peers":["chat7"],
+                "bitrix_voice_scope_peers":["chat7"],
+                "bitrix_portal_prefs":{"acme":{"visible_peers":["chat7"],
+                                               "filter_enabled":true}}}"#,
+        );
+        let beta = read_portal(&path, BITRIX, Some("beta"));
+        assert!(beta.autotranscribe, "тумблер глобальный и остаётся включённым");
+        assert!(!beta.filter_active(), "чужой фильтр на новый портал не переносится");
+        assert!(!beta.scope_active(), "чужой скоуп тоже");
+        assert!(beta.peer_in_scope("что-угодно", &["chat"]), "пустой скоуп = везде");
+
+        let acme = read_portal(&path, BITRIX, Some("acme"));
+        assert!(acme.filter_active());
+        assert!(acme.peer_visible("chat7", &["chat"]));
+        assert!(!acme.peer_visible("chat9", &["chat"]));
+    }
+
+    /// **VK И TELEGRAM НЕ ЗАТРОНУТЫ.**
+    ///
+    /// Карты у них нет, и `read`/`read_portal` обязаны отдавать плоские ключи
+    /// даже если portal_id зачем-то передали. Иначе одна общая правка тихо
+    /// поменяла бы поведение двух работающих панелей.
+    #[test]
+    fn the_other_panels_ignore_the_portal_argument() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write(
+            dir.path(),
+            r#"{"vk_filter_enabled":true,"vk_visible_peers":["777"],
+                "telegram_filter_enabled":true,"telegram_visible_dialogs":["42"],
+                "bitrix_portal_prefs":{"acme":{"visible_peers":["chat7"]}}}"#,
+        );
+        for portal in [None, Some("acme")] {
+            let vk = read_portal(&path, VK, portal);
+            assert_eq!(vk.visible_peers, vec!["777"], "{portal:?}");
+            let tg = read_portal(&path, TELEGRAM, portal);
+            assert_eq!(tg.visible_peers, vec!["42"], "{portal:?}");
+        }
+        assert_eq!(read(&path, VK).visible_peers, vec!["777"], "старая сигнатура жива");
+        assert!(VK.portal_prefs.is_none() && TELEGRAM.portal_prefs.is_none());
+        assert_eq!(BITRIX.portal_prefs, Some("bitrix_portal_prefs"));
+    }
+
+    /// **ЧУЖИЕ ТИПЫ В КАРТЕ — ЭТО НЕ ПАНИКА И НЕ РАЗБОР ВСЕГО ПОДРЯД.**
+    #[test]
+    fn a_wrongly_typed_portal_map_falls_back_safely() {
+        let dir = tempfile::tempdir().unwrap();
+        for body in [
+            r#"{"bitrix_portal_prefs":42}"#,
+            r#"{"bitrix_portal_prefs":["acme"]}"#,
+            r#"{"bitrix_portal_prefs":{"acme":"да"}}"#,
+            r#"{"bitrix_portal_prefs":{"acme":{"visible_peers":"chat7"}}}"#,
+        ] {
+            let path = write(dir.path(), body);
+            let p = read_portal(&path, BITRIX, Some("acme"));
+            assert!(!p.autotranscribe, "{body}");
+            assert!(!p.filter_active(), "{body}");
+            assert!(p.peer_in_scope("chat7", &["chat"]), "{body}");
+        }
+    }
+
+    /// **ИМЕНА ПОЛЕЙ ЗАПИСИ ПОРТАЛА СОВПАДАЮТ С ХОСТОМ БУКВАЛЬНО.**
+    ///
+    /// Та же защита, что у [`every_key_exists_in_the_host_source`], и по той же
+    /// причине: разъехаться эти строки могут только МОЛЧА.
+    #[test]
+    fn the_portal_record_fields_exist_in_the_host_source() {
+        let host = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tmux-web/src/user_settings.rs");
+        let Ok(src) = std::fs::read_to_string(&host) else {
+            return;
+        };
+        assert!(src.contains("pub bitrix_portal_prefs:"), "карты нет в user_settings.rs");
+        for field in [
+            PORTAL_FIELDS.filter_enabled,
+            PORTAL_FIELDS.visible_kinds,
+            PORTAL_FIELDS.visible_peers,
+            PORTAL_FIELDS.scope_kinds,
+            PORTAL_FIELDS.scope_peers,
+        ] {
+            assert!(
+                src.contains(&format!("pub {field}:")),
+                "поля {field} нет в BitrixPortalPrefs хоста"
+            );
         }
     }
 
