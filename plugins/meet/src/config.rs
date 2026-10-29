@@ -38,6 +38,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::cloud::MASK_CHAR;
+
 // --- Значения по умолчанию ---------------------------------------------------
 
 /// Имя, под которым бот виден участникам встречи.
@@ -191,6 +193,22 @@ pub const DEFAULT_SPEAKER_SECOND_SHARE: f64 = 0.25;
 /// применяется линейная коррекция, мс.
 pub const DEFAULT_DRIFT_THRESHOLD_MS: u64 = 1_000;
 
+/// Пиковая громкость сведённого аудио, ниже которой запись считается пустой,
+/// dBFS.
+///
+/// ГЕЙТ ТИШИНЫ. Живые данные, на которых подобран порог: у встречи, где
+/// медиа-канал не поднялся, все дорожки дали `mean_volume = max_volume =
+/// -91,0 dB` — это пол 16-битной сетки, то есть буквально нули; у встреч с
+/// настоящей речью дорожки давали -23,5 и -31,5 dB. Разрыв в шестьдесят
+/// децибел, поэтому порог посередине промахнуться не может.
+///
+/// Мерится ПИК, а не среднее: встреча, где прозвучала одна фраза за час, имеет
+/// низкое среднее при высоком пике, и ронять её нельзя.
+///
+/// Значение ниже -91 dB ВЫКЛЮЧАЕТ гейт: цифровая тишина перестаёт быть ниже
+/// порога, и провалить проверку не может уже ничто.
+pub const DEFAULT_SILENCE_GATE_DBFS: f64 = -60.0;
+
 /// Окно корреляции «VAD дорожки ↔ DOM-индикатор говорящего», секунды.
 ///
 /// Третья ступень каскада привязки имён ([`crate::bot::attrib`]) сравнивает
@@ -208,7 +226,111 @@ pub const DEFAULT_SPEAKER_CORRELATION_MIN_SCORE: f64 = 0.7;
 /// транскрипте хуже отсутствующего — его не видно.
 pub const DEFAULT_SPEAKER_CORRELATION_MIN_MARGIN: f64 = 0.1;
 
+/// Переменная окружения с ключом polza.ai.
+///
+/// Имя ОДНО на весь проект (его же читают живые тесты `tests/polza_live.rs`):
+/// второе имя означало бы «ключ задан, а не работает», и человек искал бы
+/// причину в сети.
+pub const POLZA_KEY_ENV: &str = "FORGE_MEET_POLZA_KEY";
+
 // --- Перечисления конфига ----------------------------------------------------
+
+/// Где считается РАСШИФРОВКА.
+///
+/// # Почему по умолчанию облако
+///
+/// Прямое требование пользователя: «по стандарту всегда облачная». Довод не
+/// вкусовой — локальный путь требует установленного `whisper-cli`, весов на
+/// 1,6 ГБ на диске и живого Metal, то есть на чистой машине НЕ РАБОТАЕТ ВООБЩЕ,
+/// пока человек не проделает три отдельных действия. Облачный требует одного
+/// ключа. Значение по умолчанию обязано быть тем, при котором плагин работает
+/// сразу, а не тем, которое кажется осторожнее.
+///
+/// Переключатель НЕЗАВИСИМ от [`SummaryBackend`]: ограничения у стадий разные
+/// (расшифровке нужен GPU, саммари — CLI), и законна любая из четырёх
+/// комбинаций.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SttBackend {
+    /// polza.ai `openai/whisper-1`. **ДЕФОЛТ.** Не нужны ни бинарь, ни модель,
+    /// ни Metal; посегментные таймкоды есть, ПОСЛОВНЫХ НЕТ (см.
+    /// [`crate::cloud`]).
+    #[default]
+    Cloud,
+    /// Локальный whisper.cpp на Metal. Даёт потокенные метки, то есть
+    /// разрезание спорного сегмента по границе слова.
+    Local,
+}
+
+impl SttBackend {
+    pub const ALL: &'static [&'static str] = &["cloud", "local"];
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "cloud" | "polza" => Some(Self::Cloud),
+            "local" | "whisper" => Some(Self::Local),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Cloud => "cloud",
+            Self::Local => "local",
+        }
+    }
+
+    #[must_use]
+    pub fn is_cloud(self) -> bool {
+        matches!(self, Self::Cloud)
+    }
+
+    #[must_use]
+    pub fn is_local(self) -> bool {
+        matches!(self, Self::Local)
+    }
+}
+
+/// Где считается САММАРИ. Значение по умолчанию — облако, по той же причине,
+/// что и у [`SttBackend`]: локальный путь требует установленного Claude CLI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SummaryBackend {
+    /// polza.ai `chat/completions` со стримом SSE. **ДЕФОЛТ.**
+    #[default]
+    Cloud,
+    /// Локальный Claude CLI.
+    Local,
+}
+
+impl SummaryBackend {
+    pub const ALL: &'static [&'static str] = &["cloud", "local"];
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "cloud" | "polza" => Some(Self::Cloud),
+            "local" | "claude" => Some(Self::Local),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Cloud => "cloud",
+            Self::Local => "local",
+        }
+    }
+
+    #[must_use]
+    pub fn is_cloud(self) -> bool {
+        matches!(self, Self::Cloud)
+    }
+
+    #[must_use]
+    pub fn is_local(self) -> bool {
+        matches!(self, Self::Local)
+    }
+}
 
 /// Где живёт окно бота.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -393,6 +515,72 @@ pub fn cache_dir() -> PathBuf {
     }
 }
 
+// --- Права файла конфига ------------------------------------------------------
+
+/// Права, с которыми обязан лежать файл конфига: **только владелец**.
+///
+/// Потому что в нём может лежать ключ API. Файл, созданный с `umask` по
+/// умолчанию (`0644`), читается любым процессом пользователя и любым другим
+/// пользователем машины — то есть «сохраните ключ в настройках» означало бы
+/// «положите его в общедоступное место».
+pub const CONFIG_FILE_MODE: u32 = 0o600;
+
+/// Выставляет файлу [`CONFIG_FILE_MODE`].
+///
+/// Зовётся ПОСЛЕ каждой записи конфига, а не только при создании: `meet.toml`
+/// мог быть создан прежней версией плагина, распакован из бэкапа или написан
+/// руками — и все три случая дают права по `umask`.
+pub fn ensure_private_file(path: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(path)?.permissions();
+        if perms.mode() & 0o777 != CONFIG_FILE_MODE {
+            perms.set_mode(CONFIG_FILE_MODE);
+            std::fs::set_permissions(path, perms)?;
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+    Ok(())
+}
+
+/// Права файла восьмеричной строкой (`600`). Пусто — не Unix либо файла нет.
+#[must_use]
+pub fn file_mode(path: &Path) -> String {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        return match std::fs::metadata(path) {
+            Ok(m) => format!("{:o}", m.permissions().mode() & 0o777),
+            Err(_) => String::new(),
+        };
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        String::new()
+    }
+}
+
+/// Шире ли права файла, чем [`CONFIG_FILE_MODE`]. `false` — если файла нет или
+/// система не Unix: пугать не о чем.
+#[must_use]
+pub fn file_is_world_readable(path: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        return std::fs::metadata(path)
+            .map(|m| m.permissions().mode() & 0o077 != 0)
+            .unwrap_or(false);
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        false
+    }
+}
+
 /// Дефолтный путь бинаря Claude CLI (`$HOME/.local/bin/claude`).
 ///
 /// Тот же дефолт, что у Echo, VK, Telegram и Bitrix: все они запускают ОДИН
@@ -403,6 +591,11 @@ pub fn default_claude_cli_path() -> PathBuf {
         Some(home) => PathBuf::from(home).join(".local/bin/claude"),
         None => PathBuf::from("claude"),
     }
+}
+
+/// Дефолтный путь Kimi CLI — зеркало [`forge_claude_runner::CliKind::Kimi`].
+pub fn default_kimi_cli_path() -> PathBuf {
+    forge_claude_runner::CliKind::Kimi.default_path()
 }
 
 // --- Сам конфиг --------------------------------------------------------------
@@ -502,12 +695,49 @@ pub struct MeetConfig {
     /// случай, когда детектор режима ошибся: без него единственным лечением
     /// была бы пересборка.
     pub pertrack_transcription: bool,
+    /// Где считать расшифровку. **По умолчанию облако.**
+    pub stt_backend: SttBackend,
 
     // --- саммари ---
     pub summary_enabled: bool,
     pub claude_cli_path: PathBuf,
+    /// Разрешать ли ЛОКАЛЬНЫЕ запуски `claude -p` для саммари. Default `false`:
+    /// запуски дорогие и по умолчанию выключены глобально (см. шапку
+    /// `forge_claude_runner`). Включается здесь, либо для ВСЕХ плагинов разом
+    /// через `FORGE_CLAUDE_RUNNER_ENABLED=1` (приоритет). Выключенный флаг
+    /// блокирует локальный маршрут саммари так же, как отсутствие CLI —
+    /// `plan_summary` уйдёт в облако или вернёт `claude_runs_disabled`.
+    pub claude_enabled: bool,
+    /// Какой ЛОКАЛЬНЫЙ CLI исполняет саммари: `claude` (дефолт) или `kimi`.
+    /// Облачный путь — это [`MeetConfig::summary_backend`] = `cloud`, этот
+    /// выбор его не трогает.
+    pub llm_backend: forge_claude_runner::LlmBackend,
+    /// Путь к Kimi CLI — используется когда `llm_backend = "kimi"`.
+    /// Значение по умолчанию — [`default_kimi_cli_path`]; задаётся в
+    /// `Default for MeetConfig` (это runtime-структура без serde-derive).
+    pub kimi_cli_path: PathBuf,
     pub summary_timeout_secs: u64,
     pub summary_max_chars: usize,
+    /// Где считать саммари. **По умолчанию облако.** Переключатель НЕЗАВИСИМ
+    /// от [`MeetConfig::stt_backend`].
+    pub summary_backend: SummaryBackend,
+
+    // --- облако (polza.ai) ---
+    /// База API. **Поле, а не константа**: это единственная точка подмены для
+    /// локального стенда `tests/polza_stub.rs`.
+    pub cloud_base_url: String,
+    /// Ключ API. Не печатается: [`crate::cloud::SecretKey`] отдаёт маску и в
+    /// `Debug`, и в `Display`.
+    pub polza_api_key: crate::cloud::SecretKey,
+    /// Модель облачной расшифровки. Годится только та, что даёт таймкоды.
+    pub cloud_stt_model: String,
+    /// Модель облачного саммари. **Поле конфига, а не константа**: каталог
+    /// отдаёт Claude, GPT-5.x, DeepSeek и YandexGPT.
+    pub cloud_summary_model: String,
+    /// Окно нарезки аудио для облачной расшифровки, секунды. Потолок —
+    /// [`crate::cloud::MAX_STT_WINDOW_SECS`]: предел сервиса измерен и лежит
+    /// около 60 секунд ПО СТЕНЕ на запрос.
+    pub cloud_stt_window_secs: u64,
 
     // --- ретенция ---
     pub max_cache_bytes: u64,
@@ -535,6 +765,8 @@ pub struct MeetConfig {
     pub speaker_second_share: f64,
     /// Порог применения линейной коррекции дрейфа, мс.
     pub drift_threshold_ms: u64,
+    /// Пик сведённого аудио, ниже которого запись признаётся пустой, dBFS.
+    pub silence_gate_dbfs: f64,
     /// Окно корреляции таймлайнов при привязке имён, секунды.
     pub speaker_correlation_window_secs: u64,
     /// Порог принятия назначения при корреляции.
@@ -589,11 +821,22 @@ impl Default for MeetConfig {
             ffmpeg_path: None,
             ffprobe_path: None,
             pertrack_transcription: true,
+            stt_backend: SttBackend::default(),
 
             summary_enabled: true,
             claude_cli_path: default_claude_cli_path(),
+            claude_enabled: false,
+            llm_backend: forge_claude_runner::LlmBackend::default(),
+            kimi_cli_path: default_kimi_cli_path(),
             summary_timeout_secs: DEFAULT_SUMMARY_TIMEOUT_SECS,
             summary_max_chars: DEFAULT_SUMMARY_MAX_CHARS,
+            summary_backend: SummaryBackend::default(),
+
+            cloud_base_url: crate::cloud::DEFAULT_BASE_URL.to_string(),
+            polza_api_key: crate::cloud::SecretKey::default(),
+            cloud_stt_model: crate::cloud::DEFAULT_STT_MODEL.to_string(),
+            cloud_summary_model: crate::cloud::DEFAULT_SUMMARY_MODEL.to_string(),
+            cloud_stt_window_secs: crate::cloud::DEFAULT_STT_WINDOW_SECS,
 
             max_cache_bytes: DEFAULT_MAX_CACHE_BYTES,
             retention_days: DEFAULT_RETENTION_DAYS,
@@ -608,6 +851,7 @@ impl Default for MeetConfig {
             speaker_min_confidence: DEFAULT_SPEAKER_MIN_CONFIDENCE,
             speaker_second_share: DEFAULT_SPEAKER_SECOND_SHARE,
             drift_threshold_ms: DEFAULT_DRIFT_THRESHOLD_MS,
+            silence_gate_dbfs: DEFAULT_SILENCE_GATE_DBFS,
             speaker_correlation_window_secs: DEFAULT_SPEAKER_CORRELATION_WINDOW_SECS,
             speaker_correlation_min_score: DEFAULT_SPEAKER_CORRELATION_MIN_SCORE,
             speaker_correlation_min_margin: DEFAULT_SPEAKER_CORRELATION_MIN_MARGIN,
@@ -656,10 +900,20 @@ pub const KNOWN_KEYS: &[&str] = &[
     "ffmpeg_path",
     "ffprobe_path",
     "pertrack_transcription",
+    "stt_backend",
     "summary_enabled",
     "claude_cli_path",
+    "claude_enabled",
+    "llm_backend",
+    "kimi_cli_path",
     "summary_timeout_secs",
     "summary_max_chars",
+    "summary_backend",
+    "cloud_base_url",
+    "polza_api_key",
+    "cloud_stt_model",
+    "cloud_summary_model",
+    "cloud_stt_window_secs",
     "max_cache_bytes",
     "retention_days",
     "retention_min_keep",
@@ -673,6 +927,7 @@ pub const KNOWN_KEYS: &[&str] = &[
     "speaker_min_confidence",
     "speaker_second_share",
     "drift_threshold_ms",
+    "silence_gate_dbfs",
     "speaker_correlation_window_secs",
     "speaker_correlation_min_score",
     "speaker_correlation_min_margin",
@@ -721,11 +976,22 @@ struct FileConfig {
     ffmpeg_path: Option<PathBuf>,
     ffprobe_path: Option<PathBuf>,
     pertrack_transcription: Option<bool>,
+    stt_backend: Option<String>,
 
     summary_enabled: Option<bool>,
     claude_cli_path: Option<PathBuf>,
+    claude_enabled: Option<bool>,
+    llm_backend: Option<String>,
+    kimi_cli_path: Option<PathBuf>,
     summary_timeout_secs: Option<u64>,
     summary_max_chars: Option<usize>,
+    summary_backend: Option<String>,
+
+    cloud_base_url: Option<String>,
+    polza_api_key: Option<String>,
+    cloud_stt_model: Option<String>,
+    cloud_summary_model: Option<String>,
+    cloud_stt_window_secs: Option<u64>,
 
     max_cache_bytes: Option<u64>,
     retention_days: Option<u64>,
@@ -742,6 +1008,7 @@ struct FileConfig {
     speaker_min_confidence: Option<f64>,
     speaker_second_share: Option<f64>,
     drift_threshold_ms: Option<u64>,
+    silence_gate_dbfs: Option<f64>,
     speaker_correlation_window_secs: Option<u64>,
     speaker_correlation_min_score: Option<f64>,
     speaker_correlation_min_margin: Option<f64>,
@@ -868,6 +1135,20 @@ impl MeetConfig {
         };
 
         cfg.apply_file(file);
+
+        // Ключ в файле, который читает вся машина, — это ключ, который утёк.
+        // Права НЕ ЧИНЯТСЯ молча: файл правят руками, и тихая смена прав под
+        // чужой правкой была бы вторым сюрпризом вместо первого. Чинит их
+        // `PUT /api/meet/config`, то есть наша собственная запись.
+        if !cfg.polza_api_key.is_empty() && file_is_world_readable(path) {
+            tracing::warn!(
+                target: "forge_meet",
+                path = %path.display(),
+                mode = %file_mode(path),
+                "forge-meet: в конфиге лежит ключ polza.ai, а права файла шире 600 — \
+                 его читает любой процесс на машине; поправьте chmod 600"
+            );
+        }
         cfg
     }
 
@@ -1000,12 +1281,60 @@ impl MeetConfig {
         if let Some(v) = f.pertrack_transcription {
             self.pertrack_transcription = v;
         }
+        if let Some(v) = f.stt_backend {
+            match SttBackend::parse(&v) {
+                Some(b) => self.stt_backend = b,
+                None => tracing::warn!(
+                    target: "forge_meet",
+                    value = %v,
+                    "forge-meet: неизвестный stt_backend, оставляю текущий"
+                ),
+            }
+        }
+
+        if let Some(v) = f.summary_backend {
+            match SummaryBackend::parse(&v) {
+                Some(b) => self.summary_backend = b,
+                None => tracing::warn!(
+                    target: "forge_meet",
+                    value = %v,
+                    "forge-meet: неизвестный summary_backend, оставляю текущий"
+                ),
+            }
+        }
+        if let Some(v) = f.cloud_base_url {
+            self.cloud_base_url = v;
+        }
+        if let Some(v) = f.polza_api_key {
+            self.polza_api_key = crate::cloud::SecretKey::new(v);
+        }
+        if let Some(v) = f.cloud_stt_model {
+            self.cloud_stt_model = v;
+        }
+        if let Some(v) = f.cloud_summary_model {
+            self.cloud_summary_model = v;
+        }
+        if let Some(v) = f.cloud_stt_window_secs {
+            self.cloud_stt_window_secs = v;
+        }
 
         if let Some(v) = f.summary_enabled {
             self.summary_enabled = v;
         }
         if let Some(v) = f.claude_cli_path {
             self.claude_cli_path = v;
+        }
+        if let Some(v) = f.claude_enabled {
+            self.claude_enabled = v;
+        }
+        if let Some(v) = f.llm_backend {
+            match forge_claude_runner::LlmBackend::parse(&v) {
+                Some(b) => self.llm_backend = b,
+                None => tracing::warn!(value = %v, "llm_backend: expected claude|kimi, keeping {}", self.llm_backend.as_str()),
+            }
+        }
+        if let Some(v) = f.kimi_cli_path {
+            self.kimi_cli_path = v;
         }
         if let Some(v) = f.summary_timeout_secs {
             self.summary_timeout_secs = v;
@@ -1053,6 +1382,9 @@ impl MeetConfig {
         }
         if let Some(v) = f.drift_threshold_ms {
             self.drift_threshold_ms = v;
+        }
+        if let Some(v) = f.silence_gate_dbfs {
+            self.silence_gate_dbfs = v;
         }
         if let Some(v) = f.speaker_correlation_window_secs {
             self.speaker_correlation_window_secs = v;
@@ -1137,6 +1469,9 @@ impl MeetConfig {
         if let Some(v) = env_parse("FORGE_MEET_VAD_HANGOVER_MS") {
             self.vad_hangover_ms = v;
         }
+        if let Some(v) = env_parse("FORGE_MEET_SILENCE_GATE_DBFS") {
+            self.silence_gate_dbfs = v;
+        }
 
         if let Some(v) = env_parse("FORGE_MEET_MAX_RECORDINGS") {
             self.max_concurrent_recordings = v;
@@ -1196,12 +1531,60 @@ impl MeetConfig {
         if let Some(v) = env_bool("FORGE_MEET_PERTRACK") {
             self.pertrack_transcription = v;
         }
+        if let Some(v) = env_str("FORGE_MEET_STT_BACKEND") {
+            match SttBackend::parse(&v) {
+                Some(b) => self.stt_backend = b,
+                None => tracing::warn!(
+                    target: "forge_meet",
+                    value = %v,
+                    "forge-meet: неизвестный FORGE_MEET_STT_BACKEND, игнорирую"
+                ),
+            }
+        }
+        if let Some(v) = env_str("FORGE_MEET_SUMMARY_BACKEND") {
+            match SummaryBackend::parse(&v) {
+                Some(b) => self.summary_backend = b,
+                None => tracing::warn!(
+                    target: "forge_meet",
+                    value = %v,
+                    "forge-meet: неизвестный FORGE_MEET_SUMMARY_BACKEND, игнорирую"
+                ),
+            }
+        }
+        if let Some(v) = env_str("FORGE_MEET_CLOUD_BASE_URL") {
+            self.cloud_base_url = v;
+        }
+        // Ключ из окружения — законный способ НЕ КЛАСТЬ ЕГО НА ДИСК ВООБЩЕ.
+        if let Some(v) = env_str(POLZA_KEY_ENV) {
+            self.polza_api_key = crate::cloud::SecretKey::new(v);
+        }
+        if let Some(v) = env_str("FORGE_MEET_CLOUD_STT_MODEL") {
+            self.cloud_stt_model = v;
+        }
+        if let Some(v) = env_str("FORGE_MEET_CLOUD_SUMMARY_MODEL") {
+            self.cloud_summary_model = v;
+        }
+        if let Some(v) = env_parse("FORGE_MEET_CLOUD_STT_WINDOW_SECS") {
+            self.cloud_stt_window_secs = v;
+        }
 
         if let Some(v) = env_bool("FORGE_MEET_SUMMARY_ENABLED") {
             self.summary_enabled = v;
         }
         if let Some(v) = env_str("FORGE_MEET_CLAUDE_CLI_PATH") {
             self.claude_cli_path = PathBuf::from(v);
+        }
+        if let Some(v) = env_bool("FORGE_MEET_CLAUDE_ENABLED") {
+            self.claude_enabled = v;
+        }
+        if let Some(v) = env_str("FORGE_MEET_LLM_BACKEND") {
+            match forge_claude_runner::LlmBackend::parse(&v) {
+                Some(b) => self.llm_backend = b,
+                None => tracing::warn!(value = %v, "FORGE_MEET_LLM_BACKEND: expected claude|kimi, keeping {}", self.llm_backend.as_str()),
+            }
+        }
+        if let Some(v) = env_str("FORGE_MEET_KIMI_CLI_PATH") {
+            self.kimi_cli_path = PathBuf::from(v);
         }
         if let Some(v) = env_parse("FORGE_MEET_SUMMARY_TIMEOUT_SECS") {
             self.summary_timeout_secs = v;
@@ -1322,6 +1705,10 @@ impl MeetConfig {
         clamp!(speaker_min_confidence, 0.0, 1.0);
         clamp!(speaker_second_share, 0.0, 1.0);
         cap!(drift_threshold_ms, 60_000);
+        // Ноль сверху — это полная шкала: пик выше неё физически невозможен, и
+        // такой порог означал бы «провалить любую встречу». Снизу -120 dB
+        // оставляет запас под выключение гейта (ниже -91 dB он бездействует).
+        clamp!(silence_gate_dbfs, -120.0, 0.0);
 
         clamp!(max_concurrent_recordings, 1, 8);
         clamp!(max_concurrent_summaries, 1, 8);
@@ -1356,6 +1743,42 @@ impl MeetConfig {
             self.whisper_language = DEFAULT_WHISPER_LANGUAGE.to_string();
         }
         clamp!(whisper_timeout_secs, 60, 24 * 60 * 60);
+
+        // --- облако ---
+        //
+        // База и модели чинятся на дефолты, а не отвергаются: пустая строка в
+        // любом из трёх полей означала бы запрос по адресу `/audio/…` без
+        // хоста, то есть отказ без внятной причины.
+        if self.cloud_base_url.trim().is_empty() {
+            fixes.push(format!(
+                "cloud_base_url пуст, взято значение по умолчанию {:?}",
+                crate::cloud::DEFAULT_BASE_URL
+            ));
+            self.cloud_base_url = crate::cloud::DEFAULT_BASE_URL.to_string();
+        }
+        if self.cloud_stt_model.trim().is_empty() {
+            fixes.push(format!(
+                "cloud_stt_model пуста, взято значение по умолчанию {:?}",
+                crate::cloud::DEFAULT_STT_MODEL
+            ));
+            self.cloud_stt_model = crate::cloud::DEFAULT_STT_MODEL.to_string();
+        }
+        if self.cloud_summary_model.trim().is_empty() {
+            fixes.push(format!(
+                "cloud_summary_model пуста, взято значение по умолчанию {:?}",
+                crate::cloud::DEFAULT_SUMMARY_MODEL
+            ));
+            self.cloud_summary_model = crate::cloud::DEFAULT_SUMMARY_MODEL.to_string();
+        }
+        // Потолок окна — ИЗМЕРЕННЫЙ предел сервиса (около 60 секунд по стене
+        // на запрос), а не осторожность: окно побольше означает потерю окна
+        // целиком вместе с минутой ожидания.
+        clamp!(
+            cloud_stt_window_secs,
+            10,
+            crate::cloud::MAX_STT_WINDOW_SECS
+        );
+
         clamp!(summary_timeout_secs, 10, 3600);
         clamp!(summary_max_chars, 1000, 500_000);
         // Нижней границы у ретенции нет: `0` — легальное «хранить вечно».
@@ -1375,6 +1798,31 @@ impl MeetConfig {
         clamp!(salvage_min_secs, 1, 3600);
 
         fixes
+    }
+
+    /// Собирает настройки облачного клиента из полей конфига.
+    ///
+    /// Одна точка сборки на обе стадии: расшифровка и саммари ходят в один и
+    /// тот же сервис одним и тем же ключом, и вторая сборка рано или поздно
+    /// разъехалась бы с первой по `base_url` — то есть тест ходил бы на стенд,
+    /// а бой на живой сервис, либо наоборот.
+    #[must_use]
+    pub fn cloud(&self) -> crate::cloud::CloudConfig {
+        crate::cloud::CloudConfig {
+            base_url: self.cloud_base_url.clone(),
+            api_key: self.polza_api_key.clone(),
+            stt_model: self.cloud_stt_model.clone(),
+            summary_model: self.cloud_summary_model.clone(),
+            stt_language: self.whisper_language.clone(),
+            stt_window_secs: self.cloud_stt_window_secs,
+            ..crate::cloud::CloudConfig::default()
+        }
+    }
+
+    /// Настроено ли облако (есть ключ).
+    #[must_use]
+    pub fn cloud_configured(&self) -> bool {
+        !self.polza_api_key.is_empty()
     }
 
     /// Каталог конкретной встречи: `<cache_dir>/<meeting_id>`.
@@ -1411,6 +1859,14 @@ pub enum FieldKind {
     Float,
     /// Одно из перечисленных в [`EditableField::choices`].
     Choice,
+    /// **Секрет: наружу уходит только маска.**
+    ///
+    /// Отдельный вид, а не [`FieldKind::Text`], потому что разница не
+    /// косметическая: [`editable_value`] у секрета возвращает МАСКУ, значит
+    /// «прочитал и записал обратно» записало бы в конфиг строку из точек.
+    /// Отдельный вид позволяет и UI не показывать секрет обычным полем, и
+    /// [`MeetConfig::apply_editable`] отвергнуть присланную маску.
+    Secret,
 }
 
 /// Поле, которое `PUT /api/meet/config` имеет право записать в файл.
@@ -1460,8 +1916,15 @@ pub const EDITABLE: &[EditableField] = &[
     EditableField { key: "whisper_language", kind: FieldKind::Text, env: "FORGE_MEET_WHISPER_LANGUAGE", group: "transcribe", choices: &[], min: None, max: None },
     EditableField { key: "whisper_timeout_secs", kind: FieldKind::Int, env: "FORGE_MEET_WHISPER_TIMEOUT_SECS", group: "transcribe", choices: &[], min: Some(60.0), max: Some(86_400.0) },
     EditableField { key: "pertrack_transcription", kind: FieldKind::Bool, env: "FORGE_MEET_PERTRACK", group: "transcribe", choices: &[], min: None, max: None },
+    EditableField { key: "stt_backend", kind: FieldKind::Choice, env: "FORGE_MEET_STT_BACKEND", group: "transcribe", choices: SttBackend::ALL, min: None, max: None },
+    EditableField { key: "cloud_stt_model", kind: FieldKind::Text, env: "FORGE_MEET_CLOUD_STT_MODEL", group: "transcribe", choices: &[], min: None, max: None },
+    EditableField { key: "cloud_stt_window_secs", kind: FieldKind::Int, env: "FORGE_MEET_CLOUD_STT_WINDOW_SECS", group: "transcribe", choices: &[], min: Some(10.0), max: Some(crate::cloud::MAX_STT_WINDOW_SECS as f64) },
 
     EditableField { key: "summary_enabled", kind: FieldKind::Bool, env: "FORGE_MEET_SUMMARY_ENABLED", group: "summary", choices: &[], min: None, max: None },
+    EditableField { key: "claude_enabled", kind: FieldKind::Bool, env: "FORGE_MEET_CLAUDE_ENABLED", group: "summary", choices: &[], min: None, max: None },
+    EditableField { key: "llm_backend", kind: FieldKind::Choice, env: "FORGE_MEET_LLM_BACKEND", group: "summary", choices: &["claude", "kimi"], min: None, max: None },
+    EditableField { key: "summary_backend", kind: FieldKind::Choice, env: "FORGE_MEET_SUMMARY_BACKEND", group: "summary", choices: SummaryBackend::ALL, min: None, max: None },
+    EditableField { key: "cloud_summary_model", kind: FieldKind::Text, env: "FORGE_MEET_CLOUD_SUMMARY_MODEL", group: "summary", choices: &[], min: None, max: None },
     EditableField { key: "summary_timeout_secs", kind: FieldKind::Int, env: "FORGE_MEET_SUMMARY_TIMEOUT_SECS", group: "summary", choices: &[], min: Some(10.0), max: Some(3600.0) },
     EditableField { key: "summary_max_chars", kind: FieldKind::Int, env: "FORGE_MEET_SUMMARY_MAX_CHARS", group: "summary", choices: &[], min: Some(1000.0), max: Some(500_000.0) },
 
@@ -1473,9 +1936,14 @@ pub const EDITABLE: &[EditableField] = &[
     EditableField { key: "vad_off_db", kind: FieldKind::Float, env: "FORGE_MEET_VAD_OFF_DB", group: "vad", choices: &[], min: Some(0.5), max: Some(60.0) },
     EditableField { key: "vad_confirm_ms", kind: FieldKind::Int, env: "FORGE_MEET_VAD_CONFIRM_MS", group: "vad", choices: &[], min: Some(10.0), max: Some(2000.0) },
     EditableField { key: "vad_hangover_ms", kind: FieldKind::Int, env: "FORGE_MEET_VAD_HANGOVER_MS", group: "vad", choices: &[], min: Some(50.0), max: Some(5000.0) },
+    EditableField { key: "silence_gate_dbfs", kind: FieldKind::Float, env: "FORGE_MEET_SILENCE_GATE_DBFS", group: "vad", choices: &[], min: Some(-120.0), max: Some(0.0) },
 
     EditableField { key: "max_concurrent_recordings", kind: FieldKind::Int, env: "FORGE_MEET_MAX_RECORDINGS", group: "limits", choices: &[], min: Some(1.0), max: Some(8.0) },
     EditableField { key: "max_concurrent_summaries", kind: FieldKind::Int, env: "FORGE_MEET_MAX_SUMMARIES", group: "limits", choices: &[], min: Some(1.0), max: Some(8.0) },
+
+    // Общее для обеих стадий: один сервис, один ключ, один адрес.
+    EditableField { key: "polza_api_key", kind: FieldKind::Secret, env: POLZA_KEY_ENV, group: "cloud", choices: &[], min: None, max: None },
+    EditableField { key: "cloud_base_url", kind: FieldKind::Text, env: "FORGE_MEET_CLOUD_BASE_URL", group: "cloud", choices: &[], min: None, max: None },
 
     EditableField { key: "max_cache_bytes", kind: FieldKind::Int, env: "FORGE_MEET_MAX_CACHE_BYTES", group: "storage", choices: &[], min: Some(0.0), max: None },
     EditableField { key: "retention_days", kind: FieldKind::Int, env: "FORGE_MEET_RETENTION_DAYS", group: "storage", choices: &[], min: Some(0.0), max: Some(3650.0) },
@@ -1493,6 +1961,7 @@ pub const NEVER_EDITABLE: &[&str] = &[
     "ffmpeg_path",
     "ffprobe_path",
     "claude_cli_path",
+    "kimi_cli_path",
     "cache_dir",
     "db_path",
     "models_dir",
@@ -1533,7 +2002,18 @@ pub fn editable_value(cfg: &MeetConfig, key: &str) -> Option<serde_json::Value> 
         "whisper_language" => json!(cfg.whisper_language),
         "whisper_timeout_secs" => json!(cfg.whisper_timeout_secs),
         "pertrack_transcription" => json!(cfg.pertrack_transcription),
+        "stt_backend" => json!(cfg.stt_backend.as_str()),
+        "cloud_stt_model" => json!(cfg.cloud_stt_model),
+        "cloud_stt_window_secs" => json!(cfg.cloud_stt_window_secs),
+        "summary_backend" => json!(cfg.summary_backend.as_str()),
+        "cloud_summary_model" => json!(cfg.cloud_summary_model),
+        "cloud_base_url" => json!(cfg.cloud_base_url),
+        // МАСКА, А НЕ КЛЮЧ. Единственное место, где значение поля в ответе
+        // роута намеренно не равно значению поля в конфиге.
+        "polza_api_key" => json!(cfg.polza_api_key.mask()),
         "summary_enabled" => json!(cfg.summary_enabled),
+        "claude_enabled" => json!(cfg.claude_enabled),
+        "llm_backend" => json!(cfg.llm_backend.as_str()),
         "summary_timeout_secs" => json!(cfg.summary_timeout_secs),
         "summary_max_chars" => json!(cfg.summary_max_chars),
         "alone_timeout_secs" => json!(cfg.alone_timeout_secs),
@@ -1543,6 +2023,7 @@ pub fn editable_value(cfg: &MeetConfig, key: &str) -> Option<serde_json::Value> 
         "vad_off_db" => json!(cfg.vad_off_db),
         "vad_confirm_ms" => json!(cfg.vad_confirm_ms),
         "vad_hangover_ms" => json!(cfg.vad_hangover_ms),
+        "silence_gate_dbfs" => json!(cfg.silence_gate_dbfs),
         "max_concurrent_recordings" => json!(cfg.max_concurrent_recordings),
         "max_concurrent_summaries" => json!(cfg.max_concurrent_summaries),
         "max_cache_bytes" => json!(cfg.max_cache_bytes),
@@ -1591,7 +2072,42 @@ impl MeetConfig {
             "whisper_language" => self.whisper_language = as_str()?,
             "whisper_timeout_secs" => self.whisper_timeout_secs = as_u64()?,
             "pertrack_transcription" => self.pertrack_transcription = as_bool()?,
+            "stt_backend" => {
+                let raw = as_str()?;
+                self.stt_backend = SttBackend::parse(&raw)
+                    .ok_or_else(|| format!("stt_backend: неизвестное значение {raw:?}"))?;
+            }
+            "cloud_stt_model" => self.cloud_stt_model = as_str()?,
+            "cloud_stt_window_secs" => self.cloud_stt_window_secs = as_u64()?,
+            "summary_backend" => {
+                let raw = as_str()?;
+                self.summary_backend = SummaryBackend::parse(&raw)
+                    .ok_or_else(|| format!("summary_backend: неизвестное значение {raw:?}"))?;
+            }
+            "cloud_summary_model" => self.cloud_summary_model = as_str()?,
+            "cloud_base_url" => self.cloud_base_url = as_str()?,
+            "polza_api_key" => {
+                let raw = as_str()?;
+                // ПРИСЛАННАЯ МАСКА — НЕ КЛЮЧ. `GET` отдаёт маску, и форма,
+                // сохранённая без правки этого поля, вернула бы её обратно:
+                // без этой проверки ключ затирался бы строкой из точек, а
+                // узнал бы об этом человек только на следующей встрече.
+                if raw.contains(MASK_CHAR) {
+                    return Err(
+                        "polza_api_key: пришла маска, а не ключ; поле осталось прежним".to_string(),
+                    );
+                }
+                // Пустая строка — законное «убрать ключ».
+                self.polza_api_key = crate::cloud::SecretKey::new(raw);
+            }
             "summary_enabled" => self.summary_enabled = as_bool()?,
+            "claude_enabled" => self.claude_enabled = as_bool()?,
+            "llm_backend" => {
+                let raw = as_str()?;
+                self.llm_backend = forge_claude_runner::LlmBackend::parse(&raw)
+                    .filter(|b| b.is_local())
+                    .ok_or_else(|| format!("llm_backend: неизвестное значение {raw:?} (claude|kimi)"))?;
+            }
             "summary_timeout_secs" => self.summary_timeout_secs = as_u64()?,
             "summary_max_chars" => self.summary_max_chars = as_u64()? as usize,
             "alone_timeout_secs" => self.alone_timeout_secs = as_u64()?,
@@ -1601,6 +2117,7 @@ impl MeetConfig {
             "vad_off_db" => self.vad_off_db = as_f64()? as f32,
             "vad_confirm_ms" => self.vad_confirm_ms = as_u64()?,
             "vad_hangover_ms" => self.vad_hangover_ms = as_u64()?,
+            "silence_gate_dbfs" => self.silence_gate_dbfs = as_f64()?,
             "max_concurrent_recordings" => self.max_concurrent_recordings = as_u64()? as usize,
             "max_concurrent_summaries" => self.max_concurrent_summaries = as_u64()? as usize,
             "max_cache_bytes" => self.max_cache_bytes = as_u64()?,
@@ -1667,9 +2184,17 @@ speaker_merge_gap_ms = 500
 speaker_min_confidence = 0.7
 speaker_second_share = 0.3
 drift_threshold_ms = 2000
+silence_gate_dbfs = -55.5
 speaker_correlation_window_secs = 120
 speaker_correlation_min_score = 0.8
 speaker_correlation_min_margin = 0.2
+stt_backend = "local"
+summary_backend = "local"
+cloud_base_url = "http://127.0.0.1:1/api/v1"
+polza_api_key = "pza_FILEFILEFILEFILEFILE_fromfile"
+cloud_stt_model = "openai/whisper-1"
+cloud_summary_model = "anthropic/claude-haiku-4.5"
+cloud_stt_window_secs = 45
 "#;
 
     /// Каждый тест конфига пишет свои файлы во ВРЕМЕННЫЙ каталог.
@@ -1803,9 +2328,142 @@ speaker_correlation_min_margin = 0.2
         assert_eq!(cfg.salvage_min_secs, 20);
         // Пороги каскада привязки имён — тоже поля файла, а не константы: их
         // подбирают на живых записях, и правка не должна требовать пересборки.
+        assert_eq!(cfg.silence_gate_dbfs, -55.5);
         assert_eq!(cfg.speaker_correlation_window_secs, 120);
         assert_eq!(cfg.speaker_correlation_min_score, 0.8);
         assert_eq!(cfg.speaker_correlation_min_margin, 0.2);
+        // Оба переключателя стадий и все облачные поля читаются из файла.
+        assert_eq!(cfg.stt_backend, SttBackend::Local);
+        assert_eq!(cfg.summary_backend, SummaryBackend::Local);
+        assert_eq!(cfg.cloud_base_url, "http://127.0.0.1:1/api/v1");
+        assert_eq!(
+            cfg.polza_api_key.expose(),
+            "pza_FILEFILEFILEFILEFILE_fromfile"
+        );
+        assert_eq!(cfg.cloud_stt_model, "openai/whisper-1");
+        assert_eq!(cfg.cloud_summary_model, "anthropic/claude-haiku-4.5");
+        assert_eq!(cfg.cloud_stt_window_secs, 45);
+    }
+
+    // --- переключатели стадий -------------------------------------------------
+
+    /// **ОБА ПЕРЕКЛЮЧАТЕЛЯ ПО УМОЛЧАНИЮ — ОБЛАКО.**
+    ///
+    /// Прямое требование пользователя («по стандарту всегда облачная»), и
+    /// именно поэтому оно закреплено тестом: «поставим local, так безопаснее»
+    /// — самая вероятная правка, которую сделают из лучших побуждений.
+    /// Проверяется и на пустом конфиге, и на СТАРОМ файле без новых ключей:
+    /// обновление devforge не имеет права переключить человека на локальный
+    /// путь, которого у него может не быть вовсе.
+    #[test]
+    fn both_backends_default_to_cloud_even_for_an_old_config_file() {
+        let cfg = MeetConfig::default();
+        assert_eq!(cfg.stt_backend, SttBackend::Cloud);
+        assert_eq!(cfg.summary_backend, SummaryBackend::Cloud);
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("meet.toml");
+        // «Старый» файл: ключи прежних фаз, ни одного облачного.
+        std::fs::write(&path, "bot_name = \"Секретарь\"\nwhisper_model = \"small\"\n").unwrap();
+        let old = MeetConfig::from_file(&path);
+        assert_eq!(old.bot_name, "Секретарь", "старый файл вообще не прочитался");
+        assert_eq!(old.stt_backend, SttBackend::Cloud);
+        assert_eq!(old.summary_backend, SummaryBackend::Cloud);
+
+        // Пустой файл — тот же ответ.
+        std::fs::write(&path, "").unwrap();
+        let empty = MeetConfig::from_file(&path);
+        assert_eq!(empty.stt_backend, SttBackend::Cloud);
+        assert_eq!(empty.summary_backend, SummaryBackend::Cloud);
+    }
+
+    /// Переключатели НЕЗАВИСИМЫ: все четыре комбинации читаются как написаны.
+    #[test]
+    fn all_four_backend_combinations_are_read_as_written() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("meet.toml");
+        for (stt, summary) in [
+            ("cloud", "cloud"),
+            ("cloud", "local"),
+            ("local", "cloud"),
+            ("local", "local"),
+        ] {
+            std::fs::write(
+                &path,
+                format!("stt_backend = \"{stt}\"\nsummary_backend = \"{summary}\"\n"),
+            )
+            .unwrap();
+            let cfg = MeetConfig::from_file(&path);
+            assert_eq!(cfg.stt_backend.as_str(), stt, "stt {stt}/{summary}");
+            assert_eq!(
+                cfg.summary_backend.as_str(),
+                summary,
+                "summary {stt}/{summary}"
+            );
+        }
+    }
+
+    /// Мусор в переключателе не молчит и не переключает: остаётся прежнее
+    /// значение. Падать из-за опечатки нельзя, а тихо уехать на другой путь —
+    /// тем более: расшифровка ушла бы в облако вместо GPU без единого слова.
+    #[test]
+    fn an_unknown_backend_keeps_the_previous_value() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("meet.toml");
+        std::fs::write(
+            &path,
+            "stt_backend = \"gpu\"\nsummary_backend = \"chatgpt\"\n",
+        )
+        .unwrap();
+        let cfg = MeetConfig::from_file(&path);
+        assert_eq!(cfg.stt_backend, SttBackend::Cloud);
+        assert_eq!(cfg.summary_backend, SummaryBackend::Cloud);
+        assert_eq!(SttBackend::parse("gpu"), None);
+        assert_eq!(SummaryBackend::parse("chatgpt"), None);
+    }
+
+    /// Облачные поля собираются в [`crate::cloud::CloudConfig`] без потерь, а
+    /// окно чинится по ИЗМЕРЕННОМУ пределу сервиса.
+    #[test]
+    fn the_cloud_config_is_assembled_from_the_fields_and_the_window_is_capped() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut cfg = hermetic_paths(dir.path());
+        cfg.cloud_base_url = "http://127.0.0.1:9/api/v1".to_string();
+        cfg.polza_api_key = crate::cloud::SecretKey::new("pza_ABCDEFGHIJKLMNOPQRSTUV_xyz");
+        cfg.cloud_stt_model = "openai/whisper-1".to_string();
+        cfg.cloud_summary_model = "google/gemini-3.5-flash".to_string();
+        cfg.whisper_language = "ru".to_string();
+        cfg.cloud_stt_window_secs = 60;
+
+        let cloud = cfg.cloud();
+        assert_eq!(cloud.base_url, "http://127.0.0.1:9/api/v1");
+        assert_eq!(cloud.api_key.expose(), "pza_ABCDEFGHIJKLMNOPQRSTUV_xyz");
+        assert_eq!(cloud.stt_model, "openai/whisper-1");
+        assert_eq!(cloud.summary_model, "google/gemini-3.5-flash");
+        assert_eq!(cloud.stt_language, "ru");
+        assert_eq!(cloud.stt_window_secs, 60);
+        assert!(cfg.cloud_configured());
+
+        cfg.cloud_stt_window_secs = 600;
+        let fixes = cfg.validate_and_fix();
+        assert_eq!(
+            cfg.cloud_stt_window_secs,
+            crate::cloud::MAX_STT_WINDOW_SECS,
+            "окно больше измеренного предела обязано быть опущено"
+        );
+        assert!(
+            fixes.iter().any(|f| f.contains("cloud_stt_window_secs")),
+            "починка окна обязана быть названа: {fixes:?}"
+        );
+
+        cfg.cloud_base_url.clear();
+        cfg.cloud_stt_model.clear();
+        cfg.cloud_summary_model.clear();
+        let fixes = cfg.validate_and_fix();
+        assert_eq!(cfg.cloud_base_url, crate::cloud::DEFAULT_BASE_URL);
+        assert_eq!(cfg.cloud_stt_model, crate::cloud::DEFAULT_STT_MODEL);
+        assert_eq!(cfg.cloud_summary_model, crate::cloud::DEFAULT_SUMMARY_MODEL);
+        assert_eq!(fixes.len(), 3, "три пустых поля — три починки: {fixes:?}");
     }
 
     /// Умолчания каскада — ровно те, что заложены планом: окно 90 секунд и
@@ -2026,6 +2684,53 @@ speaker_correlation_min_margin = 0.2
         std::env::remove_var("FORGE_MEET_ALONE_TIMEOUT_SECS");
     }
 
+    /// Переключатели и ключ берутся из окружения и перебивают файл.
+    ///
+    /// Ключ в переменной — законный способ НЕ КЛАСТЬ ЕГО НА ДИСК ВООБЩЕ, и
+    /// такое поле обязано быть `env_locked`: иначе интерфейс предложил бы его
+    /// править, сохранил бы в файл, а работал бы всё равно из окружения.
+    #[test]
+    fn the_backends_and_the_key_can_come_from_the_environment() {
+        let _guard = crate::testing::env_guard();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("meet.toml");
+        std::fs::write(&path, "stt_backend = \"cloud\"\nsummary_backend = \"cloud\"\n").unwrap();
+        let mut cfg = MeetConfig::from_file(&path);
+        assert_eq!(cfg.stt_backend, SttBackend::Cloud);
+        assert!(!cfg.cloud_configured());
+        assert!(!env_locked("polza_api_key"));
+
+        std::env::set_var("FORGE_MEET_STT_BACKEND", "local");
+        std::env::set_var("FORGE_MEET_SUMMARY_BACKEND", "local");
+        std::env::set_var("FORGE_MEET_CLOUD_BASE_URL", "http://127.0.0.1:2/api/v1");
+        std::env::set_var("FORGE_MEET_CLOUD_SUMMARY_MODEL", "openai/gpt-5.2");
+        std::env::set_var("FORGE_MEET_CLOUD_STT_WINDOW_SECS", "30");
+        std::env::set_var(POLZA_KEY_ENV, "pza_ENVENVENVENVENVENVENV_key");
+        cfg.apply_env();
+
+        assert_eq!(cfg.stt_backend, SttBackend::Local);
+        assert_eq!(cfg.summary_backend, SummaryBackend::Local);
+        assert_eq!(cfg.cloud_base_url, "http://127.0.0.1:2/api/v1");
+        assert_eq!(cfg.cloud_summary_model, "openai/gpt-5.2");
+        assert_eq!(cfg.cloud_stt_window_secs, 30);
+        assert_eq!(cfg.polza_api_key.expose(), "pza_ENVENVENVENVENVENVENV_key");
+        assert!(cfg.cloud_configured());
+        assert!(env_locked("polza_api_key"), "ключ из env обязан быть заперт");
+        assert!(env_locked("stt_backend"));
+        assert!(env_locked("summary_backend"));
+
+        for k in [
+            "FORGE_MEET_STT_BACKEND",
+            "FORGE_MEET_SUMMARY_BACKEND",
+            "FORGE_MEET_CLOUD_BASE_URL",
+            "FORGE_MEET_CLOUD_SUMMARY_MODEL",
+            "FORGE_MEET_CLOUD_STT_WINDOW_SECS",
+            POLZA_KEY_ENV,
+        ] {
+            std::env::remove_var(k);
+        }
+    }
+
     /// ГЕРМЕТИЧНОСТЬ: `FORGE_MEET_CACHE_DIR` уводит за собой базу и модели.
     ///
     /// Без этого свойства тест, поставивший только `FORGE_MEET_CACHE_DIR`,
@@ -2237,8 +2942,36 @@ speaker_correlation_min_margin = 0.2
             let current = editable_value(&base, f.key)
                 .unwrap_or_else(|| panic!("{}: нет чтения значения", f.key));
 
+            // СЕКРЕТ ХОДИТ ПАРОЙ ПО-ДРУГОМУ, и это не поблажка, а сам смысл
+            // поля: пишется ключ, читается МАСКА. Равенство «записали =
+            // прочитали» здесь означало бы утечку, поэтому проверяется, что
+            // прочиталась именно маска записанного и что она не равна ключу.
+            if f.kind == FieldKind::Secret {
+                let secret = "pza_TESTTESTTESTTESTTESTTEST_zzz";
+                let mut cfg = base.clone();
+                cfg.apply_editable(f.key, &serde_json::json!(secret))
+                    .unwrap_or_else(|e| panic!("{}: запись не удалась: {e}", f.key));
+                let back = editable_value(&cfg, f.key).unwrap();
+                let shown = back.as_str().unwrap_or_default().to_string();
+                assert_ne!(shown, secret, "{}: наружу ушёл сам секрет", f.key);
+                assert!(
+                    shown.contains(MASK_CHAR),
+                    "{}: наружу ушло не замаскированное значение {shown:?}",
+                    f.key
+                );
+                // И присланная обратно маска не имеет права стать ключом.
+                let mut again = cfg.clone();
+                assert!(
+                    again.apply_editable(f.key, &back).is_err(),
+                    "{}: маска принята за ключ",
+                    f.key
+                );
+                continue;
+            }
+
             // Значение, ОТЛИЧНОЕ от текущего, и заведомо внутри границ.
             let probe = match f.kind {
+                FieldKind::Secret => unreachable!("секрет обработан выше"),
                 FieldKind::Text => serde_json::json!("проба"),
                 FieldKind::Bool => serde_json::json!(!current.as_bool().unwrap()),
                 // Первый вариант, ОТЛИЧНЫЙ от текущего: умолчание перечисления

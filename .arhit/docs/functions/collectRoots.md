@@ -1,0 +1,3 @@
+# collectRoots
+
+Список корней для диалога переноса задачи трекера в TODO (js/tracker/to-todo.js). Концепции «проект» в devforge нет — источник истины это cwd открытых сессий tmux (см. paths::resolve_root и js/ws/todos-ws.js::sessionPathOrNull), поэтому проекты собираются как РАЗНЫЕ session.path из state.sessions: без повторов, без сессий с пустым cwd, отсортированные по подписи. Последним элементом ВСЕГДА идёт виртуальный вариант «корень активной сессии tmux» с path = activePath (currentTodosPath из js/tasks/render.js). Если активной сессии нет, вариант остаётся в списке с path: null и становится невыбираемым — исчезнув, он молча менял бы значение по умолчанию. Каждый элемент: {path, label, hint, kind: 'project'|'session'}.

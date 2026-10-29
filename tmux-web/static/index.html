@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>tmux-web</title>
 
     <!-- xterm.js core CSS (5.3.0) — завендорено локально (/vendor/xterm),
@@ -38,6 +38,20 @@
                      id кнопки `bitrix-toggle`, а DOM-префикс панели `b24-` —
                      ровно как у Telegram (`telegram-toggle` + `tg-*`). -->
                 <button id="bitrix-toggle" type="button" title="Битрикс24" aria-label="Битрикс24" hidden>Ⓑ<span id="b24-unread-badge" hidden></span></button>
+                <!-- Вкладка «Мои задачи» (плагин forge-tracker, opt-in
+                     `--tracker`). hidden снимается из JS, когда
+                     GET /api/tracker/status ответил 200; 404 = плагин выключен,
+                     и тогда кнопка остаётся скрытой, а в консоль ничего не
+                     пишется.
+
+                     Глиф ✇ (U+2707, tape drive) — один кодпоинт, монохромный
+                     во всех системных шрифтах и не путается ни с ✈, ни с Ⓥ,
+                     ни с Ⓑ. Бейдж показывает число ИДУЩИХ таймеров (фаза 5),
+                     а не непрочитанного: у трекера читать нечего.
+
+                     Кнопка стоит ПОСЛЕ плагинов соцсетей — трекер к ним не
+                     относится и замыкает ряд плагинов. -->
+                <button id="tracker-toggle" type="button" title="Мои задачи" aria-label="Мои задачи" hidden>✇<span id="trk-running-badge" hidden></span></button>
             </div>
             <header class="sidebar-header">
                 <h1>tmux-web</h1>
@@ -71,7 +85,7 @@
                 <button id="tab-echo" class="tab-btn" type="button">Э.Х.О</button>
                 <span id="git-status-meta" class="tab-meta"></span>
                 <span id="tasks-status" class="tab-meta"></span>
-                <button id="claude-memory-btn" class="claude-memory-btn" type="button" title="Память Claude для этого проекта" aria-label="Память Claude для этого проекта">🧠</button>
+                <button id="claude-memory-btn" class="claude-memory-btn" type="button" title="Память Claude и Codex" aria-label="Память Claude и Codex">🧠</button>
             </div>
             <div id="window-bar" class="window-bar" hidden>
                 <div id="window-tabs" class="window-tabs"></div>
@@ -136,6 +150,45 @@
                     <span class="daily-summary-empty-icon">🗓️</span>
                     <p>За этот день сводки ещё нет.</p>
                     <button id="daily-summary-generate" class="daily-summary-generate" type="button">Сгенерировать</button>
+                </div>
+            </div>
+            <div id="analytics" class="analytics" style="display:none">
+                <div class="analytics-head">
+                    <button id="analytics-back" class="analytics-back" type="button" title="Закрыть аналитику (Esc)">← Назад</button>
+                    <div class="analytics-modes" role="tablist" aria-label="Режим аналитики">
+                        <button id="analytics-mode-agents" class="agent-button" type="button" role="tab" aria-selected="true">Агенты</button>
+                        <button id="analytics-mode-claude" class="agent-button" type="button" role="tab" aria-selected="false">Работа с Claude</button>
+                    </div>
+                    <div class="analytics-filters analytics-claude-control">
+                        <label class="analytics-filter">
+                            <span class="analytics-filter-label">Период</span>
+                            <select id="analytics-range" class="analytics-select" title="Период выборки">
+                                <option value="7">7 дней</option>
+                                <option value="30" selected>30 дней</option>
+                                <option value="90">90 дней</option>
+                                <option value="all">Всё время</option>
+                            </select>
+                        </label>
+                        <label class="analytics-filter">
+                            <span class="analytics-filter-label">Проект</span>
+                            <select id="analytics-project" class="analytics-select" title="Проект">
+                                <option value="">Все проекты</option>
+                            </select>
+                        </label>
+                    </div>
+                    <button id="analytics-rescan" class="analytics-rescan analytics-claude-control" type="button" title="Пересобрать индекс транскриптов">↻ Пересобрать индекс</button>
+                </div>
+                <div id="analytics-agents" class="analytics-agents" role="tabpanel" aria-labelledby="analytics-mode-agents"></div>
+                <div id="analytics-claude" class="analytics-claude" role="tabpanel" aria-labelledby="analytics-mode-claude" hidden>
+                <div class="analytics-hero">
+                    <div class="analytics-eyebrow">Аналитика Claude Code</div>
+                    <h1 id="analytics-title" class="analytics-title">Как я работаю с ассистентом</h1>
+                    <div id="analytics-meta" class="analytics-meta"></div>
+                </div>
+                <div id="analytics-progress" class="analytics-progress" hidden></div>
+                <div id="analytics-error" class="analytics-error" hidden></div>
+                <div id="analytics-kpi" class="analytics-kpi"></div>
+                <div id="analytics-grid" class="analytics-grid"></div>
                 </div>
             </div>
             <div id="screensaver" class="screensaver" style="display:none">
@@ -723,6 +776,28 @@
                     <button id="b24-theme-toggle" class="b24-icon-btn" type="button" title="Тема панели: авто / тёмная / светлая" aria-label="Переключить тему панели">◐</button>
                     <button id="b24-logout" class="b24-icon-btn" type="button" title="Отвязать вебхук Битрикс24" aria-label="Отвязать вебхук Битрикс24" hidden>⏻</button>
                 </div>
+                <!-- СТРОКА ВКЛАДОК ПОРТАЛОВ (мультипортальность).
+
+                     Отдельный ряд ПОД титлбаром и НАД телом панели. Видна
+                     всегда, включая мобильную раскладку, где колонка
+                     #b24-contacts уезжает под ☰: на узком экране вкладка
+                     портала — единственный способ понять, в чей чат уйдёт
+                     сообщение.
+
+                     Ряд статичен и не прячется даже пустым: кнопка `+` —
+                     единственный вход в добавление ВТОРОГО портала, а `id`
+                     резолвятся один раз при импорте js/core/dom.js. -->
+                <div id="b24-portals">
+                    <ul id="b24-portal-tabs" class="b24-portal-tabs"></ul>
+                    <button id="b24-portal-add" class="b24-icon-btn b24-portal-add" type="button" title="Подключить ещё один портал" aria-label="Подключить ещё один портал">+</button>
+                    <!-- Контекстное меню вкладки. Живёт ВНУТРИ ряда, потому что
+                         позиционируется от его угла: панель не обязана занимать
+                         весь экран (remote-режим показывает её в сетке). -->
+                    <div id="b24-portal-menu" class="b24-portal-menu" hidden>
+                        <button id="b24-portal-rename" class="b24-portal-menu-item" type="button">переименовать</button>
+                        <button id="b24-portal-remove" class="b24-portal-menu-item b24-portal-menu-danger" type="button">отвязать</button>
+                    </div>
+                </div>
                 <div id="b24-body">
                     <!-- tabindex=-1: на мобильных фокус переносится сюда при
                          открытии панели по ☰. -->
@@ -800,7 +875,12 @@
                      (Ф3) — секрет не должен задерживаться во фронте. -->
                 <div id="b24-login" hidden>
                     <div class="b24-login-box">
-                        <div class="b24-login-title">BITRIX24 // CONNECT</div>
+                        <!-- Заголовок переключается между «CONNECT» и «ADD
+                             PORTAL»: экран подключения ПЕРЕИСПОЛЬЗУЕТСЯ для
+                             добавления второго и последующих порталов (Ф8).
+                             Второго места, где через фронт проходит секрет, в
+                             проекте не заводится. -->
+                        <div id="b24-login-title" class="b24-login-title">BITRIX24 // CONNECT</div>
                         <div id="b24-login-step-webhook">
                             <!-- Текст подсказки приходит С БЭКЕНДА (поле
                                  `hint` в /api/bitrix/status): интерфейс
@@ -825,6 +905,10 @@
                                 <input id="b24-webhook" type="password" autocomplete="off" spellcheck="false" placeholder="https://портал.bitrix24.ru/rest/1/код/">
                             </label>
                             <button id="b24-login-webhook-submit" class="b24-login-btn" type="button">CONNECT</button>
+                            <!-- Виден только в режиме добавления портала: у
+                                 первого подключения отменять нечего — без
+                                 вебхука панель всё равно пуста. -->
+                            <button id="b24-login-cancel" class="b24-login-btn b24-login-btn-ghost" type="button" hidden>CANCEL</button>
                             <div id="b24-login-status" class="b24-login-status"></div>
                             <div id="b24-login-error" class="b24-login-error" hidden></div>
                             <div id="b24-login-countdown" class="b24-login-countdown" hidden></div>
@@ -925,6 +1009,232 @@
                     <img id="b24-lightbox-img" alt="">
                     <button id="b24-lightbox-next" class="b24-icon-btn" type="button" title="Следующее вложение" aria-label="Следующее вложение" hidden>›</button>
                     <div id="b24-lightbox-caption" class="b24-lightbox-caption"></div>
+                </div>
+            </div>
+
+            <!-- ==== Вкладка «Мои задачи» (плагин forge-tracker) ============
+
+                 Личный слой задач и времени. Разметка присутствует в
+                 index.html ВСЕГДА — как у Telegram, VK и Битрикса: ref'ы
+                 резолвятся один раз при импорте js/core/dom.js, а показ
+                 вкладки решает гейт по 200/404 от GET /api/tracker/status.
+
+                 DOM-префикс `trk-`, атрибут темы `data-tracker-theme` —
+                 панель не наследует токены приложения, у неё своя палитра
+                 (css/tracker.css). Значение атрибута в разметке —
+                 стартовое: настоящее ставит js/tracker/theme.js по режиму
+                 тумблера ◐ (auto/dark/light) сразу на загрузке страницы.
+
+                 ГЛАВНОЕ ОТЛИЧИЕ ОТ TODO-КАРТОЧЕК ВКЛАДКИ TASKS: задачи
+                 трекера ГЛОБАЛЬНЫЕ для всего F.O.R.G.E. и не привязаны ни к
+                 какому корню. Стор один — ~/.config/forge/tracker.json, и
+                 надпись «GLOBAL STORE» в титлбаре про это, а не для красоты.
+
+                 Динамически растут только левая колонка (списки и теги),
+                 лента задач и блок отрезков в карточке. Всё остальное
+                 статично: обход конвенции через querySelector сломал бы и
+                 фейковый DOM тестов, и e2e-селекторы. -->
+            <div id="tracker" class="tab-pane" hidden data-tracker-theme="dark">
+                <div id="trk-titlebar">
+                    <span class="trk-dots" aria-hidden="true">
+                        <span class="trk-dot trk-dot-red"></span>
+                        <span class="trk-dot trk-dot-amber"></span>
+                        <span class="trk-dot trk-dot-green"></span>
+                    </span>
+                    <span class="trk-title">FORGE://tracker</span>
+                    <span id="trk-store" class="trk-store">● 0 TIMERS · GLOBAL STORE</span>
+                    <span id="trk-today" class="trk-today"></span>
+                    <button id="trk-theme-toggle" class="trk-icon-btn" type="button" title="Тема панели" aria-label="Тема панели">◐</button>
+                    <button id="trk-reload" class="trk-icon-btn" type="button" title="Перечитать состояние" aria-label="Перечитать состояние">⏻</button>
+                </div>
+                <div id="trk-body">
+                    <aside id="trk-sidebar">
+                        <!-- ЧЕТЫРЕ ВИРТУАЛЬНЫЕ ДИРЕКТОРИИ. Это ФИЛЬТРЫ
+                             ВЫБОРКИ, а не каталоги на диске и не серверные
+                             запросы: сервер отдаёт снимок целиком
+                             (GET /api/tracker/state), а ~/today, ~/week,
+                             ~/inbox и ~/all — четыре предиката поверх него.
+                             Поэтому переключение директории сетевой операцией
+                             не является. -->
+                        <div class="trk-section-title">// DIRS</div>
+                        <ul id="trk-dirs" class="trk-list">
+                            <li class="trk-nav active" data-dir="today"><span class="trk-nav-name">~/today</span><span class="trk-nav-count" id="trk-dir-today-count"></span></li>
+                            <li class="trk-nav" data-dir="week"><span class="trk-nav-name">~/week</span><span class="trk-nav-count" id="trk-dir-week-count"></span></li>
+                            <li class="trk-nav" data-dir="inbox"><span class="trk-nav-name">~/inbox</span><span class="trk-nav-count" id="trk-dir-inbox-count"></span></li>
+                            <li class="trk-nav" data-dir="all"><span class="trk-nav-name">~/all</span><span class="trk-nav-count" id="trk-dir-all-count"></span></li>
+                        </ul>
+                        <div class="trk-section-head">
+                            <div class="trk-section-title" id="trk-lists-title">// LISTS</div>
+                            <button id="trk-list-add" class="trk-mini-btn" type="button" title="Создать список" aria-label="Создать список">+</button>
+                        </div>
+                        <ul id="trk-lists" class="trk-list"></ul>
+                        <div class="trk-section-title">// TAGS</div>
+                        <div id="trk-tags"></div>
+                        <div id="trk-sidebar-grow"></div>
+                        <ul class="trk-list">
+                            <li class="trk-nav" data-mode="report"><span class="trk-nav-name">~/report</span><span class="trk-nav-count">▸</span></li>
+                        </ul>
+                    </aside>
+                    <div id="trk-main">
+                        <div id="trk-session-header">
+                            <span id="trk-session-line">TRACKER ▸ ~/today</span>
+                            <!-- Управление окном диаграммы Гантта. Видно
+                                 ТОЛЬКО в режиме gantt (hidden снимает
+                                 js/tracker/main.js): в ленте и на доске окна
+                                 нет, и кнопки листания периода там ничего не
+                                 значат. [◀] и [▶] двигают окно ровно на его
+                                 длину, [today] возвращает к сегодняшнему дню,
+                                 7/14/30 меняют длину окна. -->
+                            <div id="trk-gantt-nav" hidden>
+                                <button class="trk-gnav" type="button" data-gnav="prev" title="период назад">◀</button>
+                                <button class="trk-gnav" type="button" data-gnav="today" title="к сегодняшнему дню">today</button>
+                                <button class="trk-gnav" type="button" data-gnav="next" title="период вперёд">▶</button>
+                                <span class="trk-gnav-sep"></span>
+                                <button class="trk-gnav" type="button" data-gspan="7" title="окно 7 дней">7д</button>
+                                <button class="trk-gnav active" type="button" data-gspan="14" title="окно 14 дней">14д</button>
+                                <button class="trk-gnav" type="button" data-gspan="30" title="окно 30 дней">30д</button>
+                            </div>
+                            <!-- Управление периодом сводки. Видно ТОЛЬКО в
+                                 режиме report (hidden снимает
+                                 js/tracker/main.js). [◀] [today] [▶] двигают
+                                 период на его длину, day/week/month меняют
+                                 длину, [EXPORT CSV] выгружает показанное. -->
+                            <div id="trk-report-nav" hidden>
+                                <button class="trk-gnav" type="button" data-rnav="prev" title="период назад">◀</button>
+                                <button class="trk-gnav" type="button" data-rnav="today" title="к текущему периоду">today</button>
+                                <button class="trk-gnav" type="button" data-rnav="next" title="период вперёд">▶</button>
+                                <span class="trk-gnav-sep"></span>
+                                <button class="trk-gnav" type="button" data-rperiod="day" title="сводка за день">day</button>
+                                <button class="trk-gnav active" type="button" data-rperiod="week" title="сводка за неделю">week</button>
+                                <button class="trk-gnav" type="button" data-rperiod="month" title="сводка за месяц">month</button>
+                                <span class="trk-gnav-sep"></span>
+                                <button class="trk-gnav" id="trk-report-csv" type="button" data-rnav="csv" title="выгрузить показанное в CSV">EXPORT CSV</button>
+                            </div>
+                            <!-- Режимы list · kanban · gantt · report. -->
+                            <div id="trk-modes">
+                                <button class="trk-mode active" type="button" data-mode="list">list</button>
+                                <button class="trk-mode" type="button" data-mode="kanban" title="доска по колонкам статуса">kanban</button>
+                                <button class="trk-mode" type="button" data-mode="gantt" title="диаграмма Гантта и вехи">gantt</button>
+                                <button class="trk-mode" type="button" data-mode="report" title="сводка времени за период">report</button>
+                            </div>
+                        </div>
+                        <!-- Блок идущих таймеров `// RUNNING — N`. Наполняет
+                             js/tracker/timer.js; пустой блок скрыт. Таймеров
+                             может идти несколько сразу — по разным задачам. -->
+                        <div id="trk-running" hidden></div>
+                        <div id="trk-content"></div>
+                        <div id="trk-prompt-preview" hidden></div>
+                        <!-- Нижняя строка ввода. Грамматика разбирается на
+                             фронте (js/tracker/parse.js): !N приоритет,
+                             #тег, ~2ч оценка, @список, due:18:00. -->
+                        <form id="trk-prompt" autocomplete="off">
+                            <span class="trk-prompt-sign">tracker:~$</span>
+                            <input id="trk-prompt-input" type="text" spellcheck="false" placeholder="новая задача…  !1 приоритет · #тег · ~2ч оценка · @work список · due:18:00">
+                            <button id="trk-create" type="submit">CREATE ⏎</button>
+                        </form>
+                        <div id="trk-statusbar">
+                            <span id="trk-conn">OFFLINE</span>
+                            <span id="trk-status-info">UTF-8 · GLOBAL JSON</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Карточка задачи. Живёт ВНУТРИ панели, а не в общем слое
+                     модалок: панель не обязана занимать весь экран
+                     (remote-режим показывает её в сетке), и оверлей должен
+                     затемнять именно её. -->
+                <div id="trk-modal" hidden>
+                    <div id="trk-modal-card">
+                        <div class="trk-modal-bar">
+                            <span class="trk-title">FORGE://tracker</span>
+                            <span id="trk-modal-node"></span>
+                            <button id="trk-modal-close" class="trk-icon-btn" type="button" title="Закрыть (Esc)" aria-label="Закрыть карточку">[esc]</button>
+                        </div>
+                        <div id="trk-modal-body"></div>
+                        <div id="trk-modal-error" hidden></div>
+                        <div class="trk-modal-footer">
+                            <button id="trk-modal-delete" class="trk-btn trk-btn-danger" type="button">DELETE</button>
+                            <button id="trk-modal-push" class="trk-btn" type="button" title="Скопировать в колонку TODO вкладки Tasks">→ tasks/todo</button>
+                            <span class="trk-grow"></span>
+                            <button id="trk-modal-done" class="trk-btn trk-btn-ok" type="button">MARK DONE</button>
+                            <button id="trk-modal-save" class="trk-btn trk-btn-primary" type="button">SAVE ⏎</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Диалог переноса задачи в TODO вкладки Tasks («PUSH ▸
+                     tasks/todo» из макета, экран «Состояния и перенос»).
+
+                     ЗАЧЕМ ОТДЕЛЬНОЕ ОКНО, А НЕ МОЛЧАЛИВЫЙ ПЕРЕНОС. Задачи
+                     трекера ГЛОБАЛЬНЫЕ (в модели нет никакого root_path), а
+                     TODO вкладки Tasks привязан к корню проекта. Взять корень
+                     автоматически неоткуда — его выбирает человек, и ровно
+                     здесь.
+
+                     Лежит РЯДОМ с #trk-modal и перекрывает её (z-index выше):
+                     перенос вызывается и из ленты, и из карточки задачи, а
+                     карточка при этом не закрывается — вернуться к правке
+                     после отмены переноса важнее, чем сэкономить слой. -->
+                <div id="trk-push" hidden>
+                    <div id="trk-push-card">
+                        <div class="trk-modal-bar">
+                            <span class="trk-title">PUSH ▸ tasks/todo</span>
+                            <span id="trk-push-hint">подтверждение</span>
+                            <button id="trk-push-close" class="trk-icon-btn" type="button" title="Отмена (Esc)" aria-label="Отменить перенос">[esc]</button>
+                        </div>
+                        <div id="trk-push-body">
+                            <div class="trk-push-cap">// COPY NODE → вкладка Tasks, колонка TODO</div>
+                            <div id="trk-push-node"></div>
+                            <div class="trk-push-why">задачи трекера глобальные, а TODO живёт в корне проекта —
+поэтому корень выбирается здесь:</div>
+                            <ul id="trk-push-roots"></ul>
+                            <div class="trk-push-note">копия: задача остаётся в трекере, таймеры и время не трогаются</div>
+                        </div>
+                        <div id="trk-push-error" hidden></div>
+                        <div class="trk-modal-footer">
+                            <span class="trk-grow"></span>
+                            <button id="trk-push-cancel" class="trk-btn" type="button">CANCEL</button>
+                            <button id="trk-push-ok" class="trk-btn trk-btn-primary" type="button">PUSH ⏎</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Диалог вехи Гантта (js/tracker/milestone.js).
+
+                     ЗАЧЕМ ОТДЕЛЬНОЕ ОКНО. До этого веха заводилась двумя
+                     window.prompt подряд, и дату приходилось НАБИРАТЬ руками —
+                     единственное место панели без пикера. Браузерная модалка
+                     вдобавок невидима для автоматизации.
+
+                     Форма повторяет #trk-push намеренно: это один язык
+                     диалогов панели. Отличие — DELETE в подвале, он виден
+                     только при правке существующей вехи. -->
+                <div id="trk-ms" hidden>
+                    <div id="trk-ms-card">
+                        <div class="trk-modal-bar">
+                            <span class="trk-title">MILESTONE ▸ gantt</span>
+                            <span id="trk-ms-hint">новая веха</span>
+                            <button id="trk-ms-close" class="trk-icon-btn" type="button" title="Отмена (Esc)" aria-label="Закрыть диалог вехи">[esc]</button>
+                        </div>
+                        <div id="trk-ms-body">
+                            <div class="trk-ms-cap">// ВЕХА — отметка ◆ на дорожке диаграммы</div>
+                            <label class="trk-ms-field">
+                                <span class="trk-ms-key">подпись</span>
+                                <input id="trk-ms-title" type="text" spellcheck="false" placeholder="например: релиз 0.9">
+                            </label>
+                            <label class="trk-ms-field">
+                                <span class="trk-ms-key">дата</span>
+                                <input id="trk-ms-date" type="date">
+                            </label>
+                        </div>
+                        <div id="trk-ms-error" hidden></div>
+                        <div class="trk-modal-footer">
+                            <button id="trk-ms-delete" class="trk-btn trk-btn-danger" type="button" hidden>DELETE</button>
+                            <span class="trk-grow"></span>
+                            <button id="trk-ms-cancel" class="trk-btn" type="button">CANCEL</button>
+                            <button id="trk-ms-ok" class="trk-btn trk-btn-primary" type="button">ADD ⏎</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </main>

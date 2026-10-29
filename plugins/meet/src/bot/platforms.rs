@@ -57,6 +57,18 @@ pub mod probe {
     pub const PARTICIPANT: &str = "participant";
     /// Имя внутри плитки участника.
     pub const PARTICIPANT_NAME: &str = "participant_name";
+    /// Признак СВОЕЙ плитки — единственная проба, которая ВЫЧИТАЕТ элемент из
+    /// выборки, а не добавляет.
+    ///
+    /// Появилась в Ф13 из-за живого замера на vcc.airlabs.pro: LiveKit рисует
+    /// бота такой же `.lk-participant-tile`, что и людей, и без вычитания бот
+    /// попадал в собственный список участников. Цена ошибки видна не сразу:
+    /// «Участник 1» в транскрипте оказывался ботом, а `others()` спасал только
+    /// пока имя бота в DOM совпадало с именем из заявки посимвольно.
+    ///
+    /// Пустая проба — законное состояние: у площадки, не помечающей свою
+    /// плитку, вычитать нечего, и список остаётся прежним.
+    pub const LOCAL_PARTICIPANT_MARKER: &str = "local_participant_marker";
     /// Индикатор «сейчас говорит» на плитке или внутри неё.
     pub const SPEAKING_MARKER: &str = "speaking_marker";
     /// Атрибуты (`attr:имя`), из которых берётся стабильный ключ участника.
@@ -112,6 +124,7 @@ pub const PROBE_NAMES: &[&str] = &[
     probe::LEAVE_BUTTON,
     probe::PARTICIPANT,
     probe::PARTICIPANT_NAME,
+    probe::LOCAL_PARTICIPANT_MARKER,
     probe::SPEAKING_MARKER,
     probe::PARTICIPANT_KEY_ATTR,
     probe::ACTIVE_SPEAKER,
@@ -610,7 +623,7 @@ mod tests {
         }
     }
 
-    /// Все четыре платформы реестра размечены, и ни одна не пуста.
+    /// Все платформы реестра размечены, и ни одна не пуста.
     ///
     /// Пустой набор — законное состояние механизма, но НЕ законный результат
     /// фаз 8–10: пустая разметка означала бы «Участник N» на каждой встрече
@@ -630,6 +643,98 @@ mod tests {
                     set.has(name),
                     "у платформы {} не размечена проба {name}",
                     platform.as_str()
+                );
+            }
+        }
+    }
+
+    /// ФАКТЫ ЖИВОЙ ПРОБЫ vcc.airlabs.pro, замороженные проверкой.
+    ///
+    /// Замер Ф13 нашёл то, чего разведка Ф0 не заметила: подписи «Выключить
+    /// микрофон» и «Выключить камеру» живут ТОЛЬКО на пре-джойне, а на панели
+    /// внутри встречи те же кнопки подписаны «Микрофон» и «Камера», и
+    /// состояние висит атрибутом `data-lk-enabled`. Пока в пробах были одни
+    /// пре-джойновые тексты, снимок ВНУТРИ встречи давал `mic = unknown`, и
+    /// повторное гашение микрофона после входа не находило кнопку вовсе — то
+    /// есть бот оставался в чужой встрече с включённым микрофоном.
+    ///
+    /// Поэтому у обеих пар кандидатов проверяется НАЛИЧИЕ ОБОИХ ЭКРАНОВ.
+    #[test]
+    fn the_vcc_device_probes_cover_both_screens() {
+        let set = ProbeBook::builtin().for_platform(crate::providers::Platform::Vcc.as_str());
+        for (name, source, enabled) in [
+            (probe::MIC_MUTE_BUTTON, "microphone", "true"),
+            (probe::MIC_UNMUTE_BUTTON, "microphone", "false"),
+            (probe::CAM_DISABLE_BUTTON, "camera", "true"),
+            (probe::CAM_ENABLE_BUTTON, "camera", "false"),
+        ] {
+            let candidates = set.get(name);
+            let panel = format!(".lk-button[data-lk-source=\"{source}\"][data-lk-enabled=\"{enabled}\"]");
+            assert!(
+                candidates.iter().any(|c| *c == panel),
+                "у пробы {name} нет кандидата панели встречи: {candidates:?}"
+            );
+            assert!(
+                candidates.iter().any(|c| c.starts_with("text:")),
+                "у пробы {name} нет кандидата пре-джойна: {candidates:?}"
+            );
+        }
+        // `.lk-button` в селекторе не украшение: атрибут `data-lk-source`
+        // есть и у ПЛИТКИ участника (`data-lk-source="camera"`, измерено), и
+        // без сужения по классу «выключить камеру» кликала бы по чужому видео.
+        for name in [probe::CAM_DISABLE_BUTTON, probe::CAM_ENABLE_BUTTON] {
+            for c in set.get(name) {
+                assert!(
+                    !c.starts_with("[data-lk-source"),
+                    "кандидат {c:?} пробы {name} поймает плитку участника"
+                );
+            }
+        }
+    }
+
+    /// СВОЯ ПЛИТКА ВЫЧИТАЕТСЯ, и это размечено только там, где измерено.
+    #[test]
+    fn only_vcc_subtracts_its_own_tile() {
+        let book = ProbeBook::builtin();
+        assert_eq!(
+            book.for_platform(crate::providers::Platform::Vcc.as_str())
+                .get(probe::LOCAL_PARTICIPANT_MARKER),
+            ["[data-lk-local-participant=\"true\"]"],
+            "атрибут снят живой пробой и не имеет права молча измениться"
+        );
+        for platform in crate::providers::Platform::ALL {
+            if platform == crate::providers::Platform::Vcc {
+                continue;
+            }
+            assert!(
+                book.for_platform(platform.as_str())
+                    .get(probe::LOCAL_PARTICIPANT_MARKER)
+                    .is_empty(),
+                "у {} проба своей плитки заполнена догадкой",
+                platform.as_str()
+            );
+        }
+    }
+
+    /// ДЕМОНСТРАЦИЯ ЭКРАНА — НЕ УЧАСТНИК.
+    ///
+    /// LiveKit рисует трансляцию такой же `.lk-participant-tile` с именем
+    /// «<имя>'s screen». На живой встрече пользователя это стоило 15 реплик из
+    /// 78, подписанных экраном, и двух фантомов в списке участников.
+    /// Единственное, что их отличает, — `data-lk-source`, поэтому обе пробы
+    /// обязаны его требовать: и та, что СОБИРАЕТ участников, и та, что
+    /// выбирает активного спикера (живьём индикатор речи встаёт на обеих
+    /// плитках человека сразу, а плитка экрана идёт в DOM раньше).
+    #[test]
+    fn the_vcc_probes_ignore_screen_shares() {
+        let set = ProbeBook::builtin().for_platform(crate::providers::Platform::Vcc.as_str());
+        for name in [probe::PARTICIPANT, probe::ACTIVE_SPEAKER] {
+            let candidates = set.get(name);
+            assert!(!candidates.is_empty(), "проба {name} опустела");
+            for c in candidates {
+                assert!(
+                    c.contains("[data-lk-source=\"camera\"]"),
+                    "кандидат {c:?} пробы {name} поймает плитку демонстрации экрана"
                 );
             }
         }

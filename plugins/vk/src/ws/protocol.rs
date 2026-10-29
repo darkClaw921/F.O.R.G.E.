@@ -168,6 +168,89 @@ pub enum VkServerMsg {
         /// Всего байт, если размер известен заранее.
         total: Option<u64>,
     },
+    /// Расшифровка голосового началась (голосовые-Ф3).
+    ///
+    /// Четвёрка кадров `voice_transcribe_*` стоит ЗДЕСЬ, между
+    /// `download_progress` и `notify_settings`, а не в конце enum'а. Причина
+    /// механическая: порядок кадров анализа заморожен тестом
+    /// `analysis_frames_sit_between_dialog_changed_and_resync`, и вставка
+    /// между `dialog_changed` и `resync` его сломала бы. Место при этом
+    /// осмысленное: расшифровка — продолжение жизненного цикла вложения,
+    /// который начинается `download_progress`.
+    ///
+    /// Состав и имена полей ОБЯЗАНЫ совпадать с Telegram и Bitrix: на этом
+    /// держится общий фронт-модуль (Ф5), один на три мессенджера.
+    VoiceTranscribeStarted {
+        /// Идентификатор прогона; им же различаются кадры двух вкладок.
+        run_id: String,
+        /// Беседа (строкой).
+        dialog_id: String,
+        /// Сообщение с голосовым.
+        message_id: i32,
+        /// Номер вложения в сообщении.
+        index: u8,
+        /// `local` | `cloud` — человек имеет право знать, ушло ли голосовое в
+        /// чужое облако, ДО того, как оно туда ушло.
+        engine: String,
+    },
+    /// Прогресс расшифровки, проценты.
+    ///
+    /// КОАЛЕСЦИРОВАН в [`VkVoiceSink`]: whisper печатает прогресс десятками
+    /// строк в секунду, и слать каждую значило бы переполнить broadcast
+    /// ([`crate::state::BROADCAST_CAPACITY`]), то есть получить `Lagged` и
+    /// [`VkServerMsg::Resync`] — перечитывание всего списка бесед посреди
+    /// расшифровки.
+    VoiceTranscribeDelta {
+        /// Идентификатор прогона.
+        run_id: String,
+        /// Беседа (строкой).
+        dialog_id: String,
+        /// Сообщение с голосовым.
+        message_id: i32,
+        /// Номер вложения в сообщении.
+        index: u8,
+        /// Проценты `0..=100`.
+        percent: u8,
+    },
+    /// Расшифровка готова; текст уже лежит в сторе.
+    VoiceTranscribeDone {
+        /// Идентификатор прогона.
+        run_id: String,
+        /// Беседа (строкой).
+        dialog_id: String,
+        /// Сообщение с голосовым.
+        message_id: i32,
+        /// Номер вложения в сообщении.
+        index: u8,
+        /// Текст расшифровки целиком.
+        text: String,
+        /// Язык, как его назвал движок; пустая строка — не назвал.
+        language: String,
+        /// Каким движком получено.
+        engine: String,
+        /// Длительность записи, мс.
+        duration_ms: i64,
+    },
+    /// Расшифровка не удалась.
+    ///
+    /// `code` отдельно от текста намеренно: по нему фронт различает случаи
+    /// (`metal_unavailable` — «включите облако или почините GPU»,
+    /// `voice_no_key` — «введите ключ»), и разбирать это из русской фразы он
+    /// не должен.
+    VoiceTranscribeError {
+        /// Идентификатор прогона.
+        run_id: String,
+        /// Беседа (строкой).
+        dialog_id: String,
+        /// Сообщение с голосовым.
+        message_id: i32,
+        /// Номер вложения в сообщении.
+        index: u8,
+        /// Машинный код отказа (`forge_voice::VoiceError::code`).
+        code: String,
+        /// Человеческий текст с хвостом stderr.
+        message: String,
+    },
     /// Настройки оповещений беседы изменились (событие 114 — в том числе с
     /// телефона). Фронт обновляет `muted` у одной строки, не перечитывая
     /// список.
@@ -362,6 +445,130 @@ impl forge_chat_analysis::AnalysisSink for VkAnalysisSink {
     }
 }
 
+/// На сколько процентов должна вырасти полоса, чтобы уехал новый кадр.
+///
+/// Пять: у голосового на минуту это два десятка кадров вместо сотен, а на глаз
+/// полоса всё равно движется непрерывно. Ноль означал бы кадр на каждую строку
+/// stderr whisper'а — то есть переполнение broadcast и `Resync` посреди
+/// расшифровки.
+pub const VOICE_PROGRESS_STEP: u8 = 5;
+
+/// Приёмник кадров расшифровки для ядра ([`forge_voice::VoiceSink`]).
+///
+/// Близнец [`VkAnalysisSink`] и живёт рядом с ним по той же причине: ядро
+/// `forge-voice` не знает ни [`VkServerMsg`], ни broadcast'а, а перевод в наш
+/// кадр обязан лежать там же, где объявлен сам кадр.
+///
+/// # Коалесцинг прогресса
+///
+/// Единственная логика поверх «переложить и отправить» — фильтр по шагу
+/// [`VOICE_PROGRESS_STEP`]. Он ведётся ПО ПРОГОНУ (`run_id`), а не одним
+/// счётчиком на приёмник: при потолке параллелизма больше единицы два прогона
+/// перемешали бы проценты, и полоса каждого дёргалась бы назад.
+#[derive(Debug, Clone)]
+pub struct VkVoiceSink {
+    tx: tokio::sync::broadcast::Sender<VkServerEvent>,
+    /// Последний ОТПРАВЛЕННЫЙ процент каждого идущего прогона.
+    sent: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, u8>>>,
+}
+
+impl VkVoiceSink {
+    /// Оборачивает broadcast-канал состояния.
+    #[must_use]
+    pub fn new(tx: tokio::sync::broadcast::Sender<VkServerEvent>) -> Self {
+        Self {
+            tx,
+            sent: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        }
+    }
+
+    /// Координаты вложения из ключа ядра.
+    ///
+    /// `message_id` в ядре — строка (у трёх мессенджеров он разного типа), а в
+    /// кадре VK это `i32`. Неразбираемое значение даёт `0`, а не панику: ключ
+    /// собирается из проверенного [`crate::media_cache::CacheKey`], но кадр —
+    /// не то место, где стоит падать.
+    fn coords(key: &forge_voice::VoiceKey) -> (String, i32, u8) {
+        (
+            key.peer.clone(),
+            key.message_id.parse().unwrap_or(0),
+            key.index,
+        )
+    }
+
+    /// Забыть прогон: он кончился.
+    fn forget(&self, run_id: &str) {
+        if let Ok(mut map) = self.sent.lock() {
+            map.remove(run_id);
+        }
+    }
+}
+
+impl forge_voice::VoiceSink for VkVoiceSink {
+    fn started(&self, run_id: &str, key: &forge_voice::VoiceKey, engine: &str) {
+        let (dialog_id, message_id, index) = Self::coords(key);
+        if let Ok(mut map) = self.sent.lock() {
+            map.insert(run_id.to_string(), 0);
+        }
+        let _ = self.tx.send(VkServerMsg::VoiceTranscribeStarted {
+            run_id: run_id.to_string(),
+            dialog_id,
+            message_id,
+            index,
+            engine: engine.to_string(),
+        });
+    }
+
+    fn progress(&self, run_id: &str, key: &forge_voice::VoiceKey, percent: u8) {
+        let percent = percent.min(100);
+        {
+            let Ok(mut map) = self.sent.lock() else { return };
+            let last = map.get(run_id).copied().unwrap_or(0);
+            // Сотня уезжает всегда: на ней фронт гасит полосу.
+            if percent < 100 && percent < last.saturating_add(VOICE_PROGRESS_STEP) {
+                return;
+            }
+            map.insert(run_id.to_string(), percent);
+        }
+        let (dialog_id, message_id, index) = Self::coords(key);
+        let _ = self.tx.send(VkServerMsg::VoiceTranscribeDelta {
+            run_id: run_id.to_string(),
+            dialog_id,
+            message_id,
+            index,
+            percent,
+        });
+    }
+
+    fn error(&self, run_id: &str, key: &forge_voice::VoiceKey, code: &str, message: &str) {
+        self.forget(run_id);
+        let (dialog_id, message_id, index) = Self::coords(key);
+        let _ = self.tx.send(VkServerMsg::VoiceTranscribeError {
+            run_id: run_id.to_string(),
+            dialog_id,
+            message_id,
+            index,
+            code: code.to_string(),
+            message: message.to_string(),
+        });
+    }
+
+    fn done(&self, run_id: &str, key: &forge_voice::VoiceKey, transcript: &forge_voice::Transcript) {
+        self.forget(run_id);
+        let (dialog_id, message_id, index) = Self::coords(key);
+        let _ = self.tx.send(VkServerMsg::VoiceTranscribeDone {
+            run_id: run_id.to_string(),
+            dialog_id,
+            message_id,
+            index,
+            text: transcript.text.clone(),
+            language: transcript.language.clone(),
+            engine: transcript.engine.as_str().to_string(),
+            duration_ms: transcript.duration_ms,
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -426,6 +633,38 @@ mod tests {
                 kind: "full".into(),
                 received: 10,
                 total: None,
+            },
+            VkServerMsg::VoiceTranscribeStarted {
+                run_id: "voice-1".into(),
+                dialog_id: "2000000001".into(),
+                message_id: 7,
+                index: 0,
+                engine: "cloud".into(),
+            },
+            VkServerMsg::VoiceTranscribeDelta {
+                run_id: "voice-1".into(),
+                dialog_id: "2000000001".into(),
+                message_id: 7,
+                index: 0,
+                percent: 40,
+            },
+            VkServerMsg::VoiceTranscribeDone {
+                run_id: "voice-1".into(),
+                dialog_id: "2000000001".into(),
+                message_id: 7,
+                index: 0,
+                text: "привет, это голосовое".into(),
+                language: "ru".into(),
+                engine: "cloud".into(),
+                duration_ms: 4200,
+            },
+            VkServerMsg::VoiceTranscribeError {
+                run_id: "voice-1".into(),
+                dialog_id: "2000000001".into(),
+                message_id: 7,
+                index: 0,
+                code: "metal_unavailable".into(),
+                message: "whisper не подтвердил Metal".into(),
             },
             VkServerMsg::NotifySettings {
                 dialog_id: "123".into(),
@@ -753,5 +992,169 @@ mod tests {
         tags.sort();
         tags.dedup();
         assert_eq!(tags.len(), total, "дублирующиеся теги кадров: {tags:?}");
+    }
+
+    // -----------------------------------------------------------------------
+    // Приёмник кадров расшифровки (ГС-Ф3).
+    // -----------------------------------------------------------------------
+
+    mod voice {
+        use super::*;
+        use forge_voice::{Engine, Transcript, VoiceKey, VoiceSink};
+
+        fn key() -> VoiceKey {
+            VoiceKey::new("2000000042", "7001", 1)
+        }
+
+        /// Все кадры пришедшего прогона, по порядку.
+        fn drain(rx: &mut tokio::sync::broadcast::Receiver<VkServerEvent>) -> Vec<VkServerMsg> {
+            let mut out = Vec::new();
+            while let Ok(msg) = rx.try_recv() {
+                out.push(msg);
+            }
+            out
+        }
+
+        /// **ПОЛНЫЙ ЦИКЛ: started → delta* → done, и каждый кадр несёт КЛЮЧ
+        /// ВЛОЖЕНИЯ.**
+        ///
+        /// Без тройки (dialog_id, message_id, index) фронт не знает, к какой
+        /// карточке относится кадр: сервер вещает их всем подписчикам без
+        /// фильтрации.
+        #[test]
+        fn a_full_cycle_reaches_the_socket_addressed_by_the_attachment() {
+            let (tx, mut rx) = tokio::sync::broadcast::channel(64);
+            let sink = VkVoiceSink::new(tx);
+
+            sink.started("voice-1", &key(), "cloud");
+            sink.progress("voice-1", &key(), 50);
+            sink.done(
+                "voice-1",
+                &key(),
+                &Transcript::new("расшифровано", Engine::Cloud)
+                    .with_language("ru")
+                    .with_duration_ms(4200),
+            );
+
+            let frames = drain(&mut rx);
+            assert_eq!(frames.len(), 3, "{frames:?}");
+            for f in &frames {
+                let json = serde_json::to_value(f).unwrap();
+                assert_eq!(json["dialog_id"], "2000000042", "{json}");
+                assert_eq!(json["message_id"], 7001, "{json}");
+                assert_eq!(json["index"], 1, "{json}");
+                assert_eq!(json["run_id"], "voice-1", "{json}");
+            }
+            let json = serde_json::to_value(&frames[0]).unwrap();
+            assert_eq!(json["type"], "voice_transcribe_started");
+            assert_eq!(json["engine"], "cloud", "движок обязан быть назван ДО отправки");
+            assert_eq!(
+                serde_json::to_value(&frames[1]).unwrap()["type"],
+                "voice_transcribe_delta"
+            );
+            let done = serde_json::to_value(&frames[2]).unwrap();
+            assert_eq!(done["type"], "voice_transcribe_done");
+            assert_eq!(done["text"], "расшифровано");
+            assert_eq!(done["language"], "ru");
+            assert_eq!(done["duration_ms"], 4200);
+        }
+
+        /// **ОШИБКА — РОВНО ОДИН КАДР, И КОД В НЁМ ОТДЕЛЬНЫМ ПОЛЕМ.**
+        #[test]
+        fn a_failure_produces_exactly_one_frame_with_its_code() {
+            let (tx, mut rx) = tokio::sync::broadcast::channel(64);
+            let sink = VkVoiceSink::new(tx);
+            sink.started("voice-2", &key(), "local");
+            sink.error("voice-2", &key(), "metal_unavailable", "GPU не подтверждён");
+
+            let frames = drain(&mut rx);
+            assert_eq!(frames.len(), 2, "{frames:?}");
+            let json = serde_json::to_value(&frames[1]).unwrap();
+            assert_eq!(json["type"], "voice_transcribe_error");
+            assert_eq!(json["code"], "metal_unavailable");
+            assert!(json["message"].as_str().unwrap().contains("GPU"));
+        }
+
+        /// **ПРОГРЕСС КОАЛЕСЦИРОВАН: СОТНЯ КАДРОВ ДВИЖКА — ЭТО ЕДИНИЦЫ КАДРОВ
+        /// В СОКЕТЕ.**
+        ///
+        /// И сотня уезжает всегда: на ней фронт гасит полосу.
+        #[test]
+        fn the_progress_is_coalesced_but_never_loses_the_hundred() {
+            let (tx, mut rx) = tokio::sync::broadcast::channel(256);
+            let sink = VkVoiceSink::new(tx);
+            sink.started("voice-3", &key(), "local");
+            for p in 0..=100u8 {
+                sink.progress("voice-3", &key(), p);
+            }
+
+            let deltas = drain(&mut rx)
+                .into_iter()
+                .filter(|f| matches!(f, VkServerMsg::VoiceTranscribeDelta { .. }))
+                .collect::<Vec<_>>();
+            assert!(
+                deltas.len() <= 101 / usize::from(VOICE_PROGRESS_STEP) + 2,
+                "коалесцинг не сработал: {} кадров",
+                deltas.len()
+            );
+            assert!(deltas.len() > 5, "полоса не должна стоять: {}", deltas.len());
+            let last = serde_json::to_value(deltas.last().unwrap()).unwrap();
+            assert_eq!(last["percent"], 100);
+        }
+
+        /// **ДВА ПРОГОНА НЕ ПУТАЮТ СВОИ ПРОЦЕНТЫ.**
+        ///
+        /// Счётчик ведётся по `run_id`: один общий на приёмник заставлял бы
+        /// полосу второго прогона дёргаться назад.
+        #[test]
+        fn two_runs_keep_separate_progress() {
+            let (tx, mut rx) = tokio::sync::broadcast::channel(256);
+            let sink = VkVoiceSink::new(tx);
+            sink.started("a", &key(), "cloud");
+            sink.started("b", &key(), "cloud");
+            sink.progress("a", &key(), 90);
+            sink.progress("b", &key(), 10);
+
+            let percents: Vec<(String, u64)> = drain(&mut rx)
+                .iter()
+                .filter_map(|f| match serde_json::to_value(f).unwrap() {
+                    v if v["type"] == "voice_transcribe_delta" => Some((
+                        v["run_id"].as_str().unwrap().to_string(),
+                        v["percent"].as_u64().unwrap(),
+                    )),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(percents, vec![("a".into(), 90), ("b".into(), 10)]);
+        }
+
+        /// **ОТСУТСТВИЕ ПОДПИСЧИКОВ НЕ РОНЯЕТ ПРОГОН.**
+        ///
+        /// Никто не открыл вкладку — это норма, а не повод бросить расшифровку,
+        /// которая уже идёт (и, возможно, уже оплачена).
+        #[test]
+        fn a_run_without_subscribers_survives() {
+            let (tx, rx) = tokio::sync::broadcast::channel(4);
+            drop(rx);
+            let sink = VkVoiceSink::new(tx);
+            sink.started("voice-4", &key(), "cloud");
+            for p in (0..=100).step_by(5) {
+                sink.progress("voice-4", &key(), p as u8);
+            }
+            sink.done("voice-4", &key(), &Transcript::new("текст", Engine::Cloud));
+            // Память тоже не копится: запись прогона снята финальным кадром.
+            assert!(sink.sent.lock().unwrap().is_empty());
+        }
+
+        /// Неразбираемый идентификатор сообщения даёт `0`, а не панику: кадр —
+        /// не то место, где стоит падать.
+        #[test]
+        fn a_broken_message_id_never_panics() {
+            let (tx, mut rx) = tokio::sync::broadcast::channel(8);
+            let sink = VkVoiceSink::new(tx);
+            sink.started("voice-5", &VoiceKey::new("peer", "не-число", 0), "cloud");
+            let json = serde_json::to_value(&drain(&mut rx)[0]).unwrap();
+            assert_eq!(json["message_id"], 0);
+        }
     }
 }

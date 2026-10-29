@@ -34,7 +34,7 @@
 //!
 //! [`JoinMode::Assisted`] открывает окно ВИДИМЫМ и **не делает ни одного
 //! клика**, пока человек не скажет [`MeetBot::confirm_human_ready`]. Одной
-//! кнопкой снимается риск отказа входа на всех четырёх платформах сразу —
+//! кнопкой снимается риск отказа входа на всех платформах реестра сразу —
 //! логин, капча, лобби, антибот. Поэтому режим делается в Ф3, а не «когда
 //! понадобится».
 //!
@@ -46,6 +46,7 @@ pub mod chrome;
 pub mod endgame;
 pub mod frame;
 pub mod inject;
+pub mod medialog;
 pub mod mode;
 pub mod observe;
 pub mod platforms;
@@ -59,13 +60,16 @@ use tokio::sync::mpsc;
 use crate::error::MeetError;
 use crate::hub::event::{MeetEvent, ParticipantInfo, StopReason};
 
-pub use attrib::{attribute, AttribConfig, AttributionReport, BindingStage, TrackBinding};
+pub use attrib::{
+    attribute, msid_participant, AttribConfig, AttributionReport, BindingStage, TrackBinding,
+};
 pub use chrome::{
     ensure_private_dir, hotkey_allowed, persistent_profile_dir, ChromeBot, ChromeBotConfig,
     ChromeBotFactory, Hotkey, ProfileLease,
 };
 pub use endgame::{EndConfig, EndSignals, EndWatch};
 pub use frame::AudioFrame;
+pub use medialog::{DeafWatch, MediaLogWatch, CODE_DEAF_BOT, CODE_MEDIA_TRANSPORT};
 pub use mode::{detect_track_mode, TrackMode, TrackObservation};
 pub use observe::{Axis, DeviceState, PageSnapshot, ParticipantNamer, RawParticipant};
 pub use platforms::{ProbeBook, ProbeSet};

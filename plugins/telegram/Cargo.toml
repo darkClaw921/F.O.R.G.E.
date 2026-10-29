@@ -87,6 +87,12 @@ forge-claude-runner = { path = "../claude-runner" }
 # `MessageDto`), роуты, кадры WS и поля конфига.
 forge-chat-analysis = { path = "../chat-analysis" }
 
+# Ядро фичи «Голосовые сообщения»: движки расшифровки (whisper.cpp на GPU и
+# polza.ai), подготовка аудио, лестница проверок, реестр прогонов и стор
+# готовых текстов. ОБЩЕЕ с VK, Bitrix и плагином встреч — вторая реализация
+# Metal-гарда разъехалась бы с первой на ближайшем исправлении.
+forge-voice = { path = "../voice" }
+
 [dev-dependencies]
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }

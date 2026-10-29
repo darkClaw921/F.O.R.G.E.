@@ -32,7 +32,7 @@ use serde::Serialize;
 
 /// Заменяет каждый не-алфанумерик символ пути на `-` — та же схема
 /// кодирования, что использует Claude Code для имени `~/.claude/projects/*`.
-fn encode_project_dir(path: &Path) -> String {
+pub(crate) fn encode_project_dir(path: &Path) -> String {
     path.to_string_lossy()
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })

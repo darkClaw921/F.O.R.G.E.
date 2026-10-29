@@ -46,6 +46,7 @@ import {
     $b24LightboxPrev,
 } from '../core/dom.js';
 
+import { createVoiceTranscript } from '../messenger/voice-transcript-core.js';
 import * as b24Api from './api.js';
 import { buildMediaList } from './attachments.js';
 import {
@@ -56,6 +57,31 @@ import { b24State } from './state.js';
 
 /** Запас в пикселях, при котором карточка считается «почти видимой». */
 const OBSERVER_MARGIN = '200px';
+
+/**
+ * Имя DOM-события, которым панель отдаёт кадры расшифровки наружу.
+ *
+ * Объявлено ЗДЕСЬ, а не в `main.js`, хотя рассылает кадры именно он: карточку
+ * оживляет этот файл, а `main.js` импортирует его — обратный импорт замкнул бы
+ * цикл. `main.js` берёт имя отсюда и переэкспортирует.
+ */
+export const VOICE_FRAME_EVENT = 'bitrix:voice-transcribe';
+
+/**
+ * Текст расшифровки под голосовым — ОБЩИЙ модуль на три панели.
+ *
+ * Живёт в media.js, а не в `attachments.js`, где строится сама разметка
+ * карточки, и это не случайность: `attachments.js` не делает ни одного запроса
+ * и не вешает ни одного обработчика — ровно поэтому он проверяется в голом
+ * Node. Расшифровка же и запрашивает, и слушает; её место здесь, рядом с
+ * остальным «оживлением» карточек.
+ */
+export const voiceTranscript = createVoiceTranscript({
+    plugin: 'bitrix',
+    classPrefix: 'b24-voice',
+    frameEvent: VOICE_FRAME_EVENT,
+    api: { transcribe: b24Api.transcribeVoice, transcript: b24Api.getVoiceTranscript },
+});
 
 const local = {
     /** ключ карточки → контроллер. */
@@ -271,6 +297,12 @@ export function renderMediaGroup(msg) {
         const media = list[i];
         if (!el || !media) continue;
         wireCard(el, media, dialogId, messageId, group);
+        // Блок расшифровки — последним потомком карточки и только у звука:
+        // `null` для прочих видов возвращает сам общий модуль.
+        const transcript = voiceTranscript.attach({
+            dialogId, messageId, index: media.index, kind: media.kind,
+        });
+        if (transcript) el.appendChild(transcript);
     }
     local.groups.set(`${dialogId}/${messageId}`, group);
     return box;

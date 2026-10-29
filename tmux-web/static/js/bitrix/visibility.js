@@ -27,6 +27,11 @@
 //      НЕПРОЧИТАННОГО            через dialogShown() перед показом
 //                                уведомления о новом сообщении.
 //
+// С Ф7.4 каждая из четырёх спрашивает настройки ТОГО ПОРТАЛА, чей кадр
+// обрабатывается (точки 1–3 — активного, точка 4 — портала кадра). Пропуск
+// портала так же опасен, как пропуск самой точки: кадры соседних порталов
+// идут в тот же сокет, и общий фильтр протекал бы в обе стороны сразу.
+//
 // ============================================================================
 // ЧЕМ БИТРИКС24 ОТЛИЧАЕТСЯ ОТ VK (важное ограничение)
 // ============================================================================
@@ -56,6 +61,36 @@
 //   bitrix_filter_enabled  — bool, дефолт FALSE, читается `=== true`;
 //   bitrix_visible_kinds   — виды диалогов из VISIBLE_KINDS;
 //   bitrix_visible_peers   — конкретные dialog_id (строки).
+//
+// ============================================================================
+// БЕЛЫЙ СПИСОК — У КАЖДОГО ПОРТАЛА СВОЙ (мультипортальность, Ф7.4)
+// ============================================================================
+//
+// `bitrix_visible_peers` хранит `DIALOG_ID` КОНКРЕТНОГО портала: `chat7` у
+// одного портала и `chat7` у другого — разные чаты. Общий на все порталы
+// список означал бы, что галочка, поставленная в рабочем портале, прячет
+// случайный чат в личном.
+//
+// Поэтому настройки живут в карте `bitrix_portal_prefs` (`portal_id` → запись
+// из пяти полей: `filter_enabled`, `visible_kinds`, `visible_peers`,
+// `voice_scope_kinds`, `voice_scope_peers`), а `normalizeFilter` принимает
+// ВТОРЫМ аргументом идентификатор портала. Правило чтения одно на три стороны
+// (хост `user_settings.rs`, плагин `forge_voice::prefs`, этот модуль), и
+// расходиться им нельзя:
+//
+//   1. в карте есть запись портала        ⇒ читается она;
+//   2. карта ПУСТА                        ⇒ читаются ПЛОСКИЕ ключи (состояние
+//                                           до миграции: портал-мигрант обязан
+//                                           увидеть свои прежние настройки);
+//   3. карта непуста, записи портала нет  ⇒ ДЕФОЛТЫ (фильтра нет).
+//
+// Портал НЕ ПЕРЕДАН — это случай «плоские ключи», ровно как было до Ф7:
+// подставлять вместо него первую попавшуюся запись нельзя, «первая» здесь
+// означает случайный портал.
+//
+// МОДУЛЬ ОСТАЁТСЯ ЧИСТЫМ: portal_id приходит АРГУМЕНТОМ. Читать активный
+// портал сам он не имеет права — тогда бы он знал про `api.js`, а тест про
+// сеть.
 
 import { dialogKind } from './format.js';
 
@@ -107,6 +142,87 @@ function cleanList(raw) {
     return out;
 }
 
+/** Имя карты пер-портальных настроек в `user_settings.json`. */
+export const PORTAL_PREFS_KEY = 'bitrix_portal_prefs';
+
+/** Простой объект (не массив, не null) — или `null`. */
+function plainObject(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    return value;
+}
+
+/**
+ * Настройки КОНКРЕТНОГО портала — правило из шапки модуля целиком.
+ *
+ * Возвращает запись из пяти полей в терминах КАРТЫ (`filter_enabled`,
+ * `visible_kinds`, `visible_peers`, `voice_scope_kinds`, `voice_scope_peers`),
+ * а не плоских ключей: одна форма на оба источника избавляет вызывающих от
+ * ветвления «мигрировали или нет».
+ *
+ * @param {?object} settings — window.ForgeApp.state.userSettings
+ * @param {?string} [portalId] — портал; пусто ⇒ плоские ключи (как до Ф7)
+ * @returns {{filter_enabled: boolean, visible_kinds: Array<string>,
+ *   visible_peers: Array<string>, voice_scope_kinds: Array<string>,
+ *   voice_scope_peers: Array<string>}}
+ */
+export function portalPrefs(settings, portalId) {
+    const s = plainObject(settings) || {};
+    const map = plainObject(s[PORTAL_PREFS_KEY]);
+    const id = String(portalId == null ? '' : portalId).trim();
+
+    if (map && id) {
+        const own = plainObject(map[id]);
+        if (own) {
+            return {
+                filter_enabled: own.filter_enabled === true,
+                visible_kinds: cleanList(own.visible_kinds),
+                visible_peers: cleanList(own.visible_peers),
+                voice_scope_kinds: cleanList(own.voice_scope_kinds),
+                voice_scope_peers: cleanList(own.voice_scope_peers),
+            };
+        }
+        // Карта непуста, а нашей записи в ней нет — портал подключён ПОСЛЕ
+        // миграции. Дефолты, а не чужие настройки: в чужих лежат DIALOG_ID
+        // другого портала, и при консервативном правиле «неизвестный диалог
+        // скрыт» этот портал показал бы пустую панель.
+        if (Object.keys(map).length > 0) {
+            return {
+                filter_enabled: false,
+                visible_kinds: [],
+                visible_peers: [],
+                voice_scope_kinds: [],
+                voice_scope_peers: [],
+            };
+        }
+    }
+
+    // Карта пуста или портал не передан — ПЛОСКИЕ ключи (состояние до Ф7).
+    return {
+        filter_enabled: s.bitrix_filter_enabled === true,
+        visible_kinds: cleanList(s.bitrix_visible_kinds),
+        visible_peers: cleanList(s.bitrix_visible_peers),
+        voice_scope_kinds: cleanList(s.bitrix_voice_scope_kinds),
+        voice_scope_peers: cleanList(s.bitrix_voice_scope_peers),
+    };
+}
+
+/**
+ * Тело PATCH `/api/user-settings`, меняющее настройки ОДНОГО портала.
+ *
+ * Здесь, а не в форме настроек: имя карты и форма записи — часть контракта с
+ * хостом, и второе место с этими строками разошлось бы с первым молча. Слияние
+ * (по ключу портала и по полям записи) делает бэкенд, поэтому в теле лежит
+ * ровно то, что человек сейчас правил.
+ *
+ * @param {string} portalId
+ * @param {object} fields — подмножество полей записи портала
+ * @returns {object} тело PATCH
+ */
+export function portalPrefsPatch(portalId, fields) {
+    const id = String(portalId == null ? '' : portalId).trim();
+    return { [PORTAL_PREFS_KEY]: { [id]: plainObject(fields) || {} } };
+}
+
 /**
  * Приводит настройки пользователя к рабочему виду фильтра.
  *
@@ -118,14 +234,16 @@ function cleanList(raw) {
  * по полям намеренно, и путать их нельзя.
  *
  * @param {?object} settings — window.ForgeApp.state.userSettings
+ * @param {?string} [portalId] — портал, чьи настройки нужны (Ф7.4). Пусто ⇒
+ *   плоские ключи, ровно как до мультипортальности.
  * @returns {{enabled: boolean, kinds: Array<string>, peers: Array<string>,
  *   kindSet: Set<string>, peerSet: Set<string>, active: boolean}}
  */
-export function normalizeFilter(settings) {
-    const s = (settings && typeof settings === 'object') ? settings : {};
-    const kinds = cleanList(s.bitrix_visible_kinds);
-    const peers = cleanList(s.bitrix_visible_peers);
-    const enabled = s.bitrix_filter_enabled === true;
+export function normalizeFilter(settings, portalId) {
+    const prefs = portalPrefs(settings, portalId);
+    const kinds = prefs.visible_kinds;
+    const peers = prefs.visible_peers;
+    const enabled = prefs.filter_enabled;
     return {
         enabled,
         kinds,

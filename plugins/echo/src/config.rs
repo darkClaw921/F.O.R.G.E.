@@ -25,6 +25,14 @@
 //!    - `FORGE_ECHO_DEFAULT_MODEL`
 //!    - `FORGE_ECHO_CAPTURE_LINES`
 //!    - `FORGE_ECHO_AUTONOMOUS_MAX_TOKENS_PER_DAY`
+//!    - `FORGE_ECHO_USER_MESSAGE_RATE_LIMIT_PER_MIN`
+//!    - `FORGE_ECHO_RUN_TIMEOUT_SECS`
+//!    - `FORGE_ECHO_CLAUDE_ENABLED` — мастер-разрешение LLM-run'ов; для ВСЕХ
+//!      плагинов разом есть глобальный `FORGE_CLAUDE_RUNNER_ENABLED` (приоритет).
+//!    - `FORGE_ECHO_LLM_BACKEND` — движок: `claude` | `kimi` | `cloud`.
+//!    - `FORGE_ECHO_KIMI_CLI_PATH` — путь к Kimi CLI (для `kimi`).
+//!    - `FORGE_ECHO_LLM_CLOUD_BASE_URL` / `FORGE_ECHO_LLM_CLOUD_API_KEY` /
+//!      `FORGE_ECHO_LLM_CLOUD_MODEL` — облачный провайдер (для `cloud`).
 //!
 //! [`EchoConfig::load`] делает всё вместе: defaults → файл → env.
 
@@ -118,6 +126,51 @@ pub struct EchoConfig {
     /// и закрывает канал, освобождая permit семафора.
     #[serde(default = "default_run_timeout_secs")]
     pub run_timeout_secs: u64,
+    /// Разрешать ли запуски LLM-run'ов (`claude -p`/`kimi -p`/облако).
+    /// Default `false` — запуски дорогие и по умолчанию выключены глобально
+    /// (см. шапку `forge_claude_runner`). Включается здесь, либо для ВСЕХ
+    /// плагинов разом через `FORGE_CLAUDE_RUNNER_ENABLED=1` (та переменная
+    /// имеет приоритет). Это МАСТЕР-выключатель: какой бы `llm_backend` ни
+    /// был выбран, без этого флага run'ы не стартуют.
+    #[serde(default)]
+    pub claude_enabled: bool,
+    /// Какой LLM-бэкенд использовать: `cloud` (**дефолт** — OpenAI-
+    /// совместимый polza.ai, ключ резолвится из `llm_cloud_api_key` → env
+    /// `FORGE_LLM_CLOUD_API_KEY`/`FORGE_MEET_POLZA_KEY` → `polza_api_key`
+    /// в `~/.config/forge/meet.toml`), `claude` (локальный Claude CLI) или
+    /// `kimi` (локальный Kimi CLI). Выбор движка — при включённом
+    /// [`Self::claude_enabled`] мастер-выключателе.
+    #[serde(default = "default_llm_backend")]
+    pub llm_backend: forge_claude_runner::LlmBackend,
+    /// Путь к Kimi CLI — используется когда `llm_backend = "kimi"`.
+    #[serde(default = "default_kimi_cli_path")]
+    pub kimi_cli_path: PathBuf,
+    /// База облачного API (OpenAI-совместимого) для `llm_backend = "cloud"`.
+    /// Пустая строка — дефолт polza.ai (`forge_voice::cloud::DEFAULT_BASE_URL`).
+    #[serde(default)]
+    pub llm_cloud_base_url: String,
+    /// Ключ облачного API для `llm_backend = "cloud"`. Пустой — облако не
+    /// настроено, run откажет с понятной ошибкой. В логи не пишется
+    /// (маскируется в Debug транспорта).
+    #[serde(default)]
+    pub llm_cloud_api_key: String,
+    /// Модель облачного API для `llm_backend = "cloud"`. Пустая — дефолт
+    /// `forge_voice::cloud::DEFAULT_SUMMARY_MODEL`.
+    #[serde(default)]
+    pub llm_cloud_model: String,
+}
+
+/// Дефолтный путь Kimi CLI — зеркало [`forge_claude_runner::CliKind::Kimi`].
+fn default_kimi_cli_path() -> PathBuf {
+    forge_claude_runner::CliKind::Kimi.default_path()
+}
+
+/// Дефолтный LLM-бэкенд: облако polza.ai. Отдельная fn (а не
+/// `LlmBackend::default()`, который остаётся `Claude` ради семантики meet) —
+/// чтобы у четырёх мессенджеров «по стандарту» работал провайдер без
+/// установленного CLI.
+fn default_llm_backend() -> forge_claude_runner::LlmBackend {
+    forge_claude_runner::LlmBackend::Cloud
 }
 
 fn default_max_parallel_runs() -> usize {
@@ -155,6 +208,12 @@ impl Default for EchoConfig {
             autonomous_max_tokens_per_day: default_autonomous_cap(),
             user_message_rate_limit_per_min: default_user_message_rate_limit(),
             run_timeout_secs: default_run_timeout_secs(),
+            claude_enabled: false,
+            llm_backend: default_llm_backend(),
+            kimi_cli_path: default_kimi_cli_path(),
+            llm_cloud_base_url: String::new(),
+            llm_cloud_api_key: String::new(),
+            llm_cloud_model: String::new(),
         }
     }
 }
@@ -253,6 +312,32 @@ impl EchoConfig {
                 Ok(n) => self.run_timeout_secs = n,
                 Err(_) => tracing::warn!(value = %v, "FORGE_ECHO_RUN_TIMEOUT_SECS: not a u64, keeping {}", self.run_timeout_secs),
             }
+        }
+        if let Ok(v) = std::env::var("FORGE_ECHO_CLAUDE_ENABLED") {
+            match v.parse::<bool>() {
+                Ok(b) => self.claude_enabled = b,
+                Err(_) => tracing::warn!(value = %v, "FORGE_ECHO_CLAUDE_ENABLED: not a bool, keeping {}", self.claude_enabled),
+            }
+        }
+        if let Ok(v) = std::env::var("FORGE_ECHO_LLM_BACKEND") {
+            match forge_claude_runner::LlmBackend::parse(&v) {
+                Some(b) => self.llm_backend = b,
+                None => tracing::warn!(value = %v, "FORGE_ECHO_LLM_BACKEND: expected claude|kimi|cloud, keeping {}", self.llm_backend.as_str()),
+            }
+        }
+        if let Ok(v) = std::env::var("FORGE_ECHO_KIMI_CLI_PATH") {
+            if !v.trim().is_empty() {
+                self.kimi_cli_path = PathBuf::from(v);
+            }
+        }
+        if let Ok(v) = std::env::var("FORGE_ECHO_LLM_CLOUD_BASE_URL") {
+            self.llm_cloud_base_url = v;
+        }
+        if let Ok(v) = std::env::var("FORGE_ECHO_LLM_CLOUD_API_KEY") {
+            self.llm_cloud_api_key = v;
+        }
+        if let Ok(v) = std::env::var("FORGE_ECHO_LLM_CLOUD_MODEL") {
+            self.llm_cloud_model = v;
         }
     }
 

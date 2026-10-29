@@ -148,8 +148,8 @@ export async function listAutonomousRuns(id, limit) {
 // -------- stats --------
 
 /**
- * range: 'minute' | 'hour' | 'day' (что поддерживает /api/echo/stats).
- * Если бэкенд игнорирует параметр — это всё равно безопасный no-op.
+ * range: 'hour' (60 minute buckets) | 'day' (24 hour buckets).
+ * Возвращает {range, buckets: [{ts, tokens_in, tokens_out, cache_creation, cache_read}]}.
  */
 export async function getStats(range) {
     const qs = range ? `?range=${encodeURIComponent(range)}` : '';

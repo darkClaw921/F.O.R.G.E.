@@ -374,7 +374,26 @@ $analysisDepth.value = '100';
 $analysis.appendChild($analysisPaneRun);
 $analysis.appendChild($analysisPaneCtx);
 
+// Строка вкладок порталов (мультипортальность). Ряд, список вкладок, кнопка
+// `+` и контекстное меню — ровно те id, что резолвит блок $b24* в core/dom.js.
+export const $portals = el('b24-portals');
+export const $portalTabs = el('b24-portal-tabs', 'ul');
+export const $portalAdd = el('b24-portal-add', 'button');
+export const $portalMenu = el('b24-portal-menu');
+export const $portalRename = el('b24-portal-rename', 'button');
+export const $portalRemove = el('b24-portal-remove', 'button');
+$portalMenu.hidden = true;
+$portals.appendChild($portalTabs);
+$portals.appendChild($portalAdd);
+$portals.appendChild($portalMenu);
+// Позиционирование меню читает габариты ряда — у фейкового DOM их нет.
+$portals.getBoundingClientRect = () => ({ left: 0, top: 0, right: 0, bottom: 0 });
+
 export const $login = el('b24-login');
+// Заголовок и CANCEL нужны режиму добавления портала: экран подключения
+// переиспользуется кнопкой `+` строки вкладок.
+export const $loginTitle = el('b24-login-title');
+export const $loginCancel = el('b24-login-cancel', 'button');
 export const $loginStep = el('b24-login-step-webhook');
 export const $hint = el('b24-login-hint');
 export const $webhook = el('b24-webhook', 'input');
@@ -466,7 +485,7 @@ export function jsonRes(status, obj) {
     };
 }
 
-/** Журнал запросов: [{url, method, body}]. */
+/** Журнал запросов: [{url, method, body, headers}]. */
 export const netCalls = [];
 
 let netHandler = () => Promise.resolve(jsonRes(200, {}));
@@ -479,7 +498,15 @@ export function setNet(fn) {
 globalThis.fetch = (url, init) => {
     let body = null;
     try { body = init && init.body ? JSON.parse(init.body) : null; } catch (_) { body = init && init.body; }
-    netCalls.push({ url: String(url), method: (init && init.method) || 'GET', body });
+    // Заголовки пишутся в журнал ради адресации портала (`X-Forge-Portal`):
+    // забытый заголовок не даёт ни ошибки, ни 404 — сервер молча берёт первый
+    // слот реестра, и запрос уходит не в тот портал.
+    netCalls.push({
+        url: String(url),
+        method: (init && init.method) || 'GET',
+        body,
+        headers: (init && init.headers) || {},
+    });
     return netHandler(String(url), init || {});
 };
 

@@ -143,6 +143,102 @@
 //!     вида. Как и у соседей, оба списка — БЕЛЫЙ список, и фильтр считается
 //!     ДЕЙСТВУЮЩИМ, только когда хотя бы один из них непуст.
 //!
+//!   - `bitrix_portal_prefs` (map `portal_id` → [`BitrixPortalPrefs`], default
+//!     пустая) — ТЕ ЖЕ пять настроек, но у каждого портала свои: белый список
+//!     видимости (`filter_enabled`, `visible_kinds`, `visible_peers`) и скоуп
+//!     авторазбора голосовых (`voice_scope_kinds`, `voice_scope_peers`).
+//!
+//!     **ПОЧЕМУ ПЕР-ПОРТАЛЬНО.** `bitrix_visible_peers` хранит `DIALOG_ID`
+//!     КОНКРЕТНОГО портала: `chat7` на одном портале и `chat7` на другом — это
+//!     разные чаты, и общий на все порталы список означал бы, что галочка,
+//!     поставленная в рабочем портале, прячет случайный чат в личном.
+//!
+//!     **ЧТО ОСТАЁТСЯ ГЛОБАЛЬНЫМ.** Тумблер `bitrix_voice_autotranscribe` в
+//!     карту НЕ уезжает: он не ссылается ни на какой `dialog_id`, «разбирать
+//!     голосовые в Битриксе» — свойство панели, а не портала. То же и с
+//!     `bitrix_hotkeys*`: клавиши принадлежат вкладке.
+//!
+//!     **ЧТЕНИЕ И МИГРАЦИЯ.** Правило одно на все стороны (хост, фронт
+//!     `js/bitrix/visibility.js::normalizeFilter`, плагин
+//!     `forge_voice::prefs::read_portal`), и разъехаться им нельзя:
+//!
+//!       1. в карте есть запись портала ⇒ читается она;
+//!       2. карта ПУСТА ⇒ читаются ПЛОСКИЕ ключи (`bitrix_filter_enabled`,
+//!          `bitrix_visible_*`, `bitrix_voice_scope_*`) — это состояние «до
+//!          мультипортальности», и портал-мигрант обязан увидеть ровно свои
+//!          прежние настройки;
+//!       3. карта непуста, а записи портала нет ⇒ ДЕФОЛТЫ (фильтра нет, скоуп
+//!          пуст). Портал, подключённый после миграции, наследовать чужой белый
+//!          список не может: в нём лежат `DIALOG_ID`, которых у него нет, и при
+//!          консервативном правиле «неизвестный диалог скрыт» он показал бы
+//!          пустую панель.
+//!
+//!     Миграция происходит при первой ЗАПИСИ и делается ЗДЕСЬ, а не клиентом:
+//!     PATCH, создающий первую запись в пустой карте, берёт её основой ПЛОСКИЕ
+//!     значения (см. [`UserSettingsStore::patch`]). Тем самым «портал-мигрант» —
+//!     это тот портал, чью форму настроек сохранили первой, и знать его id
+//!     заранее хосту не нужно.
+//!
+//!     **ПЛОСКИЕ КЛЮЧИ НЕ УДАЛЯЮТСЯ И НЕ ЗЕРКАЛЯТСЯ.** После миграции они
+//!     остаются в файле замороженными на своём последнем домультипортальном
+//!     значении: откат на старую сборку продолжает работать ровно так, как в
+//!     день отката. Зеркалить в них последнее сохранение нельзя — при двух
+//!     порталах в плоские ключи попал бы белый список того, кого сохранили
+//!     позже, и старая сборка применила бы чужие `DIALOG_ID` к первому порталу.
+//!
+//!   - `vk_voice_autotranscribe`, `telegram_voice_autotranscribe`,
+//!     `bitrix_voice_autotranscribe` (bool, default **false**) — разбирать ли
+//!     НОВЫЕ входящие голосовые сообщения автоматически, каждый в своей
+//!     панели. Три отдельных поля, а не одно общее: панели включаются разными
+//!     флагами запуска и живут у разных людей по-разному, и «включил в VK —
+//!     заработало в рабочем портале» было бы неожиданностью, а не удобством.
+//!
+//!     Дефолт `false` читается строго как `=== true` (как у `*_filter_enabled`,
+//!     а не как у `*_hotkeys_enabled`): фича тратит GPU либо деньги в облаке,
+//!     и молчаливо включаться она не имеет права. При выключенном флаге
+//!     плагин не делает НИ докачки вложения, НИ запуска движка — это гейт
+//!     фазы, а не пожелание.
+//!
+//!     Настройки не читаются плагинами через `AppState` (его у них нет вовсе):
+//!     плагин читает ЭТОТ ЖЕ файл сам, модулем `forge_voice::prefs`, на каждое
+//!     входящее голосовое. Отсюда и «применяется без перезапуска».
+//!
+//!   - `vk_voice_scope_kinds` / `vk_voice_scope_peers`,
+//!     `telegram_voice_scope_folders` / `telegram_voice_scope_dialogs`,
+//!     `bitrix_voice_scope_kinds` / `bitrix_voice_scope_peers`
+//!     (Vec<String>, default пустой) — БЕЛЫЙ СПИСОК бесед, в которых
+//!     авторазбор работает. Гранулярность ровно та же, что у видимости:
+//!     группа площадки (тип беседы VK, папка аккаунта Telegram, вид диалога
+//!     Битрикс24) плюс отдельные беседы.
+//!
+//!     **ПУСТОЙ СПИСОК = РАЗБИРАТЬ ВЕЗДЕ, и отдельного тумблера включения у
+//!     скоупа НЕТ.** Это решение, а не недоделка: скоуп добавлен к уже
+//!     работающей фиче, и любое другое прочтение пустоты («ничего не
+//!     разбирать») молча выключило бы авторазбор у всех, кто его уже включил.
+//!     Тумблер же был бы третьим состоянием поверх двух списков — ровно та
+//!     двусмысленность, из-за которой у видимости пришлось вводить
+//!     `filter_active()` («включён, но пуст» = не фильтр).
+//!
+//!     Скоуп НЕ заменяет видимость и НЕ подчиняет её: видимость — вышестоящий
+//!     фильтр, скрытая беседа не разбирается, даже если попала в скоуп
+//!     (порядок ступеней — `forge_voice::auto::decide`). Списки намеренно
+//!     отдельные: «не показывай мне этот чат» и «не трать GPU на этот чат» —
+//!     разные просьбы, и общий список означал бы, что человек не может
+//!     смотреть чат, не оплачивая его расшифровку.
+//!
+//!     Санитайзер и лимиты — общие с видимостью ([`sanitize_visible_list`],
+//!     [`MAX_TELEGRAM_VISIBLE`], [`MAX_VISIBLE_ENTRY_LEN`]): записи там и там
+//!     одной природы (короткие id и ключи групп), а второй санитайзер разошёлся
+//!     бы с первым при первой же правке.
+//!
+//!     Читает эти поля не только фронт: плагин открывает ЭТОТ ЖЕ файл модулем
+//!     `forge_voice::prefs` (таблица `PrefsKeys`, поля `scope_kinds` /
+//!     `scope_peers`) на каждое входящее голосовое.
+//!
+//!     Выбор ДВИЖКА расшифровки (`local` / `cloud`) в этом файле НЕ живёт: он
+//!     общий для всех мессенджеров и лежит в `~/.config/forge/voice.toml`
+//!     рядом с ключом polza.ai (роут `…/voice/settings` у каждого плагина).
+//!
 //! Токена VK в этом файле нет и быть не должно: он живёт в конфиге плагина
 //! (`~/.config/forge/vk.toml`, права 0600), а `user_settings.json` читается
 //! фронтендом целиком через `GET /api/user-settings` и секретов не хранит.
@@ -157,6 +253,13 @@
 //! rename атомарен в рамках одного mount-point — даже при `kill -9` в
 //! момент записи получим либо старый, либо новый файл, но не битый.
 //! Стратегия идентична [`crate::todos::save_locked`].
+//!
+//! **ЗАПИСЬ НЕ РАЗРУШИТЕЛЬНА.** Файл на диске не заменяется сериализацией
+//! структуры целиком: [`save_locked`] сначала перечитывает существующий JSON и
+//! доливает в результат ключи, которых структура не знает. Иначе один запуск
+//! новой сборки стирал бы настройки, добавленные сборкой более новой (или
+//! правленые руками), и откат версии терял бы данные молча. Известные поля при
+//! этом всегда выигрывают: источник истины для них — состояние в памяти.
 //!
 //! ### Lazy file creation
 //!
@@ -295,6 +398,10 @@ const MAX_VISIBLE_ENTRY_LEN: usize = 64;
 /// `telegram_visible_dialogs` и `vk_visible_kinds`/`vk_visible_peers`. Смысл
 /// записей у них разный, форма — одинаковая, поэтому санитайзер один.
 ///
+/// Тем же санитайзером чистятся шесть списков СКОУПА авторазбора голосовых
+/// (`*_voice_scope_*`): записи там той же природы — ключи групп и короткие id
+/// бесед.
+///
 /// Как и [`sanitize_hotkeys`], проверяет только ФОРМУ: смысл ключей (`inbox`,
 /// `archive`, `folder:<id>`, id чата) знает фронтенд. Неизвестная запись — не
 /// ошибка: она просто ни с чем не совпадёт, а сохранённой останется, что
@@ -325,6 +432,46 @@ fn sanitize_visible_list(raw: Vec<String>) -> Vec<String> {
         })
         .take(MAX_TELEGRAM_VISIBLE)
         .collect()
+}
+
+/// Максимальное число ПОРТАЛОВ, чьи настройки хранятся в
+/// [`UserSettings::bitrix_portal_prefs`].
+///
+/// Ограничение того же рода, что у хоткеев и белых списков: карта приезжает из
+/// браузера в PATCH и сохраняется в файл, а без потолка одна кривая отправка
+/// раздула бы `user_settings.json` неограниченно. Тридцать два портала —
+/// заведомо больше, чем можно держать вкладками в одной панели.
+///
+/// Записи СВЕРХ потолка отбрасываются, а не заменяют существующие: настройки,
+/// за которые человек уже отвечал галочками, важнее прилетевших сейчас.
+const MAX_BITRIX_PORTALS: usize = 32;
+
+/// Максимальная длина идентификатора портала.
+const MAX_PORTAL_ID_LEN: usize = 64;
+
+/// Проверяет идентификатор портала как КЛЮЧ карты настроек.
+///
+/// Алфавит дословно тот же, что даёт `bitrix::config::normalize_portal_id`:
+/// нижний регистр, только `[a-z0-9-]`, без сдвоенных и краевых дефисов. Второй
+/// (более широкий) алфавит здесь означал бы, что ключ настроек и подкаталог
+/// кэша расходятся: портал писал бы кэш в `acme`, а настройки читал из
+/// `Acme`, и обе стороны молча считали бы себя правыми.
+///
+/// Проверка СТРОГАЯ, а не нормализующая: `"../etc"` не превращается в `"etc"`,
+/// а отвергается целиком. Нормализация здесь тихо переписала бы мусорный ключ
+/// в правдоподобный и записала бы настройки не тому порталу — отказ честнее.
+///
+/// Зарезервированные `"_vacant"` и `"_socket"` (`bitrix::ws`) отсеиваются сами:
+/// подчёркивание в алфавит не входит. Пустого слота и служебного канала в
+/// настройках быть не может — настраивать в них нечего.
+fn valid_portal_id(raw: &str) -> bool {
+    if raw.is_empty() || raw.len() > MAX_PORTAL_ID_LEN {
+        return false;
+    }
+    if raw.starts_with('-') || raw.ends_with('-') || raw.contains("--") {
+        return false;
+    }
+    raw.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
 /// Максимальное число переопределений хоткеев Telegram.
@@ -380,6 +527,66 @@ fn sanitize_hotkeys(raw: BTreeMap<String, String>) -> BTreeMap<String, String> {
 /// Настройки уровня пользователя.
 ///
 /// Сериализуется в `~/.forge/user_settings.json`. Все поля
+/// Настройки ОДНОГО портала Битрикс24 — запись карты
+/// [`UserSettings::bitrix_portal_prefs`].
+///
+/// Пять полей и ни одного лишнего: три из белого списка видимости и два из
+/// скоупа авторазбора голосовых. Смысл каждого дословно совпадает с одноимённым
+/// плоским ключом (`bitrix_filter_enabled` → `filter_enabled` и так далее) —
+/// поля здесь именно переехали, а не завелись заново, и расходиться значениям
+/// нельзя.
+///
+/// Тумблера `voice_autotranscribe` здесь НЕТ намеренно: он глобальный (см.
+/// шапку модуля). Скоуп отвечает на вопрос «в каких чатах», а тумблер — «вообще
+/// ли разбирать», и второй вопрос портала не касается.
+///
+/// Все поля `#[serde(default)]`: запись, сохранённая старой сборкой без части
+/// полей, обязана читаться как «эта часть не настроена», а не ронять разбор
+/// всего файла.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BitrixPortalPrefs {
+    /// Режим «показывать только выбранные диалоги» ЭТОГО портала.
+    /// Фронт читает `=== true`, как и плоский `bitrix_filter_enabled`.
+    #[serde(default)]
+    pub filter_enabled: bool,
+    /// Белый список ВИДОВ диалогов: `user` | `chat` | `task`.
+    #[serde(default)]
+    pub visible_kinds: Vec<String>,
+    /// Белый список `DIALOG_ID` ЭТОГО портала (`"chat7"`, `"19"`, `"sg12"`).
+    #[serde(default)]
+    pub visible_peers: Vec<String>,
+    /// Скоуп авторазбора по видам диалогов. ПУСТО = разбирать везде.
+    #[serde(default)]
+    pub voice_scope_kinds: Vec<String>,
+    /// Скоуп авторазбора по отдельным диалогам. ПУСТО = разбирать везде.
+    #[serde(default)]
+    pub voice_scope_peers: Vec<String>,
+}
+
+/// Частичное обновление одной записи [`UserSettings::bitrix_portal_prefs`].
+///
+/// Поля `Option<T>` по той же причине, что и у [`PatchUserSettingsReq`]:
+/// настройки ОДНОГО портала правят ДВЕ разные формы — «Видимость диалогов»
+/// (три поля) и «Голосовые сообщения» (два поля). Приезжай запись целиком,
+/// сохранение любой из форм затирало бы поля другой, и человек терял бы скоуп
+/// авторазбора, просто сняв галочку в белом списке.
+///
+/// Пустой СПИСОК при этом остаётся осознанной очисткой — как и везде в этом
+/// файле: снять последнюю галочку иначе нечем.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct BitrixPortalPrefsPatch {
+    #[serde(default)]
+    pub filter_enabled: Option<bool>,
+    #[serde(default)]
+    pub visible_kinds: Option<Vec<String>>,
+    #[serde(default)]
+    pub visible_peers: Option<Vec<String>>,
+    #[serde(default)]
+    pub voice_scope_kinds: Option<Vec<String>>,
+    #[serde(default)]
+    pub voice_scope_peers: Option<Vec<String>>,
+}
+
 /// `#[serde(default)]` — чтобы частичный / пустой файл считался
 /// валидным состоянием (пропущенные поля берутся из [`Default`]).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -484,6 +691,59 @@ pub struct UserSettings {
     /// `"19"`, `"sg12"` — в формате `DialogDto.id` плагина Битрикс24).
     #[serde(default)]
     pub bitrix_visible_peers: Vec<String>,
+    /// Разбирать ли новые входящие голосовые VK автоматически. Default
+    /// `false` — фича opt-in и тратит GPU либо деньги в облаке (см. шапку
+    /// модуля). Читается не только фронтом: плагин VK открывает ЭТОТ ЖЕ файл
+    /// модулем `forge_voice::prefs` на каждое входящее голосовое.
+    #[serde(default)]
+    pub vk_voice_autotranscribe: bool,
+    /// То же для Telegram (`telegram_voice_autotranscribe`).
+    #[serde(default)]
+    pub telegram_voice_autotranscribe: bool,
+    /// То же для Битрикс24 (`bitrix_voice_autotranscribe`).
+    #[serde(default)]
+    pub bitrix_voice_autotranscribe: bool,
+    /// Белый список ТИПОВ бесед VK, в которых работает авторазбор:
+    /// `user` | `chat` | `community` — тот же словарь, что у
+    /// [`Self::vk_visible_kinds`].
+    ///
+    /// **ПУСТО = РАЗБИРАТЬ ВЕЗДЕ.** Тумблера включения у скоупа НЕТ и заводить
+    /// его не нужно: пустой список и означает «во всех беседах», иначе
+    /// появление поля молча выключило бы фичу у тех, кто её уже включил
+    /// (см. шапку модуля).
+    #[serde(default)]
+    pub vk_voice_scope_kinds: Vec<String>,
+    /// Белый список отдельных бесед VK для авторазбора: `peer_id` строками.
+    /// Пусто (вместе с [`Self::vk_voice_scope_kinds`]) = разбирать везде.
+    #[serde(default)]
+    pub vk_voice_scope_peers: Vec<String>,
+    /// Белый список ПАПОК аккаунта Telegram для авторазбора: `inbox`,
+    /// `archive`, `folder:<id>` — тот же словарь, что у
+    /// [`Self::telegram_visible_folders`]. Пусто = разбирать везде.
+    #[serde(default)]
+    pub telegram_voice_scope_folders: Vec<String>,
+    /// Белый список отдельных чатов Telegram для авторазбора (id в формате
+    /// `DialogDto.id`). Пусто = разбирать везде.
+    #[serde(default)]
+    pub telegram_voice_scope_dialogs: Vec<String>,
+    /// Белый список ВИДОВ диалогов Битрикс24 для авторазбора:
+    /// `user` | `chat` | `task` — тот же словарь, что у
+    /// [`Self::bitrix_visible_kinds`]. Пусто = разбирать везде.
+    #[serde(default)]
+    pub bitrix_voice_scope_kinds: Vec<String>,
+    /// Белый список отдельных диалогов Битрикс24 для авторазбора: `DIALOG_ID`
+    /// строками (`"chat7"`, `"19"`, `"sg12"`). Пусто = разбирать везде.
+    #[serde(default)]
+    pub bitrix_voice_scope_peers: Vec<String>,
+    /// Пер-портальные настройки Битрикс24: `portal_id` → [`BitrixPortalPrefs`].
+    ///
+    /// Пустая карта = «миграция ещё не случилась», и тогда действуют ПЛОСКИЕ
+    /// ключи выше (полное правило — в шапке модуля, оно же продублировано во
+    /// фронте и в `forge_voice::prefs`). `BTreeMap`, а не `HashMap`: порядок
+    /// ключей должен быть детерминированным, иначе каждое сохранение
+    /// перетасовывало бы файл, за которым люди следят глазами и git-diff'ом.
+    #[serde(default)]
+    pub bitrix_portal_prefs: BTreeMap<String, BitrixPortalPrefs>,
     /// Авто-апрув интерактивных prompt'ов Claude Code в tmux-сессиях
     /// (см. [`crate::auto_approve`]). Default `false` — фича opt-in и
     /// нажимает клавиши за пользователя, см. инвариант в шапке модуля.
@@ -508,6 +768,26 @@ pub struct UserSettings {
     /// встроенный список `auto_approve::DEFAULT_DANGEROUS`, а не заменяет его.
     #[serde(default)]
     pub auto_approve_blocklist: Vec<String>,
+    /// Разрешать ли LLM-эскалации блоклиста — вызовы `claude -p` за вердиктом
+    /// «можно ли подтвердить опасную команду» (см. [`crate::auto_approve`]).
+    /// Default `false`: запуски `claude -p` в проекте по умолчанию выключены
+    /// глобально. Включается здесь, либо для ВСЕХ запусков разом через
+    /// `FORGE_CLAUDE_RUNNER_ENABLED=1` (приоритет). Выключенный флаг оставляет
+    /// блоклист-совпадения человеку — авто-апрув продолжает работать по
+    /// остальным правилам.
+    #[serde(default)]
+    pub claude_llm_enabled: bool,
+    /// Каким движком спрашивать вердикт LLM-эскалации блоклиста: `claude`
+    /// (локальный Claude CLI, дефолт) или `kimi` (локальный Kimi CLI).
+    /// Облачный OpenAI-совместимый провайдер выбирается не здесь, а env-трио
+    /// `FORGE_LLM_CLOUD_BASE_URL` / `FORGE_LLM_CLOUD_API_KEY` /
+    /// `FORGE_LLM_CLOUD_MODEL`: заданный ключ облака побеждает эту настройку.
+    #[serde(default = "default_claude_llm_backend")]
+    pub claude_llm_backend: String,
+}
+
+fn default_claude_llm_backend() -> String {
+    "claude".to_string()
 }
 
 impl Default for UserSettings {
@@ -538,11 +818,69 @@ impl Default for UserSettings {
             bitrix_filter_enabled: false,
             bitrix_visible_kinds: Vec::new(),
             bitrix_visible_peers: Vec::new(),
+            vk_voice_autotranscribe: false,
+            telegram_voice_autotranscribe: false,
+            bitrix_voice_autotranscribe: false,
+            vk_voice_scope_kinds: Vec::new(),
+            vk_voice_scope_peers: Vec::new(),
+            telegram_voice_scope_folders: Vec::new(),
+            telegram_voice_scope_dialogs: Vec::new(),
+            bitrix_voice_scope_kinds: Vec::new(),
+            bitrix_voice_scope_peers: Vec::new(),
+            bitrix_portal_prefs: BTreeMap::new(),
             auto_approve_enabled: false,
             auto_approve_broad: false,
             auto_approve_questions: default_auto_approve_questions(),
             auto_approve_blocklist: Vec::new(),
+            claude_llm_enabled: false,
+            claude_llm_backend: default_claude_llm_backend(),
         }
+    }
+}
+
+impl UserSettings {
+    /// Плоские ключи Битрикс24 в виде записи портала.
+    ///
+    /// Ровно то состояние, которое видел портал-мигрант ДО мультипортальности.
+    /// Используется в двух местах — при чтении (карта пуста) и при миграции
+    /// (первая запись в пустой карте), и написано один раз именно поэтому:
+    /// два перечисления пяти полей разошлись бы при первой же правке.
+    #[must_use]
+    pub fn bitrix_flat_prefs(&self) -> BitrixPortalPrefs {
+        BitrixPortalPrefs {
+            filter_enabled: self.bitrix_filter_enabled,
+            visible_kinds: self.bitrix_visible_kinds.clone(),
+            visible_peers: self.bitrix_visible_peers.clone(),
+            voice_scope_kinds: self.bitrix_voice_scope_kinds.clone(),
+            voice_scope_peers: self.bitrix_voice_scope_peers.clone(),
+        }
+    }
+
+    /// Настройки КОНКРЕТНОГО портала Битрикс24 — по правилу из шапки модуля.
+    ///
+    /// 1. запись портала есть ⇒ она;
+    /// 2. карта пуста ⇒ [`Self::bitrix_flat_prefs`] (портал-мигрант);
+    /// 3. карта непуста, записи нет ⇒ дефолты.
+    ///
+    /// Пустой `portal_id` считается «портал неизвестен» и ведёт себя как случай
+    /// 2/3: подставлять вместо него первую попавшуюся запись нельзя — «первая»
+    /// у `BTreeMap` означает алфавит, то есть случайный портал.
+    ///
+    /// `allow(dead_code)` осознанно: САМ хост эти настройки не применяет — их
+    /// читают фронт (`js/bitrix/visibility.js`) и плагин
+    /// (`forge_voice::prefs::read_portal`), у которых своего доступа к этой
+    /// структуре нет. Здесь живёт ЭТАЛОН правила, покрытый тестами модуля:
+    /// удалить его — значит оставить два независимых пересказа без образца.
+    #[allow(dead_code)]
+    #[must_use]
+    pub fn bitrix_prefs_for(&self, portal_id: &str) -> BitrixPortalPrefs {
+        if let Some(found) = self.bitrix_portal_prefs.get(portal_id.trim()) {
+            return found.clone();
+        }
+        if self.bitrix_portal_prefs.is_empty() {
+            return self.bitrix_flat_prefs();
+        }
+        BitrixPortalPrefs::default()
     }
 }
 
@@ -638,6 +976,49 @@ pub struct PatchUserSettingsReq {
     /// списка.
     #[serde(default)]
     pub bitrix_visible_peers: Option<Vec<String>>,
+    /// Включить/выключить авторазбор новых голосовых VK.
+    #[serde(default)]
+    pub vk_voice_autotranscribe: Option<bool>,
+    /// То же для Telegram.
+    #[serde(default)]
+    pub telegram_voice_autotranscribe: Option<bool>,
+    /// То же для Битрикс24.
+    #[serde(default)]
+    pub bitrix_voice_autotranscribe: Option<bool>,
+    /// Белый список типов бесед VK для авторазбора. Семантика — ПОЛНАЯ ЗАМЕНА
+    /// списка, как у всех соседних списков: снять галочку в merge-семантике
+    /// было бы нечем. Пустой список = «разбирать во всех беседах».
+    #[serde(default)]
+    pub vk_voice_scope_kinds: Option<Vec<String>>,
+    /// Белый список отдельных бесед VK для авторазбора. ПОЛНАЯ ЗАМЕНА списка.
+    #[serde(default)]
+    pub vk_voice_scope_peers: Option<Vec<String>>,
+    /// Белый список папок Telegram для авторазбора. ПОЛНАЯ ЗАМЕНА списка.
+    #[serde(default)]
+    pub telegram_voice_scope_folders: Option<Vec<String>>,
+    /// Белый список отдельных чатов Telegram для авторазбора. ПОЛНАЯ ЗАМЕНА.
+    #[serde(default)]
+    pub telegram_voice_scope_dialogs: Option<Vec<String>>,
+    /// Белый список видов диалогов Битрикс24 для авторазбора. ПОЛНАЯ ЗАМЕНА.
+    #[serde(default)]
+    pub bitrix_voice_scope_kinds: Option<Vec<String>>,
+    /// Белый список отдельных диалогов Битрикс24 для авторазбора. ПОЛНАЯ
+    /// ЗАМЕНА списка.
+    #[serde(default)]
+    pub bitrix_voice_scope_peers: Option<Vec<String>>,
+    /// Пер-портальные настройки Битрикс24: `portal_id` → частичное обновление.
+    ///
+    /// Семантика СЛИЯНИЯ, а не замены карты, — единственное исключение из
+    /// правила «список уходит целиком», и оно вынужденное: форма настроек
+    /// открыта на ОДНОМ портале и про остальные ничего не знает. Присылай она
+    /// карту целиком, сохранение настроек портала A стирало бы настройки
+    /// портала B, который в этот момент даже не был загружен.
+    ///
+    /// Слияние двухуровневое: по ключу портала — в карту, внутри записи — по
+    /// полям (`Option`, см. [`BitrixPortalPrefsPatch`]). Пустая карта не значит
+    /// ничего и ничего не меняет.
+    #[serde(default)]
+    pub bitrix_portal_prefs: Option<BTreeMap<String, BitrixPortalPrefsPatch>>,
     /// Включить/выключить авто-апрув prompt'ов Claude Code целиком.
     #[serde(default)]
     pub auto_approve_enabled: Option<bool>,
@@ -652,6 +1033,12 @@ pub struct PatchUserSettingsReq {
     /// было бы нечем. Пустой список = только встроенный блоклист.
     #[serde(default)]
     pub auto_approve_blocklist: Option<Vec<String>>,
+    /// Включить/выключить LLM-эскалации блоклиста (вызовы `claude -p`).
+    #[serde(default)]
+    pub claude_llm_enabled: Option<bool>,
+    /// Движок вердикта LLM-эскалации: `claude` (дефолт) или `kimi`.
+    #[serde(default)]
+    pub claude_llm_backend: Option<String>,
 }
 
 #[derive(Debug)]
@@ -832,6 +1219,48 @@ impl UserSettingsStore {
         if let Some(v) = payload.bitrix_visible_peers {
             inner.settings.bitrix_visible_peers = sanitize_visible_list(v);
         }
+        // Три ОТДЕЛЬНЫХ флага авторазбора голосовых — по одному на панель.
+        // Санитайзер им не нужен: это булевы, а не списки.
+        if let Some(v) = payload.vk_voice_autotranscribe {
+            inner.settings.vk_voice_autotranscribe = v;
+        }
+        if let Some(v) = payload.telegram_voice_autotranscribe {
+            inner.settings.telegram_voice_autotranscribe = v;
+        }
+        if let Some(v) = payload.bitrix_voice_autotranscribe {
+            inner.settings.bitrix_voice_autotranscribe = v;
+        }
+        // Шесть списков СКОУПА авторазбора. Санитайзер тот же, что у видимости:
+        // записи одной природы (ключи групп и короткие id бесед), а второй
+        // санитайзер разошёлся бы с первым при первой же правке. Пустой список
+        // законен и означает «разбирать во всех беседах» (см. шапку модуля).
+        if let Some(v) = payload.vk_voice_scope_kinds {
+            inner.settings.vk_voice_scope_kinds = sanitize_visible_list(v);
+        }
+        if let Some(v) = payload.vk_voice_scope_peers {
+            inner.settings.vk_voice_scope_peers = sanitize_visible_list(v);
+        }
+        if let Some(v) = payload.telegram_voice_scope_folders {
+            inner.settings.telegram_voice_scope_folders = sanitize_visible_list(v);
+        }
+        if let Some(v) = payload.telegram_voice_scope_dialogs {
+            inner.settings.telegram_voice_scope_dialogs = sanitize_visible_list(v);
+        }
+        if let Some(v) = payload.bitrix_voice_scope_kinds {
+            inner.settings.bitrix_voice_scope_kinds = sanitize_visible_list(v);
+        }
+        if let Some(v) = payload.bitrix_voice_scope_peers {
+            inner.settings.bitrix_voice_scope_peers = sanitize_visible_list(v);
+        }
+        // Пер-портальные настройки Битрикс24 применяются ПОСЛЕДНИМИ из
+        // битриксовых полей — и это значимо. Плоские поля обработаны выше,
+        // поэтому запись, СОЗДАВАЕМАЯ миграцией в этом же PATCH, наследует уже
+        // обновлённые значения, а явно присланные поля карты перекрывают их.
+        // Ровно то, что обещано контрактом: «карта выигрывает, плоское поле
+        // применяется к порталу-мигранту».
+        if let Some(map) = payload.bitrix_portal_prefs {
+            apply_bitrix_portal_prefs(&mut inner.settings, map);
+        }
         if let Some(v) = payload.auto_approve_enabled {
             inner.settings.auto_approve_enabled = v;
         }
@@ -847,9 +1276,115 @@ impl UserSettingsStore {
             // встроенный блоклист».
             inner.settings.auto_approve_blocklist = sanitize_blocklist(v);
         }
+        if let Some(v) = payload.claude_llm_enabled {
+            inner.settings.claude_llm_enabled = v;
+        }
+        if let Some(v) = payload.claude_llm_backend {
+            // Нераспознанное значение не пишем: движок резолвится в claude.
+            if matches!(v.trim().to_lowercase().as_str(), "claude" | "kimi") {
+                inner.settings.claude_llm_backend = v.trim().to_lowercase();
+            }
+        }
 
         save_locked(&inner)?;
         Ok(inner.settings.clone())
+    }
+}
+
+/// Готовит JSON к записи: известные поля из памяти плюс НЕИЗВЕСТНЫЕ ключи,
+/// которые уже лежат в файле.
+///
+/// Зачем (см. раздел «Persistence» в шапке): `serde` при чтении молча
+/// отбрасывает всё, чего нет в структуре, и запись сериализацией структуры
+/// целиком стирала бы такие ключи навсегда. Расплачивается за это ровно тот,
+/// кто откатил версию devforge на день назад: настройки, добавленные новой
+/// сборкой, исчезли бы при первом же сохранении из старой.
+///
+/// Известное поле всегда выигрывает — источник истины для него состояние в
+/// памяти. Нечитаемый или не-объектный файл просто игнорируется: чинить чужой
+/// мусор эта функция не обязана, а отказывать в сохранении из-за него — тем
+/// более.
+fn merge_with_existing(inner: &Inner) -> serde_json::Value {
+    let mine = serde_json::to_value(&inner.settings).unwrap_or(serde_json::Value::Null);
+    let (Some(mut obj), Ok(text)) = (
+        mine.as_object().cloned(),
+        std::fs::read_to_string(&inner.path),
+    ) else {
+        return mine;
+    };
+    let Ok(serde_json::Value::Object(existing)) = serde_json::from_str::<serde_json::Value>(&text)
+    else {
+        return mine;
+    };
+    for (key, value) in existing {
+        obj.entry(key).or_insert(value);
+    }
+    serde_json::Value::Object(obj)
+}
+
+/// Вливает частичные пер-портальные настройки Битрикс24 в карту.
+///
+/// Три правила, и каждое — ответ на конкретную неприятность:
+///
+/// - **мусорный `portal_id` отбрасывается целиком** ([`valid_portal_id`]).
+///   Ключ карты приезжает по сети и попадает в файл; нормализовать его молча
+///   значило бы записать настройки не тому порталу;
+/// - **потолок [`MAX_BITRIX_PORTALS`] считается по НОВЫМ ключам.** Запись уже
+///   существующего портала проходит всегда: иначе переполненная карта
+///   заблокировала бы правку настроек порталов, которые в ней уже есть;
+/// - **основа НОВОЙ записи в ПУСТОЙ карте — плоские ключи** (миграция, см.
+///   шапку модуля). Во всех прочих случаях основа — дефолты: карта уже непуста,
+///   значит миграция состоялась, и плоские значения принадлежат прошлому.
+fn apply_bitrix_portal_prefs(
+    settings: &mut UserSettings,
+    incoming: BTreeMap<String, BitrixPortalPrefsPatch>,
+) {
+    // Снимок «карта была пуста» берётся ДО первой вставки: иначе второй портал
+    // в одном и том же PATCH мигрировал бы плоские ключи себе тоже.
+    let migrating = settings.bitrix_portal_prefs.is_empty();
+    let flat = settings.bitrix_flat_prefs();
+
+    for (raw_id, patch) in incoming {
+        let id = raw_id.trim();
+        if !valid_portal_id(id) {
+            tracing::warn!(portal_id = %raw_id, "bitrix_portal_prefs: отброшен неверный portal_id");
+            continue;
+        }
+        let known = settings.bitrix_portal_prefs.contains_key(id);
+        if !known && settings.bitrix_portal_prefs.len() >= MAX_BITRIX_PORTALS {
+            tracing::warn!(
+                portal_id = %id,
+                max = MAX_BITRIX_PORTALS,
+                "bitrix_portal_prefs: потолок числа порталов достигнут, запись отброшена"
+            );
+            continue;
+        }
+
+        let base = if known {
+            settings.bitrix_portal_prefs[id].clone()
+        } else if migrating {
+            flat.clone()
+        } else {
+            BitrixPortalPrefs::default()
+        };
+
+        let mut next = base;
+        if let Some(v) = patch.filter_enabled {
+            next.filter_enabled = v;
+        }
+        if let Some(v) = patch.visible_kinds {
+            next.visible_kinds = sanitize_visible_list(v);
+        }
+        if let Some(v) = patch.visible_peers {
+            next.visible_peers = sanitize_visible_list(v);
+        }
+        if let Some(v) = patch.voice_scope_kinds {
+            next.voice_scope_kinds = sanitize_visible_list(v);
+        }
+        if let Some(v) = patch.voice_scope_peers {
+            next.voice_scope_peers = sanitize_visible_list(v);
+        }
+        settings.bitrix_portal_prefs.insert(id.to_string(), next);
     }
 }
 
@@ -859,7 +1394,7 @@ impl UserSettingsStore {
 /// пишем в `<file>.tmp`, затем `rename` поверх. На POSIX rename атомарен
 /// в рамках одного mount-point.
 fn save_locked(inner: &Inner) -> Result<()> {
-    let body = serde_json::to_vec_pretty(&inner.settings)
+    let body = serde_json::to_vec_pretty(&merge_with_existing(inner))
         .context("failed to serialize UserSettings")?;
 
     if let Some(parent) = inner.path.parent() {
@@ -1230,6 +1765,163 @@ mod tests {
             .expect("patch must succeed");
         assert_eq!(res.telegram_hotkeys.len(), 1);
         assert!(res.telegram_hotkeys.contains_key("msg.reply"));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// **АВТОРАЗБОР ГОЛОСОВЫХ ВЫКЛЮЧЕН ВО ВСЕХ ТРЁХ ПАНЕЛЯХ, И СТАРЫЙ ФАЙЛ
+    /// БЕЗ ЭТИХ ПОЛЕЙ ЧИТАЕТСЯ, А НЕ ЛОМАЕТСЯ.**
+    ///
+    /// Файл пишется РУКАМИ, без новых ключей, — ровно то, что лежит на диске у
+    /// человека, обновившего devforge. Ошибка миграции здесь означала бы, что
+    /// обновление сбрасывает ВСЕ настройки пользователя разом.
+    #[test]
+    fn test_voice_autotranscribe_defaults_off_on_an_old_file() {
+        let path = tmp_path("voice_auto_old_file");
+        std::fs::write(
+            &path,
+            r#"{"todo_default_priority":1,"vk_filter_enabled":true,
+                "vk_visible_peers":["2000000042"]}"#,
+        )
+        .unwrap();
+        let store = UserSettingsStore::new(path.clone());
+        let s = store.get();
+        assert!(!s.vk_voice_autotranscribe);
+        assert!(!s.telegram_voice_autotranscribe);
+        assert!(!s.bitrix_voice_autotranscribe);
+        // Старые поля при этом уцелели — файл прочитан, а не заменён дефолтами.
+        assert!(s.vk_filter_enabled);
+        assert_eq!(s.vk_visible_peers, vec!["2000000042"]);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// **PATCH ОДНОГО ФЛАГА НЕ ТРОГАЕТ ДВА СОСЕДНИХ.**
+    ///
+    /// Три панели — три решения человека, и включение разбора в VK не имеет
+    /// права включить его в рабочем портале.
+    #[test]
+    fn test_voice_autotranscribe_patch_is_per_panel() {
+        let path = tmp_path("voice_auto_per_panel");
+        let store = UserSettingsStore::new(path.clone());
+        let res = store
+            .patch(PatchUserSettingsReq {
+                vk_voice_autotranscribe: Some(true),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert!(res.vk_voice_autotranscribe);
+        assert!(!res.telegram_voice_autotranscribe);
+        assert!(!res.bitrix_voice_autotranscribe);
+
+        let res = store
+            .patch(PatchUserSettingsReq {
+                bitrix_voice_autotranscribe: Some(true),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert!(res.vk_voice_autotranscribe, "первый флаг не сброшен вторым патчем");
+        assert!(res.bitrix_voice_autotranscribe);
+        assert!(!res.telegram_voice_autotranscribe);
+
+        // Плагин читает ЭТОТ файл сам (forge_voice::prefs), поэтому патч обязан
+        // оказаться на диске сразу, а не при завершении процесса.
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(json["vk_voice_autotranscribe"], true);
+        assert_eq!(json["telegram_voice_autotranscribe"], false);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// **СТАРЫЙ ФАЙЛ БЕЗ ПОЛЕЙ СКОУПА ЧИТАЕТСЯ, И СКОУП ПУСТ.**
+    ///
+    /// Пустой скоуп = «разбирать везде», поэтому у человека, обновившего
+    /// devforge, поведение авторазбора не меняется НИ НА ШАГ. Провал этого
+    /// теста означал бы, что обновление молча выключило работающую фичу.
+    #[test]
+    fn test_voice_scope_is_empty_on_an_old_file() {
+        let path = tmp_path("voice_scope_old_file");
+        std::fs::write(
+            &path,
+            r#"{"vk_voice_autotranscribe":true,"vk_visible_peers":["2000000042"]}"#,
+        )
+        .unwrap();
+        let s = UserSettingsStore::new(path.clone()).get();
+        assert!(s.vk_voice_scope_kinds.is_empty());
+        assert!(s.vk_voice_scope_peers.is_empty());
+        assert!(s.telegram_voice_scope_folders.is_empty());
+        assert!(s.telegram_voice_scope_dialogs.is_empty());
+        assert!(s.bitrix_voice_scope_kinds.is_empty());
+        assert!(s.bitrix_voice_scope_peers.is_empty());
+        // Соседи уцелели: файл прочитан, а не заменён дефолтами.
+        assert!(s.vk_voice_autotranscribe);
+        assert_eq!(s.vk_visible_peers, vec!["2000000042"]);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// **СКОУП ЧИСТИТСЯ ТЕМ ЖЕ САНИТАЙЗЕРОМ, ЧТО И ВИДИМОСТЬ.**
+    ///
+    /// Пустые, слишком длинные, с недопустимыми символами и дубли — вон;
+    /// порядок оставшихся сохраняется (человек видит его списком).
+    #[test]
+    fn test_voice_scope_lists_are_sanitized() {
+        let path = tmp_path("voice_scope_sanitize");
+        let store = UserSettingsStore::new(path.clone());
+        let res = store
+            .patch(PatchUserSettingsReq {
+                vk_voice_scope_peers: Some(vec![
+                    " 2000000042 ".into(),
+                    "2000000042".into(),
+                    String::new(),
+                    "с пробелом".into(),
+                    "x".repeat(MAX_VISIBLE_ENTRY_LEN + 1),
+                    "-77".into(),
+                ]),
+                telegram_voice_scope_folders: Some(vec!["folder:12".into(), "inbox".into()]),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert_eq!(res.vk_voice_scope_peers, vec!["2000000042", "-77"]);
+        assert_eq!(res.telegram_voice_scope_folders, vec!["folder:12", "inbox"]);
+
+        // Переполнение обрезается по общему лимиту.
+        let many: Vec<String> = (0..(MAX_TELEGRAM_VISIBLE + 20)).map(|i| i.to_string()).collect();
+        let res = store
+            .patch(PatchUserSettingsReq {
+                bitrix_voice_scope_peers: Some(many),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert_eq!(res.bitrix_voice_scope_peers.len(), MAX_TELEGRAM_VISIBLE);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// **ВЫБОР ПЕРЕЖИВАЕТ ПЕРЕЧИТЫВАНИЕ ФАЙЛА БЕЗ ИЗМЕНЕНИЙ.**
+    ///
+    /// Плагин читает этот файл сам, поэтому патч обязан оказаться на диске
+    /// сразу и ровно в тех ключах, которые перечислены в `forge_voice::prefs`.
+    #[test]
+    fn test_voice_scope_round_trips_through_the_file() {
+        let path = tmp_path("voice_scope_roundtrip");
+        let store = UserSettingsStore::new(path.clone());
+        store
+            .patch(PatchUserSettingsReq {
+                vk_voice_scope_kinds: Some(vec!["chat".into()]),
+                vk_voice_scope_peers: Some(vec!["2000000042".into(), "777".into()]),
+                bitrix_voice_scope_peers: Some(vec!["chat7".into()]),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(json["vk_voice_scope_kinds"][0], "chat");
+        assert_eq!(json["vk_voice_scope_peers"][1], "777");
+
+        let reread = UserSettingsStore::new(path.clone()).get();
+        assert_eq!(reread.vk_voice_scope_kinds, vec!["chat"]);
+        assert_eq!(reread.vk_voice_scope_peers, vec!["2000000042", "777"]);
+        assert_eq!(reread.bitrix_voice_scope_peers, vec!["chat7"]);
+        // Скоуп и видимость — РАЗНЫЕ списки: патч скоупа не трогает видимость.
+        assert!(reread.vk_visible_peers.is_empty());
         let _ = std::fs::remove_file(&path);
     }
 
@@ -1874,6 +2566,383 @@ mod tests {
         assert!(!body.contains("bitrix24."));
         // Зато сами настройки видимости на месте.
         assert!(body.contains("bitrix_visible_peers"));
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    // -----------------------------------------------------------------------
+    // Пер-портальные настройки Битрикс24 (Ф7.1 / Ф7.2)
+    // -----------------------------------------------------------------------
+
+    /// Патч одной записи карты — короткая запись для тестов ниже.
+    fn portal_patch(
+        id: &str,
+        patch: BitrixPortalPrefsPatch,
+    ) -> BTreeMap<String, BitrixPortalPrefsPatch> {
+        let mut map = BTreeMap::new();
+        map.insert(id.to_string(), patch);
+        map
+    }
+
+    #[test]
+    fn test_bitrix_flat_keys_are_read_as_the_migrant_portal() {
+        // ФАЙЛ ДО МУЛЬТИПОРТАЛЬНОСТИ. Карты в нём нет вовсе, и любой портал
+        // обязан увидеть прежние настройки: иначе обновление devforge молча
+        // сняло бы белый список у всех, кто его собирал руками.
+        let path = tmp_path("bitrix_portal_flat_read");
+        std::fs::write(
+            &path,
+            r#"{"bitrix_filter_enabled":true,
+                "bitrix_visible_kinds":["task"],
+                "bitrix_visible_peers":["chat7"],
+                "bitrix_voice_scope_kinds":["user"],
+                "bitrix_voice_scope_peers":["19"]}"#,
+        )
+        .unwrap();
+
+        let s = UserSettingsStore::new(path.clone()).get();
+        assert!(s.bitrix_portal_prefs.is_empty(), "карта пуста — миграции ещё не было");
+
+        let acme = s.bitrix_prefs_for("acme");
+        assert!(acme.filter_enabled);
+        assert_eq!(acme.visible_kinds, vec!["task"]);
+        assert_eq!(acme.visible_peers, vec!["chat7"]);
+        assert_eq!(acme.voice_scope_kinds, vec!["user"]);
+        assert_eq!(acme.voice_scope_peers, vec!["19"]);
+        // Пустой id ведёт себя так же: подставлять случайную запись нечем.
+        assert_eq!(s.bitrix_prefs_for(""), acme);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_bitrix_first_save_migrates_flat_keys_into_the_map() {
+        // ПЕРВОЕ СОХРАНЕНИЕ = МИГРАЦИЯ. Форма прислала только один флаг, но в
+        // записи портала обязаны оказаться ВСЕ пять значений: иначе скоуп
+        // авторазбора исчез бы у человека, просто снявшего галочку видимости.
+        let path = tmp_path("bitrix_portal_migrate");
+        std::fs::write(
+            &path,
+            r#"{"bitrix_filter_enabled":true,
+                "bitrix_visible_kinds":["task"],
+                "bitrix_visible_peers":["chat7"],
+                "bitrix_voice_scope_peers":["19"],
+                "какое-то-чужое-поле":{"живо":true}}"#,
+        )
+        .unwrap();
+
+        let store = UserSettingsStore::new(path.clone());
+        let res = store
+            .patch(PatchUserSettingsReq {
+                bitrix_portal_prefs: Some(portal_patch(
+                    "acme",
+                    BitrixPortalPrefsPatch {
+                        visible_kinds: Some(vec!["user".into()]),
+                        ..Default::default()
+                    },
+                )),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+
+        let acme = res.bitrix_prefs_for("acme");
+        assert_eq!(acme.visible_kinds, vec!["user"], "присланное поле выигрывает");
+        assert!(acme.filter_enabled, "тумблер мигрировал из плоского ключа");
+        assert_eq!(acme.visible_peers, vec!["chat7"], "выбор диалогов мигрировал");
+        assert_eq!(acme.voice_scope_peers, vec!["19"], "скоуп голосовых мигрировал");
+
+        // Плоские ключи ОСТАЛИСЬ: откат на старую сборку продолжает работать.
+        assert!(res.bitrix_filter_enabled);
+        assert_eq!(res.bitrix_visible_peers, vec!["chat7"]);
+
+        // И посторонний ключ файла цел — запись не разрушительна.
+        let body = std::fs::read_to_string(&path).expect("file must exist");
+        assert!(body.contains("какое-то-чужое-поле"), "чужой ключ пережил запись");
+        assert!(body.contains("bitrix_portal_prefs"));
+
+        // Портал, подключённый ПОСЛЕ миграции, чужой белый список НЕ наследует:
+        // в нём лежат DIALOG_ID другого портала, и при консервативном правиле
+        // «неизвестный диалог скрыт» он показал бы пустую панель.
+        let beta = res.bitrix_prefs_for("beta");
+        assert_eq!(beta, BitrixPortalPrefs::default());
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_bitrix_portal_patch_does_not_touch_other_portals() {
+        // ГЛАВНОЕ СВОЙСТВО СЛИЯНИЯ. Форма открыта на одном портале и про
+        // остальных не знает вовсе; замена карты целиком стирала бы их.
+        let path = tmp_path("bitrix_portal_isolation");
+        let store = UserSettingsStore::new(path.clone());
+        store
+            .patch(PatchUserSettingsReq {
+                bitrix_portal_prefs: Some(portal_patch(
+                    "acme",
+                    BitrixPortalPrefsPatch {
+                        filter_enabled: Some(true),
+                        visible_peers: Some(vec!["chat7".into()]),
+                        ..Default::default()
+                    },
+                )),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        let res = store
+            .patch(PatchUserSettingsReq {
+                bitrix_portal_prefs: Some(portal_patch(
+                    "beta",
+                    BitrixPortalPrefsPatch {
+                        visible_peers: Some(vec!["chat9".into()]),
+                        ..Default::default()
+                    },
+                )),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+
+        assert_eq!(res.bitrix_prefs_for("acme").visible_peers, vec!["chat7"]);
+        assert!(res.bitrix_prefs_for("acme").filter_enabled);
+        assert_eq!(res.bitrix_prefs_for("beta").visible_peers, vec!["chat9"]);
+        // Один и тот же `chat7` у двух порталов — РАЗНЫЕ чаты, и это ровно та
+        // причина, по которой карта вообще появилась.
+        assert!(!res.bitrix_prefs_for("beta").filter_enabled);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_bitrix_portal_record_merges_by_field() {
+        // ДВЕ ФОРМЫ ПРАВЯТ ОДНУ ЗАПИСЬ: видимость (три поля) и голосовые (два).
+        // Сохранение любой из них не имеет права обнулить поля соседней.
+        let path = tmp_path("bitrix_portal_field_merge");
+        let store = UserSettingsStore::new(path.clone());
+        store
+            .patch(PatchUserSettingsReq {
+                bitrix_portal_prefs: Some(portal_patch(
+                    "acme",
+                    BitrixPortalPrefsPatch {
+                        voice_scope_kinds: Some(vec!["task".into()]),
+                        voice_scope_peers: Some(vec!["chat7".into()]),
+                        ..Default::default()
+                    },
+                )),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        let res = store
+            .patch(PatchUserSettingsReq {
+                bitrix_portal_prefs: Some(portal_patch(
+                    "acme",
+                    BitrixPortalPrefsPatch {
+                        filter_enabled: Some(true),
+                        visible_kinds: Some(vec!["user".into()]),
+                        visible_peers: Some(vec![]),
+                        ..Default::default()
+                    },
+                )),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+
+        let acme = res.bitrix_prefs_for("acme");
+        assert_eq!(acme.voice_scope_kinds, vec!["task"], "скоуп пережил правку видимости");
+        assert_eq!(acme.voice_scope_peers, vec!["chat7"]);
+        assert!(acme.filter_enabled);
+        assert_eq!(acme.visible_kinds, vec!["user"]);
+        // Пустой СПИСОК — осознанная очистка, как и у всех соседних полей.
+        assert!(acme.visible_peers.is_empty());
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_bitrix_flat_and_map_in_one_patch() {
+        // ОБА СРАЗУ. Плоские поля применяются к плоским ключам (их читает
+        // старая сборка), карта — к записи портала, и в спорных полях
+        // выигрывает КАРТА. Молчаливого «кто последний, тот и прав» здесь быть
+        // не должно: порядок зафиксирован тестом.
+        let path = tmp_path("bitrix_portal_both");
+        let store = UserSettingsStore::new(path.clone());
+        let res = store
+            .patch(PatchUserSettingsReq {
+                bitrix_filter_enabled: Some(true),
+                bitrix_visible_kinds: Some(vec!["task".into()]),
+                bitrix_visible_peers: Some(vec!["chat7".into()]),
+                bitrix_portal_prefs: Some(portal_patch(
+                    "acme",
+                    BitrixPortalPrefsPatch {
+                        visible_kinds: Some(vec!["user".into()]),
+                        ..Default::default()
+                    },
+                )),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+
+        assert_eq!(res.bitrix_visible_kinds, vec!["task"], "плоский ключ записан");
+        let acme = res.bitrix_prefs_for("acme");
+        assert_eq!(acme.visible_kinds, vec!["user"], "карта выигрывает");
+        // А неприсланные поля карты взялись из ПЛОСКИХ значений этого же PATCH:
+        // портал-мигрант получил ровно то, что человек только что сохранил.
+        assert!(acme.filter_enabled);
+        assert_eq!(acme.visible_peers, vec!["chat7"]);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_bitrix_portal_id_is_validated_and_map_is_capped() {
+        // КЛЮЧ КАРТЫ ПРИЕЗЖАЕТ ПО СЕТИ И ЛОЖИТСЯ В ФАЙЛ. Мусорный отвергается
+        // ЦЕЛИКОМ, а не нормализуется: `"../etc"` → `"etc"` записало бы
+        // настройки существующему порталу с похожим именем.
+        let path = tmp_path("bitrix_portal_id_sanity");
+        let store = UserSettingsStore::new(path.clone());
+
+        let mut bad = BTreeMap::new();
+        for id in [
+            "../etc", "a/b", "ACME", "acme_1", "-acme", "acme-", "a--b", "", "  ",
+            "портал", "acme.ru", "_vacant", "_socket",
+        ] {
+            bad.insert(
+                id.to_string(),
+                BitrixPortalPrefsPatch {
+                    filter_enabled: Some(true),
+                    ..Default::default()
+                },
+            );
+        }
+        let res = store
+            .patch(PatchUserSettingsReq {
+                bitrix_portal_prefs: Some(bad),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert!(res.bitrix_portal_prefs.is_empty(), "ни один мусорный ключ не записан");
+        let body = std::fs::read_to_string(&path).expect("file must exist");
+        assert!(!body.contains("_vacant"));
+        assert!(!body.contains("../etc"));
+
+        // Годные — записываются. Дефис внутри и цифры законны: ровно это даёт
+        // `normalize_portal_id` для `acme-2.bitrix24.ru`.
+        let ok = store
+            .patch(PatchUserSettingsReq {
+                bitrix_portal_prefs: Some(portal_patch(
+                    "acme-2",
+                    BitrixPortalPrefsPatch {
+                        filter_enabled: Some(true),
+                        ..Default::default()
+                    },
+                )),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert!(ok.bitrix_prefs_for("acme-2").filter_enabled);
+
+        // ПОТОЛОК. Записи сверх лимита отбрасываются, а уже существующие
+        // остаются правимыми — иначе переполненная карта заблокировала бы
+        // настройки порталов, которые в ней уже есть.
+        let mut many = BTreeMap::new();
+        for i in 0..(MAX_BITRIX_PORTALS + 20) {
+            many.insert(
+                format!("portal-{i:04}"),
+                BitrixPortalPrefsPatch {
+                    filter_enabled: Some(true),
+                    ..Default::default()
+                },
+            );
+        }
+        let capped = store
+            .patch(PatchUserSettingsReq {
+                bitrix_portal_prefs: Some(many),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert_eq!(capped.bitrix_portal_prefs.len(), MAX_BITRIX_PORTALS);
+        assert!(capped.bitrix_portal_prefs.contains_key("acme-2"), "старая запись цела");
+
+        let again = store
+            .patch(PatchUserSettingsReq {
+                bitrix_portal_prefs: Some(portal_patch(
+                    "acme-2",
+                    BitrixPortalPrefsPatch {
+                        filter_enabled: Some(false),
+                        ..Default::default()
+                    },
+                )),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        assert!(!again.bitrix_prefs_for("acme-2").filter_enabled, "запись правится и на потолке");
+        assert_eq!(again.bitrix_portal_prefs.len(), MAX_BITRIX_PORTALS);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_bitrix_portal_lists_are_sanitized_and_capped() {
+        // Санитайзер тот же, что у плоских списков: записи одной природы, а
+        // второй санитайзер разошёлся бы с первым при первой же правке.
+        let path = tmp_path("bitrix_portal_lists");
+        let store = UserSettingsStore::new(path.clone());
+        let mut raw: Vec<String> = vec![
+            " chat7 ".into(),
+            "chat7".into(),
+            String::new(),
+            "плохой id".into(),
+            "chat/8".into(),
+        ];
+        raw.extend((0..(MAX_TELEGRAM_VISIBLE + 10)).map(|i| format!("chat{i}")));
+
+        let res = store
+            .patch(PatchUserSettingsReq {
+                bitrix_portal_prefs: Some(portal_patch(
+                    "acme",
+                    BitrixPortalPrefsPatch {
+                        visible_peers: Some(raw),
+                        ..Default::default()
+                    },
+                )),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+        let peers = res.bitrix_prefs_for("acme").visible_peers;
+        assert_eq!(peers.len(), MAX_TELEGRAM_VISIBLE);
+        assert_eq!(peers[0], "chat7", "trim сработал, дубль схлопнут");
+        assert!(!peers.iter().any(|p| p.contains(' ') || p.contains('/')));
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_unknown_keys_survive_a_save() {
+        // ЗАПИСЬ НЕ РАЗРУШИТЕЛЬНА. Ключи, которых эта сборка не знает (их
+        // добавила сборка новее либо человек руками), обязаны пережить
+        // сохранение: иначе откат версии на день назад терял бы настройки
+        // молча — а понять причину по файлу уже нельзя.
+        let path = tmp_path("unknown_keys_survive");
+        std::fs::write(
+            &path,
+            r#"{"todo_default_priority":3,
+                "поле_из_будущего":{"вложенное":[1,2,3]},
+                "cmd_hints_enabled":false}"#,
+        )
+        .unwrap();
+
+        let store = UserSettingsStore::new(path.clone());
+        store
+            .patch(PatchUserSettingsReq {
+                cmd_hints_enabled: Some(true),
+                ..Default::default()
+            })
+            .expect("patch must succeed");
+
+        let body: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(body["поле_из_будущего"]["вложенное"][2], 3, "чужой ключ цел");
+        // Известное поле берётся из памяти, а не из старого файла.
+        assert_eq!(body["cmd_hints_enabled"], true);
+        assert_eq!(body["todo_default_priority"], 3);
 
         let _ = std::fs::remove_file(&path);
     }

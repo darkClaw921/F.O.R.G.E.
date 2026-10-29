@@ -112,6 +112,15 @@ impl Stand {
     }
 
     async fn build(layout: Layout) -> Self {
+        Self::build_tuned(layout, |_| {}).await
+    }
+
+    /// Стенд с подправленным конфигом.
+    ///
+    /// Отдельный вход, а не сеттер на готовом стенде: [`MeetConfig`] внутри
+    /// [`MeetState`] неизменяем по построению, и правка после запуска была бы
+    /// правкой копии.
+    async fn build_tuned(layout: Layout, tweak: impl FnOnce(&mut MeetConfig)) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().to_path_buf();
         let bin = root.join("bin");
@@ -132,6 +141,11 @@ impl Stand {
             // пересобирать на ходу, а прогоны без мока честно показывают, что
             // делает пайплайн с неустановленным Claude CLI.
             claude_cli_path: bin.join("claude"),
+            // Запуски `claude -p` по умолчанию ВЫКЛЮЧЕНЫ глобально
+            // (см. forge_claude_runner): стенд с мок-CLI включает их явно,
+            // иначе каждый прогон саммари умирал бы на выключателе, не доходя
+            // до того, что тест проверяет.
+            claude_enabled: true,
             // Тестовые тайминги: секунды здесь никому не нужны.
             whisper_gate_poll_ms: 20,
             metal_grace_secs: 5,
@@ -150,7 +164,19 @@ impl Stand {
             // себе сам.
             // 60 по той же причине, что и whisper_timeout_secs выше.
             ffmpeg_timeout_secs: 60,
+            // ЯВНО ЛОКАЛЬНЫЙ ПУТЬ. Умолчание плагина — облако (Ф15), а этот
+            // файл целиком про локальный конвейер: whisper на Metal, семафор
+            // «строго один», гейт «не расшифровывать во время записи»,
+            // пер-трековая нарезка. Без явного значения все его тесты молча
+            // ушли бы в сеть.
+            stt_backend: forge_meet::config::SttBackend::Local,
+            summary_backend: forge_meet::config::SummaryBackend::Local,
             ..MeetConfig::default()
+        };
+        let cfg = {
+            let mut cfg = cfg;
+            tweak(&mut cfg);
+            cfg
         };
         let state = MeetState::new(cfg);
         let db = forge_meet::db::Db::open_memory().await.unwrap();
@@ -549,6 +575,57 @@ async fn the_pipeline_ends_with_a_summary_on_disk() {
     assert!(events.contains("summarizing"), "{events}");
 }
 
+/// **РЕГРЕССИЯ `forge-0s0l5`: ОБЛАКО ПО УМОЛЧАНИЮ БЕЗ КЛЮЧА НЕ ХОРОНИТ
+/// ЗАПИСЬ.**
+///
+/// Ровно наблюдавшийся у пользователя случай: Ф15 сделала умолчанием
+/// `stt_backend = cloud`, ключа polza.ai нет, а whisper с моделью и Metal на
+/// месте. До правки встреча уходила в `failed / cloud_not_configured` — то
+/// есть смена умолчания превращала рабочую установку в неработающую.
+///
+/// Проверяется всё, что делает откат ЧЕСТНЫМ:
+/// * встреча доходит до `ready` с транскриптом на диске;
+/// * `engine` называет ФАКТИЧЕСКИ отработавший путь (`whisper.cpp`);
+/// * в журнале встречи есть событие отката с причиной.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cloud_default_without_a_key_falls_back_to_the_ready_local_whisper() {
+    let mut s = Stand::new().await;
+    // Умолчание Ф15 — облако для обеих стадий; ключа при этом нет.
+    // `tweak_config` пересобирает состояние, поэтому он ИДЁТ ПЕРВЫМ: иначе
+    // подставленные ниже пути бинарей потерялись бы.
+    s.tweak_config(|c| {
+        c.stt_backend = forge_meet::config::SttBackend::Cloud;
+        c.summary_backend = forge_meet::config::SummaryBackend::Cloud;
+        c.polza_api_key = forge_meet::cloud::SecretKey::default();
+    });
+    s.with_whisper(&WhisperMock {
+        segments: vec![MockSegment::new(0, 4_000, " Ключа нет, но расшифровка есть.")],
+        ..Default::default()
+    });
+    s.with_ffmpeg(mocks::mock_ffmpeg_success(&s.bin, "ffmpeg").unwrap());
+
+    let report = pipeline::run::run(&s.state, &s.meeting_id)
+        .await
+        .expect("готовый локальный движок обязан подхватить встречу");
+
+    assert_eq!(s.status().await, MeetStatus::Ready, "запись не имеет права пропасть");
+    assert_eq!(report.segments, 1);
+    let md = std::fs::read_to_string(s.meeting_dir.join("transcript.md")).unwrap();
+    assert!(md.contains("Ключа нет, но расшифровка есть."), "{md}");
+
+    // ENGINE НАЗЫВАЕТ ФАКТИЧЕСКИЙ ПУТЬ: иначе человек не поймёт, почему
+    // расшифровка бесплатна.
+    let json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(s.meeting_dir.join("transcript.json")).unwrap())
+            .unwrap();
+    assert_eq!(json["engine"], "whisper.cpp", "{json}");
+
+    // ОТКАТ ВИДЕН В ЖУРНАЛЕ.
+    let events = s.events_text().await;
+    assert!(events.contains("stt_fallback_local"), "{events}");
+    assert!(events.contains("cloud_not_configured"), "{events}");
+}
+
 /// **ПРОВАЛ САММАРИ НЕ РОНЯЕТ ВСТРЕЧУ — В СКВОЗНОМ ПРОГОНЕ.**
 ///
 /// Claude падает, транскрипт цел, встреча `ready`, саммари `failed`, а хвост
@@ -945,6 +1022,120 @@ async fn a_drift_below_the_threshold_changes_nothing() {
     assert_eq!(segs.last().unwrap()["end_ms"], 10_000);
     let p = Manifest::load(&s.meeting_dir).unwrap().postprocess.unwrap();
     assert!(p.drift_checked && p.drift_scale.is_none());
+}
+
+// --- гейт тишины ---------------------------------------------------------------
+
+/// ЗАПИСАЛИ ТИШИНУ — ОТКАЗЫВАЕМСЯ ЧЕСТНО, А НЕ ВЫДУМЫВАЕМ РАЗГОВОР.
+///
+/// Живой случай (`forge-8a2xs`): встреча на `vcc.airlabs.pro` шла 63 минуты,
+/// медиа-канал не поднялся, все три дорожки оказались нулями
+/// (`mean_volume = max_volume = -91,0 dB`), VAD честно дал ноль интервалов
+/// речи — а whisper, которому скормили час тишины, ВЫДУМАЛ 78 реплик. Человек
+/// получил `ready`, расшифровку и саммари по несуществующему разговору.
+///
+/// Здесь проверяется единственный правильный исход: встреча кончается `failed`
+/// с кодом `no_audio_captured`, расшифровка НЕ ЗАПУСКАЕТСЯ, транскрипта на
+/// диске нет.
+#[tokio::test(flavor = "multi_thread")]
+async fn digital_silence_fails_the_meeting_instead_of_hallucinating_a_transcript() {
+    let s = Stand::new().await;
+    // Мок whisper поставлен НАРОЧНО: если гейт пропустит тишину, расшифровка
+    // пройдёт, и тест увидит ровно тот исход, из-за которого он написан.
+    s.with_whisper(&WhisperMock {
+        segments: vec![MockSegment::new(0, 10_000, " Корректор А.Кулакова")],
+        ..Default::default()
+    });
+    s.with_ffmpeg(mocks::mock_ffmpeg_silence(&s.bin, "ffmpeg").unwrap());
+    s.with_ffprobe(mocks::mock_ffprobe(&s.bin, "ffprobe", 10.0).unwrap());
+
+    let err = pipeline::run::run(&s.state, &s.meeting_id)
+        .await
+        .expect_err("час цифровой тишины обязан кончиться отказом");
+    assert!(
+        err.to_string().contains("звук не записался"),
+        "причина отказа обязана называть себя: {err}"
+    );
+
+    assert_eq!(s.status().await, MeetStatus::Failed);
+    let events = s.events_text().await;
+    assert!(
+        events.contains(pipeline::run::NO_AUDIO_CAPTURED),
+        "код отказа обязан быть в журнале встречи: {events}"
+    );
+    assert!(
+        !s.meeting_dir.join("transcript.json").exists()
+            && !s.meeting_dir.join("transcript.md").exists(),
+        "расшифровка выдуманного разговора всё-таки появилась на диске"
+    );
+    assert!(
+        repo::segments::list(&s.state, &s.meeting_id)
+            .await
+            .unwrap()
+            .is_empty(),
+        "выдуманные реплики попали в базу"
+    );
+
+    // Улика остаётся на диске: цифра в манифесте отвечает на вопрос «звук
+    // вообще записался?» без ffmpeg и без часа времени.
+    let p = Manifest::load(&s.meeting_dir).unwrap().postprocess.unwrap();
+    assert_eq!(p.mix_peak_db, Some(-91.0));
+}
+
+/// ОБРАТНАЯ СТОРОНА ГЕЙТА: тихая, но живая встреча проходит его незамеченной.
+///
+/// Тест парный к предыдущему и нужен ровно затем, чтобы «падает всегда» не
+/// выглядело как «работает». Средняя громкость здесь почти как у тишины, а ПИК
+/// высокий: гейт смотрит на пик, иначе встреча с одной фразой за час считалась
+/// бы пустой.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_quiet_but_real_meeting_passes_the_gate() {
+    let s = Stand::new().await;
+    s.with_whisper(&WhisperMock::default());
+    s.with_ffmpeg(mocks::mock_ffmpeg_with_loudness(&s.bin, "ffmpeg", -58.0, -12.0).unwrap());
+    s.with_ffprobe(mocks::mock_ffprobe(&s.bin, "ffprobe", 10.0).unwrap());
+
+    pipeline::run::run(&s.state, &s.meeting_id).await.unwrap();
+    assert_eq!(s.status().await, MeetStatus::Ready);
+    let p = Manifest::load(&s.meeting_dir).unwrap().postprocess.unwrap();
+    assert_eq!(p.mix_peak_db, Some(-12.0));
+}
+
+/// БЕЗ ЗАМЕРА гейт бездействует, но молчать об этом нельзя.
+///
+/// Без ffmpeg сведение идёт своими силами, `volumedetect` звать нечем, и
+/// проверить запись невозможно. Ронять встречу на этом основании нельзя — но и
+/// пропустить молча тоже: иначе через месяц не понять, почему пустую запись
+/// пропустили.
+#[tokio::test(flavor = "multi_thread")]
+async fn without_ffmpeg_the_silence_gate_is_skipped_and_that_is_recorded() {
+    let s = Stand::new().await;
+    s.with_whisper(&WhisperMock::default());
+    // ffmpeg не ставим: сведение уйдёт на путь `mix_tracks_in_memory`.
+
+    pipeline::run::run(&s.state, &s.meeting_id).await.unwrap();
+    assert_eq!(s.status().await, MeetStatus::Ready);
+    assert!(s.events_text().await.contains("silence_check_skipped"));
+    let p = Manifest::load(&s.meeting_dir).unwrap().postprocess.unwrap();
+    assert!(p.mix_peak_db.is_none());
+}
+
+/// ПОРОГ — ПОЛЕ КОНФИГА, и значение ниже пола 16-битной сетки гейт выключает.
+///
+/// Аварийный выход на случай, когда запись пустая, но нужна: без него
+/// единственным способом получить свой файл был бы патч бинаря.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_threshold_below_the_noise_floor_disables_the_gate() {
+    let s = Stand::build_tuned(Layout::Dom, |cfg| cfg.silence_gate_dbfs = -120.0).await;
+    s.with_whisper(&WhisperMock::default());
+    s.with_ffmpeg(mocks::mock_ffmpeg_silence(&s.bin, "ffmpeg").unwrap());
+
+    pipeline::run::run(&s.state, &s.meeting_id).await.unwrap();
+    assert_eq!(
+        s.status().await,
+        MeetStatus::Ready,
+        "гейт не выключился порогом ниже пола разрядной сетки"
+    );
 }
 
 /// БЕЗ FFPROBE пайплайн не ломается, а факт пропуска ВИДЕН — и в манифесте,

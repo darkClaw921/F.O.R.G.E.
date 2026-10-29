@@ -9,6 +9,7 @@
 import { state } from './core/state.js';
 import { sendToActivePty } from './tabs/tui-tabs.js';
 import { showDailySummary, hideDailySummary } from './daily-summary/daily-summary.js';
+import { showAnalytics, hideAnalytics } from './analytics/analytics.js';
 
 window.ForgeApp = {
     sendToActivePty: sendToActivePty,
@@ -17,4 +18,10 @@ window.ForgeApp = {
     // Phase 5). ForgeApp.showDailySummary(day?) / hideDailySummary().
     showDailySummary: showDailySummary,
     hideDailySummary: hideDailySummary,
+    // Аналитика Claude Code — полноэкранный дашборд #analytics. Открывается
+    // извне: кнопкой «Открыть на весь экран» во вкладке настроек и диплинком
+    // ?view=analytics (js/pwa/bootstrap.js).
+    // ForgeApp.showAnalytics(range?) / hideAnalytics().
+    showAnalytics: showAnalytics,
+    hideAnalytics: hideAnalytics,
 };

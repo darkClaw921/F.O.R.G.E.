@@ -388,6 +388,10 @@ export async function fetchMedia(dialogId, messageId, kind) {
 //   DELETE /api/telegram/dialogs/:id/analysis          clearSavedAnalysis
 //   POST   /api/telegram/dialogs/:id/analysis/cancel   cancelAnalysis
 //   DELETE /api/telegram/dialogs/:id/analysis/thread   clearThread
+//   POST   /api/telegram/voice/:id/:mid/:idx/transcribe transcribeVoice    (ГС-Ф3)
+//   GET    /api/telegram/voice/:id/:mid/:idx/transcript getVoiceTranscript (ГС-Ф3)
+//   GET    /api/telegram/voice/settings              getVoiceSettings   (ГС-Ф4)
+//   PUT    /api/telegram/voice/settings              setVoiceSettings   (ГС-Ф4)
 //
 // Лимитера у Telegram нет вовсе (в отличие от VK) — вызовы идут прямо через
 // общий `call`, разбирающий тот же конверт ошибок `{"error":{"code":…}}`.
@@ -569,3 +573,98 @@ export async function cancelAnalysis(dialogId, runId) {
 }
 
 export { call as _call, jsonInit as _jsonInit };
+
+// ---------------------------------------------------------------------------
+// Голосовые сообщения (ГС-Ф3).
+//
+// Пути и формы ответов БАЙТ В БАЙТ повторяют VK-шные (js/vk/api.js): текст под
+// голосовым рисует один и тот же модуль, и расхождение в транспорте означало
+// бы «в VK работает, в Telegram нет».
+//
+// Индекс вложения у Telegram ВСЕГДА 0 — у сообщения ровно одно вложение. В
+// адресе он есть ради одинаковости с VK, где вложений до десяти.
+// ---------------------------------------------------------------------------
+
+/**
+ * POST /api/telegram/voice/:id/:mid/:idx/transcribe — запустить расшифровку.
+ *
+ * Ответ приходит СРАЗУ: сама расшифровка идёт секунды или минуты, а прогресс
+ * едет кадрами `voice_transcribe_*` по /ws/telegram.
+ *
+ * ТРИ исхода: `{ready: true, text}` — уже посчитано (движок не запускался);
+ * `{run_id, attached: false}` — прогон запущен; `{run_id, attached: true}` —
+ * расшифровка этого вложения уже идёт (вторая вкладка, повторный клик).
+ *
+ * Решать по `err.code`, а не по тексту: `voice_not_audio`, `voice_too_long`,
+ * `voice_no_ffmpeg`, `voice_no_whisper`, `voice_no_model`, `voice_no_key`,
+ * `voice_busy`, `metal_unavailable`.
+ *
+ * @param {string} dialogId
+ * @param {number|string} messageId
+ * @param {number} [index] всегда 0
+ * @param {{force?: boolean}} [opts] `force` — пересчитать, даже если готово
+ * @returns {Promise<{run_id: ?string, attached: boolean, ready: boolean, engine: string, text?: string}>}
+ */
+export async function transcribeVoice(dialogId, messageId, index, opts) {
+    const idx = Number(index || 0);
+    // `?force=1` дописывается ОТДЕЛЬНО от шаблона пути: контрактный тест
+    // вычитывает адреса прямо из кода, и подстановка внутри литерала
+    // превратила бы путь в `…/transcribe:`.
+    const q = opts && opts.force ? '?force=1' : '';
+    return call(
+        `/api/telegram/voice/${encodeURIComponent(dialogId)}/${encodeURIComponent(messageId)}/${idx}/transcribe` + q,
+        jsonInit('POST', {}),
+    );
+}
+
+/**
+ * GET /api/telegram/voice/:id/:mid/:idx/transcript — готовая расшифровка.
+ *
+ * Расшифровки нет — это `{ready: false}` с пустым текстом, а НЕ ошибка. Ни
+ * одного вызова Telegram: ответ читается из локального файла, поэтому работает
+ * и при мёртвом соединении.
+ *
+ * @param {string} dialogId
+ * @param {number|string} messageId
+ * @param {number} [index] всегда 0
+ * @returns {Promise<{ready: boolean, text: string, language: string, engine: string, duration_ms: number, created_at: ?number}>}
+ */
+export async function getVoiceTranscript(dialogId, messageId, index) {
+    const idx = Number(index || 0);
+    return call(
+        `/api/telegram/voice/${encodeURIComponent(dialogId)}/${encodeURIComponent(messageId)}/${idx}/transcript`,
+    );
+}
+
+/**
+ * GET /api/telegram/voice/settings — каким движком расшифровываются голосовые.
+ *
+ * Настройка ОБЩАЯ для всех мессенджеров: она живёт в `voice.toml` рядом с
+ * ключом polza.ai, а не в `user_settings.json`. Поэтому три панели читают её
+ * своими роутами, но видят одно и то же значение.
+ *
+ * Ключ облака НИКОГДА не приходит — только признак `cloud_key_set`.
+ * `warning` (если он есть) объясняет, чего выбранному движку не хватает:
+ * `voice_no_key`, `voice_no_model`, `voice_no_whisper`, `voice_no_ffmpeg`.
+ *
+ * Логина в мессенджере роут НЕ требует: движок настраивают до входа.
+ *
+ * @returns {Promise<{engine: string, cloud_key_set: boolean, warning?: {code: string, message: string}}>}
+ */
+export async function getVoiceSettings() {
+    return call('/api/telegram/voice/settings');
+}
+
+/**
+ * PUT /api/telegram/voice/settings — переключить движок расшифровки.
+ *
+ * Выбор СОХРАНЯЕТСЯ, даже если движок сейчас нерабочий: в ответе тогда придёт
+ * `warning`. Отказ приходит только на чужое слово (`400 invalid_input`).
+ *
+ * @param {string} engine `local` | `cloud`
+ * @returns {Promise<{engine: string, cloud_key_set: boolean, warning?: {code: string, message: string}}>}
+ */
+export async function setVoiceSettings(engine) {
+    return call('/api/telegram/voice/settings', jsonInit('PUT', { engine: String(engine || '') }));
+}
+

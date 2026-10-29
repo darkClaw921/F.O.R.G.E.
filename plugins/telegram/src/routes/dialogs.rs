@@ -679,7 +679,11 @@ pub fn folder_dialogs_request(folder_id: i32) -> tl::functions::messages::GetDia
 /// 3. дедупликация по `dialog_id` — даже если сервер всё же повторил
 ///    страницу, наружу диалог уйдёт один раз, и `limit` не «наберётся»
 ///    дубликатами.
-async fn folder_dialogs(
+///
+/// `pub(crate)`, а не приватная: тем же запросом updates-воркер досевает
+/// архив в кэш флагов уведомлений ([`crate::updates::seed_archive_flags`]),
+/// а второе написание пагинации разошлось бы с этим по первой же правке.
+pub(crate) async fn folder_dialogs(
     state: &Arc<TelegramState>,
     client: &Client,
     folder_id: i32,
@@ -869,17 +873,26 @@ pub async fn get_folders(
     State(state): State<Arc<TelegramState>>,
 ) -> Result<Json<FoldersResp>, ApiError> {
     let client = require_ready(&state).await?;
-    let tl::enums::messages::DialogFilters::Filters(res) = client
-        .invoke(&tl::functions::messages::GetDialogFilters {})
-        .await
-        .map_err(|e| map_invocation(&e))?;
-    let folders: Vec<FolderDto> = res.filters.iter().filter_map(dto::folder_dto).collect();
+    let folders = fetch_folders(&client).await?;
     tracing::debug!(
         target: "forge_telegram",
         count = folders.len(),
         "forge-telegram: folders listed"
     );
     Ok(Json(FoldersResp { folders }))
+}
+
+/// Один `messages.getDialogFilters` → папки аккаунта.
+///
+/// `pub(crate)`, а не тело роута: тот же список нужен авторазбору голосовых —
+/// белый список Telegram задаётся ПАПКАМИ, и без них плагин не может решить,
+/// попадает ли чат в отмеченную ([`crate::voice_auto`]).
+pub(crate) async fn fetch_folders(client: &Client) -> Result<Vec<FolderDto>, ApiError> {
+    let tl::enums::messages::DialogFilters::Filters(res) = client
+        .invoke(&tl::functions::messages::GetDialogFilters {})
+        .await
+        .map_err(|e| map_invocation(&e))?;
+    Ok(res.filters.iter().filter_map(dto::folder_dto).collect())
 }
 
 /// Страница истории никогда не требует больше ОДНОГО батча оригиналов:
@@ -973,6 +986,9 @@ pub async fn get_messages(
     // от порядка чужой реализации.
     messages.sort_by_key(|m| m.id);
     enrich_page_replies(&client, peer, &mut messages).await;
+    // Огибающая аудио БЕЗ атрибута Telegram: её посчитал бэкенд при скачивании
+    // файла. Голосовые с атрибутом эта функция не трогает — их волна уже в DTO.
+    crate::voice::attach_waveforms(&state.config, &mut messages);
 
     Ok(Json(MessagesResp { messages, has_more }))
 }

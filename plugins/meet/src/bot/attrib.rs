@@ -84,6 +84,24 @@ impl BindingStage {
     }
 }
 
+/// Часть `msid`, называющая УЧАСТНИКА, а не дорожку.
+///
+/// `msid` в SDP — это пара «поток и дорожка», и у LiveKit она читаемая:
+/// `PA_<sid участника>|TR_<sid дорожки>` (измерено живьём на
+/// vcc.airlabs.pro). Левая половина одинакова у ВСЕХ дорожек одного человека
+/// — и микрофон, и демонстрация экрана приезжают под одним `PA_*`.
+///
+/// Человеческого имени в `msid` нет ни у одной известной площадки, поэтому
+/// сама по себе эта функция никого не называет. Её работа другая: сказать,
+/// что две дорожки принадлежат ОДНОМУ человеку, — а имя для него уже могла
+/// найти корреляция по одной из них.
+///
+/// Разделителя нет — значит вся строка и есть ось: два трека с одинаковым
+/// `msid` целиком это буквально один поток.
+pub fn msid_participant(msid: &str) -> &str {
+    msid.split('|').next().unwrap_or(msid).trim()
+}
+
 /// Интервал речи на общей оси, мс.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Span {
@@ -325,6 +343,48 @@ pub fn attribute(
             b.name = Some(name.clone());
             b.stage = BindingStage::Dom;
             b.confidence = 1.0;
+        }
+    }
+
+    // РАСПРОСТРАНЕНИЕ ПО ОСИ УЧАСТНИКА. Не отдельная ступень каскада, а его
+    // замыкание: имя, найденное ЛЮБОЙ ступенью для одной дорожки, обязано
+    // достаться и остальным дорожкам ТОГО ЖЕ человека.
+    //
+    // Зачем. У площадки, раскрывающей `msid` (LiveKit), человек вправе иметь
+    // больше одной дорожки — микрофон и демонстрация экрана. Корреляция
+    // назовёт ту из них, по которой он говорил; вторая осталась бы
+    // «Участником N» при полностью известной связи, а в транскрипте это
+    // выглядело бы как лишний собеседник, взявшийся ниоткуда.
+    //
+    // Донор ищется среди УЖЕ названных, поэтому порядок обхода не меняет
+    // результата, а цикла не возникает: получатель имени сам донором в этом
+    // же проходе не становится.
+    let donors: Vec<(String, String, Option<String>, f64)> = bindings
+        .iter()
+        .zip(tracks.iter())
+        .filter_map(|(b, t)| {
+            let name = b.name.clone()?;
+            let axis = msid_participant(t.msid.as_deref()?);
+            (!axis.is_empty()).then(|| (axis.to_string(), name, b.key.clone(), b.confidence))
+        })
+        .collect();
+    for (b, t) in bindings.iter_mut().zip(tracks.iter()) {
+        if b.name.is_some() {
+            continue;
+        }
+        let Some(axis) = t.msid.as_deref().map(msid_participant) else {
+            continue;
+        };
+        if axis.is_empty() {
+            continue;
+        }
+        if let Some((_, name, key, confidence)) = donors.iter().find(|(a, ..)| a == axis) {
+            b.name = Some(name.clone());
+            b.key = key.clone();
+            // Ступень именно `Msid`: связь «эти дорожки — один человек» дал
+            // именно он, и в манифесте это обязано быть видно.
+            b.stage = BindingStage::Msid;
+            b.confidence = *confidence;
         }
     }
 
@@ -638,6 +698,92 @@ mod tests {
         assert_eq!(report.name_of(1), Some("Борис"));
         assert_eq!(report.bindings[1].stage, BindingStage::Correlation);
         assert_eq!(report.stage, BindingStage::Msid, "в манифест уезжает ЛУЧШАЯ ступень");
+    }
+
+    /// ОСЬ УЧАСТНИКА ВЫДЕЛЯЕТСЯ ИЗ `msid` LiveKit.
+    ///
+    /// Формат снят живьём на vcc.airlabs.pro: `PA_<участник>|TR_<дорожка>`.
+    #[test]
+    fn the_participant_half_of_a_livekit_msid_is_the_axis() {
+        assert_eq!(
+            msid_participant("PA_PEpGftC6osXZ|TR_AMYPfGyxhgvJQb"),
+            "PA_PEpGftC6osXZ"
+        );
+        // Две дорожки одного человека отличаются только правой половиной.
+        assert_eq!(
+            msid_participant("PA_PEpGftC6osXZ|TR_вторая"),
+            msid_participant("PA_PEpGftC6osXZ|TR_AMYPfGyxhgvJQb")
+        );
+        // Разделителя нет — осью становится вся строка: одинаковый `msid`
+        // целиком это буквально один и тот же поток.
+        assert_eq!(msid_participant("2e362d2c"), "2e362d2c");
+        assert_eq!(msid_participant(""), "");
+    }
+
+    /// ВТОРАЯ ДОРОЖКА ЧЕЛОВЕКА ПОЛУЧАЕТ ЕГО ИМЯ, а не номер.
+    ///
+    /// Реальный случай площадки на LiveKit: человек включает демонстрацию
+    /// экрана, и у него становится две дорожки под одним `PA_*`. Корреляция
+    /// называет ту, по которой он говорил; без замыкания по оси вторая
+    /// осталась бы «Участником N» — лишним собеседником в транскрипте при
+    /// полностью известной связи.
+    #[test]
+    fn a_second_track_of_the_same_person_inherits_the_name() {
+        let mut tracks = [
+            track(0, &[(0, 5_000)]),
+            track(1, &[]),
+            track(2, &[(6_000, 9_000)]),
+        ];
+        tracks[0].msid = Some("PA_alice|TR_mic".to_string());
+        tracks[1].msid = Some("PA_alice|TR_screen".to_string());
+        tracks[2].msid = Some("PA_bob|TR_mic".to_string());
+        let speakers = [
+            speaker("Алиса", &[(0, 5_000)]),
+            speaker("Борис", &[(6_000, 9_000)]),
+        ];
+        let report = attribute(&tracks, &speakers, &[], &AttribConfig::default());
+        assert_eq!(report.name_of(0), Some("Алиса"));
+        assert_eq!(
+            report.name_of(1),
+            Some("Алиса"),
+            "молчавшая дорожка того же человека осталась безымянной: {:?}",
+            report.bindings
+        );
+        assert_eq!(report.bindings[1].stage, BindingStage::Msid, "связь дал msid");
+        assert_eq!(report.name_of(2), Some("Борис"));
+        assert_eq!(report.stage, BindingStage::Msid, "в манифест уезжает ЛУЧШАЯ ступень");
+    }
+
+    /// ЧУЖАЯ ОСЬ ИМЕНИ НЕ ОТДАЁТ.
+    ///
+    /// Страж от обратной ошибки: замыкание не имеет права раздать имя всем
+    /// подряд, у кого `msid` вообще есть. Разные `PA_*` — разные люди, и
+    /// безымянная дорожка обязана остаться «Участником N».
+    #[test]
+    fn a_foreign_axis_never_borrows_a_name() {
+        let mut tracks = [track(0, &[(0, 5_000)]), track(1, &[])];
+        tracks[0].msid = Some("PA_alice|TR_mic".to_string());
+        tracks[1].msid = Some("PA_bob|TR_mic".to_string());
+        let speakers = [speaker("Алиса", &[(0, 5_000)])];
+        let report = attribute(&tracks, &speakers, &[], &AttribConfig::default());
+        assert_eq!(report.name_of(0), Some("Алиса"));
+        assert_eq!(report.name_of(1), None, "имя утекло на чужую ось");
+        assert_eq!(report.bindings[1].label(), "Участник 2");
+    }
+
+    /// Площадка БЕЗ `msid` ведёт себя ровно как прежде: замыкание по оси на
+    /// пустых значениях не срабатывает вовсе.
+    ///
+    /// Это Телемост (`msid` не связан с человеком) и любая площадка, где
+    /// связь не раскрыта: два безымянных трека не имеют права слипнуться.
+    #[test]
+    fn without_msid_nothing_is_propagated() {
+        let tracks = [track(0, &[(0, 5_000)]), track(1, &[])];
+        let speakers = [speaker("Алиса", &[(0, 5_000)])];
+        let report = attribute(&tracks, &speakers, &[], &AttribConfig::default());
+        assert_eq!(report.name_of(0), Some("Алиса"));
+        assert_eq!(report.name_of(1), None);
+        assert_eq!(report.bindings[1].stage, BindingStage::Fallback);
     }
 
     /// SSRC — вторая ступень, работает так же прямо.

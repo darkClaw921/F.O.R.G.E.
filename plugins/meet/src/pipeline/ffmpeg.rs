@@ -172,6 +172,83 @@ pub fn build_archive_args(input: &Path, out: &Path) -> Vec<String> {
     ]
 }
 
+/// argv замера громкости: прогон через `volumedetect` без записи файла.
+///
+/// Выход направлен в `null`, то есть звук никуда не пишется — фильтр только
+/// считает статистику и печатает её в stderr. Час записи меряется за доли
+/// секунды (чтение PCM без кодирования), поэтому гейт тишины не стоит
+/// пользователю ничего.
+pub fn build_loudness_args(input: &Path) -> Vec<String> {
+    vec![
+        "-hide_banner".into(),
+        "-nostdin".into(),
+        "-nostats".into(),
+        "-i".into(),
+        input.display().to_string(),
+        "-af".into(),
+        "volumedetect".into(),
+        "-f".into(),
+        "null".into(),
+        "-".into(),
+    ]
+}
+
+/// Громкость сведённого файла: среднее и пик, dBFS.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Loudness {
+    /// Среднеквадратичная громкость всей записи, dBFS.
+    pub mean_db: f64,
+    /// Пиковая громкость, dBFS. Именно её сравнивает гейт тишины: встреча с
+    /// единственной фразой за час имеет низкое среднее при высоком пике.
+    pub max_db: f64,
+}
+
+/// Мерит громкость файла через `volumedetect`.
+///
+/// `None` — фильтр не напечатал статистику (файл без сэмплов, неизвестный
+/// формат). Это НЕ ошибка этапа: гейт тишины в таком случае просто не
+/// срабатывает, а факт уезжает в журнал встречи.
+pub async fn measure_loudness(
+    ffmpeg: &Path,
+    input: &Path,
+    timeout: Duration,
+    cancel: &CancellationToken,
+) -> Result<Option<Loudness>, ProcError> {
+    // `proc::run` отдаёт ХВОСТ stderr, а `volumedetect` печатает свою сводку
+    // последней — то есть искомые строки в хвосте всегда.
+    let stderr = proc::run(ffmpeg, &build_loudness_args(input), timeout, cancel).await?;
+    Ok(parse_loudness(&stderr))
+}
+
+/// Разбирает сводку `volumedetect` из stderr ffmpeg.
+///
+/// Берётся ПОСЛЕДНЯЯ пара значений: у фильтра бывает несколько экземпляров
+/// (первый прогон печатает `n_samples: 0`), и итог — тот, что напечатан
+/// последним.
+pub fn parse_loudness(stderr: &str) -> Option<Loudness> {
+    let mut mean = None;
+    let mut max = None;
+    for line in stderr.lines() {
+        if let Some(v) = parse_db_after(line, "mean_volume:") {
+            mean = Some(v);
+        }
+        if let Some(v) = parse_db_after(line, "max_volume:") {
+            max = Some(v);
+        }
+    }
+    Some(Loudness {
+        mean_db: mean?,
+        max_db: max?,
+    })
+}
+
+/// Достаёт число из строки вида `[Parsed_volumedetect_0 @ …] max_volume: -91.0 dB`.
+fn parse_db_after(line: &str, key: &str) -> Option<f64> {
+    let rest = line.split_once(key)?.1.trim();
+    let value = rest.strip_suffix("dB").unwrap_or(rest).trim();
+    value.parse::<f64>().ok().filter(|v| v.is_finite())
+}
+
 /// argv `ffprobe` для длительности файла в секундах.
 pub fn build_probe_args(path: &Path) -> Vec<String> {
     vec![

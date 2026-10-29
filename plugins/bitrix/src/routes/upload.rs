@@ -102,7 +102,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::body::Body;
-use axum::extract::{DefaultBodyLimit, State};
+use axum::extract::DefaultBodyLimit;
 use axum::http::HeaderMap;
 use axum::routing::post;
 use axum::{Json, Router};
@@ -113,8 +113,10 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 
 use crate::api::B24Client;
 use crate::progress::{ProgressReader, UploadReporter};
+use crate::registry::B24Registry;
 use crate::routes::dialogs::{map_portal_error, require_authorized};
 use crate::routes::error::ApiError;
+use crate::routes::Portal;
 use crate::state::{B24State, UploadEntry, UPLOAD_TTL_SECS};
 
 /// Подкаталог staging-файлов внутри `cache_dir`.
@@ -183,7 +185,7 @@ pub struct UploadResp {
 /// лимитирует (лимит применяют только буферизующие экстракторы — `Bytes`,
 /// `String`, `Json`), поэтому фактический предел проверяется по
 /// `Content-Length` ДО чтения и по счётчику записанных байт во время чтения.
-pub fn router(max_upload_bytes: u64) -> Router<Arc<B24State>> {
+pub fn router(max_upload_bytes: u64) -> Router<Arc<B24Registry>> {
     let limit = usize::try_from(max_upload_bytes).unwrap_or(usize::MAX);
     Router::new().route(
         "/api/bitrix/upload",
@@ -357,7 +359,7 @@ impl Drop for StagingGuard {
 /// - `503 not_connected` — ошибка файловой системы: для клиента это
 ///   «повтори», диск и права — не его вина и не его дело.
 pub async fn post_upload(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     headers: HeaderMap,
     body: Body,
 ) -> Result<Json<UploadResp>, ApiError> {
@@ -902,7 +904,7 @@ mod tests {
 
     fn app(state: Arc<B24State>) -> Router {
         let limit = state.config.max_upload_bytes;
-        router(limit).with_state(state)
+        router(limit).with_state(B24Registry::single(state))
     }
 
     fn upload_req(name: Option<&str>, len: Option<usize>, body: &'static [u8]) -> Request<Body> {

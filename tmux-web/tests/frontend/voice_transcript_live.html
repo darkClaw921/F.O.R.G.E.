@@ -1,0 +1,129 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>voice probe</title>
+<link rel="stylesheet" href="/static/css/vk.css">
+<link rel="stylesheet" href="/static/css/telegram.css">
+<link rel="stylesheet" href="/static/css/bitrix.css">
+<style>body { margin: 0; }</style>
+<div id="host"></div>
+<pre id="out"></pre>
+<script type="module">
+import { createVoiceTranscript } from '/static/js/messenger/voice-transcript-core.js';
+
+const lines = [];
+const ok = (cond, label) => lines.push(`${cond ? '[ok]  ' : '[FAIL]'} ${label}`);
+
+/** Относительная яркость и контраст по WCAG. */
+function lum(c) {
+    const [r, g, b] = c.match(/\d+(\.\d+)?/g).slice(0, 3).map(Number).map((v) => {
+        const s = v / 255;
+        return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+function contrast(a, b) {
+    const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
+    return (x + 0.05) / (y + 0.05);
+}
+/** Первый непрозрачный фон вверх по дереву. */
+function bgOf(node) {
+    let cur = node;
+    while (cur) {
+        const c = getComputedStyle(cur).backgroundColor;
+        if (c && !/rgba\(0, 0, 0, 0\)|transparent/.test(c)) return c;
+        cur = cur.parentElement;
+    }
+    return 'rgb(255, 255, 255)';
+}
+
+const panels = [
+    { id: 'vk', prefix: 'vk-voice', theme: ['data-vk-theme', 'light'] },
+    { id: 'telegram', prefix: 'tg-voice', theme: ['data-tg-theme', 'light'] },
+    { id: 'bitrix', prefix: 'b24-voice', theme: ['data-b24-theme', 'light'] },
+];
+
+const LONG = 'она сказала, что придёт в семь, и попросила не опаздывать. '.repeat(12);
+
+for (const p of panels) {
+    const panel = document.createElement('div');
+    panel.id = p.id;
+    document.getElementById('host').appendChild(panel);
+
+    const ui = createVoiceTranscript({
+        plugin: p.id,
+        classPrefix: p.prefix,
+        frameEvent: `${p.id}:voice-probe`,
+        api: {
+            transcript: async () => ({ ready: false, text: '' }),
+            transcribe: async () => ({ run_id: 'r', attached: false, ready: false, engine: 'local' }),
+        },
+    });
+    ui.configure({ observe: false });
+    const block = ui.attach({ dialogId: '1', messageId: '2', index: 0, kind: 'voice' });
+    panel.appendChild(block);
+
+    const q = (s) => block.querySelector(`.${p.prefix}-${s}`);
+    const frame = (phase, f) => ui.onFrame({
+        phase, plugin: p.id, dialogId: '1', messageId: '2', index: 0, frame: f,
+    });
+
+    ok(getComputedStyle(block).display !== 'none', `${p.id}: блок виден`);
+    ok(getComputedStyle(q('run')).display !== 'none', `${p.id}: кнопка «Расшифровать» видна`);
+    ok(getComputedStyle(q('progress')).display === 'none', `${p.id}: полоса спрятана вне прогона`);
+    ok(getComputedStyle(q('text')).display === 'none', `${p.id}: пустой текст спрятан`);
+
+    frame('started', { engine: 'cloud' });
+    frame('delta', { percent: 45 });
+    ok(getComputedStyle(q('progress')).display !== 'none', `${p.id}: полоса показана в прогоне`);
+    const barW = q('bar').getBoundingClientRect().width;
+    const boxW = q('progress').getBoundingClientRect().width;
+    ok(barW > 0 && Math.abs(barW / boxW - 0.45) < 0.05,
+        `${p.id}: полоса нарисована на 45 % (${(barW / boxW * 100).toFixed(1)} %)`);
+    ok(q('run').disabled === true, `${p.id}: кнопка заблокирована в прогоне`);
+
+    frame('done', { text: LONG, language: 'ru', engine: 'cloud', duration_ms: 60000 });
+    const textEl = q('text');
+    ok(getComputedStyle(textEl).display !== 'none', `${p.id}: готовый текст виден`);
+    const clamped = textEl.clientHeight;
+    ok(textEl.scrollHeight > clamped + 4,
+        `${p.id}: длинный текст ДЕЙСТВИТЕЛЬНО обрезан (${clamped} из ${textEl.scrollHeight} px)`);
+    ok(getComputedStyle(q('toggle')).display !== 'none', `${p.id}: кнопка разворачивания видна`);
+    q('toggle').click();
+    ok(textEl.clientHeight > clamped, `${p.id}: разворачивание увеличивает блок`);
+    ok(q('toggle').getAttribute('aria-expanded') === 'true', `${p.id}: aria-expanded=true`);
+    q('toggle').click();
+    ok(textEl.clientHeight === clamped, `${p.id}: сворачивание возвращает прежнюю высоту`);
+
+    // Клавиатура: обе кнопки принимают фокус.
+    q('toggle').focus();
+    ok(document.activeElement === q('toggle'), `${p.id}: кнопка разворачивания достижима с клавиатуры`);
+
+    frame('error', { code: 'metal_unavailable', message: 'нет GPU' });
+    ok(q('status').textContent.includes('GPU'), `${p.id}: причина отказа показана`);
+    q('run').focus();
+    ok(document.activeElement === q('run'), `${p.id}: кнопка «Повторить» достижима с клавиатуры`);
+
+    // Контраст в ТЁМНОЙ и СВЕТЛОЙ теме — как у остальных карточек медиа.
+    for (const mode of ['dark', 'light']) {
+        if (mode === 'light') panel.setAttribute(p.theme[0], p.theme[1]);
+        else panel.removeAttribute(p.theme[0]);
+        frame('done', { text: LONG, language: 'ru', engine: 'cloud', duration_ms: 60000 });
+        // Сам текст расшифровки — основной контент, требование AA целиком.
+        const cText = contrast(getComputedStyle(textEl).color, bgOf(textEl));
+        ok(cText >= 4.5, `${p.id}/${mode}: текст расшифровки читаем (${cText.toFixed(1)}:1)`);
+        // Кнопки и строка состояния красятся ТЕМИ ЖЕ токенами, что соседние
+        // кнопки карточки медиа (--*-dim, --*-red). Требовать от них большего,
+        // чем от панели, значит развести вид блока с лентой; порог — 3:1,
+        // как для элементов интерфейса.
+        const cBtn = contrast(getComputedStyle(q('run')).color, bgOf(q('run')));
+        ok(cBtn >= 3, `${p.id}/${mode}: подпись кнопки читаема (${cBtn.toFixed(1)}:1)`);
+        frame('error', { code: 'metal_unavailable', message: '' });
+        const cErr = contrast(getComputedStyle(q('status')).color, bgOf(q('status')));
+        ok(cErr >= 3, `${p.id}/${mode}: причина отказа читаема (${cErr.toFixed(1)}:1)`);
+    }
+}
+
+document.getElementById('out').textContent = lines.join('\n')
+    + `\n\nИТОГ: ${lines.filter((l) => l.startsWith('[FAIL]')).length} провалов из ${lines.length}`;
+document.title = lines.some((l) => l.startsWith('[FAIL]')) ? 'FAIL' : 'OK';
+</script>

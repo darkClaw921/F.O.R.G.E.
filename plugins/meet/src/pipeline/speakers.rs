@@ -93,6 +93,23 @@ pub struct SpeakerConfig {
     pub merge_gap_ms: i64,
     pub min_confidence: f64,
     pub second_share: f64,
+    /// Позволено ли резать спорный сегмент по границе СЛОВА.
+    ///
+    /// # Почему это выключатель, а не «есть метки — режем»
+    ///
+    /// Потому что «есть метки» проверяется по непустому
+    /// [`WhisperSegment::tokens`], а облачный `openai/whisper-1` кладёт в это
+    /// поле НЕ МЕТКИ ВРЕМЕНИ, а числовые идентификаторы токенов модели
+    /// (измерено живым запросом; отчёт — `forge-meet-polza-probe`). Сегодня
+    /// облачный разбор оставляет `tokens` пустым, и ветка не срабатывает сама
+    /// собой — но «не срабатывает по совпадению» и «выключено намеренно» это
+    /// разные вещи: первое чинится чужой правкой парсера, после которой
+    /// сегменты резались бы по ВЫДУМАННЫМ границам МОЛЧА.
+    ///
+    /// Выключенный флаг не отменяет диагностику: спорный сегмент всё равно
+    /// помечается `overlapped`, то есть человек видит «здесь говорили вдвоём»
+    /// вместо неверно разрезанного текста.
+    pub allow_word_split: bool,
 }
 
 impl Default for SpeakerConfig {
@@ -102,6 +119,7 @@ impl Default for SpeakerConfig {
             merge_gap_ms: crate::config::DEFAULT_SPEAKER_MERGE_GAP_MS as i64,
             min_confidence: crate::config::DEFAULT_SPEAKER_MIN_CONFIDENCE,
             second_share: crate::config::DEFAULT_SPEAKER_SECOND_SHARE,
+            allow_word_split: true,
         }
     }
 }
@@ -113,6 +131,8 @@ impl From<&crate::config::MeetConfig> for SpeakerConfig {
             merge_gap_ms: c.speaker_merge_gap_ms as i64,
             min_confidence: c.speaker_min_confidence,
             second_share: c.speaker_second_share,
+            // Пословные метки даёт только локальный whisper.cpp с `-ojf`.
+            allow_word_split: c.stt_backend.is_local(),
         }
     }
 }
@@ -356,7 +376,9 @@ pub fn attribute_segments(
             .unwrap_or(0.0);
 
         let disputed = confidence < cfg.min_confidence && second_share >= cfg.second_share;
-        if disputed && !words.is_empty() {
+        // РЕЗАТЬ НЕЧЕМ — ЗНАЧИТ ПОМЕЧАЕМ. Без `allow_word_split` облачный
+        // сегмент разрезался бы по границам, которых никто не измерял.
+        if disputed && cfg.allow_word_split && !words.is_empty() {
             let pieces = split_by_words(seg, &words, &prepared, cursor);
             if pieces.len() > 1 {
                 out.extend(pieces);
@@ -845,6 +867,66 @@ mod tests {
         assert_eq!(out.len(), 1);
         assert!(out[0].overlapped);
         assert!(out[0].speaker.is_some());
+    }
+
+    /// **ОБЛАЧНЫЙ РЕЖИМ: РЕЗАТЬ ЗАПРЕЩЕНО, ПОМЕЧАТЬ ОБЯЗАНЫ.**
+    ///
+    /// Метки в сегменте есть (их подложил бы чужой парсер, приняв
+    /// идентификаторы токенов модели за времена), но `allow_word_split`
+    /// выключен — и сегмент остаётся ЦЕЛЫМ с пометкой `overlapped`, а не
+    /// режется по границам, которых никто не измерял. Тот же вход при
+    /// локальном пути даёт два куска, и разница между двумя половинами теста и
+    /// есть проверяемое свойство.
+    #[test]
+    fn in_the_cloud_a_disputed_segment_is_marked_instead_of_being_split() {
+        let segs = [seg(
+            0,
+            2_000,
+            "раз два три четыре",
+            &[
+                (0, 400, " раз"),
+                (400, 900, " два"),
+                (1_100, 1_500, " три"),
+                (1_500, 2_000, " четыре"),
+            ],
+        )];
+        let intervals = [iv("Аня", 0, 1_000), iv("Боря", 1_000, 2_000)];
+
+        let local = attribute_segments(&segs, &intervals, &SpeakerConfig::default());
+        assert_eq!(local.len(), 2, "локальный путь режет по словам: {local:#?}");
+
+        let cloud = SpeakerConfig {
+            allow_word_split: false,
+            ..SpeakerConfig::default()
+        };
+        let out = attribute_segments(&segs, &intervals, &cloud);
+        assert_eq!(out.len(), 1, "облачный сегмент разрезан: {out:#?}");
+        assert_eq!(out[0].text, "раз два три четыре", "текст обязан быть целым");
+        assert_eq!(out[0].start_ms, 0);
+        assert_eq!(out[0].end_ms, 2_000);
+        assert!(
+            out[0].overlapped,
+            "спорный сегмент обязан быть помечен, даже когда резать нечем"
+        );
+        assert!(out[0].speaker.is_some(), "спикер-лидер всё равно назначен");
+    }
+
+    /// Переключатель стадии решает, позволено ли резать: облако — нельзя,
+    /// локальный whisper — можно. Проверяется на СБОРКЕ порогов из конфига,
+    /// потому что именно она разъедется первой.
+    #[test]
+    fn the_backend_decides_whether_words_may_be_split() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut cfg = crate::testing::hermetic_config(dir.path());
+
+        cfg.stt_backend = crate::config::SttBackend::Cloud;
+        assert!(
+            !SpeakerConfig::from(&cfg).allow_word_split,
+            "облако пословных меток не даёт — резать нечем"
+        );
+
+        cfg.stt_backend = crate::config::SttBackend::Local;
+        assert!(SpeakerConfig::from(&cfg).allow_word_split);
     }
 
     /// Второй претендент слишком мал — сегмент не режется.

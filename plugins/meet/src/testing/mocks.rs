@@ -155,12 +155,43 @@ done
 /// настоящий WAV (длительность, сэмплы), и мок, оставляющий четыре байта,
 /// увёл бы отладку в разбор «битого» файла вместо проверяемой логики.
 pub fn mock_ffmpeg_success(dir: &Path, name: &str) -> std::io::Result<PathBuf> {
+    // Живая речь: у дорожек с настоящим разговором `mean_volume` на реальных
+    // встречах был -23,5 и -31,5 dB. Мок обязан выглядеть как разговор, иначе
+    // гейт тишины ронял бы каждый тест пайплайна.
+    mock_ffmpeg_with_loudness(dir, name, -23.5, -3.0)
+}
+
+/// Тишайший ffmpeg: сводит как обычно, но `volumedetect` сообщает ЦИФРОВУЮ
+/// ТИШИНУ.
+///
+/// -91,0 dB — не выдумка, а пол 16-битной сетки: ровно столько печатает
+/// настоящий ffmpeg на файле из одних нулей, и ровно столько было у всех трёх
+/// дорожек встречи, где медиа-канал площадки не поднялся.
+pub fn mock_ffmpeg_silence(dir: &Path, name: &str) -> std::io::Result<PathBuf> {
+    mock_ffmpeg_with_loudness(dir, name, -91.0, -91.0)
+}
+
+/// Успешный ffmpeg с заданной сводкой `volumedetect`.
+pub fn mock_ffmpeg_with_loudness(
+    dir: &Path,
+    name: &str,
+    mean_db: f64,
+    max_db: f64,
+) -> std::io::Result<PathBuf> {
     write_mock_bin(
         dir,
         name,
         &format!(
             "{FFMPEG_ARGV_PROLOGUE}\n\
              echo 'ffmpeg version 8.0 (mock)' >&2\n\
+             for a in \"$@\"; do\n\
+             \x20 if [ \"$a\" = volumedetect ]; then\n\
+             \x20   echo '[Parsed_volumedetect_0 @ 0x0] n_samples: 160000' >&2\n\
+             \x20   echo '[Parsed_volumedetect_0 @ 0x0] mean_volume: {mean_db:.1} dB' >&2\n\
+             \x20   echo '[Parsed_volumedetect_0 @ 0x0] max_volume: {max_db:.1} dB' >&2\n\
+             \x20   exit 0\n\
+             \x20 fi\n\
+             done\n\
              if [ -n \"$OUT\" ]; then\n\
              \x20 if [ -n \"$FIRST_IN\" ] && [ -f \"$FIRST_IN\" ]; then cp \"$FIRST_IN\" \"$OUT\"; else printf 'mock' > \"$OUT\"; fi\n\
              fi\n\
@@ -188,6 +219,44 @@ pub fn mock_ffmpeg_failure(dir: &Path, name: &str, message: &str) -> std::io::Re
 /// Зависающий ffmpeg.
 pub fn mock_ffmpeg_hang(dir: &Path, name: &str, secs: u64) -> std::io::Result<PathBuf> {
     mock_hang(dir, name, secs)
+}
+
+/// ffmpeg, нарезающий окна для облачной расшифровки.
+///
+/// Пишет в выходной файл строку `ID3mock ss=<начало> t=<длительность>` —
+/// то есть окно, которое у него попросили. Это единственный способ проверить
+/// главный инвариант Ф14 БЕЗ настоящего кодека: локальный стенд читает эти
+/// значения из принятого файла и видит, какой длины кусок ему прислали. Стенд
+/// рвёт соединение на куске длиннее окна — ровно как живой polza.ai на 62-й
+/// секунде, — и тест доказывает, что запись режется ДО отправки, а не после
+/// отказа.
+pub fn mock_ffmpeg_window_slicer(dir: &Path, name: &str) -> std::io::Result<PathBuf> {
+    write_mock_bin(
+        dir,
+        name,
+        r#"SS=""
+T=""
+OUT=""
+prev=""
+for a in "$@"; do
+  case "$prev" in
+    -ss) SS="$a" ;;
+    -t) T="$a" ;;
+  esac
+  if [ "$a" = volumedetect ]; then
+    # Замер громкости: выход у него `-`, и общая ветка ниже создала бы файл с
+    # таким именем в рабочем каталоге теста.
+    echo '[Parsed_volumedetect_0 @ 0x0] mean_volume: -23.5 dB' >&2
+    echo '[Parsed_volumedetect_0 @ 0x0] max_volume: -3.0 dB' >&2
+    exit 0
+  fi
+  OUT="$a"
+  prev="$a"
+done
+printf 'ID3mock ss=%s t=%s' "$SS" "$T" > "$OUT"
+exit 0
+"#,
+    )
 }
 
 /// ffprobe, отвечающий заданной длительностью в секундах.

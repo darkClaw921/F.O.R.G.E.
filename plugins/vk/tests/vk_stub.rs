@@ -758,11 +758,15 @@ async fn garbage_body_becomes_a_decode_error() {
 
 /// Троттлер на настоящем HTTP.
 ///
-/// Проверяются ДВА свойства, которых нет у фиксированного окна:
-/// 1. стартовый залп ёмкостью бака проходит мгновенно;
-/// 2. дальше вызовы идут РАВНОМЕРНО (~1/rps), а не «три сразу, потом секунда
-///    тишины», и в любую скользящую секунду установившегося режима их не
-///    больше трёх.
+/// Проверяются ТРИ свойства:
+/// 1. сразу после запуска процесса залпа НЕТ — вызовы разнесены (`Bucket::cold`:
+///    бюджет VK привязан к токену и переживает перезапуск `devforge`, поэтому
+///    залп поверх хвоста предыдущего процесса даёт код 6, а его однотипные
+///    повторы эскалируют до кода 9);
+/// 2. вызовы идут РАВНОМЕРНО (~1/rps), а не «три сразу, потом секунда тишины»,
+///    и в любую скользящую секунду установившегося режима их не больше трёх;
+/// 3. ПРОГРЕТЫЙ бак залп по-прежнему пропускает мгновенно — открытие вкладки
+///    после паузы не должно растягиваться на секунду.
 #[tokio::test]
 async fn throttle_spaces_calls_evenly() {
     let stub = start_stub().await;
@@ -776,11 +780,12 @@ async fn throttle_spaces_calls_evenly() {
     assert_eq!(calls.len(), 7);
     let at: Vec<Instant> = calls.iter().map(|c| c.at).collect();
 
-    // 1. Залп из трёх — мгновенно.
+    // 1. Холодный старт: залпа нет, второй вызов уже подождал свою треть
+    //    секунды.
     let burst = at[2].duration_since(at[0]);
     assert!(
-        burst < Duration::from_millis(200),
-        "залп ёмкостью бака обязан проходить сразу, занял {burst:?}"
+        burst >= Duration::from_millis(600),
+        "после запуска процесса залп запрещён, а три вызова заняли {burst:?}"
     );
 
     // 2. Дальше — равномерно. Фиксированное окно дало бы здесь нули и
@@ -798,6 +803,19 @@ async fn throttle_spaces_calls_evenly() {
     assert!(
         window >= Duration::from_millis(950),
         "четыре подряд уложились в {window:?} — это больше 3 запросов в секунду"
+    );
+
+    // 4. Бак прогрелся за секунду простоя — залп открытия вкладки снова
+    //    проходит мгновенно. Ограничен ровно СТАРТ процесса, а не работа.
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    let warm_started = Instant::now();
+    for _ in 0..3 {
+        c.mark_as_read(1234, None, None).await.unwrap();
+    }
+    let warm_burst = warm_started.elapsed();
+    assert!(
+        warm_burst < Duration::from_millis(300),
+        "прогретый залп обязан проходить сразу, занял {warm_burst:?}"
     );
 }
 
@@ -4615,6 +4633,12 @@ async fn a_refresh_feeds_the_model_only_the_new_messages_and_replaces_the_analys
             config_path: dir.path().join("vk.toml"),
             prompts_path: dir.path().join("prompts.json"),
             claude_cli_path: cli,
+            // Запуски `claude -p` по умолчанию выключены глобально (см.
+            // forge_claude_runner): стенд с мок-CLI включает их явно.
+            claude_enabled: true,
+            // Дефолт конфига — облако polza.ai; стенд гоняет мок-CLI, поэтому
+            // бэкенд фиксируем на claude явно.
+            llm_backend: forge_claude_runner::LlmBackend::Claude,
             ..VkConfig::default()
         });
         state

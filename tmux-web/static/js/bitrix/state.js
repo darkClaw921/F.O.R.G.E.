@@ -30,7 +30,8 @@
 //
 // Состояние «у вебхука нет нужных прав» называется `scope_missing`. Ключи
 // настроек белого списка (Ф11) — `bitrix_visible_kinds` и
-// `bitrix_visible_peers`.
+// `bitrix_visible_peers`, а с Ф7.4 у каждого портала своя запись в карте
+// `bitrix_portal_prefs` (правило чтения — в шапке `visibility.js`).
 //
 // ============================================================================
 //
@@ -46,7 +47,8 @@
 // `unread_count`). Поэтому второго списка вроде `dirDialogs` тут НЕТ и не
 // будет — он был бы копией того же массива.
 
-import { normalizeFilter } from './visibility.js';
+import { activePortal } from './api.js';
+import { normalizeFilter, PORTAL_PREFS_KEY } from './visibility.js';
 
 export const b24State = {
     /**
@@ -155,8 +157,8 @@ export function clearB24AccountData() {
     b24State.throttled = false;
 }
 
-/** Кэш разбора белого списка: {key, value}. */
-const filterCache = { key: null, value: null };
+/** Кэш разбора белого списка ПО ПОРТАЛАМ: `portal_id` → {key, value}. */
+const filterCache = new Map();
 
 /**
  * Действующий белый список диалогов (Ф4/Ф11).
@@ -176,34 +178,51 @@ const filterCache = { key: null, value: null };
  * ни состояния, ни зависимостей, и её обязаны уметь позвать напрямую и тест, и
  * форма настроек.
  *
+ * ПОРТАЛ (Ф7.4). Белый список у каждого портала свой, и спрашивать нужно
+ * настройки ТОГО портала, чей кадр обрабатывается: кадры соседних порталов
+ * приходят в тот же сокет, и общий фильтр прятал бы в одном портале чат,
+ * отмеченный в другом. Умолчание — АКТИВНЫЙ портал панели (`api.js`, а не
+ * `b24State`: `clearB24AccountData` обнуляет состояние ровно в момент
+ * переключения портала, то есть стёр бы то, что как раз и меняется).
+ *
+ * Кэш — ПО ПОРТАЛАМ: одна ячейка означала бы, что чередование своих и чужих
+ * кадров пересобирает разбор на каждом кадре, а именно на потоке кадров кэш и
+ * нужен.
+ *
+ * @param {?string} [portalId] — портал; пусто ⇒ активный портал панели
  * @returns {object} результат `visibility.js::normalizeFilter`
  */
-export function currentVisibilityFilter() {
+export function currentVisibilityFilter(portalId) {
     const app = (typeof window !== 'undefined') ? window.ForgeApp : null;
     const us = (app && app.state && app.state.userSettings) || null;
+    const id = String(
+        portalId == null || portalId === '' ? (activePortal() || '') : portalId,
+    );
     let key;
     try {
+        // Ключ по СОДЕРЖИМОМУ: форма настроек пересобирает объект настроек при
+        // каждом сохранении, и ключ по ссылке держал бы старый разбор.
         key = JSON.stringify([
             us && us.bitrix_filter_enabled,
             us && us.bitrix_visible_kinds,
             us && us.bitrix_visible_peers,
+            us && us[PORTAL_PREFS_KEY],
         ]);
     } catch (_) {
         key = null;
     }
-    if (key !== null && key === filterCache.key && filterCache.value) {
-        return filterCache.value;
+    const hit = filterCache.get(id);
+    if (key !== null && hit && hit.key === key && hit.value) {
+        return hit.value;
     }
-    const filter = normalizeFilter(us);
-    filterCache.key = key;
-    filterCache.value = filter;
+    const filter = normalizeFilter(us, id);
+    filterCache.set(id, { key, value: filter });
     return filter;
 }
 
 /** Сбрасывает кэш фильтра — зовётся формой настроек сразу после сохранения. */
 export function invalidateVisibilityFilter() {
-    filterCache.key = null;
-    filterCache.value = null;
+    filterCache.clear();
 }
 
 /** Снимок состояния для e2e/диагностики. */

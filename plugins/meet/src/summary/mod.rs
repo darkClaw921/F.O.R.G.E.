@@ -88,12 +88,21 @@ pub const TRUNCATION_NOTE: &str =
 /// Параметры прогона саммари.
 #[derive(Debug, Clone)]
 pub struct RunOptions {
-    /// Путь к Claude CLI.
+    /// Путь к ЛОКАЛЬНОМУ CLI (Claude или Kimi — см. [`Self::cli_kind`]).
     pub cli_path: PathBuf,
+    /// Какой именно локальный CLI исполняет прогон.
+    pub cli_kind: forge_claude_runner::CliKind,
     /// Потолок одного прогона. По истечении процесс УБИВАЕТСЯ.
     pub timeout: Duration,
     /// Отмена встречи гасит и саммари.
     pub cancel: CancellationToken,
+    /// Разрешены ли запуски `claude -p`. **Дефолт в продакшене — `false`**
+    /// (глобальный выключатель, см. `forge_claude_runner`): caller
+    /// прокидывает сюда `claude_enabled`-флаг конфига ИЛИ
+    /// `forge_claude_runner::env_runs_enabled()`. Выключенный флаг даёт
+    /// отказ ДО спавна — с кодом `summary_failed`, в теле которого инструкция
+    /// «как включить».
+    pub claude_enabled: bool,
 }
 
 /// Итог саммаризации одной встречи.
@@ -200,8 +209,15 @@ pub async fn generate(
     opts: &RunOptions,
     on_delta: Option<&(dyn Fn(usize) + Send + Sync)>,
 ) -> Result<String, ProcError> {
-    let runner = ClaudeRunner::new(opts.cli_path.clone(), 1)
-        .with_run_timeout(opts.timeout.as_secs().max(1));
+    let runner = ClaudeRunner::from_transport(
+        forge_claude_runner::Transport::Cli {
+            kind: opts.cli_kind,
+            path: opts.cli_path.clone(),
+        },
+        1,
+    )
+    .with_run_timeout(opts.timeout.as_secs().max(1))
+    .with_enabled(opts.claude_enabled);
 
     // ЛИТЕРАЛ ЦЕЛИКОМ, без `..Default::default()`: см. шапку модуля.
     let req = RunRequest {
@@ -383,12 +399,102 @@ pub async fn summarize(
             queue_position: None,
         });
     };
-    let opts = RunOptions {
-        cli_path: state.config.claude_cli_path.clone(),
-        timeout: Duration::from_secs(state.config.summary_timeout_secs),
-        cancel: cancel.clone(),
+    // **РАЗВИЛКА СТАДИИ: облако или локальный Claude CLI.**
+    //
+    // Развилка стоит ЗДЕСЬ, а не внутри [`generate`], и не выше по стеку:
+    //
+    // * выше — значит продублировать всё, что вокруг (слот и его очередь,
+    //   промпт, запись файла, `finish`), то есть завести второй способ
+    //   провалить саммари, который однажды разойдётся с первым;
+    // * внутри `generate` — значит потащить `MeetState` в функцию, которая
+    //   сегодня зависит только от промпта и опций, и потерять её тестируемость.
+    //
+    // Обе стороны отдают `Result<String, ProcError>` и зовут ОДИН И ТОТ ЖЕ
+    // `on_delta` через один и тот же [`DeltaCoalescer`] — поэтому фронт не
+    // переделывается: кадр `Progress { phase: Summarizing, done }` тот же
+    // самый.
+    //
+    // Сторону выбирает ГЕЙТ ([`crate::deps::plan_summary`]), а не конфиг
+    // напрямую: заказанная сторона может быть нерабочей (нет ключа облака либо
+    // нет Claude CLI), и тогда берётся вторая. Отказ остаётся только на
+    // случай, когда не работает ни одна.
+    // Локальный CLI выбирается конфигом `llm_backend`: claude (дефолт) или
+    // kimi. Гейт и прогон смотрят на ОДИН И ТОТ ЖЕ путь — иначе план сказал
+    // бы «всё в порядке», а прогон ушёл в другой бинарь.
+    let (cli_kind, cli_path) = match state.config.llm_backend {
+        forge_claude_runner::LlmBackend::Kimi => (
+            forge_claude_runner::CliKind::Kimi,
+            state.config.kimi_cli_path.clone(),
+        ),
+        _ => (
+            forge_claude_runner::CliKind::Claude,
+            state.config.claude_cli_path.clone(),
+        ),
     };
-    let produced = generate(&built, &opts, Some(&on_delta)).await;
+    let plan = crate::deps::plan_summary(
+        state.config.summary_backend,
+        state.config.summary_enabled,
+        state.config.cloud_configured(),
+        &cli_path,
+        state.config.claude_enabled || forge_claude_runner::env_runs_enabled(),
+    );
+    // ОТКАТ ВИДЕН: событие журнала пишется ДО прогона, чтобы человек увидел
+    // подмену стороны даже если сам прогон потом провалится.
+    if let Ok(p) = &plan {
+        if let (Some(code), Some(note)) = (p.summary_event(), p.fallback_note()) {
+            let _ = repo::events::note(
+                state,
+                meeting_id,
+                MeetStatus::Summarizing.as_str(),
+                code,
+                Some(&note),
+            )
+            .await;
+            tracing::warn!(
+                target: "forge_meet",
+                meeting_id = %meeting_id,
+                "forge-meet: саммари — {note}"
+            );
+        }
+    }
+    let produced = match plan {
+        // Ни одной рабочей стороны — это отказ САММАРИ, а не встречи:
+        // транскрипт уже на диске, и `finish` ниже доведёт встречу до `ready`.
+        Err(code) => Err(ProcError::new(
+            code,
+            format!(
+                "саммари недоступно: {code} — {}",
+                crate::deps::blocker_hint(code)
+            ),
+            "",
+        )),
+        Ok(p) if p.route.is_cloud() => match crate::cloud::CloudClient::new(&state.config.cloud()) {
+            Ok(client) => {
+                let opts = crate::cloud::summary::ChatOptions {
+                    model: state.config.cloud_summary_model.clone(),
+                    // `summary_timeout_secs` здесь — потолок ПАУЗЫ между
+                    // кадрами, а не всего ответа: общий таймаут резал бы
+                    // длинное саммари тем чаще, чем лучше оно получалось, а
+                    // молчащий шлюз всё равно ловится этой же величиной.
+                    idle_timeout: Duration::from_secs(state.config.summary_timeout_secs),
+                    cancel: cancel.clone(),
+                };
+                crate::cloud::summary::generate(&client, &built, &opts, Some(&on_delta)).await
+            }
+            Err(e) => Err(ProcError::from(e)),
+        },
+        Ok(_) => {
+            let opts = RunOptions {
+                cli_path,
+                cli_kind,
+                timeout: Duration::from_secs(state.config.summary_timeout_secs),
+                cancel: cancel.clone(),
+                claude_enabled: state.config.claude_enabled
+                    || forge_claude_runner::env_runs_enabled(),
+            };
+            generate(&built, &opts, Some(&on_delta)).await
+        }
+    };
     drop(slot);
 
     match produced {
@@ -654,8 +760,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let opts = RunOptions {
             cli_path: dir.path().join("no-such-claude"),
+            cli_kind: forge_claude_runner::CliKind::Claude,
             timeout: Duration::from_secs(5),
             cancel: CancellationToken::new(),
+            // Иначе отказ случится на глобальном выключателе раньше спавна,
+            // и тест проверит не тот путь.
+            claude_enabled: true,
         };
         let err = generate(&built("<task>x</task>"), &opts, None)
             .await

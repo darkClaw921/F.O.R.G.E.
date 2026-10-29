@@ -33,6 +33,10 @@
 //   POST /api/vk/dialogs/:id/analysis                startAnalysis         (АЧ-Ф3)
 //   DELETE /api/vk/dialogs/:id/analysis/thread       clearThread           (АЧ-И2)
 //   POST /api/vk/dialogs/:id/analysis/cancel         cancelAnalysis        (АЧ-Ф3)
+//   POST /api/vk/voice/:peer/:mid/:idx/transcribe    transcribeVoice       (ГС-Ф3)
+//   GET  /api/vk/voice/:peer/:mid/:idx/transcript    getVoiceTranscript    (ГС-Ф3)
+//   GET  /api/vk/voice/settings                      getVoiceSettings      (ГС-Ф4)
+//   PUT  /api/vk/voice/settings                      setVoiceSettings      (ГС-Ф4)
 //
 // («АЧ» — фазы фичи «Анализ чата через Claude», нумерация у неё своя; «АЧ-И» —
 // её доработки: «И1» — сохраняемый и инкрементальный анализ, «И2» — тред
@@ -602,3 +606,94 @@ export async function cancelAnalysis(dialogId, runId) {
     if (runId) body.run_id = String(runId);
     return callC(`/api/vk/dialogs/${seg(dialogId)}/analysis/cancel`, jsonInit('POST', body));
 }
+
+// ============================================================================
+// Голосовые сообщения (ГС-Ф3)
+// ============================================================================
+
+/**
+ * POST /api/vk/voice/:peer/:mid/:idx/transcribe — запустить расшифровку.
+ *
+ * Ответ приходит СРАЗУ, как у `startAnalysis`: сама расшифровка идёт секунды
+ * (минутное голосовое) или минуты (пятнадцатиминутное), а прогресс едет
+ * кадрами `voice_transcribe_*` по /ws/vk.
+ *
+ * ТРИ исхода, о которых обязан знать вызывающий:
+ * - `{ready: true, text}` — расшифровка уже была посчитана; движок не
+ *   запускался, кадров по WS не будет;
+ * - `{run_id, attached: false}` — прогон запущен, ждём кадры;
+ * - `{run_id, attached: true}` — расшифровка этого вложения УЖЕ идёт (вторая
+ *   вкладка, повторный клик), нового прогона не запускалось.
+ *
+ * Коды отказов — свои у каждой причины, и решать по ним, а не по тексту:
+ * `voice_not_audio`, `voice_too_long`, `voice_no_ffmpeg`, `voice_no_whisper`,
+ * `voice_no_model`, `voice_no_key`, `voice_busy`, `metal_unavailable`.
+ *
+ * @param {string} dialogId
+ * @param {number|string} messageId
+ * @param {number} index номер вложения в сообщении
+ * @param {{force?: boolean}} [opts] `force` — пересчитать, даже если готово
+ * @returns {Promise<{run_id: ?string, attached: boolean, ready: boolean, engine: string, text?: string}>}
+ */
+export async function transcribeVoice(dialogId, messageId, index, opts) {
+    // `?force=1` дописывается ОТДЕЛЬНО от шаблона пути — так же, как в
+    // js/telegram/api.js: разборщики контракта читают адреса из кода, и
+    // подстановка внутри литерала превратила бы путь в `…/transcribe:`.
+    const q = opts && opts.force ? '?force=1' : '';
+    return callC(
+        `/api/vk/voice/${seg(dialogId)}/${seg(messageId)}/${seg(index)}/transcribe` + q,
+        jsonInit('POST', {}),
+    );
+}
+
+/**
+ * GET /api/vk/voice/:peer/:mid/:idx/transcript — готовая расшифровка.
+ *
+ * Расшифровки нет — это `{ready: false}` с пустым текстом, а НЕ ошибка: «ещё
+ * не расшифровывали» — нормальное состояние вложения. Ни одного вызова VK и
+ * ни одного запуска движка: ответ читается из локального файла, поэтому
+ * работает и при мёртвой сети.
+ *
+ * @param {string} dialogId
+ * @param {number|string} messageId
+ * @param {number} index
+ * @returns {Promise<{ready: boolean, text: string, language: string, engine: string, duration_ms: number, created_at: ?number}>}
+ */
+export async function getVoiceTranscript(dialogId, messageId, index) {
+    return callC(
+        `/api/vk/voice/${seg(dialogId)}/${seg(messageId)}/${seg(index)}/transcript`,
+    );
+}
+
+/**
+ * GET /api/vk/voice/settings — каким движком расшифровываются голосовые.
+ *
+ * Настройка ОБЩАЯ для всех мессенджеров: она живёт в `voice.toml` рядом с
+ * ключом polza.ai, а не в `user_settings.json`. Поэтому три панели читают её
+ * своими роутами, но видят одно и то же значение.
+ *
+ * Ключ облака НИКОГДА не приходит — только признак `cloud_key_set`.
+ * `warning` (если он есть) объясняет, чего выбранному движку не хватает:
+ * `voice_no_key`, `voice_no_model`, `voice_no_whisper`, `voice_no_ffmpeg`.
+ *
+ * Логина в мессенджере роут НЕ требует: движок настраивают до входа.
+ *
+ * @returns {Promise<{engine: string, cloud_key_set: boolean, warning?: {code: string, message: string}}>}
+ */
+export async function getVoiceSettings() {
+    return callC('/api/vk/voice/settings');
+}
+
+/**
+ * PUT /api/vk/voice/settings — переключить движок расшифровки.
+ *
+ * Выбор СОХРАНЯЕТСЯ, даже если движок сейчас нерабочий: в ответе тогда придёт
+ * `warning`. Отказ приходит только на чужое слово (`400 invalid_input`).
+ *
+ * @param {string} engine `local` | `cloud`
+ * @returns {Promise<{engine: string, cloud_key_set: boolean, warning?: {code: string, message: string}}>}
+ */
+export async function setVoiceSettings(engine) {
+    return callC('/api/vk/voice/settings', jsonInit('PUT', { engine: String(engine || '') }));
+}
+

@@ -197,7 +197,14 @@ for (const alien of ['dialog_changed', 'counters', 'chat_updated']) {
 const mainJs = read('../../static/js/telegram/main.js');
 const handlersSrc = (() => {
     const i = mainJs.indexOf('function buildHandlers');
-    return i < 0 ? '' : mainJs.slice(i, i + 6000);
+    if (i < 0) return '';
+    // Конец — по закрывающей скобке САМОЙ карты (`\n    };`), а не по
+    // фиксированному окну в символах: карта кадров растёт с каждой фичей, и
+    // окно однажды обрезало бы её хвост, объявляя живые обработчики
+    // отсутствующими. По `return local.handlers;` искать нельзя — первое
+    // вхождение стоит в мемоизации на второй строке функции.
+    const end = mainJs.indexOf('\n    };', i);
+    return mainJs.slice(i, end < 0 ? i + 6000 : end);
 })();
 ok('в main.js найдена buildHandlers', handlersSrc.length > 0);
 // `ping` разбирается самим транспортом (ws.js меряет по нему задержку и
@@ -424,6 +431,7 @@ const routerPaths = registeredRoutes([
     read('../../../plugins/telegram/src/routes/media.rs'),
     read('../../../plugins/telegram/src/routes/upload.rs'),
     read('../../../plugins/telegram/src/routes/analysis.rs'),
+    read('../../../plugins/telegram/src/routes/voice.rs'),
 ]);
 const jsPaths = apiJsRoutes(apiJs);
 

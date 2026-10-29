@@ -175,6 +175,94 @@ impl StrOrBool {
     }
 }
 
+/// Разбор вложенного поля, у которого «значения нет» приходит как `null` или
+/// `false`, — с падением на значение по умолчанию вместо ошибки.
+///
+/// # Зачем это существует
+///
+/// `#[serde(default)]` покрывает только ОТСУТСТВУЮЩИЙ ключ. Явный `null` на
+/// месте структуры — это `invalid type: null`, то есть ошибка разбора ВСЕГО
+/// документа, а не одного поля. В ответах портала это различие не смысловое:
+/// JSON приходит из PHP, где «пусто» выражается то `[]`, то `null`, то
+/// `false`, причём соседние ключи одного объекта могут расходиться. Пустой
+/// массив `[]` serde принимает молча (seq-форма структуры), а `null` — нет, и
+/// именно поэтому ловушка не видна глазами: в живом ответе обе формы стоят
+/// рядом и выглядят одинаково безобидно.
+///
+/// # Чем это кончалось (найдено живой проверкой Ф9 на двух стендах)
+///
+/// ОДИН чат с `entity_link: null` в `im.recent.get` ронял разбор ВСЕГО списка.
+/// Ошибка глохла в [`super::methods`] (`from_value(…).ok().unwrap_or_default()`),
+/// а воркер синхронизации не пишет строку на пустом результате — панель
+/// показывала ноль диалогов, и в логе не оставалось НИ ОДНОЙ строки. Один чат
+/// ронял не себя, а список.
+///
+/// # Почему ошибки НЕ глотаются целиком
+///
+/// На значение по умолчанию падают только `null` и булево — две формы «здесь
+/// ничего нет». Объект неожиданной формы по-прежнему разбирается обычным путём
+/// и обычным путём краснеет: молчаливое проглатывание ЛЮБОЙ ошибки вернуло бы
+/// ровно тот дефект, ради которого функция написана, — расхождение со схемой,
+/// невидимое ни в панели, ни в логе.
+pub fn nullable_default<'de, D, T>(de: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de> + Default,
+{
+    let v = Value::deserialize(de)?;
+    if v.is_null() || v.is_boolean() {
+        return Ok(T::default());
+    }
+    T::deserialize(v).map_err(serde::de::Error::custom)
+}
+
+/// Список идентификаторов, который портал отдаёт ЛИБО массивом, ЛИБО объектом.
+///
+/// # Ловушка, найденная на живом портале
+///
+/// PHP не различает список и словарь: `array()` уезжает в JSON как `[]`, а
+/// `array(2816 => true)` — как `{"2816":true}`. Поэтому `chat.mute_list`
+/// приходит пустым МАССИВОМ, пока чат никем не заглушён, и становится
+/// ОБЪЕКТОМ `{"<user_id>":true}`, как только его заглушил хоть один участник.
+/// Тип поля в ответе зависит от данных, а не от схемы метода.
+///
+/// Стоило это ровно того же, что и `entity_link: null` (см.
+/// [`nullable_default`]): один заглушённый чат ронял разбор ВСЕГО списка
+/// диалогов, `decode_part` глотал ошибку в `unwrap_or_default`, и панель
+/// показывала ноль чатов при живом счётчике непрочитанного. На тестовом
+/// портале дефект не воспроизводился никогда — там никто не пользовался
+/// mute'ом, и поле всегда было `[]`.
+///
+/// # Что считается элементом
+///
+/// - `null`, `false`, `[]`, `{}` — пустой список;
+/// - массив — его элементы (число или строка с числом, как везде у портала);
+/// - объект — его КЛЮЧИ, но только те, у которых значение не `false`:
+///   портал кладёт в такую карту пару `user_id => true`, и `false` в ней
+///   означает «этот участник как раз НЕ в списке».
+///
+/// Всё остальное (строка, число на месте списка) по-прежнему ошибка разбора:
+/// глотать любую неожиданную форму значило бы вернуть тот самый молчаливый
+/// дефект, ради которого функция написана.
+pub fn id_list<'de, D>(de: D) -> Result<Vec<i64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let v = Value::deserialize(de)?;
+    if v.is_null() || v.is_boolean() {
+        return Ok(Vec::new());
+    }
+    if let Some(map) = v.as_object() {
+        return Ok(map
+            .iter()
+            .filter(|(_, val)| !matches!(val, Value::Bool(false)))
+            .filter_map(|(key, _)| key.parse::<i64>().ok())
+            .collect());
+    }
+    let items: Vec<StrOrNum> = Vec::deserialize(v).map_err(serde::de::Error::custom)?;
+    Ok(items.iter().filter_map(StrOrNum::as_i64).collect())
+}
+
 /// Ответ метода `profile` — владелец вебхука.
 ///
 /// Живой ответ портала:
@@ -453,16 +541,21 @@ pub struct ChatRaw {
     #[serde(default)]
     pub entity_id: StrOrNum,
     /// Кто заглушил чат (список user_id). Свой id в списке ⇒ `muted`.
-    #[serde(default)]
+    ///
+    /// Разбирается [`id_list`], а не `nullable_default`: пока чат никем не
+    /// заглушён, портал шлёт `[]`, а после первого же mute — ОБЪЕКТ
+    /// `{"<user_id>":true}`. Тип зависит от данных, и на `Vec<i64>` это
+    /// роняло разбор всего списка диалогов.
+    #[serde(default, deserialize_with = "id_list")]
     pub mute_list: Vec<i64>,
-    /// Модераторы чата.
-    #[serde(default)]
+    /// Модераторы чата. Та же двойственность формы, что у [`Self::mute_list`].
+    #[serde(default, deserialize_with = "id_list")]
     pub manager_list: Vec<i64>,
     /// Число участников.
     #[serde(default)]
     pub user_counter: Option<i64>,
     /// Ограничения (нужно `send`).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable_default")]
     pub restrictions: RestrictionsRaw,
     /// Роль пользователя в чате. **`im.recent.get` пишет `"OWNER"`, а
     /// `im.dialog.get` — `"owner"`**: нормализуется в проекции (`dto.rs`).
@@ -472,7 +565,7 @@ pub struct ChatRaw {
     #[serde(default = "yes")]
     pub text_field_enabled: bool,
     /// Ссылка на сущность.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable_default")]
     pub entity_link: EntityLinkRaw,
     /// `C` — обычный чат, `X` — сущностный (задача), `P` — личный, `O` —
     /// общий.
@@ -529,10 +622,10 @@ pub struct RecentItemRaw {
     #[serde(default)]
     pub title: Option<String>,
     /// Аватар и цвет строки.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable_default")]
     pub avatar: AvatarRaw,
     /// Последнее сообщение.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable_default")]
     pub message: RecentMessageRaw,
     /// Идентификатор последнего прочитанного сообщения. У личных бывает `0`.
     #[serde(default)]
@@ -553,10 +646,10 @@ pub struct RecentItemRaw {
     #[serde(default)]
     pub counter: i64,
     /// Блок чата (у личных урезан).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable_default")]
     pub chat: ChatRaw,
     /// Блок собеседника. У группового чата приезжает `{"id":0}`.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable_default")]
     pub user: UserRaw,
 }
 
@@ -1177,6 +1270,58 @@ pub struct ChatIdRaw {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `mute_list` живьём меняет ТИП в зависимости от данных: пустой массив,
+    /// пока чат никем не заглушён, и объект `{"<user_id>":true}` после первого
+    /// же mute'а.
+    ///
+    /// Найдено на живом портале: один заглушённый чат ронял разбор ВСЕГО
+    /// списка диалогов, ошибка глохла в `decode_part(…).unwrap_or_default()`,
+    /// и панель показывала ноль чатов при счётчике непрочитанного в сотни.
+    /// На тестовом портале не воспроизводилось никогда — там mute'ом никто не
+    /// пользовался, и поле всегда было `[]`.
+    #[test]
+    fn mute_list_survives_both_shapes() {
+        let as_array: ChatRaw =
+            serde_json::from_value(serde_json::json!({"mute_list": [15, 19]})).unwrap();
+        assert_eq!(as_array.mute_list, vec![15, 19]);
+
+        let as_map: ChatRaw =
+            serde_json::from_value(serde_json::json!({"mute_list": {"2816": true}})).unwrap();
+        assert_eq!(as_map.mute_list, vec![2816]);
+
+        let empty: ChatRaw = serde_json::from_value(serde_json::json!({"mute_list": []})).unwrap();
+        assert!(empty.mute_list.is_empty());
+
+        // `false` в карте означает «этот участник как раз НЕ в списке».
+        let mixed: ChatRaw =
+            serde_json::from_value(serde_json::json!({"mute_list": {"1": true, "2": false}}))
+                .unwrap();
+        assert_eq!(mixed.mute_list, vec![1]);
+
+        // Обе формы «здесь ничего нет» — как и у `nullable_default`.
+        for none in [serde_json::json!(null), serde_json::json!(false)] {
+            let row: ChatRaw = serde_json::from_value(serde_json::json!({"mute_list": none}))
+                .expect("null и false — это пустой список, а не ошибка");
+            assert!(row.mute_list.is_empty());
+        }
+    }
+
+    /// Строка списка с заглушённым чатом обязана разбираться ЦЕЛИКОМ — и не
+    /// в одиночку, а внутри `Vec`, потому что ронял разбор именно массив:
+    /// одна плохая строка забирала с собой все остальные.
+    #[test]
+    fn a_muted_chat_does_not_take_the_whole_page_down() {
+        let page = serde_json::json!([
+            {"id": "chat1", "chat": {"mute_list": []}},
+            {"id": "chat90610", "chat": {"mute_list": {"2816": true}}},
+            {"id": 19, "chat": {"mute_list": []}},
+        ]);
+        let rows: Vec<RecentItemRaw> =
+            serde_json::from_value(page).expect("заглушённый чат не роняет страницу");
+        assert_eq!(rows.len(), 3, "выжили все три строки, а не одна");
+        assert_eq!(rows[1].chat.mute_list, vec![2816]);
+    }
 
     /// ПРАВИЛО МОДУЛЯ: сырьё портала не сериализуемо.
     ///

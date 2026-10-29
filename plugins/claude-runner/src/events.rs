@@ -186,6 +186,112 @@ pub fn parse_line(line: &str) -> Option<ClaudeEvent> {
     }
 }
 
+/// Парсит одну NDJSON-строку от `kimi -p --output-format stream-json`.
+///
+/// ## Почему мультик-shape
+///
+/// Точный wire-формат Kimi CLI (print-режим) на момент написания не был
+/// зафиксирован документацией, поэтому парсер намеренно толерантен и понимает
+/// сразу несколько правдоподобных форм, причём в первую очередь пытается
+/// пропустить строку через claude-стиль [`parse_line`] — если Kimi когда-нибудь
+/// выдаст Anthropic-совместимые события, ничего менять не придётся.
+///
+/// Понимаемые формы (по убыванию приоритета):
+///
+/// 1. Claude-стиль (`content_block_delta`/`result`/…) — через [`parse_line`].
+/// 2. OpenAI-стиль SSE-чанка: `choices[0].delta.content` (или `.text`) →
+///    [`ClaudeEvent::TextDelta`]; `usage` (`prompt_tokens`/`completion_tokens`
+///    либо `input_tokens`/`output_tokens`) → [`ClaudeEvent::Result`].
+/// 3. Assistant-сообщение целиком: `{"type":"assistant","message":{"content":
+///    …}}`, где `content` — строка ИЛИ массив блоков `{type:"text",text:…}`.
+/// 4. Любой объект с `type`, содержащим `error` (case-insensitive) → Error.
+///
+/// Ничего не подошло → `None` (skip, не падать) + debug-лог с сырой строкой,
+/// чтобы по логам можно было дописать новый shape.
+pub fn parse_line_kimi(line: &str) -> Option<ClaudeEvent> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    // 1. Вдруг это уже claude-совместимый формат.
+    if let Some(ev) = parse_line(trimmed) {
+        return Some(ev);
+    }
+    let v: serde_json::Value = match serde_json::from_str(trimmed) {
+        Ok(v) => v,
+        Err(_) => return None,
+    };
+
+    // 4. Ошибки — по подстроке в type, до остальных разборов.
+    if let Some(ty) = v.get("type").and_then(|t| t.as_str()) {
+        if ty.to_lowercase().contains("error") {
+            let message = v
+                .get("message")
+                .or_else(|| v.get("error"))
+                .and_then(|m| m.as_str().map(str::to_string).or_else(|| Some(m.to_string())))
+                .unwrap_or_else(|| "kimi error".to_string());
+            return Some(ClaudeEvent::Error { message });
+        }
+    }
+
+    // 2. OpenAI-ish delta: choices[0].delta.content|text.
+    if let Some(text) = v
+        .get("choices")
+        .and_then(|c| c.get(0))
+        .and_then(|c| c.get("delta"))
+        .and_then(|d| d.get("content").or_else(|| d.get("text")))
+        .and_then(|t| t.as_str())
+    {
+        return Some(ClaudeEvent::TextDelta { text: text.to_string() });
+    }
+
+    // 3. Assistant-сообщение целиком: message.content — строка или блоки.
+    if let Some(content) = v
+        .get("message")
+        .and_then(|m| m.get("content"))
+        .or_else(|| v.get("content"))
+    {
+        match content {
+            serde_json::Value::String(s) if !s.is_empty() => {
+                return Some(ClaudeEvent::TextDelta { text: s.clone() });
+            }
+            serde_json::Value::Array(blocks) => {
+                let text: String = blocks
+                    .iter()
+                    .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
+                    .collect();
+                if !text.is_empty() {
+                    return Some(ClaudeEvent::TextDelta { text });
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Usage отдельным кадром (OpenAI кладёт его в финальный чанк с пустым
+    // choices). Маппим prompt/completion → input/output tokens.
+    if let Some(usage_v) = v.get("usage") {
+        let get = |k: &str| {
+            usage_v
+                .get(k)
+                .and_then(|n| n.as_u64())
+                .unwrap_or(0)
+        };
+        let input = get("prompt_tokens").max(get("input_tokens"));
+        let output = get("completion_tokens").max(get("output_tokens"));
+        if input > 0 || output > 0 {
+            return Some(ClaudeEvent::Result {
+                usage: Usage { input_tokens: input, output_tokens: output, ..Default::default() },
+                is_error: false,
+                raw_json: v,
+            });
+        }
+    }
+
+    tracing::debug!(target: "claude_runner", line = %trimmed, "kimi: unrecognized stream line");
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -360,5 +466,92 @@ mod tests {
             }
             other => panic!("expected Result, got {other:?}"),
         }
+    }
+
+    // ---- parse_line_kimi ---------------------------------------------------
+
+    /// Kimi может выдавать claude-совместимые события — пропускаем без потерь.
+    #[test]
+    fn kimi_passthrough_claude_shape() {
+        let line = r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}"#;
+        assert_eq!(
+            parse_line_kimi(line),
+            Some(ClaudeEvent::TextDelta { text: "Hi".into() })
+        );
+    }
+
+    /// OpenAI-ish чанк: choices[0].delta.content.
+    #[test]
+    fn kimi_openai_delta_content() {
+        let line = r#"{"choices":[{"index":0,"delta":{"role":"assistant","content":"Привет"}}]}"#;
+        assert_eq!(
+            parse_line_kimi(line),
+            Some(ClaudeEvent::TextDelta { text: "Привет".into() })
+        );
+        // Вариант с .text вместо .content.
+        let line = r#"{"choices":[{"delta":{"text":"мир"}}]}"#;
+        assert_eq!(
+            parse_line_kimi(line),
+            Some(ClaudeEvent::TextDelta { text: "мир".into() })
+        );
+    }
+
+    /// Assistant-сообщение целиком: content строкой.
+    #[test]
+    fn kimi_assistant_message_string_content() {
+        let line = r#"{"type":"assistant","message":{"role":"assistant","content":"Готово."}}"#;
+        assert_eq!(
+            parse_line_kimi(line),
+            Some(ClaudeEvent::TextDelta { text: "Готово.".into() })
+        );
+    }
+
+    /// Assistant-сообщение целиком: content массивом текстовых блоков.
+    #[test]
+    fn kimi_assistant_message_block_content() {
+        let line = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"раз "},{"type":"text","text":"два"}]}}"#;
+        assert_eq!(
+            parse_line_kimi(line),
+            Some(ClaudeEvent::TextDelta { text: "раз два".into() })
+        );
+    }
+
+    /// Финальный usage-кадр: prompt/completion tokens маппятся в input/output.
+    #[test]
+    fn kimi_usage_frame_maps_tokens() {
+        let line = r#"{"choices":[],"usage":{"prompt_tokens":42,"completion_tokens":7}}"#;
+        match parse_line_kimi(line) {
+            Some(ClaudeEvent::Result { usage, is_error, .. }) => {
+                assert_eq!(usage.input_tokens, 42);
+                assert_eq!(usage.output_tokens, 7);
+                assert!(!is_error);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+        // Альтернативные имена полей.
+        let line = r#"{"usage":{"input_tokens":3,"output_tokens":4}}"#;
+        match parse_line_kimi(line) {
+            Some(ClaudeEvent::Result { usage, .. }) => {
+                assert_eq!(usage.input_tokens, 3);
+                assert_eq!(usage.output_tokens, 4);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn kimi_error_frame() {
+        let line = r#"{"type":"error","message":"quota exceeded"}"#;
+        assert_eq!(
+            parse_line_kimi(line),
+            Some(ClaudeEvent::Error { message: "quota exceeded".into() })
+        );
+    }
+
+    #[test]
+    fn kimi_unknown_line_returns_none() {
+        assert!(parse_line_kimi("").is_none());
+        assert!(parse_line_kimi("not json").is_none());
+        assert!(parse_line_kimi(r#"{"type":"progress","pct":50}"#).is_none());
     }
 }

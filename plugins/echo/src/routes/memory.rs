@@ -206,7 +206,7 @@ printf '%s\n' '{"type":"result","usage":{"input_tokens":2,"output_tokens":2}}'
         let dir = tempfile::tempdir().unwrap();
         let cli = write_mock_cli(&dir, mock_script());
         std::mem::forget(dir);
-        let runner = Arc::new(ClaudeRunner::new(cli, 4));
+        let runner = Arc::new(ClaudeRunner::new(cli, 4).with_enabled(true));
         let db = Db::open_memory().await.unwrap();
         db.migrate().await.unwrap();
         let state = Arc::new(EchoState::new(Arc::new(db), runner));

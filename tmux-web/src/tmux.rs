@@ -359,6 +359,111 @@ pub struct PaneTarget {
     pub window: String,
 }
 
+/// Stable metadata for every pane, including inactive windows and linked sessions.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentPaneInfo {
+    pub pane_id: String,
+    pub tmux_session: String,
+    pub session_id: String,
+    pub window_id: String,
+    pub pid: u32,
+    pub tty: String,
+    pub path: String,
+    /// Transient native terminal title; never published or cached.
+    #[serde(skip)]
+    pub title: String,
+    pub active: bool,
+    pub session_group: Option<String>,
+}
+
+// Strip ASCII title control characters inside tmux, before row serialization.
+// POSIX named classes contain ':' which tmux treats as a format separator.
+const AGENT_PANE_FORMAT: &str = "#{session_name}\u{1f}#{session_id}\u{1f}#{window_id}\u{1f}#{pane_id}\u{1f}#{pane_pid}\u{1f}#{pane_tty}\u{1f}#{pane_current_path}\u{1f}#{window_active}\u{1f}#{pane_active}\u{1f}#{session_group}\u{1f}#{s|[\u{1}-\u{1f}\u{7f}]||:pane_title}";
+
+fn parse_agent_panes(output: &str) -> anyhow::Result<Vec<AgentPaneInfo>> {
+    let mut panes = Vec::new();
+    for line in output.lines().filter(|line| !line.is_empty()) {
+        let fields: Vec<_> = line.split('\u{1f}').collect();
+        if fields.len() != 11 || fields[0].is_empty()
+            || !valid_tmux_identifier(fields[1], '$') || !valid_tmux_identifier(fields[2], '@')
+            || !valid_tmux_identifier(fields[3], '%')
+            || !matches!(fields[7], "0" | "1") || !matches!(fields[8], "0" | "1") {
+            bail!("invalid agent pane inventory row");
+        }
+        let pid: u32 = fields[4].parse().context("invalid agent pane process ID")?;
+        if pid == 0 { bail!("invalid agent pane process ID"); }
+        panes.push(AgentPaneInfo {
+            pane_id: fields[3].to_owned(), tmux_session: fields[0].to_owned(),
+            session_id: fields[1].to_owned(), window_id: fields[2].to_owned(), pid,
+            tty: fields[5].to_owned(), path: fields[6].to_owned(), active: fields[7] == "1" && fields[8] == "1",
+            session_group: (!fields[9].is_empty()).then(|| fields[9].to_owned()),
+            title: fields[10].to_owned(),
+        });
+    }
+    Ok(panes)
+}
+
+fn valid_tmux_identifier(value: &str, prefix: char) -> bool {
+    value.strip_prefix(prefix).is_some_and(|tail| !tail.is_empty() && tail.bytes().all(|byte| byte.is_ascii_digit()))
+}
+
+/// Enumerate all panes once, then expand shared windows into every linked session.
+/// Unknown/probe errors are propagated so the activity tracker can retain its last
+/// reliable bindings. An absent tmux server is a successful empty inventory.
+pub async fn list_agent_panes() -> anyhow::Result<Vec<AgentPaneInfo>> {
+    let mut command = Command::new("tmux");
+    command.args(["list-panes", "-a", "-F", AGENT_PANE_FORMAT]).kill_on_drop(true);
+    let output = tokio::time::timeout(std::time::Duration::from_secs(3), command.output())
+        .await.context("agent pane inventory timed out")?
+        .context("agent pane inventory unavailable")?;
+    if !output.status.success() {
+        let error = String::from_utf8_lossy(&output.stderr);
+        if error.contains("no server running") || error.contains("no sessions") || error.contains("error connecting to") && error.contains("No such file or directory") {
+            return Ok(Vec::new());
+        }
+        bail!("agent pane inventory failed");
+    }
+    let mut panes = parse_agent_panes(&String::from_utf8_lossy(&output.stdout))?;
+    if panes.iter().any(|pane| pane.session_group.is_some()) {
+        let sessions = list_sessions().await?;
+        let originals = panes.clone();
+        for pane in originals {
+            let Some(group) = pane.session_group.as_ref() else { continue; };
+            for session in sessions.iter().filter(|session| session.session_group.as_ref() == Some(group)) {
+                if !panes.iter().any(|current| current.pane_id == pane.pane_id && current.tmux_session == session.name) {
+                    let mut linked = pane.clone();
+                    linked.tmux_session = session.name.clone(); linked.session_id = session.id.clone();
+                    panes.push(linked);
+                }
+            }
+        }
+    }
+    panes.sort_by(|a,b| (&a.tmux_session,&a.pane_id).cmp(&(&b.tmux_session,&b.pane_id)));
+    panes.dedup_by(|a,b| a.tmux_session == b.tmux_session && a.pane_id == b.pane_id);
+    Ok(panes)
+}
+
+#[cfg(test)]
+mod agent_inventory_tests {
+    use super::*;
+    #[test]
+    fn all_windows_have_stable_pane_and_process_ids() {
+        let raw = "one\u{1f}$1\u{1f}@1\u{1f}%1\u{1f}101\u{1f}/dev/pts/1\u{1f}/same\u{1f}1\u{1f}1\u{1f}\u{1f}⠋ Task | same\n\
+                   one\u{1f}$1\u{1f}@2\u{1f}%2\u{1f}102\u{1f}/dev/pts/2\u{1f}/same\u{1f}0\u{1f}0\u{1f}\u{1f}Task | same\n";
+        let panes = parse_agent_panes(raw).unwrap();
+        assert_eq!(panes.len(),2); assert!(panes[0].active); assert!(!panes[1].active);
+        assert_ne!(panes[0].pid,panes[1].pid); assert_eq!(panes[1].window_id,"@2");
+        assert_eq!(panes[0].title, "⠋ Task | same");
+        assert!(!serde_json::to_string(&panes[0]).unwrap().contains("Task"));
+    }
+    #[test]
+    fn malformed_inventory_is_unknown_instead_of_partial_empty_success() {
+        assert!(parse_agent_panes("not a reliable inventory").is_err());
+        assert!(parse_agent_panes("one\u{1f}$1\u{1f}@1\u{1f}%x\u{1f}0\u{1f}tty\u{1f}/x\u{1f}1\u{1f}1\u{1f}").is_err());
+    }
+}
+
 /// Собирает из вывода `list-panes -s` (формат [`LP_FORMAT`]) ВСЕ панели с
 /// Claude — в порядке листинга tmux (окно за окном, панель за панелью).
 ///
@@ -1096,6 +1201,34 @@ pub async fn window_cwd(session: &str, index: u32) -> anyhow::Result<String> {
         );
     }
     let target = format!("{session}:{index}");
+    display_pane_current_path(&target).await
+}
+
+/// Возвращает cwd КОНКРЕТНОЙ панели (`<session>:<win>.<pane>`).
+///
+/// Нужен авто-апруву: LLM-эскалация блоклиста должна понимать, что считать
+/// «своим» проектом, а без рабочей директории панели любой абсолютный путь в
+/// команде выглядит для модели чужим — и она отказывает.
+///
+/// `pane_target` — суффикс вида `"1.0"` из [`PaneTarget::target`]; пустая
+/// строка означает активную панель сессии, и тогда таргет становится
+/// `<session>:` (двоеточие ОБЯЗАТЕЛЬНО — см. [`session_cwd`]).
+///
+/// # Параметры
+/// - `session` — имя сессии; валидируется [`is_valid_session_name`].
+/// - `pane_target` — суффикс панели или пустая строка.
+///
+/// # Возврат
+/// `Ok(String)` — абсолютный путь без `\n`. `Err` при невалидном имени
+/// сессии (без spawn), ненулевом exit `tmux` или пустом пути.
+pub async fn pane_cwd(session: &str, pane_target: &str) -> anyhow::Result<String> {
+    if !is_valid_session_name(session) {
+        bail!(
+            "invalid session name `{}` (allowed: [A-Za-z0-9_-]+, non-empty)",
+            session
+        );
+    }
+    let target = format!("{session}:{pane_target}");
     display_pane_current_path(&target).await
 }
 

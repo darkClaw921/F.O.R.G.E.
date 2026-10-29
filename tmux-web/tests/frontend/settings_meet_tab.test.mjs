@@ -90,7 +90,15 @@ function config(over) {
             }),
             field('mute_audio', 'bool', 'bot', true),
             field('whisper_model', 'text', 'transcribe', 'large-v3-turbo-q5_0'),
+            // Ф15/Ф16: стадии переключаются ПО ОТДЕЛЬНОСТИ, и обе по умолчанию
+            // в облаке — это прямое требование, а не случайный порядок.
+            field('stt_backend', 'choice', 'transcribe', 'cloud', { choices: ['cloud', 'local'] }),
+            field('cloud_stt_model', 'text', 'transcribe', 'openai/whisper-1'),
             field('summary_enabled', 'bool', 'summary', true),
+            field('summary_backend', 'choice', 'summary', 'cloud', { choices: ['cloud', 'local'] }),
+            field('cloud_summary_model', 'text', 'summary', 'google/gemini-3.5-flash'),
+            field('polza_api_key', 'secret', 'cloud', 'pza_RIcg••••••••Uzu4js'),
+            field('cloud_base_url', 'text', 'cloud', 'https://api.polza.ai/api/v1'),
             field('alone_timeout_secs', 'int', 'timeouts', 60, { min: 5, max: 3600 }),
             field('vad_on_db', 'float', 'vad', 12, { min: 1, max: 60 }),
             field('max_concurrent_recordings', 'int', 'limits', 2, { min: 1, max: 8 }),
@@ -99,9 +107,25 @@ function config(over) {
     }, over || {});
 }
 
+/** Облачный блок `/api/meet/status` — ключа в нём нет, только маска. */
+function cloudBlock(over) {
+    return Object.assign({
+        configured: true,
+        key_mask: 'pza_RIcg••••••••Uzu4js',
+        env_locked: false,
+        base_url: 'https://api.polza.ai/api/v1',
+        stt_model: 'openai/whisper-1',
+        summary_model: 'google/gemini-3.5-flash',
+        key: { label: 'pza_RIcg••••••••Uzu4js', limit: 300, limit_remaining: 288.7, limit_reset: 'monthly', usage: 11.3 },
+        error: null,
+        checked_secs_ago: 4,
+    }, over || {});
+}
+
 function status(over) {
     return Object.assign({
         enabled: true,
+        cloud: cloudBlock((over && over.cloud) || {}),
         deps: Object.assign({
             probed: true,
             gpu_metal: true,
@@ -133,6 +157,57 @@ function modelsDto(over) {
     }, over || {});
 }
 
+/**
+ * Каталог облачных моделей — тело `GET /api/meet/cloud/models`.
+ *
+ * Цены уже разобраны бэкендом из `top_provider.pricing`; здесь важно, что
+ * `whisper-large-v3-turbo` втрое дешевле и помечен `timestamps: false`.
+ */
+function catalogue(over) {
+    return Object.assign({
+        configured: true,
+        total: 388,
+        error: null,
+        stt: [
+            {
+                id: 'openai/whisper-1', name: 'Whisper 1', kind: 'stt',
+                context_length: null, max_completion_tokens: null,
+                pricing: { stt_per_minute: 0.432, currency: 'RUB', prompt_per_million: null, completion_per_million: null },
+                selected: true, timestamps: true,
+            },
+            {
+                id: 'openai/whisper-large-v3-turbo', name: null, kind: 'stt',
+                context_length: null, max_completion_tokens: null,
+                pricing: { stt_per_minute: 0.048, currency: 'RUB', prompt_per_million: null, completion_per_million: null },
+                selected: false, timestamps: false,
+            },
+        ],
+        chat: [
+            {
+                id: 'google/gemini-3.5-flash', name: 'Gemini 3.5 Flash', kind: 'chat',
+                context_length: 1048576, max_completion_tokens: 65536,
+                pricing: { prompt_per_million: 176.05, completion_per_million: 1056.32, stt_per_minute: null, currency: 'RUB' },
+                selected: true, timestamps: null,
+            },
+            {
+                id: 'tiny/context-model', name: null, kind: 'chat',
+                context_length: 4096, max_completion_tokens: 1024,
+                pricing: null, selected: false, timestamps: null,
+            },
+        ],
+    }, over || {});
+}
+
+/** Тело `GET /api/meet/cloud/balance`. */
+function balanceDto(over) {
+    return Object.assign({
+        configured: true,
+        balance: { amount: 461.88706171, reserved: 0, spent: 138.72166217, currency: 'RUB' },
+        key: { label: 'pza_RIcg••••Uzu4js', limit: 300, limit_remaining: 288.7275241, limit_reset: 'monthly', usage: 11.27 },
+        error: null,
+    }, over || {});
+}
+
 /** Собирает набор инъекций с журналом вызовов. */
 function makeApi(over) {
     const calls = [];
@@ -144,6 +219,8 @@ function makeApi(over) {
             calls.push(['putMeetConfig', p]);
             return { saved: Object.keys(p.values), env_locked: [], fixes: [], restart_required: true };
         },
+        getCloudModels: async () => { calls.push(['getCloudModels']); return catalogue(); },
+        getCloudBalance: async () => { calls.push(['getCloudBalance']); return balanceDto(); },
         downloadModel: async (n) => { calls.push(['downloadModel', n]); return { started: true }; },
         recheckDeps: async () => { calls.push(['recheckDeps']); return status().deps; },
     };
@@ -199,15 +276,17 @@ function findByField(refs, key) {
     const host = makeEl('div');
     const refs = await TAB.buildMeetSettings(host, api);
 
-    eq(calls.map((c) => c[0]).sort(), ['getMeetConfig', 'getMeetStatus', 'getModels'],
-        'при открытии вкладки идут ровно три запроса — и ни одного скачивания');
+    eq(calls.map((c) => c[0]).sort(),
+        ['getCloudBalance', 'getCloudModels', 'getMeetConfig', 'getMeetStatus', 'getModels'],
+        'при открытии вкладки идут ровно четыре справочных запроса плюс остаток — '
+        + 'и ни одного скачивания');
     ok(!calls.some((c) => c[0] === 'downloadModel'),
         'ПОЛТОРА ГИГАБАЙТА НЕ КАЧАЮТСЯ ПРИ ОТКРЫТИИ ВКЛАДКИ');
 
     // Разделы на месте и в объявленном порядке.
     const groups = walk(host).filter((n) => n.dataset && n.dataset.meetGroup)
         .map((n) => n.dataset.meetGroup);
-    eq(groups, ['bot', 'transcribe', 'summary', 'timeouts', 'storage', 'limits', 'vad', 'readonly'],
+    eq(groups, ['bot', 'transcribe', 'summary', 'cloud', 'timeouts', 'storage', 'limits', 'vad', 'readonly'],
         'разделы идут в порядке MEET_GROUPS, «для продвинутых» — в конце');
 
     // Пороги VAD и лимиты помечены как продвинутые.
@@ -432,6 +511,262 @@ function findByField(refs, key) {
     const code = tabSrc.split('\n').filter((l) => !l.trimStart().startsWith('//')).join('\n');
     ok(!/\bfetch\s*\(/.test(code), 'вкладка не зовёт fetch напрямую');
     ok(!/innerHTML/.test(code), 'разметка строится узлами: значения приходят с сервера');
+}
+
+// ===========================================================================
+// 11. ⚠ ПЕРЕКЛЮЧАТЕЛИ СТАДИЙ И КЛЮЧ API (Ф16.1)
+// ===========================================================================
+//
+// Стадии независимы, обе по умолчанию в облаке, а ключ во фронт приходит
+// ТОЛЬКО маской. Три обещания, каждое ломается тихо: перепутанные стадии дают
+// «саммари локально, хотя выбрано облако», а отправленная обратно маска
+// затирает настоящий ключ строкой из точек.
+
+{
+    // Чистая функция подсказки — без DOM.
+    const noKey = TAB.backendNote('stt_backend', 'cloud', { cloud: cloudBlock({ configured: false }) });
+    eq(noKey.tone, 'warn', 'облако без ключа — предупреждение');
+    ok(/ключ API не задан/i.test(noKey.text), 'и сказано, ЧЕГО не хватает', noKey.text);
+
+    const cpuLocal = TAB.backendNote('stt_backend', 'local', { deps: { probed: true, gpu_metal: false } });
+    eq(cpuLocal.tone, 'warn', 'локальная расшифровка без Metal — предупреждение');
+    ok(/не запустится/i.test(cpuLocal.text), 'правило «только GPU» названо прямо', cpuLocal.text);
+
+    const dead = TAB.backendNote('summary_backend', 'cloud', {
+        cloud: cloudBlock({ error: { code: 'cloud_timeout', message: 'polza.ai не ответил за 3 с' } }),
+    });
+    eq(dead.tone, 'warn', 'молчащее облако видно у переключателя');
+    ok(/не ответил/.test(dead.text), 'с причиной', dead.text);
+
+    const spent = TAB.backendNote('summary_backend', 'cloud', {
+        cloud: cloudBlock({ key: { limit: 300, limit_remaining: 0, limit_reset: 'monthly' } }),
+    });
+    eq(spent.tone, 'warn', 'исчерпанный лимит ключа — предупреждение');
+
+    eq(TAB.backendNote('summary_backend', 'local', {}).tone, 'ok',
+        'локальное саммари ничего не требует от облака');
+    eq(TAB.backendNote('stt_backend', 'cloud', { cloud: cloudBlock() }).tone, 'ok',
+        'настроенное облако — спокойный тон');
+
+    // ⚠ ОТКАТ ГЕЙТА ВИДЕН У ПЕРЕКЛЮЧАТЕЛЯ (forge-0s0l5).
+    //
+    // Заказано облако, ключа нет, локальный whisper готов — бэкенд не
+    // отказывает, а считает локально. Молча это хуже отказа: человек думал бы,
+    // что платит за облако.
+    const fell = TAB.backendNote('stt_backend', 'cloud', {
+        cloud: cloudBlock({ configured: false }),
+        config: {
+            stt_backend: 'cloud',
+            stt_effective: 'local',
+            stt_fallback_reason: 'cloud_not_configured',
+        },
+    });
+    eq(fell.tone, 'warn', 'подмена движка — предупреждение');
+    ok(/считается локально/i.test(fell.text), 'сказано, чем считается НА САМОМ ДЕЛЕ', fell.text);
+    ok(/ключ API не задан/i.test(fell.text), 'и почему', fell.text);
+
+    // Обратная сторона: заказано локально, whisper нет, ключ есть.
+    const up = TAB.backendNote('summary_backend', 'local', {
+        cloud: cloudBlock(),
+        config: {
+            summary_backend: 'local',
+            summary_effective: 'cloud',
+            summary_fallback_reason: 'claude_cli_unavailable',
+        },
+    });
+    eq(up.tone, 'warn', 'уход в платное облако обязан быть виден');
+    ok(/Claude CLI не найден/.test(up.text), 'с причиной', up.text);
+
+    // Без отката подсказка прежняя: лишнего шума у исправной установки нет.
+    eq(TAB.backendNote('stt_backend', 'cloud', {
+        cloud: cloudBlock(),
+        config: { stt_backend: 'cloud', stt_effective: 'cloud', stt_fallback_reason: null },
+    }).tone, 'ok', 'заказанный путь работает — предупреждать не о чем');
+}
+
+{
+    const { api, calls } = makeApi();
+    const host = makeEl('div');
+    const refs = await TAB.buildMeetSettings(host, api);
+
+    const stt = findByField(refs, 'stt_backend');
+    const sum = findByField(refs, 'summary_backend');
+    eq(stt.tagName, 'select', 'расшифровка переключается выбором');
+    eq(sum.tagName, 'select', 'саммари переключается ОТДЕЛЬНЫМ выбором');
+    ok(stt !== sum, 'это два разных элемента, а не один на обе стадии');
+    eq(stt.value, 'cloud', 'по умолчанию расшифровка в облаке');
+    eq(sum.value, 'cloud', 'по умолчанию саммари в облаке');
+    eq(stt.childNodes.map((o) => o.value), ['cloud', 'local'], 'варианты — облако и локально');
+    ok(stt.childNodes.some((o) => /облак/i.test(o.textContent)),
+        'подписи человеческие, а не машинные', stt.childNodes.map((o) => o.textContent).join('|'));
+
+    // Подсказка стоит у переключателя и МЕНЯЕТСЯ ПО ВЫБОРУ, а не после
+    // сохранения.
+    const note = refs.backendNotes.get('stt_backend');
+    eq(note.dataset.meetTone, 'ok', 'при настроенном облаке подсказка спокойна');
+    stt.value = 'local';
+    dispatch(stt, 'change');
+    eq(note.dataset.meetTone, 'ok', 'Metal есть — локальный путь тоже рабочий');
+    ok(/на этой машине/.test(note.textContent), note.textContent);
+
+    // Четыре комбинации допустимы: меняем стадии в разные стороны.
+    sum.value = 'local';
+    dispatch(sum, 'change');
+    dispatch(refs.save, 'click');
+    await new Promise((r) => setTimeout(r, 0));
+    const put = calls.find((c) => c[0] === 'putMeetConfig');
+    eq(put[1], { values: { stt_backend: 'local', summary_backend: 'local' } },
+        'обе стадии сохраняются по отдельности и независимо');
+}
+
+{
+    // КЛЮЧ: поле текстовое, показана маска, и она НЕ УЕЗЖАЕТ ОБРАТНО.
+    const { api, calls } = makeApi();
+    const host = makeEl('div');
+    const refs = await TAB.buildMeetSettings(host, api);
+
+    const key = findByField(refs, 'polza_api_key');
+    eq(key.type, 'text', 'секрет — обычное текстовое поле: показывать нечего, значение уже маска');
+    ok(key.value.includes(TAB.KEY_MASK_CHAR), 'в поле стоит маска', key.value);
+    ok(!/pza_RIcg\w{10}/.test(textOf(host)), 'полного ключа в разметке нет ни в каком виде');
+
+    // Ничего не трогали — маска обратно не уходит.
+    findByField(refs, 'bot_name').value = 'Секретарь';
+    dispatch(refs.save, 'click');
+    await new Promise((r) => setTimeout(r, 0));
+    eq(calls.find((c) => c[0] === 'putMeetConfig')[1], { values: { bot_name: 'Секретарь' } },
+        'нетронутое поле ключа не попадает в запрос');
+
+    // Правка ВНУТРИ маски — всё ещё маска, и её нельзя отправлять.
+    key.value = `${key.value}x`;
+    dispatch(refs.save, 'click');
+    await new Promise((r) => setTimeout(r, 0));
+    const puts = calls.filter((c) => c[0] === 'putMeetConfig');
+    ok(!puts.some((c) => 'polza_api_key' in c[1].values),
+        'значение с символом маски НЕ отправляется: бэкенд ответил бы 400, '
+        + 'а без той проверки ключ затёрся бы точками');
+
+    // Настоящий новый ключ уезжает.
+    key.value = 'pza_newkey_1234567890';
+    dispatch(refs.save, 'click');
+    await new Promise((r) => setTimeout(r, 0));
+    const last = calls.filter((c) => c[0] === 'putMeetConfig').pop();
+    eq(last[1].values.polza_api_key, 'pza_newkey_1234567890', 'новый ключ сохраняется');
+}
+
+// ===========================================================================
+// 12. ⚠ КАТАЛОГ ОБЛАЧНЫХ МОДЕЛЕЙ, ЦЕНЫ И ОСТАТОК (Ф16.2)
+// ===========================================================================
+//
+// Три обещания, и первое из них — денежное: цена приходит из
+// `top_provider.pricing`, а не с верхнего уровня, где у ВСЕХ записей пусто.
+// Наивный разбор не падает — он показывает «бесплатно», и узнают об этом по
+// счёту. Второе: `whisper-large-v3-turbo` втрое дешевле и НЕ ДАЁТ ТАЙМКОДОВ —
+// его выбор ломает атрибуцию спикеров целиком, и это обязано быть видно
+// человеку. Третье: остаток спрашивается отдельным запросом и не имеет права
+// уронить вкладку.
+
+{
+    // Чистые функции — без DOM.
+    const stt = catalogue().stt[0];
+    const chat = catalogue().chat[0];
+    ok(/0,43/.test(TAB.modelPrice(stt)), 'цена расшифровки за минуту', TAB.modelPrice(stt));
+    ok(/мин/.test(TAB.modelPrice(stt)), 'и единица названа', TAB.modelPrice(stt));
+    ok(/176,05/.test(TAB.modelPrice(chat)) && /1056,32/.test(TAB.modelPrice(chat)),
+        'у чата обе цены — вход и выход', TAB.modelPrice(chat));
+    eq(TAB.modelPrice({ id: 'x/y', pricing: null }), 'цена не указана',
+        'ОТСУТСТВИЕ ЦЕНЫ — НЕ «БЕСПЛАТНО»: иначе наивный разбор врал бы молча');
+    eq(TAB.modelPrice({ id: 'x/y', pricing: { currency: 'RUB' } }), 'цена не указана',
+        'объект цены без единого числа — тоже «не указана»');
+
+    const cost = TAB.summaryCostEstimate(chat);
+    ok(cost > 5 && cost < 10, `саммари часовой встречи ≈ 7 ₽, посчитано ${cost}`);
+    eq(TAB.summaryCostEstimate({ pricing: null }), null, 'без цены оценки нет, а не ноль');
+
+    const bad = TAB.sttModelNote(catalogue().stt[1]);
+    eq(bad.tone, 'warn', 'модель без таймкодов — предупреждение');
+    ok(/ТАЙМКОД/i.test(bad.text) && /атрибуц/i.test(bad.text),
+        'и сказано, ЧТО именно сломается', bad.text);
+    eq(TAB.sttModelNote(stt).tone, 'ok', 'whisper-1 пригоден');
+    eq(TAB.sttModelNote(null).tone, 'warn', 'модели вне каталога — предупреждение');
+
+    eq(TAB.summaryModelNote(catalogue().chat[1]).tone, 'warn',
+        'контекст меньше часовой встречи — предупреждение, а не молчаливая обрезка');
+    ok(/примерно/.test(TAB.summaryModelNote(chat).text), TAB.summaryModelNote(chat).text);
+
+    // Остаток.
+    eq(TAB.balanceLine(null).tone, 'wait', 'до ответа — «спрашиваем», а не «ноль»');
+    eq(TAB.balanceLine(balanceDto({ configured: false })).tone, 'warn', 'без ключа остатка нет');
+    eq(TAB.balanceLine(balanceDto({ error: { code: 'cloud_timeout', message: 'нет ответа' } })).tone,
+        'warn', 'молчащий сервис виден строкой');
+    const b = TAB.balanceLine(balanceDto());
+    eq(b.tone, 'ok', 'нормальный остаток спокоен');
+    ok(/461,89 ₽/.test(b.text), 'остаток в рублях', b.text);
+    ok(/288,73/.test(b.text) && /ежемесячно/.test(b.text),
+        'и лимит ключа с периодом сброса — у живого ключа он monthly, а не daily', b.text);
+    eq(TAB.balanceLine(balanceDto({ key: { limit: 300, limit_remaining: 0, limit_reset: 'monthly' } })).tone,
+        'warn', 'исчерпанный лимит — предупреждение');
+}
+
+{
+    const { api } = makeApi();
+    const host = makeEl('div');
+    const refs = await TAB.buildMeetSettings(host, api);
+
+    const sttSel = findByField(refs, 'cloud_stt_model');
+    const sumSel = findByField(refs, 'cloud_summary_model');
+    eq(sttSel.tagName, 'select', 'модель расшифровки выбирается из каталога, а не набирается руками');
+    eq(sumSel.tagName, 'select', 'и модель саммари тоже');
+    eq(sttSel.childNodes.map((o) => o.value), ['openai/whisper-1', 'openai/whisper-large-v3-turbo'],
+        'в списке расшифровки только модели типа stt');
+    eq(sumSel.childNodes.map((o) => o.value), ['google/gemini-3.5-flash', 'tiny/context-model'],
+        'в списке саммари только модели типа chat');
+    ok(/0,43/.test(sttSel.childNodes[0].textContent), 'цена видна в самом списке',
+        sttSel.childNodes[0].textContent);
+    ok(/БЕЗ ТАЙМКОДОВ/.test(sttSel.childNodes[1].textContent),
+        'непригодная модель помечена ПРЯМО В СПИСКЕ, а не только после выбора',
+        sttSel.childNodes[1].textContent);
+
+    // Выбор непригодной модели зажигает предупреждение сразу.
+    const note = refs.modelNotes.get('cloud_stt_model');
+    eq(note.dataset.meetTone, 'ok', 'whisper-1 выбран — тон спокойный');
+    sttSel.value = 'openai/whisper-large-v3-turbo';
+    dispatch(sttSel, 'change');
+    eq(note.dataset.meetTone, 'warn', 'выбор модели без таймкодов виден НЕМЕДЛЕННО');
+    ok(/атрибуц/i.test(note.textContent), note.textContent);
+
+    // Остаток дорисовался и не сломал вкладку.
+    await refs.balancePromise;
+    ok(/461,89 ₽/.test(refs.balance.textContent), 'остаток показан', refs.balance.textContent);
+    ok(/288,73/.test(refs.balance.textContent), 'и лимит ключа тоже', refs.balance.textContent);
+    ok(/388 моделей/.test(textOf(host)), 'размер каталога назван', '');
+}
+
+{
+    // ОТКАЗ КАТАЛОГА НЕ ЛОМАЕТ ВКЛАДКУ: поля остаются вводом, форма работает.
+    const { api } = makeApi({
+        getCloudModels: async () => catalogue({ error: { code: 'cloud_timeout', message: 'нет ответа' }, stt: [], chat: [] }),
+        getCloudBalance: async () => { throw new Error('HTTP 500'); },
+    });
+    const host = makeEl('div');
+    const refs = await TAB.buildMeetSettings(host, api);
+    ok(refs.save, 'форма построена, несмотря на молчащее облако');
+    eq(findByField(refs, 'cloud_stt_model').tagName, 'input',
+        'без каталога модель остаётся полем ввода, а не пустым списком');
+    await refs.balancePromise;
+    eq(refs.balance.dataset.meetTone, 'warn', 'провал запроса остатка — строчка, а не сломанная вкладка');
+    ok(/500/.test(refs.balance.textContent), refs.balance.textContent);
+}
+
+{
+    // Каталог упал СЕТЬЮ (промис отклонился) — вкладка всё равно строится.
+    const { api } = makeApi({
+        getCloudModels: async () => { throw new Error('HTTP 502'); },
+    });
+    const host = makeEl('div');
+    const refs = await TAB.buildMeetSettings(host, api);
+    ok(refs.save, 'отклонённый промис каталога не уводит вкладку в блок ошибки');
+    ok(!refs.error, 'и не показывает экран «не удалось загрузить настройки»');
 }
 
 // ===========================================================================

@@ -1,0 +1,57 @@
+[package]
+name = "forge-tracker"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Личный таск-трекер и тайм-трекер F.O.R.G.E. — глобальные задачи, чек-листы, параллельные таймеры, данные для канбана, Гантта и отчётов"
+
+# КРЕЙТ ЛИСТОВОЙ.
+#
+# В зависимостях нет ни `devforge`, ни одного другого плагина. Это не
+# формальность: перенос задачи во вкладку Tasks делает ФРОНТ (кнопка зовёт
+# существующий `POST /api/todos`), поэтому крейт ничего не знает ни про
+# `TodoStore`, ни про `AppState`. Ребро направлено только в его сторону —
+# хост подключает трекер, трекер хост не видит.
+#
+# Версии берутся из `[workspace.dependencies]` корневого Cargo.toml везде, где
+# зависимость там объявлена (тот же инвариант, что у `forge-voice`): одна точка
+# версии делает вторую копию крейта в дереве невозможной по построению.
+[dependencies]
+tokio = { workspace = true }
+axum = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+
+# WebSocket `/ws/tracker`: `SinkExt`/`StreamExt` над расщеплённым сокетом
+# axum — ровно как в `tmux-web/src/ws_todos.rs`.
+futures-util = { workspace = true }
+
+# Общий сигнал остановки воркеров и WS-циклов (`CancellationToken`). Тот же
+# крейт и та же единственная точка версии, что у `forge-voice` и `forge-meet`:
+# разъехавшийся `tokio-util` дал бы два несовместимых токена, и отмена молча
+# перестала бы работать.
+tokio-util = { workspace = true }
+
+# Идентификаторы задач, списков, пунктов чек-листа, вех и отрезков времени —
+# UUID v4, как у TODO-карточек хоста (`tmux-web/src/todos.rs`).
+uuid = { version = "1", features = ["v4"] }
+
+# Атомарная запись `~/.config/forge/tracker.json`: `tmp` → `fsync` → `rename`
+# → `0600`. Файл содержит личные задачи и заметки пользователя, поэтому права
+# на нём — часть контракта, а не деталь.
+forge-atomic = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+# Прогон запросов через СОБРАННЫЙ роутер (`ServiceExt::oneshot`) без поднятия
+# сокета: тесты роутов бьют ровно ту же таблицу маршрутов, которую получит
+# хост, поэтому опечатка в пути краснеет в тесте, а не молчаливым 404 у
+# пользователя.
+tower = { version = "0.5", features = ["util"] }
+# Настоящий WebSocket-клиент для теста `/ws/tracker`: соединение поднимается
+# на живом сокете, а не имитируется. Версия та же, что у хоста (`tmux-web`),
+# чтобы в дереве не завелась вторая копия.
+tokio-tungstenite = "0.24"

@@ -16,6 +16,12 @@
 //!    - `FORGE_VK_RATE_LIMIT_RPS`
 //!    - `FORGE_VK_LONGPOLL_WAIT_SECS`
 //!    - `FORGE_VK_PROMPTS_PATH`
+//!    - `FORGE_VK_CLAUDE_CLI_PATH`
+//!    - `FORGE_VK_CLAUDE_ENABLED` — мастер-разрешение LLM-запусков; для ВСЕХ
+//!      плагинов разом есть глобальный `FORGE_CLAUDE_RUNNER_ENABLED` (приоритет)
+//!    - `FORGE_VK_LLM_BACKEND` — движок анализа: `claude` | `kimi` | `cloud`
+//!    - `FORGE_VK_KIMI_CLI_PATH`, `FORGE_VK_LLM_CLOUD_BASE_URL`,
+//!      `FORGE_VK_LLM_CLOUD_API_KEY`, `FORGE_VK_LLM_CLOUD_MODEL`
 //! 4. [`VkConfig::validate`] / [`VkConfig::validate_and_fix`] — проверка
 //!    инвариантов, зажим числовых полей в разумные границы и создание
 //!    `cache_dir`.
@@ -166,6 +172,16 @@ pub fn prompts_path() -> PathBuf {
         Some(v) if !v.is_empty() => PathBuf::from(v),
         _ => default_prompts_path(),
     }
+}
+
+/// Путь файла пользовательских настроек хоста
+/// (`~/.forge/user_settings.json`).
+///
+/// Строится ядром ([`forge_voice::prefs::default_path`]), а не здесь: тот же
+/// путь строит хост в `tmux-web/src/main.rs`, и третье написание означало бы,
+/// что плагин читает файл, которого никто не пишет.
+pub fn user_settings_path() -> PathBuf {
+    forge_voice::prefs::default_path()
 }
 
 /// Дефолтный путь бинаря Claude CLI (`$HOME/.local/bin/claude`).
@@ -361,6 +377,20 @@ pub struct VkConfig {
     /// `~/.forge/vk-chat-prompts.json`.
     #[serde(skip, default = "prompts_path")]
     pub prompts_path: PathBuf,
+    /// Файл пользовательских настроек хоста (`~/.forge/user_settings.json`).
+    ///
+    /// Плагин его только ЧИТАЕТ: оттуда берутся тумблер «Автоматически
+    /// разбирать новые аудиосообщения» и белый список видимости бесед
+    /// (`forge_voice::prefs`, [`crate::voice_auto`]). Своего канала настроек
+    /// у плагина нет — хост знает про него ровно `init` → `register_routes` →
+    /// `spawn_workers`, и зависимость на `AppState` ради одного булева
+    /// значения сломала бы границу плагина.
+    ///
+    /// Из TOML НЕ читается и хранится отдельным полем по той же причине, что
+    /// [`Self::prompts_path`]: тест указывает свой tempdir и физически не
+    /// может задеть настоящие настройки пользователя.
+    #[serde(skip, default = "user_settings_path")]
+    pub user_settings_path: PathBuf,
     /// Путь бинаря Claude CLI для анализа чата (АЧ-Ф3).
     ///
     /// В ОТЛИЧИЕ от [`Self::config_path`] и [`Self::prompts_path`] читается из
@@ -387,6 +417,53 @@ pub struct VkConfig {
     /// меняется от чужих настроек `~/.claude`.
     #[serde(default = "default_analysis_model")]
     pub analysis_model: Option<String>,
+
+    /// Разрешать ли LLM-запуски для анализа чата (`claude -p`/`kimi -p`/
+    /// облако). Default `false`: запуски дорогие и по умолчанию выключены
+    /// глобально (см. шапку `forge_claude_runner`). Включается здесь, либо для
+    /// ВСЕХ плагинов разом через `FORGE_CLAUDE_RUNNER_ENABLED=1` (приоритет).
+    /// Это МАСТЕР-выключатель: какой бы `llm_backend` ни был выбран, без этого
+    /// флага анализы не стартуют.
+    #[serde(default)]
+    pub claude_enabled: bool,
+
+    /// Какой LLM-бэкенд использовать для анализа: `cloud` (**дефолт** —
+    /// OpenAI-совместимый polza.ai, ключ резолвится из `llm_cloud_api_key` →
+    /// env `FORGE_LLM_CLOUD_API_KEY`/`FORGE_MEET_POLZA_KEY` → `polza_api_key`
+    /// в `~/.config/forge/meet.toml`), `claude` (локальный Claude CLI) или
+    /// `kimi` (локальный Kimi CLI).
+    #[serde(default = "default_llm_backend")]
+    pub llm_backend: forge_claude_runner::LlmBackend,
+
+    /// Путь бинаря Kimi CLI — используется когда `llm_backend = "kimi"`.
+    #[serde(default = "default_kimi_cli_path")]
+    pub kimi_cli_path: PathBuf,
+
+    /// База облачного API для `llm_backend = "cloud"`. Пустая строка — дефолт
+    /// polza.ai (`forge_voice::cloud::DEFAULT_BASE_URL`).
+    #[serde(default)]
+    pub llm_cloud_base_url: String,
+
+    /// Ключ облачного API для `llm_backend = "cloud"`. Пустой — облако не
+    /// настроено, анализ откажет с понятной ошибкой. В логи не пишется.
+    #[serde(default)]
+    pub llm_cloud_api_key: String,
+
+    /// Модель облачного API для `llm_backend = "cloud"`. Пустая — дефолт
+    /// `forge_voice::cloud::DEFAULT_SUMMARY_MODEL`.
+    #[serde(default)]
+    pub llm_cloud_model: String,
+}
+
+/// Дефолтный путь Kimi CLI — зеркало [`forge_claude_runner::CliKind::Kimi`].
+fn default_kimi_cli_path() -> PathBuf {
+    forge_claude_runner::CliKind::Kimi.default_path()
+}
+
+/// Дефолтный LLM-бэкенд: облако polza.ai. Отдельная fn (а не
+/// `LlmBackend::default()`, который остаётся `Claude` ради семантики meet).
+fn default_llm_backend() -> forge_claude_runner::LlmBackend {
+    forge_claude_runner::LlmBackend::Cloud
 }
 
 impl Default for VkConfig {
@@ -402,10 +479,17 @@ impl Default for VkConfig {
             longpoll_wait_secs: default_longpoll_wait_secs(),
             config_path: config_path(),
             prompts_path: prompts_path(),
+            user_settings_path: user_settings_path(),
             claude_cli_path: default_claude_cli_path(),
             analysis_timeout_secs: default_analysis_timeout_secs(),
             analysis_max_chars: default_analysis_max_chars(),
             analysis_model: default_analysis_model(),
+            claude_enabled: false,
+            llm_backend: default_llm_backend(),
+            kimi_cli_path: default_kimi_cli_path(),
+            llm_cloud_base_url: String::new(),
+            llm_cloud_api_key: String::new(),
+            llm_cloud_model: String::new(),
         }
     }
 }
@@ -515,12 +599,46 @@ impl VkConfig {
                 self.claude_cli_path = PathBuf::from(v);
             }
         }
+        if let Ok(v) = std::env::var("FORGE_VK_CLAUDE_ENABLED") {
+            match v.parse::<bool>() {
+                Ok(b) => self.claude_enabled = b,
+                Err(_) => tracing::warn!(
+                    value = %v,
+                    "FORGE_VK_CLAUDE_ENABLED: not a bool, keeping {}",
+                    self.claude_enabled
+                ),
+            }
+        }
         if let Ok(v) = std::env::var("FORGE_VK_ANALYSIS_MODEL") {
             // Пустая строка здесь ЗНАЧИМА: `FORGE_VK_ANALYSIS_MODEL=` — это
             // «не передавать --model вовсе», единственный способ вернуться к
             // дефолту самого CLI, не редактируя vk.toml.
             let t = v.trim();
             self.analysis_model = (!t.is_empty()).then(|| t.to_string());
+        }
+        if let Ok(v) = std::env::var("FORGE_VK_LLM_BACKEND") {
+            match forge_claude_runner::LlmBackend::parse(&v) {
+                Some(b) => self.llm_backend = b,
+                None => tracing::warn!(
+                    value = %v,
+                    "FORGE_VK_LLM_BACKEND: expected claude|kimi|cloud, keeping {}",
+                    self.llm_backend.as_str()
+                ),
+            }
+        }
+        if let Ok(v) = std::env::var("FORGE_VK_KIMI_CLI_PATH") {
+            if !v.is_empty() {
+                self.kimi_cli_path = PathBuf::from(v);
+            }
+        }
+        if let Ok(v) = std::env::var("FORGE_VK_LLM_CLOUD_BASE_URL") {
+            self.llm_cloud_base_url = v;
+        }
+        if let Ok(v) = std::env::var("FORGE_VK_LLM_CLOUD_API_KEY") {
+            self.llm_cloud_api_key = v;
+        }
+        if let Ok(v) = std::env::var("FORGE_VK_LLM_CLOUD_MODEL") {
+            self.llm_cloud_model = v;
         }
         apply_env_u64(
             "FORGE_VK_ANALYSIS_TIMEOUT_SECS",
@@ -936,6 +1054,12 @@ mod tests {
         "FORGE_VK_LONGPOLL_WAIT_SECS",
         "FORGE_VK_PROMPTS_PATH",
         "FORGE_VK_CLAUDE_CLI_PATH",
+        "FORGE_VK_CLAUDE_ENABLED",
+        "FORGE_VK_LLM_BACKEND",
+        "FORGE_VK_KIMI_CLI_PATH",
+        "FORGE_VK_LLM_CLOUD_BASE_URL",
+        "FORGE_VK_LLM_CLOUD_API_KEY",
+        "FORGE_VK_LLM_CLOUD_MODEL",
         "FORGE_VK_ANALYSIS_TIMEOUT_SECS",
         "FORGE_VK_ANALYSIS_MAX_CHARS",
         "FORGE_VK_ANALYSIS_MODEL",

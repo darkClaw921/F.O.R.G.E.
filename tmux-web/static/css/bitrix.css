@@ -248,6 +248,166 @@
 /* ☰ показывается только на узких экранах (см. media-query внизу файла). */
 .b24-mobile-only { display: none; }
 
+/* ---- Строка вкладок порталов (мультипортальность) ----
+
+   Отдельный ряд ПОД титлбаром. Виден ВСЕГДА, включая узкие экраны, где
+   колонка #b24-contacts уезжает под ☰: вкладка портала — единственный способ
+   понять, в чей чат уйдёт сообщение, и прятать её под тот же гамбургер
+   значило бы прятать именно ту информацию, ради которой панели разведены по
+   цвету (см. шапку файла).
+
+   z-index 6 — как у титлбара: ряд обязан оставаться доступным поверх оверлея
+   подключения (5), иначе с экрана «вставьте вебхук» нельзя было бы вернуться
+   на уже подключённый соседний портал.
+
+   Все цвета — из палитры ПАНЕЛИ (--b-*), ни одного токена приложения: панель
+   не наследует тему devforge, у неё свой атрибут data-b24-theme. */
+#b24-portals {
+    position: relative;
+    z-index: 6;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: stretch;
+    gap: 4px;
+    padding: 0 8px;
+    background: var(--b-panel);
+    border-bottom: 1px solid var(--b-acc-faint);
+    /* Вкладок бывает больше, чем влезает: ряд прокручивается по горизонтали и
+       НИКОГДА не переносится на вторую строку — перенос менял бы высоту
+       панели, а её считает flex-раскладка выше. */
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+}
+
+.b24-portal-tabs {
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+}
+
+.b24-portal-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    /* Подпись усечена в JS (`truncateLabel`), но и здесь стоит потолок: имя из
+       одного длинного слова иначе распирало бы вкладку. */
+    max-width: 22ch;
+    padding: 4px 10px;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 4px 4px 0 0;
+    color: var(--b-faint-text);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+.b24-portal-tab:hover {
+    color: var(--b-acc);
+    background: var(--b-bar);
+}
+.b24-portal-tab:focus-visible {
+    outline: 1px solid var(--b-acc);
+    outline-offset: -1px;
+}
+.b24-portal-tab.active {
+    background: var(--b-active);
+    border-color: var(--b-acc-faint);
+    color: var(--b-acc);
+    font-weight: 700;
+}
+
+/* Точка состояния подключения. Тусклая вкладка + погасшая точка = портал
+   отвечает не так, как надо; что именно — в атрибуте title. */
+.b24-portal-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--b-green);
+    flex: 0 0 auto;
+}
+.b24-portal-tab.b24-portal-off {
+    opacity: 0.65;
+}
+.b24-portal-tab.b24-portal-off .b24-portal-dot {
+    background: var(--b-red);
+}
+
+.b24-portal-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+/* Бейдж непрочитанного соседней вкладки. `flex: 0 0 auto` обязателен: без
+   него длинное имя сжимало бы число до многоточия — то есть прятало ровно то,
+   ради чего бейдж и нужен. */
+.b24-portal-badge {
+    flex: 0 0 auto;
+    min-width: 1.6em;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: var(--b-acc);
+    color: var(--b-bg);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.5;
+    text-align: center;
+}
+
+/* Кнопка «+» — единственный вход в добавление ВТОРОГО портала, поэтому она
+   стоит вне прокручиваемого списка вкладок и не уезжает вместе с ним. */
+.b24-portal-add {
+    flex: 0 0 auto;
+    align-self: center;
+    margin-left: 2px;
+}
+
+/* Контекстное меню вкладки. Позиционируется от угла ряда (js/bitrix/portals.js
+   считает координаты через getBoundingClientRect ряда), поэтому у ряда стоит
+   position: relative. */
+.b24-portal-menu {
+    position: absolute;
+    z-index: 8;
+    min-width: 160px;
+    display: flex;
+    flex-direction: column;
+    padding: 3px;
+    background: var(--b-panel);
+    border: 1px solid var(--b-acc-faint);
+    border-radius: 4px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+.b24-portal-menu[hidden] { display: none; }
+/* На светлой палитре чёрная тень читается грязью — она там и не нужна:
+   рамка на светлом фоне видна сама по себе. */
+#bitrix[data-b24-theme="light"] .b24-portal-menu {
+    box-shadow: 0 4px 12px rgba(51, 36, 15, 0.18);
+}
+
+.b24-portal-menu-item {
+    background: transparent;
+    border: none;
+    border-radius: 3px;
+    color: var(--b-acc-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    padding: 5px 8px;
+    text-align: left;
+}
+.b24-portal-menu-item:hover {
+    background: var(--b-active);
+    color: var(--b-acc);
+}
+.b24-portal-menu-danger:hover {
+    color: var(--b-red);
+}
+
 /* ---- Тело: колонка диалогов + сессия ---- */
 #b24-body {
     flex: 1 1 auto;
@@ -942,6 +1102,23 @@
 .b24-media-icon {
     color: var(--b-acc-dim);
     font-size: 16px;
+}
+/* Звуковая дорожка голосового: настоящая огибающая из DTO, а пока её нет —
+   детерминированная заглушка (js/messenger/waveform-core.js). Размеры те же,
+   что у .vk-media-wave и .tg-media-wave: одна запись обязана выглядеть
+   одинаково во всех трёх панелях. */
+.b24-media-wave {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 40px;
+    padding: 12px;
+}
+.b24-media-wave span {
+    display: block;
+    width: 3px;
+    background: var(--b-acc-dim);
+    border-radius: 1px;
 }
 /* [hidden] задаётся ЯВНО: у элементов со своим `display` атрибут сам по себе не
    работает — правило браузера `[hidden]{display:none}` проигрывает по
@@ -2213,6 +2390,33 @@
 @media (max-width: 768px) {
     .b24-mobile-only { display: inline-block; }
 
+    /* СТРОКА ВКЛАДОК ПОРТАЛОВ ОСТАЁТСЯ ВИДНОЙ. Колонка #b24-contacts здесь
+       уезжает за левый край и открывается по ☰, а ряд вкладок — нет: на узком
+       экране это единственный индикатор того, в чей портал уйдёт сообщение, и
+       спрятать его под тот же гамбургер значило бы спрятать именно ту
+       информацию, ради которой панели и разведены по цвету.
+
+       Вкладки прокручиваются пальцем по горизонтали и не наезжают на шапку:
+       ряд стоит ПОД титлбаром отдельной строкой потока, а не поверх него. */
+    #b24-portals {
+        padding-left: max(6px, env(safe-area-inset-left));
+        padding-right: max(6px, env(safe-area-inset-right));
+        /* Инерционная прокрутка на iOS и «липкие» края у соседних вкладок. */
+        -webkit-overflow-scrolling: touch;
+        scroll-snap-type: x proximity;
+    }
+    .b24-portal-tab {
+        /* Узкий экран — короче подпись, но палец должен попадать: высота
+           вкладки не уменьшается, сокращается только ширина. */
+        max-width: 14ch;
+        padding: 5px 8px;
+        scroll-snap-align: start;
+    }
+    /* Меню не должно вылезать за правый край телефона. */
+    .b24-portal-menu {
+        max-width: calc(100vw - 24px);
+    }
+
     #b24-contacts {
         position: absolute;
         top: 0;
@@ -2298,4 +2502,121 @@
     }
     .b24-task-card.b24-task-card-open::after { content: "▴"; }
     .b24-task-card { position: relative; }
+}
+
+/* ==========================================================================
+   РАСШИФРОВКА ГОЛОСОВОГО (ГС-Ф5)
+
+   Разметку строит ОБЩИЙ на три панели модуль
+   js/messenger/voice-transcript-core.js, поэтому суффиксы классов здесь те же,
+   что у соседних панелей, — меняется только префикс. Цвета берутся ТОЛЬКО из
+   токенов панели: тогда светлая тема и контраст достаются даром, ровно как у
+   остальных карточек медиа.
+   ========================================================================== */
+.b24-voice {
+    border-top: 1px solid var(--b-acc-faint);
+    padding: 4px 8px 6px 8px;
+    font-size: 10px;
+    color: var(--b-acc-dim);
+}
+/* [hidden] задаётся ЯВНО: у узлов со своим `display` (свёрнутый текст —
+   `-webkit-box`, полоса — `block`) атрибут сам по себе не действует. */
+.b24-voice [hidden] {
+    display: none !important;
+}
+.b24-voice-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+.b24-voice-label {
+    flex: 0 0 auto;
+    letter-spacing: 0.1em;
+    color: var(--b-acc);
+}
+.b24-voice-status {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* Причина отказа длиннее строки состояния и переносится: обрезать её
+   многоточием значит спрятать ровно то, ради чего её показывают. */
+.b24-voice[data-voice-state="error"] .b24-voice-status {
+    color: var(--b-red);
+    white-space: normal;
+}
+.b24-voice-progress {
+    display: block;
+    height: 3px;
+    margin-top: 4px;
+    border-radius: 2px;
+    background: var(--b-acc-faint);
+    overflow: hidden;
+}
+.b24-voice-bar {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: var(--b-acc);
+    transition: width 0.12s linear;
+}
+/* Сама расшифровка — обычный текст сообщения: тот же кегль, те же переносы.
+   `pre-wrap` сохраняет абзацы движка, `anywhere` не даёт длинному слову
+   (ссылке, номеру) раздвинуть карточку. */
+.b24-voice-text {
+    margin-top: 4px;
+    color: var(--b-acc-hi);
+    font-size: 12px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+/* Сворачивание РИСОВАННОЕ: в DOM всегда полный текст, обрезает только CSS —
+   иначе «показать полностью» требовало бы второго запроса. */
+.b24-voice-text-collapsed {
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.b24-voice-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 4px;
+}
+.b24-voice-run,
+.b24-voice-toggle {
+    flex: 0 0 auto;
+    background: transparent;
+    border: 1px solid var(--b-acc-faint);
+    border-radius: 3px;
+    color: var(--b-acc-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    padding: 2px 6px;
+}
+.b24-voice-run:hover:not(:disabled),
+.b24-voice-toggle:hover {
+    color: var(--b-acc);
+    border-color: var(--b-acc-dim);
+}
+.b24-voice-run:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+/* Обе кнопки достижимы табом, и рамка фокуса обязана быть видна: без неё
+   клавиатурная навигация по ленте слепнет. */
+.b24-voice-run:focus-visible,
+.b24-voice-toggle:focus-visible {
+    outline: 1px solid var(--b-acc);
+    outline-offset: 1px;
+}
+@media (prefers-reduced-motion: reduce) {
+    .b24-voice-bar {
+        transition: none;
+    }
 }

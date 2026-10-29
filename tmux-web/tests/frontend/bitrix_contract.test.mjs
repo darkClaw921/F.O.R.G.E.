@@ -178,6 +178,14 @@ ok('объект PATHS во фронте не пуст', jsPaths.length >= 3, `�
 const unknownPaths = jsPaths.filter((p) => !routesRs.includes(`\`${p}\``));
 eq('каждый путь из api.js перечислен в таблице routes/mod.rs', unknownPaths, []);
 
+/** Роуты состава вкладок обязаны быть смонтированы, а не только описаны (МП). */
+for (const mounted of ['/api/bitrix/portals', '/api/bitrix/portals/:pid']) {
+    ok(
+        `${mounted} смонтирован в routes/portals.rs`,
+        read('../../../plugins/bitrix/src/routes/portals.rs').includes(`"${mounted}"`),
+    );
+}
+
 /** Роуты подключения обязаны быть смонтированы, а не только описаны. */
 for (const mounted of ['/api/bitrix/login/webhook', '/api/bitrix/logout']) {
     ok(
@@ -222,6 +230,59 @@ for (const parser of ['.split(', '.match(', 'new RegExp', '.replace(']) {
         'разбор трёх форм адреса живёт ТОЛЬКО на бэкенде: второй парсер неизбежно разъедется с серверным',
     );
 }
+
+// ---------------------------------------------------------------------------
+// 5. Адресация портала: НИ ОДИН запрос api.js не уходит без X-Forge-Portal
+//
+// Сокет один на все порталы, а REST адресуется заголовком. Забытый заголовок
+// не даёт ни ошибки, ни 404: сервер молча берёт ПЕРВЫЙ слот реестра, и запрос
+// уходит не в тот портал. Симптом — «в чужой вкладке чужая переписка», диагноз
+// по нему не ставится. Поэтому проверяется не поведение, а СТРУКТУРА: выход в
+// сеть у модуля ровно один, и он заголовок ставит.
+// ---------------------------------------------------------------------------
+
+const portalRs = read('../../../plugins/bitrix/src/routes/portal.rs');
+const headerInRust = (portalRs.match(/PORTAL_HEADER: &str = "([^"]+)"/) || [])[1] || '';
+const headerInJs = (apiJs.match(/PORTAL_HEADER = '([^']+)'/) || [])[1] || '';
+eq(
+    'имя заголовка адресации совпадает с routes/portal.rs (регистр незначим)',
+    headerInJs.toLowerCase(),
+    headerInRust.toLowerCase(),
+);
+
+/** Код api.js без комментариев — в шапке заголовок обсуждается словами. */
+const apiCode = apiJs
+    .split('\n')
+    .filter((l) => !l.trimStart().startsWith('//') && !l.trimStart().startsWith('*'))
+    .join('\n');
+
+eq(
+    'createCaller вызван ровно один раз (одна точка выхода в сеть)',
+    (apiCode.match(/createCaller\(/g) || []).length,
+    1,
+);
+eq(
+    'сырой вызов без заголовка (rawCall) используется ровно один раз — внутри call',
+    (apiCode.match(/rawCall\(/g) || []).length,
+    1,
+);
+ok(
+    'call подмешивает заголовок портала',
+    /function call\(path, init, portal\) \{\s*return rawCall\(path, withPortal\(init, portal\)\);/.test(apiCode),
+);
+
+/** Прямые вызовы apiFetch мимо `call` обязаны проходить через withPortal. */
+const bareApiFetch = [...apiCode.matchAll(/apiFetch\(([^)]*)\)/g)]
+    .map((m) => m[1].trim())
+    .filter((args) => args !== '' && !args.includes('withPortal('));
+eq('ни один прямой apiFetch не уходит без withPortal', bareApiFetch, []);
+
+/** XHR загрузки идёт мимо api.js и обязан брать заголовок оттуда же. */
+ok(
+    'upload.js ставит заголовок портала из api.js, а не своей строкой',
+    read('../../static/js/bitrix/upload.js').includes('b24Api.portalHeaders()'),
+    'второе место с именем заголовка — второй шанс разъехаться с сервером',
+);
 
 // ---------------------------------------------------------------------------
 

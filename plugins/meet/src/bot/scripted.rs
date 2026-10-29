@@ -254,6 +254,10 @@ impl BotScript {
                     track_id: t.track_id.clone(),
                     idx: t.idx,
                     start_offset_ms: t.start_offset_ms,
+                    // Сценарная встреча связь трека с человеком НЕ раскрывает:
+                    // проверять по ней каскад привязки означало бы проверять
+                    // сценарий, а не площадку.
+                    msid: None,
                 },
             ));
             for (k, sp) in t.speech.iter().enumerate() {
@@ -779,7 +783,7 @@ mod tests {
         let added: Vec<(String, usize, u64)> = events
             .iter()
             .filter_map(|e| match e {
-                MeetEvent::TrackAdded { track_id, idx, start_offset_ms } => {
+                MeetEvent::TrackAdded { track_id, idx, start_offset_ms, .. } => {
                     Some((track_id.clone(), *idx, *start_offset_ms))
                 }
                 _ => None,

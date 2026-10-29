@@ -350,6 +350,25 @@ pub const COLD_START_RECENT_KEY: &str = "recent";
 /// Ключ команды `im.counters.get` в пакете холодного старта.
 pub const COLD_START_COUNTERS_KEY: &str = "counters";
 
+/// Ключ первой страницы `im.recent.list` в пакете списка диалогов.
+pub const DIALOGS_LIST_KEY: &str = "list";
+
+/// Ключ задач с участием владельца вебхука в пакете списка диалогов.
+pub const DIALOGS_TASKS_KEY: &str = "tasks";
+
+/// Результат [`B24Client::dialogs_bundle`].
+#[derive(Debug, Default)]
+pub struct DialogsBundle {
+    /// Строки `im.recent.get` — верхушка списка, включая чаты задач.
+    pub recent: Vec<RecentItemRaw>,
+    /// Счётчики непрочитанного.
+    pub counters: CountersRaw,
+    /// Первая страница `im.recent.list`; `None` — команда отказала.
+    pub list: Option<RecentListRaw>,
+    /// Первая страница задач с участием (`MEMBER`), свежие по активности.
+    pub tasks: Vec<super::schema::TaskRaw>,
+}
+
 /// Право на мессенджер: чаты, сообщения, счётчики, поток событий.
 ///
 /// Без него плагин бесполезен целиком.
@@ -623,6 +642,63 @@ impl B24Client {
         self.recent_and_counters(None).await
     }
 
+    /// Пакет страницы списка диалогов: `im.recent.get` + ПЕРВАЯ страница
+    /// `im.recent.list` + `im.counters.get` + задачи с участием владельца
+    /// вебхука — всё ещё ОДИН хит лимита.
+    ///
+    /// # Почему нужны оба источника диалогов ВСЕГДА
+    ///
+    /// Живьём `im.recent.get` отдаёт не весь список, а только верхушку: 16
+    /// строк при 81 диалоге на одном портале и 33 при 213 на другом. Раньше
+    /// `im.recent.list` звался, только если `im.recent.get` вернул 200+ строк,
+    /// — этого не происходило никогда, и большая часть чатов молча пропадала.
+    /// Чаты задач при этом есть только в `im.recent.get`, поэтому один
+    /// `im.recent.list` тоже не годится.
+    ///
+    /// # Зачем здесь задачи
+    ///
+    /// Чат задачи попадает в `im.recent.get`, только пока в нём недавно
+    /// писали: живьём 6 чатов задач при 28 задачах с участием. Поэтому
+    /// директория «задачи» добирается из `tasks.task.list{MEMBER}` — фильтр
+    /// портала, покрывающий ВСЕ роли: постановщик, ответственный,
+    /// соисполнитель, наблюдатель. `member_id = None` ⇒ без этой команды.
+    ///
+    /// Отказ отдельной команды (`halt: 0`) даёт пустую/`None` часть, а не
+    /// ошибку: список без хвоста лучше пустой панели.
+    ///
+    /// # Errors
+    ///
+    /// Всё, чем может ответить [`B24Client::batch`].
+    pub async fn dialogs_bundle(&self, member_id: Option<i64>) -> Result<DialogsBundle, B24Error> {
+        let mut calls = vec![
+            BatchCall::new(COLD_START_RECENT_KEY, M_RECENT_GET, recent_get_params(None)),
+            BatchCall::new(
+                DIALOGS_LIST_KEY,
+                M_RECENT_LIST,
+                recent_list_params(RECENT_LIST_MAX_LIMIT, 0),
+            ),
+            BatchCall::new(COLD_START_COUNTERS_KEY, M_COUNTERS, json!({})),
+        ];
+        if let Some(uid) = member_id.filter(|v| *v > 0) {
+            calls.push(BatchCall::new(
+                DIALOGS_TASKS_KEY,
+                M_TASK_LIST,
+                member_tasks_params(uid),
+            ));
+        }
+        let outcome = self.batch(calls).await?;
+        Ok(DialogsBundle {
+            recent: decode_part::<Vec<RecentItemRaw>>(&outcome, COLD_START_RECENT_KEY)
+                .unwrap_or_default(),
+            counters: decode_part::<CountersRaw>(&outcome, COLD_START_COUNTERS_KEY)
+                .unwrap_or_default(),
+            list: decode_part::<RecentListRaw>(&outcome, DIALOGS_LIST_KEY),
+            tasks: decode_part::<super::schema::TaskListRaw>(&outcome, DIALOGS_TASKS_KEY)
+                .map(|t| t.tasks)
+                .unwrap_or_default(),
+        })
+    }
+
     /// Список диалогов и счётчики ОДНИМ пакетом, с необязательной инкрементой.
     ///
     /// Общее тело холодного старта (Ф4) и фолбэк-синхронизации (Ф7): с
@@ -697,21 +773,17 @@ impl B24Client {
         }
         let outcome = self.batch(calls).await?;
 
-        let recent = outcome
-            .get(COLD_START_RECENT_KEY)
-            .and_then(|v| serde_json::from_value::<Vec<RecentItemRaw>>(v.clone()).ok())
+        let recent = decode_part::<Vec<RecentItemRaw>>(&outcome, COLD_START_RECENT_KEY)
             .unwrap_or_default();
-        let counters = outcome
-            .get(COLD_START_COUNTERS_KEY)
-            .and_then(|v| serde_json::from_value::<CountersRaw>(v.clone()).ok())
-            .unwrap_or_default();
-        let tasks = outcome
-            .get(SYNC_TASK_COUNTERS_KEY)
-            .and_then(|v| serde_json::from_value::<super::schema::TaskCountersRaw>(v.clone()).ok());
+        let counters =
+            decode_part::<CountersRaw>(&outcome, COLD_START_COUNTERS_KEY).unwrap_or_default();
+        let tasks =
+            decode_part::<super::schema::TaskCountersRaw>(&outcome, SYNC_TASK_COUNTERS_KEY);
         Ok((recent, counters, tasks))
     }
 
     // -----------------------------------------------------------------
+
     // Ф6: цикл переписки.
     // -----------------------------------------------------------------
 
@@ -1186,6 +1258,46 @@ impl B24Client {
     }
 }
 
+/// Разбирает одну часть пакетного ответа, ГРОМКО жалуясь на неудачу.
+///
+/// # Почему это не `from_value(…).ok()`
+///
+/// Раньше здесь стояло именно оно, и неудачный разбор превращался в пустое
+/// значение молча. Живая проверка Ф9 показала, чем это кончается: один чат с
+/// `entity_link: null` ронял разбор ВСЕГО списка диалогов, панель показывала
+/// ноль чатов, а в логе не оставалось НИ ОДНОЙ строки — воркер синхронизации
+/// тоже молчит, потому что пишет только при непустом результате. Дефект
+/// невозможно было ни увидеть, ни продиагностировать по логу.
+///
+/// Поведение при отказе НЕ изменилось (часть пакета пропадает, соседние
+/// доезжают): падать целиком из-за одного поля — ровно та крайность, от
+/// которой это место и защищает. Изменилось одно: отказ теперь ВИДЕН.
+///
+/// # Секрет в тексте ошибки
+///
+/// Сообщение serde цитирует значение, а в сырье портала попадаются поля с
+/// кодом вебхука внутри (`downloadUrl`). Поэтому текст пропускается через
+/// [`super::error::scrub_urls`] — тот же страж, что чистит ошибки транспорта.
+/// Само значение в лог не уходит НИКОГДА.
+fn decode_part<T: serde::de::DeserializeOwned>(
+    outcome: &super::batch::BatchOutcome,
+    key: &str,
+) -> Option<T> {
+    let raw = outcome.get(key)?;
+    match serde_json::from_value::<T>(raw.clone()) {
+        Ok(v) => Some(v),
+        Err(e) => {
+            tracing::warn!(
+                target: "forge_bitrix",
+                part = key,
+                error = %super::error::scrub_urls(&e.to_string()),
+                "forge-bitrix: a part of the batch response did not match the schema; it is dropped"
+            );
+            None
+        }
+    }
+}
+
 /// Идентификатор сообщения из результата `im.message.add`.
 ///
 /// Живьём приезжает числом (`{"result":77}`), но строковая форма встречается у
@@ -1410,6 +1522,22 @@ pub fn task_list_params(
     Ok(params)
 }
 
+/// Параметры `tasks.task.list` для задач, где пользователь фигурирует в
+/// ЛЮБОЙ роли.
+///
+/// `MEMBER` — фильтр портала по участию: постановщик, ответственный,
+/// соисполнитель, наблюдатель. `RESPONSIBLE_ID` покрывал бы одну роль из
+/// четырёх. Порядок — по последней активности: первая страница (50 записей)
+/// тогда содержит самые живые задачи.
+pub fn member_tasks_params(user_id: i64) -> serde_json::Value {
+    json!({
+        "select": crate::tasks::LIST_SELECT,
+        "order": {"ACTIVITY_DATE": "desc"},
+        "filter": {crate::tasks::FILTER_MEMBER_KEY: user_id.max(0)},
+        "start": 0,
+    })
+}
+
 /// Параметры `im.user.list.get`: `ID[0]=…&ID[1]=…`.
 ///
 /// Индексы обязательны — форму `ID[]=` портал принимает не везде;
@@ -1436,6 +1564,54 @@ pub fn has_task_scope(scopes: &[String]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Неудачный разбор части пакета обязан быть ВИДЕН в логе — и обязан
+    /// молчать про секрет.
+    ///
+    /// Обе половины найдены живой проверкой Ф9. Раньше здесь стояло
+    /// `from_value(…).ok()`, и один чат с `entity_link: null` обнулял весь
+    /// список диалогов, не оставив в логе ни строки. Но громкий лог сам по
+    /// себе — новый риск: сообщение serde цитирует значение, а в сырье портала
+    /// попадаются поля с кодом вебхука внутри (`downloadUrl`).
+    #[test]
+    fn a_part_that_does_not_match_the_schema_is_logged_without_the_secret() {
+        crate::testlog::install();
+        let mark = crate::testlog::mark();
+
+        let mut outcome = crate::api::batch::BatchOutcome::default();
+        outcome.ok.insert(
+            "recent".to_string(),
+            // Форма заведомо не та — и в тексте ошибки окажется URL с кодом.
+            json!("https://p.bitrix24.ru/rest/1/wqdzbfhmn83d23j4/im.recent.get.json"),
+        );
+
+        let parsed = decode_part::<Vec<RecentItemRaw>>(&outcome, "recent");
+        assert!(parsed.is_none(), "мусор не имеет права разобраться");
+
+        let text = crate::testlog::since(mark);
+        assert!(
+            text.contains("did not match the schema"),
+            "отказ обязан быть виден в логе: {text}"
+        );
+        assert!(text.contains("part=\"recent\""), "не назван ключ части: {text}");
+        assert!(
+            !text.contains("wqdzbfhmn83d23j4"),
+            "код вебхука утёк в лог: {text}"
+        );
+        assert!(
+            !text.contains("p.bitrix24.ru"),
+            "хост портала утёк в лог: {text}"
+        );
+
+        // Отсутствующий ключ — не отказ и в лог не пишется: часть пакета могли
+        // просто не запрашивать (счётчики задач без известного user_id).
+        let mark = crate::testlog::mark();
+        assert!(decode_part::<CountersRaw>(&outcome, "counters").is_none());
+        assert!(
+            crate::testlog::since(mark).is_empty(),
+            "непрошенная часть не повод для строки в логе"
+        );
+    }
 
     /// Имена методов — контракт с порталом: переименование обязано валить
     /// тест, а не отправлять запрос в никуда.

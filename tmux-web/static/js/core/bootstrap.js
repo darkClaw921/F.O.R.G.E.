@@ -10,7 +10,7 @@ import {
     $tabTerminal, $tabTasks, $tabGit, $tabDocker, $tabTelescope, $tabEcho,
     $tasksReload, $tasksNew,
     $projectSettings, $screensaverToggle, $telegramToggle, $vkToggle,
-    $bitrixToggle,
+    $bitrixToggle, $trackerToggle,
     $btnSidebarToggle, $sidebarOverlay, $layout,
     $claudeMemoryBtn,
 } from './dom.js';
@@ -62,6 +62,13 @@ import {
     initB24Gate, suspendB24, resumeB24, teardownB24,
 } from '../bitrix/main.js';
 import { initB24Theme, teardownB24Theme } from '../bitrix/theme.js';
+// Трекер: из статических импортов здесь только ГЕЙТ и ТЕМА. Сама панель
+// (js/tracker/main.js) подгружается динамическим import'ом при первом
+// открытии вкладки — см. js/tabs/tabs.js. Тема статична намеренно: разметка
+// #tracker есть в index.html всегда, и без раннего применения панель мелькала
+// бы чёрной на светлой теме приложения.
+import { initTrackerGate } from '../tracker/gate.js';
+import { initTrackerTheme, teardownTrackerTheme } from '../tracker/theme.js';
 import * as meetApi from '../meet/api.js';
 import { initMeetGate } from '../meet/api.js';
 import {
@@ -199,6 +206,10 @@ export async function bootstrap() {
         $bitrixToggle.addEventListener('click', () => switchTab('bitrix'));
     }
 
+    if ($trackerToggle) {
+        $trackerToggle.addEventListener('click', () => switchTab('tracker'));
+    }
+
     // Тема панели Telegram: восстанавливается ДО гейта, чтобы вкладка, если
     // её откроют сразу, не мигнула чужой палитрой. Работает и при выключенном
     // плагине (разметка #telegram в index.html есть всегда) — накладных
@@ -254,6 +265,25 @@ export async function bootstrap() {
         initB24Gate();
     } catch (e) {
         console.warn('[bootstrap] initB24Gate failed', e);
+    }
+
+    // Тема панели трекера — как у трёх мессенджеров: тумблер ◐, три режима,
+    // наблюдатель за темой приложения. Ставится ДО гейта и НЕ зависит от
+    // него: атрибут темы на скрытой панели бесплатен, а ждать ответа
+    // /api/tracker/status значило бы показать панель в чужой палитре.
+    try {
+        initTrackerTheme();
+    } catch (e) {
+        console.warn('[bootstrap] initTrackerTheme failed', e);
+    }
+
+    // Гейт кнопки ✇: GET /api/tracker/status. 404 = плагин выключен, кнопка
+    // остаётся скрытой и в консоль НИЧЕГО не пишется (штатный путь для всех,
+    // кто запускает devforge без --tracker).
+    try {
+        initTrackerGate().catch(() => { /* гейт не бросает; страховка */ });
+    } catch (e) {
+        console.warn('[bootstrap] initTrackerGate failed', e);
     }
 
     // Гейт плагина встреч: РОВНО ОДИН GET /api/meet/status за загрузку
@@ -317,7 +347,11 @@ export async function bootstrap() {
         teardownVkTheme();
         teardownB24();
         teardownB24Theme();
+        teardownTrackerTheme();
         teardownMeet();
+        // Модуль трекера мог не грузиться вовсе (вкладку не открывали) —
+        // тогда и снимать нечего.
+        import('../tracker/main.js').then((m) => m.teardownTracker()).catch(() => {});
         // Слушатель Esc карточки живёт на документе и переживает уход страницы
         // в bfcache — снимается явно, иначе выстрелит по мёртвому DOM.
         teardownMeetPopups();
@@ -338,6 +372,7 @@ export async function bootstrap() {
             // WS встреч тоже постоянный и по той же причине: индикатор записи
             // не привязан к активной вкладке.
             suspendMeet();
+            import('../tracker/main.js').then((m) => m.suspendTracker()).catch(() => {});
         } else {
             fetchSessions();
             startPolling();
@@ -362,6 +397,10 @@ export async function bootstrap() {
             resumeB24();
             // Плагин выключен — resumeMeet() выходит первой строкой.
             resumeMeet();
+            // resumeTracker сам выходит, если вкладка скрыта или плагина нет.
+            if (state.activeTab === 'tracker') {
+                import('../tracker/main.js').then((m) => m.resumeTracker()).catch(() => {});
+            }
         }
     });
 

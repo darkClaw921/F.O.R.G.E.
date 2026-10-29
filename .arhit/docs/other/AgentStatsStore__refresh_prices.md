@@ -1,0 +1,3 @@
+# AgentStatsStore::refresh_prices
+
+Validate and fetch the explicitly configured HTTPS price catalogue. force=false respects enabled updates plus24h success/6h failure attempt windows; concurrent attempts coalesce. Download/validation/save failure preserves the previous catalogue and records a diagnostic. Successful update atomically saves private cache, then reprices the authoritative normalized usage while serialized with ingestion so newer events cannot be overwritten. Reported provider charges remain separate from token API estimates; unknown prices stay null with partial-coverage counters.

@@ -5,10 +5,33 @@
 // списком отдельных диалогов (с поиском). Данные для второго списка тянутся из
 // плагина ОДИН РАЗ при первом показе: GET /api/bitrix/dialogs?limit=200.
 //
-// Поля настроек (мэппинг 1:1 на backend struct в src/user_settings.rs):
-//   bitrix_filter_enabled  — bool (checkbox), default false, читается `=== true`
-//   bitrix_visible_kinds   — Vec<String>: 'user' | 'chat' | 'task'
-//   bitrix_visible_peers   — Vec<String>: DIALOG_ID ('chat7', '19', 'sg12')
+// Поля настроек — запись ПОРТАЛА в карте `bitrix_portal_prefs`
+// (мэппинг 1:1 на `BitrixPortalPrefs` в src/user_settings.rs):
+//   filter_enabled  — bool (checkbox), default false, читается `=== true`
+//   visible_kinds   — Vec<String>: 'user' | 'chat' | 'task'
+//   visible_peers   — Vec<String>: DIALOG_ID ('chat7', '19', 'sg12')
+//
+// ============================================================================
+// ПЕРЕКЛЮЧАТЕЛЬ ПОРТАЛА В ШАПКЕ ФОРМЫ (Ф7.5)
+// ============================================================================
+//
+// `visible_peers` — это `DIALOG_ID` КОНКРЕТНОГО портала (`chat7` у двух
+// порталов означает разные чаты), поэтому форма обязана отвечать на вопрос
+// «чьи это настройки» ЯВНО, а не подразумевать активный портал панели.
+//
+// Отсюда три следствия, каждое из которых легко потерять:
+//
+//   • список диалогов тянется с ЯВНЫМ заголовком портала
+//     (`getDialogs({portal})`) — иначе пикер на портале B показывал бы чаты
+//     портала A, и человек отметил бы галочками чужие чаты;
+//   • сохранение уходит ТОЛЬКО в запись выбранного портала
+//     (`portalPrefsPatch`), а слияние делает бэкенд — записи остальных
+//     порталов при этом не трогаются;
+//   • смена портала перечитывает и выбор, и список: черновик предыдущего
+//     портала не переносится никуда.
+//
+// Выбранный портал хранится в `bitrix-settings-portal.js` — он же нужен блоку
+// скоупа голосовых, который живёт в общей на три панели форме.
 //
 // ПОЧЕМУ ОТДЕЛЬНЫЙ ФАЙЛ, А НЕ ПАРАМЕТРИЗАЦИЯ СОСЕДНЕЙ ФОРМЫ. У Telegram белый
 // список строится из ПАПОК аккаунта, у VK — из трёх типов peer'а, здесь — из
@@ -31,10 +54,12 @@
 // такие диалоги из белого списка. Явная кнопка «Убрать несуществующие» для
 // этого есть — но нажимает её пользователь, а не мы за него.
 
-import { getDialogs } from '../bitrix/api.js';
+import { getDialogs, getPortals } from '../bitrix/api.js';
 import {
-    filterSummary, filterKind, kindLabel, normalizeFilter, pruneMissingPeers, VISIBLE_KINDS,
+    filterSummary, filterKind, kindLabel, normalizeFilter, portalPrefsPatch,
+    pruneMissingPeers, VISIBLE_KINDS,
 } from '../bitrix/visibility.js';
+import { setSettingsPortal, settingsPortal } from './bitrix-settings-portal.js';
 import { updateUserSettings } from './user-settings-api.js';
 
 /** Сколько диалогов просим у плагина для списка выбора. */
@@ -45,15 +70,30 @@ export const PEER_LIST_LIMIT = 200;
  *
  * @param {?object} settings — user settings (может быть null/{})
  * @param {?function(object): void} onSaved
+ * @param {?function(string): void} [onPortalChange] — вкладка настроек
+ *   перерисовывает СОСЕДНИЕ формы (скоуп голосовых тоже пер-портальный)
  * @returns {HTMLElement}
  */
-export function buildBitrixVisibilityForm(settings, onSaved) {
-    const initial = normalizeFilter(settings);
+export function buildBitrixVisibilityForm(settings, onSaved, onPortalChange) {
+    /** Портал, чьи настройки правит форма прямо сейчас. */
+    const portal = { id: settingsPortal() };
 
     // Рабочая копия: правки живут здесь до Save, закрытая без сохранения
     // модалка ничего не меняет.
-    const draftKinds = new Set(initial.kinds);
-    const draftPeers = new Set(initial.peers);
+    const draftKinds = new Set();
+    const draftPeers = new Set();
+
+    /** Заполняет черновик настройками ВЫБРАННОГО портала. */
+    function adoptDrafts() {
+        const initial = normalizeFilter(settings, portal.id);
+        draftKinds.clear();
+        draftPeers.clear();
+        initial.kinds.forEach((k) => draftKinds.add(k));
+        initial.peers.forEach((p) => draftPeers.add(p));
+        return initial;
+    }
+
+    const initial = adoptDrafts();
 
     const fs = document.createElement('fieldset');
     fs.className = 'notify-fieldset';
@@ -70,6 +110,31 @@ export function buildBitrixVisibilityForm(settings, onSaved) {
         + 'вкладки и из уведомлений — на самом портале они останутся '
         + 'нетронутыми.';
     fs.appendChild(hint);
+
+    // ── переключатель портала ──
+    //
+    // Ряд рисуется ВСЕГДА, даже когда портал один: он отвечает на вопрос «чьи
+    // это настройки», и при подключении второго портала ответ не должен
+    // появляться задним числом.
+    const portalRow = document.createElement('div');
+    portalRow.className = 'b24-visibility-portal-row';
+    const portalLabel = document.createElement('span');
+    portalLabel.className = 'b24-visibility-group';
+    portalLabel.textContent = 'Портал';
+    portalRow.appendChild(portalLabel);
+
+    const portalSelect = document.createElement('select');
+    portalSelect.className = 'b24-visibility-portal';
+    portalSelect.setAttribute('aria-label', 'Портал, чьи настройки видны');
+    portalRow.appendChild(portalSelect);
+    fs.appendChild(portalRow);
+
+    const portalHint = document.createElement('div');
+    portalHint.className = 'notify-hint';
+    portalHint.textContent =
+        'Выбор относится ТОЛЬКО к этому порталу: один и тот же номер чата у '
+        + 'разных порталов означает разные чаты.';
+    fs.appendChild(portalHint);
 
     // ── тумблер ──
     const onWrap = document.createElement('label');
@@ -235,9 +300,16 @@ export function buildBitrixVisibilityForm(settings, onSaved) {
     });
 
     // ── загрузка данных плагина ──
-    (async () => {
+    //
+    // Портал передаётся ЯВНО (`api.js` подмешивает `X-Forge-Portal`): форма
+    // может быть открыта не на том портале, что панель, и умолчание «активный»
+    // показало бы здесь чужие чаты.
+    async function loadPeers() {
+        data.loaded = false;
+        peersBox.textContent = 'Загрузка…';
+        search.disabled = false;
         try {
-            const resp = await getDialogs({ limit: PEER_LIST_LIMIT });
+            const resp = await getDialogs({ limit: PEER_LIST_LIMIT, portal: portal.id });
             data.dialogs = Array.isArray(resp && resp.dialogs) ? resp.dialogs : [];
             data.loaded = true;
             renderPeers();
@@ -258,7 +330,76 @@ export function buildBitrixVisibilityForm(settings, onSaved) {
             peersBox.textContent = msg;
             search.disabled = true;
         }
+    }
+
+    /**
+     * Рисует список порталов в переключателе.
+     *
+     * Пустой `title` показывается как `id` — ровно как в строке вкладок панели:
+     * бэкенд хост портала наружу не отдаёт вовсе, и второго правила подписи
+     * быть не должно.
+     */
+    function renderPortals(list) {
+        portalSelect.textContent = '';
+        const rows = (Array.isArray(list) ? list : []).filter((p) => p && p.id);
+        if (!rows.length) {
+            const opt = document.createElement('option');
+            opt.value = '';
+            opt.textContent = 'портал не подключён';
+            portalSelect.appendChild(opt);
+            portalSelect.disabled = true;
+            return;
+        }
+        for (const p of rows) {
+            const opt = document.createElement('option');
+            opt.value = String(p.id);
+            opt.textContent = String(p.title || p.id);
+            portalSelect.appendChild(opt);
+        }
+        portalSelect.disabled = rows.length < 2;
+        // Портал формы мог исчезнуть (его отвязали в соседней вкладке
+        // браузера) — тогда правим первый уцелевший, а не пишем в никуда.
+        if (!rows.some((p) => String(p.id) === portal.id)) {
+            portal.id = String(rows[0].id);
+            setSettingsPortal(portal.id);
+            onBox.checked = adoptDrafts().enabled;
+            renderKinds();
+            refreshSummary();
+            void loadPeers();
+        }
+        portalSelect.value = portal.id;
+    }
+
+    portalSelect.addEventListener('change', () => {
+        const next = String(portalSelect.value || '');
+        if (!next || next === portal.id) return;
+        portal.id = next;
+        setSettingsPortal(next);
+        // Черновик предыдущего портала не переносится: в нём лежат его
+        // `DIALOG_ID`, и «перенесённая» галочка означала бы случайный чат.
+        // Тумблер перечитывается вместе со списками — он тоже пер-портальный,
+        // и оставленный от соседа он молча включил бы фильтр не там.
+        onBox.checked = adoptDrafts().enabled;
+        renderKinds();
+        refreshSummary();
+        void loadPeers();
+        // Скоуп голосовых у портала тоже свой — его форма живёт по соседству.
+        if (typeof onPortalChange === 'function') onPortalChange(next);
+    });
+
+    (async () => {
+        try {
+            const resp = await getPortals();
+            renderPortals(resp && resp.portals);
+        } catch (_) {
+            // Реестр недоступен (плагин выключен) — переключать нечего, но
+            // остальная форма обязана работать: выбор лежит в настройках, а не
+            // в ответе плагина.
+            renderPortals([]);
+        }
     })();
+
+    void loadPeers();
 
     renderKinds();
     refreshSummary();
@@ -305,14 +446,20 @@ export function buildBitrixVisibilityForm(settings, onSaved) {
         ok.style.display = 'none';
         saveBtn.disabled = true;
 
-        // ТОЛЬКО свои три поля: PATCH применяет Some(..)-варианты, поэтому
-        // соседние настройки (и телеграмные, и VK, и todo/echo) остаются
-        // нетронутыми. Списки уходят ЦЕЛИКОМ — снять галочку иначе нечем.
-        const payload = {
-            bitrix_filter_enabled: !!onBox.checked,
-            bitrix_visible_kinds: Array.from(draftKinds),
-            bitrix_visible_peers: Array.from(draftPeers),
-        };
+        // ТОЛЬКО свои три поля И ТОЛЬКО в записи ВЫБРАННОГО портала: PATCH
+        // применяет Some(..)-варианты и сливает карту по ключу портала,
+        // поэтому ни соседние настройки (телеграмные, VK, todo/echo), ни
+        // записи остальных порталов не трогаются. Списки уходят ЦЕЛИКОМ —
+        // снять галочку иначе нечем.
+        //
+        // Плоские ключи (`bitrix_visible_*`) отсюда НЕ пишутся: после миграции
+        // они заморожены на своём домультипортальном значении и нужны только
+        // откату на старую сборку (см. шапку `user_settings.rs`).
+        const payload = portalPrefsPatch(portal.id, {
+            filter_enabled: !!onBox.checked,
+            visible_kinds: Array.from(draftKinds),
+            visible_peers: Array.from(draftPeers),
+        });
 
         try {
             const updated = await updateUserSettings(payload);

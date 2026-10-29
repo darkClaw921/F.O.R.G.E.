@@ -316,6 +316,18 @@ pub enum JoinStep {
     ContinueInBrowser,
     /// Вводить имя бота — ГОСТЕВАЯ ветка pre-join.
     TypeName,
+    /// Гасить микрофон и камеру ДО входа.
+    ///
+    /// Шаг появился в Ф13. До него устройства гасились только ПОСЛЕ входа
+    /// (шаг 7 адаптера), то есть бот на несколько секунд въезжал в чужую
+    /// встречу с живым микрофоном и работающей камерой. На пре-джойне
+    /// vcc.airlabs.pro обе кнопки есть и состояние читается однозначно —
+    /// значит, платить этими секундами незачем.
+    ///
+    /// Шаг берётся ОДИН РАЗ за вход ([`JoinProgress::media_muted`]): кнопка,
+    /// не сработавшая с трёх попыток `ensure_device`, не имеет права
+    /// съедать весь таймаут входа.
+    MuteDevices,
     /// Жать «войти».
     Join,
     /// Лобби: ждём, пока впустят.
@@ -324,6 +336,14 @@ pub enum JoinStep {
     Captcha,
     /// Площадка ОТКАЗАЛА во входе. Ждать бесполезно — зовём человека сразу.
     Denied,
+    /// Встречи БОЛЬШЕ НЕТ: комната закрыта либо ссылка недействительна.
+    ///
+    /// Отдельный шаг, а не «ничего знакомого на экране», по той же причине,
+    /// что и [`JoinStep::Denied`]: мёртвая комната vcc.airlabs.pro отдаёт
+    /// страницу «Встреча завершена» мгновенно, без пре-джойна, и без этого
+    /// шага бот минуту молотил бы в пустоту, а потом звал человека с причиной
+    /// `unknown`. Человеку при этом делать нечего: встреча кончилась.
+    Ended,
     /// Мы внутри встречи.
     Inside,
     /// Ничего знакомого на экране: ждём следующего наблюдения.
@@ -342,6 +362,8 @@ pub enum JoinStep {
 pub struct JoinProgress {
     /// Имя бота уже введено.
     pub name_typed: bool,
+    /// Устройства уже гасили на пре-джойне.
+    pub media_muted: bool,
     /// Сколько раз жали интерстишал.
     pub interstitial_attempts: u32,
     /// Сколько раз жали «войти».
@@ -356,13 +378,17 @@ pub struct JoinProgress {
 ///    нет, пока не выйдет таймаут;
 /// 2. **мы внутри** (кнопка выхода) — иначе бот жал бы «войти» второй раз уже
 ///    во встрече;
-/// 3. **отказ во входе** — ПОСЛЕ проверки «мы внутри» и это не придирка:
+/// 3. **встреча уже кончилась** — тоже ПОСЛЕ «мы внутри» и ровно по той же
+///    причине: маркер «Встреча завершена» живёт в том же документе, что и
+///    панель, и протухший селектор иначе выкидывал бы бота с живой встречи;
+/// 4. **отказ во входе** — ПОСЛЕ проверки «мы внутри» и это не придирка:
 ///    маркер отказа живёт в том же документе, что и панель встречи, и
 ///    протухший селектор, поймавший что-нибудь во время звонка, иначе выкинул
 ///    бы бота с ЖИВОЙ встречи. Раз кнопка выхода видна — мы внутри, и никакой
 ///    текст этого не отменяет;
-/// 4. интерстишал → имя → вход, каждый шаг не больше `max_attempts` раз;
-/// 5. **лобби** ПОСЛЕ входа: маркер ожидания появляется именно там.
+/// 5. интерстишал → имя → **гашение устройств** → вход, каждый шаг не больше
+///    `max_attempts` раз;
+/// 6. **лобби** ПОСЛЕ входа: маркер ожидания появляется именно там.
 ///
 /// Две ветки pre-join различаются НАЛИЧИЕМ ПОЛЯ ИМЕНИ, а не отдельной пробой
 /// «залогинен»: Ф0 измерила, что на залогиненном профиле поля нет вовсе, а
@@ -382,6 +408,9 @@ pub fn next_join_step(snap: &PageSnapshot, progress: &JoinProgress, max_attempts
     if snap.ui.leave_button {
         return JoinStep::Inside;
     }
+    if snap.ended {
+        return JoinStep::Ended;
+    }
     if snap.denied {
         return JoinStep::Denied;
     }
@@ -390,6 +419,14 @@ pub fn next_join_step(snap: &PageSnapshot, progress: &JoinProgress, max_attempts
     }
     if snap.ui.name_input && !progress.name_typed {
         return JoinStep::TypeName;
+    }
+    // Устройства гасятся ДО клика «войти» и только когда состояние ИЗВЕСТНО и
+    // равно «включено». «Не знаю» шага не рождает: у площадки без кнопок
+    // пре-джойна (Телемост) снимок молчит, и вход обязан идти как прежде.
+    if !progress.media_muted
+        && (snap.mic() == DeviceState::On || snap.cam() == DeviceState::On)
+    {
+        return JoinStep::MuteDevices;
     }
     if snap.ui.join_button && progress.join_attempts < max_attempts {
         return JoinStep::Join;
@@ -405,6 +442,14 @@ pub fn next_join_step(snap: &PageSnapshot, progress: &JoinProgress, max_attempts
 enum JoinOutcome {
     Inside,
     NeedsHuman(String),
+    /// Встречи уже нет: комната закрыта либо ссылка недействительна.
+    ///
+    /// **Не провал и не «нужен человек».** Записывать нечего, звать некого,
+    /// и единственный честный исход — обычный конец встречи с причиной
+    /// [`StopReason::DomEnded`]. Провалом это стало бы только по общему
+    /// правилу плагина: `failed` ставится, когда нет транскрипта, а не когда
+    /// бот чего-то не смог.
+    Ended,
 }
 
 // ---------------------------------------------------------------------------
@@ -519,6 +564,13 @@ struct Shared {
     tracks_seen: AtomicUsize,
     tracks_live: AtomicUsize,
     speaking_tracks: AtomicUsize,
+    /// VAD хоть раз за встречу нашёл речь.
+    ///
+    /// Отдельный флаг рядом со счётчиком говорящих дорожек, а не «счётчик был
+    /// когда-то ненулевым»: счётчик показывает СЕЙЧАС и обнуляется на каждой
+    /// паузе, а страж глухоты ([`super::medialog::DeafWatch`]) спрашивает про
+    /// всю встречу.
+    speech_seen: AtomicBool,
     /// Участники находились хоть раз. См. страж «протухшие пробы не выкидывают
     /// бота» в [`super::endgame`].
     participants_known: AtomicBool,
@@ -546,6 +598,7 @@ impl Shared {
             tracks_seen: AtomicUsize::new(0),
             tracks_live: AtomicUsize::new(0),
             speaking_tracks: AtomicUsize::new(0),
+            speech_seen: AtomicBool::new(false),
             participants_known: AtomicBool::new(false),
             joined: AtomicBool::new(false),
         }
@@ -924,14 +977,25 @@ async fn drive(
         }
         JoinMode::Normal => join_flow(cfg, shared, &page, events, started).await?,
     };
-    if let JoinOutcome::NeedsHuman(kind) = outcome {
-        if kind != "assisted" {
-            let _ = events.send(MeetEvent::NeedsHuman { kind: kind.clone() });
-        }
-        if !wait_for_human(shared).await {
-            // Отмена вместо подтверждения.
+    match outcome {
+        JoinOutcome::Inside => {}
+        JoinOutcome::Ended => {
+            // Комната закрыта. Ни `needs_human`, ни ожидания: единственный
+            // честный ответ — обычный конец встречи. Запись не начиналась, и
+            // общий разбор исхода (в том числе решение «провал или нет»)
+            // остаётся там же, где для всех прочих причин остановки.
             pump.abort();
-            return Ok(requested_or(shared, StopReason::Shutdown));
+            return Ok(requested_or(shared, StopReason::DomEnded));
+        }
+        JoinOutcome::NeedsHuman(kind) => {
+            if kind != "assisted" {
+                let _ = events.send(MeetEvent::NeedsHuman { kind: kind.clone() });
+            }
+            if !wait_for_human(shared).await {
+                // Отмена вместо подтверждения.
+                pump.abort();
+                return Ok(requested_or(shared, StopReason::Shutdown));
+            }
         }
     }
 
@@ -1040,7 +1104,27 @@ fn page_event_to_meet(shared: &Arc<Shared>, ev: &super::transport::PageEvent) ->
                 track_id: track(ev),
                 idx: ev.u64_field("idx").unwrap_or(0) as usize,
                 start_offset_ms: ev.u64_field("off").unwrap_or(ev.at_ms),
+                // `m` — `msid` потока, в котором дорожка приехала. Его может
+                // не быть вовсе (площадка связь не раскрывает), и это норма.
+                msid: ev
+                    .str_field("m")
+                    .map(str::to_string)
+                    .filter(|s| !s.trim().is_empty()),
             })
+        }
+        // УТОЧНЕНИЕ `msid` ПОСЛЕ РЕНЕГОТИАЦИИ. В контракт событий не входит:
+        // разбор журнала заводит дорожку по первому упоминанию, и связь,
+        // приехавшая позже, к ней уже не привяжется. В лог — входит: без него
+        // расхождение «в журнале один msid, в SDP другой» неразличимо.
+        "track_msid" => {
+            tracing::debug!(
+                target: "forge_meet",
+                track = %track(ev),
+                msid = %ev.str_field("m").unwrap_or_default(),
+                was = %ev.str_field("was").unwrap_or_default(),
+                "forge-meet: msid дорожки уточнён ренеготиацией"
+            );
+            None
         }
         "track_ended" => {
             // `fetch_update`, а не `fetch_sub`: повторное событие о той же
@@ -1059,6 +1143,7 @@ fn page_event_to_meet(shared: &Arc<Shared>, ev: &super::transport::PageEvent) ->
         }
         "speech_start" => {
             shared.speaking_tracks.fetch_add(1, Ordering::SeqCst);
+            shared.speech_seen.store(true, Ordering::SeqCst);
             Some(MeetEvent::SpeechStarted {
                 track_id: track(ev),
                 at_ms: ev.u64_field("at").unwrap_or(ev.at_ms),
@@ -1163,6 +1248,10 @@ async fn monitor(
     let mut last_active: Option<String> = None;
     let mut last_mode = super::TrackMode::Unknown;
     let interval = Duration::from_millis(cfg.timings.observe_interval_ms.max(50));
+    // Два стража «бот не слышит встречу»: один смотрит на расхождение DOM и
+    // VAD, другой дочитывает `chrome.log`. Оба одноразовые по причине.
+    let mut deaf = super::medialog::DeafWatch::new();
+    let mut media_log = super::medialog::MediaLogWatch::new(&cfg.meeting_dir);
 
     loop {
         tokio::select! {
@@ -1219,6 +1308,33 @@ async fn monitor(
                 let _ = events.send(MeetEvent::TrackModeDetected {
                     at_ms: obs.at_ms,
                     mode,
+                });
+            }
+        }
+
+        // ГЛУХОТА БОТА. Проверяется только когда ось уже есть: до
+        // `recording_started` звука нет по построению, и молчание VAD в это
+        // время ничего не значит.
+        if axis_ready {
+            let dom_speaking = snap.speaking || snap.active.is_some();
+            let vad_fired = shared.speech_seen.load(Ordering::SeqCst);
+            if let Some(detail) = deaf.observe(dom_speaking, vad_fired, interval.as_millis() as u64)
+            {
+                let _ = events.send(MeetEvent::MediaWarning {
+                    at_ms: obs.at_ms,
+                    code: super::medialog::CODE_DEAF_BOT.to_string(),
+                    detail,
+                });
+            }
+            // Тот же вход, что у стража глухоты, и это не дублирование: строка
+            // отказа в логе сама по себе не означает пустой записи (штатный
+            // перебор ICE-кандидатов печатает такие же), поэтому причина
+            // называется только вместе с подтверждённой глухотой.
+            for detail in media_log.poll(dom_speaking, vad_fired, interval.as_millis() as u64) {
+                let _ = events.send(MeetEvent::MediaWarning {
+                    at_ms: obs.at_ms,
+                    code: super::medialog::CODE_MEDIA_TRANSPORT.to_string(),
+                    detail,
                 });
             }
         }
@@ -1504,6 +1620,21 @@ async fn join_flow(
                 );
                 return Ok(JoinOutcome::NeedsHuman("denied".to_string()));
             }
+            JoinStep::Ended => {
+                // ВСТРЕЧА МОЖЕТ КОНЧИТЬСЯ, НЕ НАЧАВШИСЬ. Мёртвая комната
+                // vcc.airlabs.pro отдаёт «Встреча завершена» ещё до
+                // пре-джойна: ни поля имени, ни кнопки входа на странице нет
+                // вовсе. Без этой ветки бот стоял бы до таймаута, а человек
+                // получил бы `needs_human` с причиной `unknown` — то есть
+                // закрытая ссылка выглядела бы поломкой бота.
+                tracing::info!(
+                    target: "forge_meet",
+                    url = %cfg.url,
+                    elapsed_ms = elapsed_ms(started),
+                    "forge-meet: встреча уже завершена — записывать нечего"
+                );
+                return Ok(JoinOutcome::Ended);
+            }
             JoinStep::Inside => {
                 tracing::info!(
                     target: "forge_meet",
@@ -1534,6 +1665,14 @@ async fn join_flow(
                     }
                 }
                 tokio::time::sleep(Duration::from_millis(cfg.timings.step_settle_ms)).await;
+            }
+            JoinStep::MuteDevices => {
+                // Один раз за вход, чем бы дело ни кончилось: `apply_media`
+                // сам делает до трёх попыток на устройство и никогда не
+                // возвращает ошибки. Повторять его в цикле входа означало бы
+                // отдать ему весь таймаут.
+                progress.media_muted = true;
+                apply_media(cfg, shared, page, false, false).await;
             }
             JoinStep::Join => {
                 if guest_branch.is_none() {
@@ -1864,6 +2003,97 @@ mod tests {
             })
         };
         assert_eq!(step(&screen, &JoinProgress::default()), JoinStep::Inside);
+    }
+
+    /// МЁРТВАЯ КОМНАТА — это конец встречи, а не таймаут входа.
+    ///
+    /// Замер Ф13 на vcc.airlabs.pro: `/r/zzz-zzz-zzz` отдаёт страницу
+    /// «Встреча завершена» немедленно — ни поля имени, ни кнопки входа, ни
+    /// кнопки выхода на ней нет. Без отдельного шага такой экран неотличим от
+    /// «ничего знакомого», и бот молчал бы минуту, а человек получил бы
+    /// `needs_human` с причиной `unknown` там, где делать ему нечего.
+    #[test]
+    fn a_dead_room_is_an_ended_meeting_not_a_timeout() {
+        let screen = PageSnapshot {
+            ended: true,
+            ..snap(ui())
+        };
+        assert_eq!(step(&screen, &JoinProgress::default()), JoinStep::Ended);
+    }
+
+    /// СТРАЖ, ПАРНЫЙ К ОТКАЗУ: протухший маркер конца не выкидывает бота с
+    /// ЖИВОЙ встречи.
+    ///
+    /// `contains:Встреча завершена` ищет короткую фразу среди всех узлов
+    /// документа, а панель встречи и постзвонковый экран у площадок живут в
+    /// ОДНОМ документе. Совпади фраза во время звонка — и бот ушёл бы с
+    /// середины записи. Кнопка выхода видна — значит мы внутри.
+    #[test]
+    fn a_stale_ended_marker_never_evicts_a_bot_that_is_already_inside() {
+        let screen = PageSnapshot {
+            ended: true,
+            ..snap(super::super::observe::PageUi {
+                leave_button: true,
+                ..ui()
+            })
+        };
+        assert_eq!(step(&screen, &JoinProgress::default()), JoinStep::Inside);
+    }
+
+    /// УСТРОЙСТВА ГАСЯТСЯ ДО КЛИКА «ВОЙТИ», А НЕ ПОСЛЕ.
+    ///
+    /// До Ф13 микрофон и камера гасились только после входа, и бот на
+    /// несколько секунд въезжал в чужую встречу с живым микрофоном. На
+    /// пре-джойне vcc.airlabs.pro состояние читается однозначно (`mic = on`,
+    /// `cam = on`, измерено), значит платить этими секундами незачем.
+    #[test]
+    fn the_devices_are_muted_before_the_join_is_clicked() {
+        let prejoin = PageSnapshot {
+            mic_raw: "on".to_string(),
+            cam_raw: "on".to_string(),
+            ..snap(super::super::observe::PageUi {
+                name_input: true,
+                join_button: true,
+                ..ui()
+            })
+        };
+        // Сначала имя: пустое имя у площадки делает кнопку входа неактивной.
+        assert_eq!(step(&prejoin, &JoinProgress::default()), JoinStep::TypeName);
+        let named = JoinProgress {
+            name_typed: true,
+            ..JoinProgress::default()
+        };
+        assert_eq!(step(&prejoin, &named), JoinStep::MuteDevices);
+        // Шаг берётся ровно один раз: `apply_media` внутри делает свои три
+        // попытки, и повторять его циклом входа значило бы отдать ему таймаут.
+        let muted = JoinProgress {
+            media_muted: true,
+            ..named
+        };
+        assert_eq!(step(&prejoin, &muted), JoinStep::Join);
+    }
+
+    /// «НЕ ЗНАЮ» — НЕ ПОВОД ЖАТЬ КНОПКУ.
+    ///
+    /// У Телемоста и Google Meet снимок пре-джойна про устройства молчит
+    /// (`mic = unknown`), и лишний шаг там означал бы клик вслепую по
+    /// селектору, который ничего не нашёл. Вход обязан идти как прежде.
+    #[test]
+    fn an_unknown_device_state_adds_no_step_to_the_join() {
+        let screen = snap(super::super::observe::PageUi {
+            join_button: true,
+            ..ui()
+        });
+        assert_eq!(screen.mic(), DeviceState::Unknown);
+        assert_eq!(step(&screen, &JoinProgress::default()), JoinStep::Join);
+
+        // И уже выключенное устройство шага тоже не рождает.
+        let off = PageSnapshot {
+            mic_raw: "off".to_string(),
+            cam_raw: "off".to_string(),
+            ..screen
+        };
+        assert_eq!(step(&off, &JoinProgress::default()), JoinStep::Join);
     }
 
     /// Пустой экран — ждём, а не выдумываем клики.

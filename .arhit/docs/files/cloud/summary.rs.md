@@ -1,0 +1,3 @@
+# cloud/summary.rs
+
+Облачное саммари (plugins/meet/src/cloud/summary.rs): POST /chat/completions со стримом SSE. SseParser склеивает кадры и многобайтовые символы через границу TCP-чтения (push_bytes держит хвост незавершённого символа), понимает keep-alive и data: [DONE]. stream_chat гоняет поток, копит текст, отдаёт дельты через ТОТ ЖЕ DeltaCoalescer, что и локальный путь, и запоминает provider (реального исполнителя). generate повторяет сигнатуру crate::summary::generate и берёт тот же BuiltPrompt и SYSTEM_PROMPT — второго промпта для облака нет, на это есть тест по исходнику. Модель — поле ChatOptions, а не константа. Обрыв посреди потока возвращает уже написанное с пометкой interrupted; молчание снимается idle_timeout и до первого кадра, и посреди потока.

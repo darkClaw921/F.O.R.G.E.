@@ -35,7 +35,7 @@ import { initKeynav, resetKeynav, teardownKeynav } from './keynav.js';
 import {
     initLoginWizard, renderLoginState, resetLoginWizard, stopCountdown,
 } from './login.js';
-import { onDownloadProgress, teardownMedia } from './media.js';
+import { onDownloadProgress, teardownMedia, VOICE_FRAME_EVENT as MEDIA_VOICE_FRAME_EVENT } from './media.js';
 import { closeTgContactsAfterSelect, initTelegramMobile } from './mobile.js';
 import {
     clearTgAccountData, currentVisibilityFilter, invalidateVisibilityFilter, tgState,
@@ -598,6 +598,15 @@ export function buildHandlers() {
         // игнорируются самим обработчиком.
         download_progress: (msg) => onDownloadProgress(msg),
 
+        // --- расшифровка голосовых (ГС-Ф3) ---
+        // Кадры уходят в DOM-событие, а не в конкретный модуль: текст под
+        // голосовым рисует ОБЩИЙ для трёх мессенджеров модуль (ГС-Ф5), и он
+        // подключается К панели, а не встраивается в её main.js.
+        voice_transcribe_started: (msg) => emitVoiceFrame('started', msg),
+        voice_transcribe_delta: (msg) => emitVoiceFrame('delta', msg),
+        voice_transcribe_done: (msg) => emitVoiceFrame('done', msg),
+        voice_transcribe_error: (msg) => emitVoiceFrame('error', msg),
+
         // --- анализ чата через Claude ---
         // Кадры вещаются БЕЗ фильтрации по чату — попап (js/telegram/analysis.js)
         // сам решает, его ли это run, по паре (dialog_id, run_id). Обработчики
@@ -608,6 +617,36 @@ export function buildHandlers() {
         analysis_error: (evt) => onAnalysisError(evt),
     };
     return local.handlers;
+}
+
+/**
+ * Имя DOM-события, которым панель отдаёт кадры расшифровки наружу.
+ *
+ * Одно на все четыре кадра: вид кадра лежит в `detail.phase`. Совпадает по
+ * форме с VK-шным `vk:voice-transcribe` — общий модуль ГС-Ф5 подписывается на
+ * оба одинаковым кодом.
+ *
+ * Объявлено в `js/telegram/media.js` — там же, где карточка, которая на него
+ * подписывается: этот файл импортирует media.js, и обратный импорт замкнул бы
+ * цикл. Здесь имя только переэкспортируется.
+ */
+export const VOICE_FRAME_EVENT = MEDIA_VOICE_FRAME_EVENT;
+
+/** Перекладывает кадр расшифровки в DOM-событие панели. */
+function emitVoiceFrame(phase, evt) {
+    if (!evt) return;
+    document.dispatchEvent(
+        new CustomEvent(VOICE_FRAME_EVENT, {
+            detail: {
+                phase,
+                plugin: 'telegram',
+                dialogId: String(evt.dialog_id ?? ''),
+                messageId: String(evt.message_id ?? ''),
+                index: Number(evt.index ?? 0),
+                frame: evt,
+            },
+        }),
+    );
 }
 
 /**

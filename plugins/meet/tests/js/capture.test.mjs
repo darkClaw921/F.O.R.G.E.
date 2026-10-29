@@ -54,8 +54,11 @@ class FakeTrack {
 }
 
 class FakeStream {
-  constructor(tracks) {
+  constructor(tracks, id) {
     this.tracks = (tracks || []).slice();
+    // `id` потока — он же `msid` из SDP. У LiveKit имеет вид
+    // `PA_<участник>|TR_<дорожка>` и прямо называет владельца дорожки.
+    if (id !== undefined) { this.id = id; }
   }
   getTracks() {
     return this.tracks.slice();
@@ -177,12 +180,23 @@ class FakePeerConnection {
     return phantom;
   }
 
-  /** Приём с событием `track` — обычный путь. */
-  receive(track) {
-    const stream = new FakeStream([track]);
+  /** Приём с событием `track` — обычный путь. `msid` необязателен. */
+  receive(track, msid) {
+    const stream = new FakeStream([track], msid);
     this.transceivers.push({ currentDirection: "recvonly", sender: { track: null }, receiver: { track } });
     this.fire("track", { track, streams: [stream] });
     return stream;
+  }
+
+  /**
+   * ПОВТОРНОЕ событие `track` на ТУ ЖЕ дорожку — ренеготиация.
+   *
+   * У SFU это рядовое дело: первый раз дорожка приезжает в общем потоке,
+   * второй — уже в своём, с настоящим `msid`. Дорожку при этом брать в
+   * работу заново нельзя, а уточнить связь — нужно.
+   */
+  renegotiate(track, msid) {
+    this.fire("track", { track, streams: [new FakeStream([track], msid)] });
   }
 
   /** Приём БЕЗ события: SFU положил дорожку в готовый трансивер. */
@@ -520,4 +534,48 @@ test("ось времени начинается с ПЕРВОЙ дорожки 
   env.advance(1500);
   pc.receive(new FakeTrack("audio", nextId("remote")));
   assert.equal(env.tracks()[1].off, 1500, "смещение второй дорожки считается от T0");
+});
+
+// --- msid: ось привязки дорожки к человеку ---------------------------------
+
+test("msid потока уезжает ВМЕСТЕ с появлением дорожки, а не отдельным событием", () => {
+  const env = boot();
+  const pc = new env.window.RTCPeerConnection();
+  pc.receive(new FakeTrack("audio", nextId("remote")), "PA_Hi8faCRJfnKC|TR_AMEmpxQoH78Qy4");
+  const added = env.tracks();
+  assert.equal(added.length, 1);
+  assert.equal(added[0].m, "PA_Hi8faCRJfnKC|TR_AMEmpxQoH78Qy4",
+    "разбор журнала заводит дорожку по ПЕРВОМУ упоминанию — связь обязана ехать здесь");
+  assert.equal(env.events("track_msid").length, 0, "первое присвоение — не уточнение");
+});
+
+test("площадка без msid: поле просто не появляется, дорожка живёт как прежде", () => {
+  const env = boot();
+  const pc = new env.window.RTCPeerConnection();
+  // Тап обхода приёмников потока не видит вовсе — самый частый случай.
+  pc.receiveSilently(new FakeTrack("audio", nextId("remote")));
+  env.scan();
+  assert.equal(env.tracks().length, 1);
+  assert.equal(env.tracks()[0].m, undefined, "выдуманный msid хуже отсутствующего");
+});
+
+test("РЕНЕГОТИАЦИЯ УТОЧНЯЕТ msid, но дорожку заново не заводит", () => {
+  const env = boot();
+  const pc = new env.window.RTCPeerConnection();
+  const track = new FakeTrack("audio", nextId("remote"));
+  // Первое событие — общий поток-заглушка, настоящего msid в нём ещё нет.
+  pc.receive(track, "2e362d2c");
+  assert.equal(env.tracks()[0].m, "2e362d2c");
+
+  pc.renegotiate(track, "PA_snV754Yxnoqb|TR_AMsHBUVaDUizsq");
+  assert.equal(env.tracks().length, 1, "ИНДЕКС ПЕРЕИСПОЛЬЗОВАН: дорожка заведена дважды");
+  const fixed = env.events("track_msid");
+  assert.equal(fixed.length, 1);
+  assert.equal(fixed[0].m, "PA_snV754Yxnoqb|TR_AMsHBUVaDUizsq");
+  assert.equal(fixed[0].was, "2e362d2c", "без прежнего значения расхождение неразличимо");
+
+  // Повтор того же msid уточнением не считается — иначе на каждое событие
+  // SFU шло бы по сообщению.
+  pc.renegotiate(track, "PA_snV754Yxnoqb|TR_AMsHBUVaDUizsq");
+  assert.equal(env.events("track_msid").length, 1);
 });

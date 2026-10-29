@@ -21,7 +21,12 @@ set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 CARGO_TOML="$REPO_ROOT/tmux-web/Cargo.toml"
-CARGO_LOCK="$REPO_ROOT/tmux-web/Cargo.lock"
+# Cargo.lock у workspace ОДИН и лежит в КОРНЕ, а не рядом с манифестом
+# члена. Раньше здесь стоял `tmux-web/Cargo.lock` — файла с таким именем
+# не существует, проверка `[ -f ]` ниже молча не срабатывала, и корневой
+# лок отставал от Cargo.toml на каждый коммит. Обнаружилось это только на
+# релизе v0.1.69: Cargo.toml=0.1.69, Cargo.lock=0.1.68.
+CARGO_LOCK="$REPO_ROOT/Cargo.lock"
 
 if [ ! -f "$CARGO_TOML" ]; then
     # Не наш репо или Cargo.toml ещё не создан — молча пропускаем.
@@ -44,7 +49,16 @@ if [ -n "$STAGED_RUST" ]; then
     # тестов плагина писалась «в стол». У forge-vk таких тестов больше, чем
     # smoke, поэтому правка сделана до начала его разработки.
     echo "[pre-commit] running 'cargo test --workspace' (staged Rust changes)..." >&2
-    if ! ( cd "$REPO_ROOT" && cargo test --quiet --workspace --color=always ) >&2; then
+    if ! (
+        cd "$REPO_ROOT"
+        # Git exports repository-local variables to hooks. Fixture tests open
+        # independent repositories, so keep those variables out of their
+        # subprocesses without changing this hook's own repository/index.
+        while IFS= read -r git_local_name; do
+            unset "$git_local_name"
+        done < <(git rev-parse --local-env-vars)
+        cargo test --quiet --workspace --color=always
+    ) >&2; then
         echo "" >&2
         echo "[pre-commit] ❌  cargo test FAILED — commit aborted." >&2
         echo "[pre-commit] Fix the failing tests and try again." >&2
@@ -99,7 +113,10 @@ awk -v old="$current" -v new="$new" '
 # Обновление Cargo.lock — только блок [[package]] с name = "devforge".
 # awk-state-machine: ловим строку name="devforge", в следующих 5 строках того
 # же блока заменяем version. Прочие пакеты не трогаем.
-if [ -f "$CARGO_LOCK" ]; then
+if [ ! -f "$CARGO_LOCK" ]; then
+    # Громко, а не молча: именно тихий пропуск и прятал неверный путь.
+    echo "[pre-commit] ⚠️  $CARGO_LOCK не найден — версия в локе НЕ обновлена." >&2
+else
     awk -v new="$new" '
         /^\[\[package\]\]/ { in_pkg = 1; is_target = 0 }
         in_pkg && /^name = "devforge"$/ { is_target = 1 }

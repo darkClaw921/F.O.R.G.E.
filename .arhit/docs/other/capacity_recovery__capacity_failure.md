@@ -1,0 +1,3 @@
+# capacity_recovery::capacity_failure
+
+Pure Screen-to-Failure detector. Validates live alternate-screen composer cursor, empty input (all nonblank placeholder cells dim), selected composer background across lower rows, native shortcut footer and no busy markers. Matches only red square capacity-error block directly above composer, optionally followed by the native background terminal notice. Wrapped error rows normalize whitespace; quoted/tool-prefixed or nonred text is rejected. Returns metadata-only hash of preceding conversation context and error plus dimensions for resize suppression. Captured text remains transient. Ambiguous identical reerrors lacking visible new context are conservatively not retried.

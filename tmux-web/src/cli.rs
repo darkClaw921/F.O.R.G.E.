@@ -89,6 +89,18 @@ pub struct RunOptions {
     /// (`crate::daemon::build_daemon_args`), иначе демон молча поднимется без
     /// плагина.
     pub meet: bool,
+    /// `--tracker` (bool flag). True ⇒ включает opt-in плагин личного
+    /// таск/тайм-трекера (`forge-tracker`: вкладка «Мои задачи», роуты
+    /// `/api/tracker/*` и `/ws/tracker`). False (default) ⇒ поведение
+    /// байт-в-байт как раньше: роутов нет, `GET /api/tracker/status` отдаёт
+    /// 404 — это и есть гейт фронта, кнопка вкладки не рисуется. Источник
+    /// истины для гейтинга —
+    /// [`crate::server_config::EffectiveConfig::tracker_enabled`].
+    ///
+    /// Как и `--meet`, флаг обязан доехать до ДОЧЕРНЕГО процесса
+    /// `devforge start` (`crate::daemon::build_daemon_args`), иначе демон
+    /// молча поднимется без плагина.
+    pub tracker: bool,
 }
 
 impl Default for RunOptions {
@@ -103,6 +115,7 @@ impl Default for RunOptions {
             vk: false,
             bitrix: false,
             meet: false,
+            tracker: false,
         }
     }
 }
@@ -193,6 +206,7 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
     let mut vk = false;
     let mut bitrix = false;
     let mut meet = false;
+    let mut tracker = false;
 
     while let Some(a) = iter.next() {
         match a.as_str() {
@@ -222,6 +236,9 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
             }
             "--meet" => {
                 meet = true;
+            }
+            "--tracker" => {
+                tracker = true;
             }
             "--bind" => {
                 let v = iter
@@ -268,7 +285,7 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
 
     let port = port.unwrap_or(DEFAULT_PORT);
     let has_run_only_flags =
-        remote || bind.is_some() || token.is_some() || pwa || telegram || vk || bitrix || meet;
+        remote || bind.is_some() || token.is_some() || pwa || telegram || vk || bitrix || meet || tracker;
     let run_opts = RunOptions {
         port,
         remote,
@@ -279,6 +296,7 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
         vk,
         bitrix,
         meet,
+        tracker,
     };
 
     let mode = match subcmd.as_deref() {
@@ -289,7 +307,7 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
                 bail!("`--port` is not valid for `stop` (PID is read from pid-file)");
             }
             if has_run_only_flags {
-                bail!("`--remote`/`--bind`/`--token`/`--pwa`/`--telegram`/`--vk`/`--bitrix`/`--meet` are not valid for `stop`");
+                bail!("`--remote`/`--bind`/`--token`/`--pwa`/`--telegram`/`--vk`/`--bitrix`/`--meet`/`--tracker` are not valid for `stop`");
             }
             Mode::Stop
         }
@@ -298,7 +316,7 @@ pub fn parse_from(args: Vec<String>) -> Result<Mode> {
                 bail!("`--port` is not valid for `status`");
             }
             if has_run_only_flags {
-                bail!("`--remote`/`--bind`/`--token`/`--pwa`/`--telegram`/`--vk`/`--bitrix`/`--meet` are not valid for `status`");
+                bail!("`--remote`/`--bind`/`--token`/`--pwa`/`--telegram`/`--vk`/`--bitrix`/`--meet`/`--tracker` are not valid for `status`");
             }
             Mode::Status
         }
@@ -634,6 +652,7 @@ pub fn help_text() -> String {
                  --vk          Enable VK plugin (personal account messenger tab). Opt-in; off by default.\n    \
                  --bitrix      Enable Bitrix24 plugin (portal chats and task chats tab). Opt-in; off by default.\n    \
                  --meet        Enable meetings plugin (join, record, transcribe and summarise video calls). Opt-in; off by default.\n    \
+                 --tracker     Enable personal task/time tracker plugin (My tasks tab). Opt-in; off by default.\n    \
              -h, --help        Show this help message\n\
          \n\
          EXAMPLES:\n    \
@@ -963,6 +982,88 @@ mod tests {
     #[test]
     fn help_text_mentions_meet() {
         assert!(help_text().contains("--meet"));
+    }
+
+    // --- плагин личного трекера (--tracker) -------------------------------
+
+    #[test]
+    fn parse_tracker_flag_default_false() {
+        // Без флага --tracker поле остаётся false (opt-in инвариант):
+        // поведение байт-в-байт прежнее, роутов `/api/tracker/*` нет вовсе.
+        let m = parse_from(args(&["run"])).unwrap();
+        assert!(!expect_run(m).tracker);
+        let m = parse_from(args(&["run", "--pwa"])).unwrap();
+        assert!(!expect_run(m).tracker);
+    }
+
+    #[test]
+    fn parse_tracker_flag_sets_true() {
+        let m = parse_from(args(&["run", "--tracker"])).unwrap();
+        assert!(expect_run(m).tracker);
+    }
+
+    /// Флаги плагинов независимы друг от друга.
+    /// Ловит копипасту вида `tracker = true` в ветке `--meet`.
+    #[test]
+    fn parse_tracker_is_independent_of_the_other_flags() {
+        let only_tracker = expect_run(parse_from(args(&["run", "--tracker"])).unwrap());
+        assert!(only_tracker.tracker);
+        assert!(
+            !only_tracker.meet
+                && !only_tracker.bitrix
+                && !only_tracker.vk
+                && !only_tracker.telegram
+                && !only_tracker.pwa
+        );
+
+        let only_meet = expect_run(parse_from(args(&["run", "--meet"])).unwrap());
+        assert!(!only_meet.tracker, "--meet не включает трекер");
+
+        let all = expect_run(
+            parse_from(args(&[
+                "run",
+                "--pwa",
+                "--telegram",
+                "--vk",
+                "--bitrix",
+                "--meet",
+                "--tracker",
+            ]))
+            .unwrap(),
+        );
+        assert!(all.pwa && all.telegram && all.vk && all.bitrix && all.meet && all.tracker);
+    }
+
+    #[test]
+    fn parse_tracker_carried_by_start() {
+        let m = parse_from(args(&["start", "--tracker"])).unwrap();
+        match m {
+            Mode::Start(o) => assert!(o.tracker),
+            _ => panic!("expected Start"),
+        }
+    }
+
+    #[test]
+    fn parse_tracker_rejected_for_stop_status() {
+        let err = parse_from(args(&["stop", "--tracker"]))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("--tracker"),
+            "ошибка обязана называть флаг: {err}"
+        );
+        let err = parse_from(args(&["status", "--tracker"]))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("--tracker"),
+            "ошибка обязана называть флаг: {err}"
+        );
+    }
+
+    #[test]
+    fn help_text_mentions_tracker() {
+        assert!(help_text().contains("--tracker"));
     }
 
     #[test]
@@ -1319,6 +1420,7 @@ mod tests {
             vk_enabled: false,
             bitrix_enabled: false,
             meet_enabled: false,
+            tracker_enabled: false,
         };
         let got = crate::server_config::finalize_token_at(&eff, &path).unwrap();
         assert_eq!(

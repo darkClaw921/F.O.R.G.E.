@@ -49,9 +49,9 @@ mod testlog;
 
 pub use error::AnalysisError;
 pub use hub::{
-    ActiveRun, AnalysisHub, StartOutcome, StartRequest, DEFAULT_ANALYSIS_TIMEOUT_SECS,
-    DELTA_FLUSH_CHARS, DELTA_FLUSH_MS, KIND_ANALYZE, KIND_ASK, KIND_REFRESH,
-    MAX_PARALLEL_ANALYSIS, REASON_CANCELLED, REASON_ERROR, REASON_TIMEOUT,
+    resolve_transport, ActiveRun, AnalysisHub, StartOutcome, StartRequest,
+    DEFAULT_ANALYSIS_TIMEOUT_SECS, DELTA_FLUSH_CHARS, DELTA_FLUSH_MS, KIND_ANALYZE, KIND_ASK,
+    KIND_REFRESH, MAX_PARALLEL_ANALYSIS, REASON_CANCELLED, REASON_ERROR, REASON_TIMEOUT,
 };
 pub use sink::AnalysisSink;
 pub use transcript::Transcript;

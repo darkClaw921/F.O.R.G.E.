@@ -1,7 +1,24 @@
-//! Разделяемое состояние плагина Bitrix24.
+//! Разделяемое состояние ОДНОГО ПОРТАЛА Bitrix24.
 //!
-//! Создаётся один раз в [`crate::init`], живёт под `Arc` и раздаётся роутам,
-//! WS-соединениям и фоновым воркерам.
+//! Живёт под `Arc` и раздаётся роутам, WS-соединениям и фоновым воркерам.
+//!
+//! # Одно состояние — один портал
+//!
+//! Экземпляров столько, сколько слотов в реестре ([`crate::registry`]):
+//! [`crate::init`] строит их из массива `[[portals]]`, а
+//! [`crate::registry::B24Registry::add`] заводит новый на живом процессе. Сам
+//! модуль о существовании соседей не знает вовсе — и это не случайность, а то,
+//! ради чего реестр устроен именно так: мультипортальность ТИРАЖИРУЕТ
+//! состояние, а не усложняет его.
+//!
+//! Практическое следствие: всё, что перечислено ниже, — СВОЁ у каждого
+//! портала. Свой секрет, свой троттлер (портал считает лимит на пару
+//! портал+IP, поэтому порталы друг другу не мешают), свой курсор событий, свой
+//! broadcast, свой набор воркеров, свои кэши и свой каталог на диске
+//! (`config.cache_dir` с Ф6 — каталог портала, а не общий корень).
+//!
+//! Портал выбирается на КАЖДЫЙ запрос экстрактором [`crate::routes::Portal`],
+//! а не привязкой в момент сборки роутера: состав реестра меняется в рантайме.
 //!
 //! # Что здесь есть и почему
 //!
@@ -9,6 +26,7 @@
 //! |---|---|
 //! | `config` | неизменяемая часть настроек |
 //! | `webhook` | ЕДИНСТВЕННАЯ меняющаяся в рантайме часть конфига (вставка/сброс из UI) |
+//! | `portal` | `id` и `title` портала — тоже рантаймовые: переименование вкладки и подключение пустого слота (Ф2) |
 //! | `broadcast` | поток событий всем WS-подписчикам, **без фильтрации** |
 //! | `login` | автомат подключения; переходы строго сериализованы |
 //! | `client` | ОДИН API-клиент на секрет ⇒ ОДИН троттлер |
@@ -47,6 +65,24 @@ use crate::config::{BitrixConfig, WebhookUrl};
 use crate::ws::protocol::{B24ServerEvent, B24ServerMsg};
 
 pub use crate::login::{B24UserDto, LoginFlow, LoginStateDto};
+
+/// Кто этот портал для интерфейса: стабильный `id` и человеческое имя.
+///
+/// Обе части НЕ секретны (см. [`B24State::portal`]), поэтому структура
+/// сериализуема и уезжает во фронт как есть.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct PortalIdentity {
+    /// Стабильный идентификатор портала. Пусто ⇒ слот ещё не подключён.
+    pub id: String,
+
+    /// Отображаемое имя. Пусто ⇒ фронт показывает `id`.
+    ///
+    /// Именно `id`, а не хост портала: хост не пересекает границу HTTP вовсе —
+    /// его не отдают ни `GET /api/bitrix/status`, ни `GET /api/bitrix/portals`
+    /// (см. шапку [`crate::routes::portals`]), так что взять его фронту
+    /// неоткуда.
+    pub title: String,
+}
 
 /// Ёмкость broadcast-канала.
 ///
@@ -343,6 +379,22 @@ pub struct B24State {
     /// пользователь вставляет и сбрасывает его из UI без рестарта процесса.
     pub webhook: RwLock<WebhookUrl>,
 
+    /// Действующие `id` и `title` портала (Ф2 мультипортальности).
+    ///
+    /// Почему отдельной ячейкой, а не полями `config`: и то, и другое меняется
+    /// в рантайме без рестарта. `title` переименовывает вкладку
+    /// ([`crate::B24Registry::rename`]), а `id` появляется у слота, который
+    /// стартовал ПУСТЫМ (свежая установка) и получил вебхук из UI — до этого
+    /// момента выводить идентификатор не из чего.
+    ///
+    /// `std::sync::RwLock`, а не `tokio`: внутри нет ни одного `await`, зато
+    /// спрашивает эту ячейку каждый HTTP-запрос (экстрактор портала, Ф3),
+    /// каждый пер-портальный путь на диске (Ф6) и каждый WS-кадр (Ф5).
+    ///
+    /// Секрета не содержит: `id` выводится из ХОСТА вебхука, поэтому его можно
+    /// отдавать во фронт и писать в логи.
+    pub portal: std::sync::RwLock<PortalIdentity>,
+
     /// Поток событий всем WS-подписчикам.
     ///
     /// **Без фильтрации по активному диалогу**: бейдж непрочитанного и тосты
@@ -529,6 +581,22 @@ pub struct B24State {
     /// потолок параллелизма и таблица `run_id → процесс`, по которой работает
     /// отмена. Хаб на запрос не знал бы ни о чём из этого.
     pub analysis: crate::analysis::AnalysisHub,
+    /// Реестр идущих расшифровок голосовых ([`forge_voice::VoiceHub`]).
+    ///
+    /// Создаётся безусловно, как и реестр анализа: отсутствие ffmpeg, весов и
+    /// ключа облака — отказ КОНКРЕТНОГО запроса со своим кодом, а не повод не
+    /// поднять вкладку мессенджера.
+    ///
+    /// Потолки читаются из `voice.toml` ОДИН раз, в конструкторе: менять их на
+    /// лету значило бы бросать уже идущие прогоны. Всё остальное — движок,
+    /// язык, ключ — перечитывается на каждый запрос ([`B24State::voice_config`]).
+    pub voice: forge_voice::VoiceHub,
+    /// Ключи, которые АВТОРАЗБОР уже брал в работу (Ф4).
+    ///
+    /// Отдельно от дедупа реестра: тот не пускает второй прогон, пока идёт
+    /// первый, а стор не даёт пересчитывать готовое, — но прогон, уже
+    /// закончившийся отказом, повторная доставка события запускала бы снова.
+    pub voice_seen: forge_voice::auto::SeenKeys,
 }
 
 impl B24State {
@@ -567,15 +635,47 @@ impl B24State {
         // run'а идёт под тем же `Mutex`, что и правка заметки из хендлера.
         // Ядро анализа общее на три мессенджера, поэтому конфиг ему передаётся
         // полями, а не типом: `BitrixConfig` крейту не виден по построению.
-        let analysis = crate::analysis::AnalysisHub::new(
+        let (llm_backend, llm_transport, active_cli) = crate::analysis::resolve_transport(
+            config.llm_backend,
             config.claude_cli_path.clone(),
+            config.kimi_cli_path.clone(),
+            forge_claude_runner::CloudTransportCfg {
+                base_url: config.llm_cloud_base_url.clone(),
+                api_key: config.llm_cloud_api_key.clone(),
+                model: config.llm_cloud_model.clone(),
+            },
+        );
+        let analysis = crate::analysis::AnalysisHub::new(
+            active_cli,
             config.analysis_model.clone(),
             config.analysis_timeout_secs,
         )
+        .with_transport(llm_backend, llm_transport, config.claude_cli_path.clone())
+        // Запуски LLM-запросов по умолчанию выключены глобально (см.
+        // forge_claude_runner): либо явный флаг конфига, либо
+        // FORGE_CLAUDE_RUNNER_ENABLED=1 для всех плагинов разом.
+        .with_claude_enabled(config.claude_enabled || forge_claude_runner::env_runs_enabled())
         .with_store(prompts.clone(), config.prompts_path.clone());
+        // Потолки расшифровки — из `voice.toml`, который лежит рядом с
+        // `bitrix.toml` (в бою это `~/.config/forge/`). Битый файл не имеет
+        // права мешать плагину подняться: берём встроенные умолчания, а внятный
+        // отказ `voice_config` выдаст роут при первом нажатии кнопки.
+        let (voice_path, meet_path) = forge_voice::config::paths_next_to(&config.config_path);
+        let voice_cfg =
+            forge_voice::VoiceConfig::load_from(&voice_path, &meet_path).unwrap_or_default();
+        let voice = forge_voice::VoiceHub::new(
+            Arc::new(crate::ws::protocol::B24VoiceSink::new(broadcast.clone())),
+            voice_cfg.max_parallel,
+            voice_cfg.run_timeout(),
+        );
+        let portal = PortalIdentity {
+            id: config.portal_id.clone(),
+            title: config.portal_title.clone(),
+        };
         Arc::new(Self {
             config,
             webhook: RwLock::new(webhook),
+            portal: std::sync::RwLock::new(portal),
             broadcast,
             login: Mutex::new(login),
             client: RwLock::new(None),
@@ -602,7 +702,61 @@ impl B24State {
             ws_idle_timeout,
             prompts,
             analysis,
+            voice,
+            voice_seen: forge_voice::auto::SeenKeys::default(),
         })
+    }
+
+    /// Настройки голосовых сообщений — ЧИТАЮТСЯ ЗАНОВО на каждый запрос.
+    ///
+    /// `voice.toml` правят руками ровно тогда, когда что-то не работает:
+    /// вписывают ключ polza.ai, переключают движок. Конфиг, прочитанный один
+    /// раз при старте, означал бы «перезапустите devforge, чтобы настройка
+    /// подействовала». Файл маленький, чтение стоит одного `open`.
+    ///
+    /// Ищется РЯДОМ с `bitrix.toml` — см. [`forge_voice::config::paths_next_to`]:
+    /// в бою это `~/.config/forge/`, а в тестах — временный каталог, и изоляция
+    /// получается без единой переменной окружения.
+    ///
+    /// # Errors
+    ///
+    /// [`forge_voice::VoiceError::Config`] — файл не разбирается; в тексте
+    /// назван КОНКРЕТНЫЙ файл (`voice.toml` или `meet.toml`).
+    pub fn voice_config(&self) -> Result<forge_voice::VoiceConfig, forge_voice::VoiceError> {
+        let (voice, meet) = self.voice_paths();
+        forge_voice::VoiceConfig::load_from(&voice, &meet)
+    }
+
+    /// Пути `voice.toml` и `meet.toml`, которыми пользуется этот плагин.
+    ///
+    /// Отдельным методом, потому что их нужно ДВОИМ: чтению настроек и записи
+    /// выбранного движка (`PUT …/voice/settings`). Второе написание
+    /// `paths_next_to` означало бы, что роут пишет не в тот файл, который
+    /// читает состояние, — и заметили бы это только на чужой машине.
+    #[must_use]
+    pub fn voice_paths(&self) -> (std::path::PathBuf, std::path::PathBuf) {
+        forge_voice::config::paths_next_to(&self.config.config_path)
+    }
+
+    /// Стор готовых расшифровок рядом с медиа-кэшем плагина.
+    ///
+    /// Корень — тот же `cache_dir`, что у вложений: расшифровка живёт рядом с
+    /// файлом, который расшифровывали, и чистка кэша по диалогу сносит их одним
+    /// каталогом.
+    ///
+    /// # Пер-портальность досталась даром (Ф6)
+    ///
+    /// `cache_dir` с Ф6 — каталог ОДНОГО портала, поэтому стор развёлся вместе
+    /// с ним: голосовое с одинаковым `message_id` на двух порталах даёт две
+    /// независимые расшифровки. Ключ (`VoiceKey`) при этом не менялся, и
+    /// `forge_voice` не менялся тоже — а значит расшифровки VK и Telegram
+    /// лежат ровно там же, где лежали. Добавлять `portal_id` В КЛЮЧ было бы
+    /// вторым способом сказать то же самое: он развёл бы имена файлов внутри
+    /// общего каталога, но правку пришлось бы вносить в общий крейт, а вместе с
+    /// ней — тащить понятие портала в плагины, у которых его нет.
+    #[must_use]
+    pub fn voice_store(&self) -> forge_voice::TranscriptStore {
+        forge_voice::TranscriptStore::new(&self.config.cache_dir)
     }
 
     // ------------------------------------------------------------------
@@ -729,10 +883,24 @@ impl B24State {
         rx
     }
 
-    /// Сколько сейчас живых WS-подписчиков.
+    /// Сколько сейчас живых WS-подписчиков У ЭТОГО ПОРТАЛА.
     ///
     /// Воркер событий (Ф7) выбирает по этому числу каденс опроса: ноль ⇒
     /// idle-интервал (Р4).
+    ///
+    /// # При N порталах счётчик остаётся пер-портальным
+    ///
+    /// Сокет `/ws/bitrix` с Ф5 один на все порталы, но подписывается он на
+    /// broadcast КАЖДОГО из них отдельно ([`crate::ws::PortalFanIn`]) — то
+    /// есть одно соединение даёт каждому порталу ровно одного подписчика, а не
+    /// одному порталу N. Это ровно то, что нужно каденсу: открытая панель
+    /// переводит в active-режим ВСЕ порталы, которые в ней вещают, а закрытая
+    /// возвращает в idle тоже все.
+    ///
+    /// Общего на процесс счётчика здесь быть не может и по второй причине:
+    /// лимит интенсивности Bitrix считается на пару портал+IP, значит порталы
+    /// друг другу не мешают, а перебор каденса портал наказывает не ошибкой, а
+    /// разрывом TCP.
     pub fn ws_subscribers(&self) -> usize {
         self.broadcast.receiver_count()
     }
@@ -834,6 +1002,77 @@ impl B24State {
         self.broadcast_event(B24ServerMsg::LoginState(dto));
         if authorized {
             self.authorized_notify.notify_waiters();
+        }
+    }
+
+    /// Действующий идентификатор портала. Пусто ⇒ слот ещё не подключён.
+    ///
+    /// Источник истины — [`Self::portal`], а НЕ `config.portal_id`: последний
+    /// знает только про старт процесса и не видит ни переименования, ни
+    /// вебхука, вставленного из UI.
+    pub fn portal_id(&self) -> String {
+        self.portal_read().id
+    }
+
+    /// Отображаемое имя портала (может быть пустым).
+    pub fn portal_title(&self) -> String {
+        self.portal_read().title
+    }
+
+    /// Снимок личности портала целиком.
+    pub fn portal_identity(&self) -> PortalIdentity {
+        self.portal_read()
+    }
+
+    /// Имя для интерфейса: `title`, иначе хост портала, иначе `id`.
+    ///
+    /// Секрета не содержит ни в одной из трёх веток: хост — единственная часть
+    /// вебхука, которую можно показывать ([`WebhookUrl::portal_host`]).
+    ///
+    /// **В HTTP-ответ не годится** — по той же причине, что и
+    /// [`crate::config::PortalConfig::display_name`]: хост портала границу HTTP
+    /// не пересекает вовсе. Подпись вкладки собирается из `title` с фолбэком на
+    /// `id`.
+    pub async fn portal_display_name(&self) -> String {
+        let ident = self.portal_read();
+        if !ident.title.trim().is_empty() {
+            return ident.title.trim().to_string();
+        }
+        self.webhook
+            .read()
+            .await
+            .portal_host()
+            .unwrap_or(ident.id)
+    }
+
+    /// Задаёт личность портала целиком (подключение пустого слота, Ф2).
+    pub fn set_portal_identity(&self, id: impl Into<String>, title: impl Into<String>) {
+        let next = PortalIdentity {
+            id: id.into(),
+            title: title.into().trim().to_string(),
+        };
+        match self.portal.write() {
+            Ok(mut g) => *g = next,
+            // Отравленный лок — не повод ронять запрос: личность портала не
+            // инвариант безопасности, а подпись вкладки.
+            Err(poisoned) => *poisoned.into_inner() = next,
+        }
+    }
+
+    /// Меняет ТОЛЬКО отображаемое имя, не трогая ни `id`, ни секрет.
+    pub fn set_portal_title(&self, title: impl Into<String>) {
+        let title = title.into().trim().to_string();
+        match self.portal.write() {
+            Ok(mut g) => g.title = title,
+            Err(poisoned) => poisoned.into_inner().title = title,
+        }
+    }
+
+    /// Чтение личности с терпимостью к отравленному локу.
+    fn portal_read(&self) -> PortalIdentity {
+        match self.portal.read() {
+            Ok(g) => g.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
         }
     }
 
@@ -1126,7 +1365,14 @@ impl B24State {
 
     /// Регистрирует фонового воркера для последующего graceful shutdown.
     pub async fn register_worker(&self, handle: JoinHandle<()>) {
-        self.workers.lock().await.push(handle);
+        let mut guard = self.workers.lock().await;
+        // Отработавшие ручки выбрасываются ЗДЕСЬ, а не при остановке. До Ф4
+        // список пополнялся считаные разы за жизнь процесса (лонгпол, sweeper,
+        // GC загрузок), и расти ему было некуда. Авторазбор голосовых
+        // регистрирует ЗАДАЧУ НА СООБЩЕНИЕ — без подчистки открытая на неделю
+        // панель копила бы по ручке на каждое голосовое аккаунта.
+        guard.retain(|h| !h.is_finished());
+        guard.push(handle);
     }
 
     /// Останавливает всех зарегистрированных воркеров.

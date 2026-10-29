@@ -47,14 +47,51 @@
 // статическим блоком разметки на случай старого сервера.
 //
 // Инвариант XSS панели: все тексты ставятся через textContent.
+//
+// ============================================================================
+// ДВА РЕЖИМА ОДНОГО ЭКРАНА (мультипортальность, Ф8)
+// ============================================================================
+//
+//   'connect' — подключение АДРЕСУЕМОГО портала (`POST /login/webhook`).
+//               Экран открыт всегда, пока состояние не `authorized`.
+//   'add'     — добавление ЕЩЁ ОДНОГО портала (`POST /portals`), кнопка `+`
+//               строки вкладок (js/bitrix/portals.js). Открывается явно
+//               вызовом `openAddPortal()` и закрывается успехом или CANCEL.
+//
+// Второго экрана НЕ заводится, и это решение по существу: экран подключения —
+// единственное место, где через фронт проходит СЕКРЕТ, и вся работа с ним
+// (блокировка формы, обратный отсчёт, немедленная очистка поля) написана
+// здесь один раз. Копия этой работы во втором экране разъехалась бы с
+// оригиналом ровно в той детали, которую забудут перенести.
+//
+// В режиме 'add' `renderLoginState` НЕ ДЕЛАЕТ НИЧЕГО. Снимки `/status` и кадры
+// `login_state` в этот момент описывают ПЕРВЫЙ портал (он подключён и
+// здоров), и любой из них закрыл бы экран прямо под руками, стерев введённое.
+//
+// Неудачная проверка вебхука портал НЕ откатывает: `invalid_credentials`,
+// `scope_missing`, `throttled` и `disconnected` — состояния уже подключённого
+// портала, вкладка появляется и показывает, что не так. Поэтому успешный
+// ответ `POST /portals` закрывает экран в ЛЮБОМ из них.
 
 import {
-    $b24Login, $b24LoginCountdown, $b24LoginError, $b24LoginHint,
-    $b24LoginStatus, $b24LoginStepWebhook, $b24LoginWebhookSubmit,
-    $b24Logout, $b24LogoutNote, $b24Webhook,
+    $b24Login, $b24LoginCancel, $b24LoginCountdown, $b24LoginError,
+    $b24LoginHint, $b24LoginStatus, $b24LoginStepWebhook, $b24LoginTitle,
+    $b24LoginWebhookSubmit, $b24Logout, $b24LogoutNote, $b24Webhook,
 } from '../core/dom.js';
 
 import * as b24Api from './api.js';
+
+/**
+ * Заголовок экрана по режиму.
+ *
+ * Экран ОДИН на оба сценария (см. шапку модуля): и первое подключение, и
+ * добавление второго портала проносят через фронт один и тот же секрет, и
+ * второй экран означал бы второе место, где его можно забыть очистить.
+ */
+export const SCREEN_TITLE = {
+    connect: 'BITRIX24 // CONNECT',
+    add: 'BITRIX24 // ADD PORTAL',
+};
 
 /**
  * Тексты состояний. Отдельной таблицей, а не строками в коде: их читает
@@ -87,6 +124,21 @@ const local = {
     onAuthorized: null,
     /** Колбэк «отключились» (ставится из main.js). */
     onLoggedOut: null,
+    /**
+     * Режим экрана: 'connect' (подключение адресуемого портала) либо 'add'
+     * (добавление ЕЩЁ ОДНОГО портала кнопкой `+` строки вкладок).
+     *
+     * Различие ровно в двух вещах: куда уезжает вебхук (`/login/webhook` либо
+     * `POST /portals`) и что происходит после успеха. Всё остальное —
+     * блокировка формы, обратный отсчёт, тексты ошибок, очистка секрета —
+     * общее, и разводить это по двум экранам было бы удвоением работы с
+     * секретом ради косметики.
+     */
+    mode: 'connect',
+    /** Колбэк «портал добавлен»: (portalId) => void (ставится из main.js). */
+    onPortalAdded: null,
+    /** Колбэк «добавление отменено» (ставится из main.js). */
+    onAddCancelled: null,
 };
 
 /** Все поля ввода экрана. */
@@ -96,7 +148,7 @@ function inputs() {
 
 /** Все кнопки экрана. */
 function buttons() {
-    return [$b24LoginWebhookSubmit].filter(Boolean);
+    return [$b24LoginWebhookSubmit, $b24LoginCancel].filter(Boolean);
 }
 
 /**
@@ -246,6 +298,11 @@ export function setLogoutHint(hint) {
  */
 export function renderLoginState(dto) {
     if (!dto || typeof dto !== 'object') return;
+    // РЕЖИМ ДОБАВЛЕНИЯ ЗАЩИЩЁН от снимков состояния. Пока пользователь вводит
+    // вебхук второго портала, `/status` и кадры `login_state` продолжают
+    // описывать ПЕРВЫЙ (он подключён и здоров) — и, не будь этой строки,
+    // ближайший из них закрыл бы экран прямо под руками, стерев введённое.
+    if (local.mode === 'add') return;
     const state = typeof dto.state === 'string' ? dto.state : 'not_configured';
     const changed = state !== local.lastState;
     local.lastState = state;
@@ -376,7 +433,91 @@ function submitWebhook() {
         showError('вставьте адрес входящего вебхука целиком');
         return undefined;
     }
+    if (local.mode === 'add') return submitAddPortal(raw);
     return submit(() => b24Api.loginWebhook(raw));
+}
+
+/**
+ * Нажатие CONNECT в режиме добавления портала.
+ *
+ * НЕУДАЧНАЯ ПРОВЕРКА ВЕБХУКА ПОРТАЛ НЕ ОТКАТЫВАЕТ. `invalid_credentials`,
+ * `scope_missing`, `throttled` и `disconnected` — это СОСТОЯНИЯ уже
+ * подключённого портала: вкладка появляется и показывает, что именно не так.
+ * Поэтому успешный ответ здесь закрывает экран в любом из них, а не только в
+ * `authorized`, — иначе вебхук пришлось бы вставлять второй раз, то есть
+ * проносить секрет через фронт дважды.
+ *
+ * АВТОПОВТОРОВ НЕТ: пока тикает обратный отсчёт `throttled`, `submit` не
+ * отправляет ничего вовсе.
+ *
+ * @param {string} raw — то, что вставил пользователь
+ */
+function submitAddPortal(raw) {
+    return submit(async () => {
+        const portal = await b24Api.addPortal(raw);
+        const id = (portal && portal.id) ? String(portal.id) : '';
+        // СЕКРЕТ НЕ ЗАДЕРЖИВАЕТСЯ В DOM — та же строка, что и в `authorized`.
+        if ($b24Webhook) $b24Webhook.value = '';
+        leaveAddMode();
+        if (id && typeof local.onPortalAdded === 'function') {
+            try {
+                local.onPortalAdded(id);
+            } catch (e) {
+                console.warn('[b24-login] onPortalAdded threw', e);
+            }
+        }
+        // `submit` применит это к оверлею уже в обычном режиме: у добавленного
+        // портала состояние своё, и показать его обязан тот же автомат.
+        return (portal && portal.login) || { state: 'not_configured' };
+    });
+}
+
+/**
+ * Открыть экран в режиме добавления ЕЩЁ ОДНОГО портала (кнопка `+`).
+ *
+ * Экран тот же самый — см. `SCREEN_TITLE` и шапку модуля.
+ */
+export function openAddPortal() {
+    local.mode = 'add';
+    local.lastState = null;
+    stopCountdown();
+    clearError();
+    setBusy(false);
+    if ($b24Webhook) $b24Webhook.value = '';
+    if ($b24LoginTitle) $b24LoginTitle.textContent = SCREEN_TITLE.add;
+    if ($b24LoginCancel) $b24LoginCancel.hidden = false;
+    if ($b24Login) $b24Login.hidden = false;
+    if ($b24LoginStepWebhook) $b24LoginStepWebhook.hidden = false;
+    if ($b24Webhook && typeof $b24Webhook.focus === 'function') $b24Webhook.focus();
+}
+
+/** Вернуть экран в обычный режим (успех либо отмена). */
+function leaveAddMode() {
+    local.mode = 'connect';
+    local.lastState = null;
+    if ($b24LoginTitle) $b24LoginTitle.textContent = SCREEN_TITLE.connect;
+    if ($b24LoginCancel) $b24LoginCancel.hidden = true;
+    // Секрет не переживает выход из режима ни при каком исходе.
+    if ($b24Webhook) $b24Webhook.value = '';
+}
+
+/**
+ * Нажатие CANCEL — уйти из режима добавления, ничего не отправив.
+ *
+ * Оверлей после отмены закрывается только если текущий портал подключён:
+ * иначе за ним пустая панель, и прятать экран было бы некуда возвращаться.
+ */
+export function cancelAddPortal() {
+    if (local.mode !== 'add') return;
+    leaveAddMode();
+    clearError();
+    if (typeof local.onAddCancelled === 'function') {
+        try {
+            local.onAddCancelled();
+        } catch (e) {
+            console.warn('[b24-login] onAddCancelled threw', e);
+        }
+    }
 }
 
 /**
@@ -410,6 +551,12 @@ export function initB24Login(opts) {
     if (opts && typeof opts.onLoggedOut === 'function') {
         local.onLoggedOut = opts.onLoggedOut;
     }
+    if (opts && typeof opts.onPortalAdded === 'function') {
+        local.onPortalAdded = opts.onPortalAdded;
+    }
+    if (opts && typeof opts.onAddCancelled === 'function') {
+        local.onAddCancelled = opts.onAddCancelled;
+    }
     if (local.bound) return;
     local.bound = true;
 
@@ -422,6 +569,9 @@ export function initB24Login(opts) {
     }
     if ($b24LoginWebhookSubmit) {
         $b24LoginWebhookSubmit.addEventListener('click', submitWebhook);
+    }
+    if ($b24LoginCancel) {
+        $b24LoginCancel.addEventListener('click', cancelAddPortal);
     }
     if ($b24Logout) {
         $b24Logout.addEventListener('click', () => {
@@ -440,6 +590,10 @@ export function resetLogin() {
     stopCountdown();
     clearError();
     setBusy(false);
+    // Режим добавления принадлежал ПРОШЛОЙ странице: переживи он её, первый же
+    // снимок `/status` был бы проигнорирован, и панель осталась бы за экраном
+    // подключения без единого объяснения.
+    leaveAddMode();
     local.lastState = null;
     if ($b24Webhook) $b24Webhook.value = '';
 }
@@ -449,6 +603,7 @@ export function _debugLogin() {
     return {
         bound: local.bound,
         busy: local.busy,
+        mode: local.mode,
         waitLeft: local.waitLeft,
         timerActive: local.timerId !== null,
         lastState: local.lastState,

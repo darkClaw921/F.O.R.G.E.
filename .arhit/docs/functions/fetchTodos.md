@@ -1,0 +1,3 @@
+# fetchTodos
+
+Асинхронный GET /api/todos?path=<cwd> в tmux-web/static/js/ws/todos-ws.js. path аргумент имеет приоритет над currentTodosPath. При неизвестном path запрос не отправляется: API требует абсолютный cwd, bootstrap может предшествовать выбору сессии. Epoch увеличивается даже при пропуске запроса, инвалидируя старые ответы после снятия выбора. Polling, syncTodosToCurrentSession и модальные операции повторяют fetch после получения path. Успех обновляет state.todosData и renderTasks; HTTP/сетевая ошибка сохраняет snapshot. После await ответа и json проверяется epoch, чтобы старые запросы не перезаписали новое состояние.

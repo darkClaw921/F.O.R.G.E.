@@ -1,0 +1,24 @@
+/* Source settings use existing FORGE controls, kept separate from live polling. */
+.agent-settings { margin-top:24px; border-top:1px solid var(--border); padding-top:16px; }
+.agent-settings>summary { color:var(--fg); cursor:pointer; font-weight:600; padding:4px 0; }
+.agent-settings>summary:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+.agent-settings-form { display:flex; flex-direction:column; align-items:stretch; gap:12px; margin-top:16px; max-width:1000px; }
+.agent-settings-form h3 { margin:10px 0 0; font-size:.95rem; }
+.agent-settings-check { display:flex; align-items:center; gap:9px; color:var(--fg); font-size:.85rem; }
+.agent-settings-check input { accent-color:var(--accent); }
+.agent-settings-form>.agent-field { max-width:700px; }
+.agent-settings-form>.agent-field input[type="number"] { max-width:140px; }
+.agent-roots { display:flex; flex-direction:column; gap:10px; }
+.agent-root-row { display:grid; grid-template-columns:140px minmax(160px,1fr) minmax(160px,1fr) auto; gap:8px; min-width:0; align-items:end; }
+.agent-settings-actions { display:flex; flex-wrap:wrap; gap:10px; }
+.agent-settings .agent-muted { overflow-wrap:anywhere; }
+.agent-settings .agent-button { align-self:flex-start; }
+.agent-root-row>.agent-button { align-self:end; }
+.analytics-agents-showcase { margin-bottom:16px; }
+.analytics-agents-showcase .notify-actions { margin-top:10px; }
+@media(max-width:700px) {
+    .agent-root-row { grid-template-columns:minmax(0,1fr) auto; }
+    .agent-root-row>.agent-field { grid-column:1 / -1; }
+    .agent-root-row button { grid-column:2; grid-row:1; }
+    .agent-root-row>.agent-field:first-child { grid-column:1; grid-row:1; }
+}

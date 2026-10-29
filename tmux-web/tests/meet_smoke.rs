@@ -161,7 +161,16 @@ async fn the_status_route_answers_200_with_the_plugin_mounted() {
     let json: Value = serde_json::from_str(&body).unwrap();
     assert_eq!(json["enabled"], true);
     assert_eq!(json["limits"]["whisper"], 1, "лимит whisper поднять нельзя");
-    assert_eq!(json["providers"].as_array().unwrap().len(), 4);
+    let providers = json["providers"].as_array().unwrap();
+    assert_eq!(providers.len(), 5);
+    // Каждая платформа реестра обязана доехать до фронта ЧЕРЕЗ ХОСТ-РОУТЕР, а
+    // не только в юнит-тесте плагина: забытая здесь платформа детектится в
+    // браузере, но в списке поддерживаемых её нет.
+    let ids: Vec<&str> = providers
+        .iter()
+        .map(|p| p["platform"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, vec!["telemost", "meet", "zoom", "teams", "vcc"]);
     // Реестр приезжает с бэкенда вместе с регулярками: разметку браузер
     // держит в кэше PWA неделями.
     assert!(json["providers"][0]["link_regex"].as_str().unwrap().contains("telemost"));

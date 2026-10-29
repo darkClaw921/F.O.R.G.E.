@@ -12,6 +12,7 @@ import {
     $telegramToggle, $telegram,
     $vkToggle, $vk,
     $bitrixToggle, $b24,
+    $trackerToggle, $tracker,
 } from '../core/dom.js';
 import { scheduleResizeFromTerm } from '../terminal/xterm.js';
 import { connectTasksWs, fetchTasks, stopTasksPolling } from '../ws/tasks-ws.js';
@@ -28,11 +29,16 @@ import { initVk } from '../vk/main.js';
 import { applyVkTheme } from '../vk/theme.js';
 import { initB24 } from '../bitrix/main.js';
 import { applyB24Theme } from '../bitrix/theme.js';
+// Тема трекера — статический импорт, в отличие от самой панели: модуль
+// автономен (ноль связей с js/tracker/main.js) и обязан отработать до того,
+// как панель покажется.
+import { applyTrackerTheme } from '../tracker/theme.js';
 
 export function switchTab(name) {
     if (name !== 'terminal' && name !== 'tasks' && name !== 'git'
         && name !== 'docker' && name !== 'telescope' && name !== 'echo'
-        && name !== 'telegram' && name !== 'vk' && name !== 'bitrix') return;
+        && name !== 'telegram' && name !== 'vk' && name !== 'bitrix'
+        && name !== 'tracker') return;
     if (state.activeTab === name) return;
     // Заставка лежит поверх области терминала — при переключении вкладок гасим её.
     hideScreensaver();
@@ -48,6 +54,7 @@ export function switchTab(name) {
     const onTelegram = name === 'telegram';
     const onVk = name === 'vk';
     const onBitrix = name === 'bitrix';
+    const onTracker = name === 'tracker';
     $terminalEl.hidden = !onTerminal;
     if ($placeholder) $placeholder.hidden = !onTerminal;
     if ($windowBar) $windowBar.hidden = !onTerminal || !state.currentSession;
@@ -59,6 +66,7 @@ export function switchTab(name) {
     if ($telegram) $telegram.hidden = !onTelegram;
     if ($vk) $vk.hidden = !onVk;
     if ($b24) $b24.hidden = !onBitrix;
+    if ($tracker) $tracker.hidden = !onTracker;
 
     $tabTerminal.classList.toggle('active', onTerminal);
     $tabTasks.classList.toggle('active', onTasks);
@@ -71,6 +79,7 @@ export function switchTab(name) {
     if ($telegramToggle) $telegramToggle.classList.toggle('active', onTelegram);
     if ($vkToggle) $vkToggle.classList.toggle('active', onVk);
     if ($bitrixToggle) $bitrixToggle.classList.toggle('active', onBitrix);
+    if ($trackerToggle) $trackerToggle.classList.toggle('active', onTracker);
 
     if (prev === 'git' && !onGit) {
         closeGitWs('tab switched away');
@@ -86,6 +95,15 @@ export function switchTab(name) {
     }
     if (prev === 'echo' && !onEcho) {
         disconnectEchoWs();
+    }
+    // Уход с вкладки трекера ЗАКРЫВАЕТ его сокет — в отличие от трёх
+    // мессенджеров, чьи соединения постоянны ради бейджа непрочитанного.
+    // Трекеру, пока панель закрыта, сообщать не о чем: задачи заводит сам
+    // пользователь, извне они не приходят.
+    if (prev === 'tracker' && !onTracker) {
+        import('../tracker/main.js')
+            .then((m) => m.suspendTracker())
+            .catch(() => { /* модуль не грузился — закрывать нечего */ });
     }
 
     if (onTerminal) {
@@ -134,6 +152,22 @@ export function switchTab(name) {
         // только после первого захода на вкладку.
         applyVkTheme();
         initVk();
+    } else if (onTracker) {
+        // Тема пересчитывается на КАЖДОМ входе — то же правило, что у трёх
+        // мессенджеров: в режиме auto пользователь мог сменить тему devforge,
+        // пока вкладка была закрыта. Вызов синхронный и стоит перед ленивым
+        // import'ом панели: атрибут обязан оказаться на #tracker до того, как
+        // панель станет видимой, иначе она мелькнёт чужой палитрой.
+        applyTrackerTheme();
+        // ЛЕНИВАЯ ЗАГРУЗКА: модуль панели (рендер, сокет, разбор строки,
+        // карточка) приезжает при ПЕРВОМ открытии вкладки, а не на старте
+        // приложения. Гейт кнопки живёт отдельно (js/tracker/gate.js) и
+        // тянет за собой только один fetch. Повторные переключения вкладки
+        // модуль не пересоздают — import кэширован, а initTracker
+        // идемпотентна.
+        import('../tracker/main.js')
+            .then((m) => m.initTracker())
+            .catch((e) => console.warn('[tabs] initTracker failed', e));
     } else if (onBitrix) {
         // Ровно те же два правила, что у телеграмной и VK-веток: тема
         // пересчитывается на КАЖДОМ входе (в режиме auto пользователь мог

@@ -182,7 +182,7 @@ printf '%s\n' '{"type":"content_block_delta","index":0,"delta":{"type":"text_del
 printf '%s\n' '{"type":"result","usage":{"input_tokens":3,"output_tokens":1}}'
 "#;
         let cli = write_mock_cli(dir, script);
-        let runner = Arc::new(ClaudeRunner::new(cli, 4));
+        let runner = Arc::new(ClaudeRunner::new(cli, 4).with_enabled(true));
         let db = Db::open_memory().await.unwrap();
         db.migrate().await.unwrap();
         let state = Arc::new(EchoState::new(Arc::new(db), runner));
@@ -246,7 +246,7 @@ printf '%s\n' '{"type":"content_block_delta","index":0,"delta":{"type":"text_del
 printf '%s\n' '{"type":"result","usage":{"input_tokens":1,"output_tokens":1}}'
 "#;
         let cli = write_mock_cli(&dir, script);
-        let runner = Arc::new(ClaudeRunner::new(cli, 4));
+        let runner = Arc::new(ClaudeRunner::new(cli, 4).with_enabled(true));
         let db = Db::open_memory().await.unwrap();
         db.migrate().await.unwrap();
         let state = Arc::new(EchoState::new(Arc::new(db), runner));

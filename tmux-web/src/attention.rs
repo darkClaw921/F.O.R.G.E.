@@ -1,37 +1,29 @@
-//! Attention-watcher для tmux-сессий: следит за наличием Claude permission
-//! prompt в панелях и поддерживает разделяемое состояние «нужно внимание».
+//! Session attention and task activity are independent projections.
 //!
-//! ### Назначение
+//! Every 1.5 seconds the watcher lists all tmux sessions and physical panes,
+//! captures each physical pane once, and detects pending native permission or
+//! interactive-question overlays. Codex, Claude Code and verified OpenCode
+//! layouts are supported. A normal composer, completed response or a question
+//! mark in assistant prose does not by itself mean that input is required.
 //!
-//! Раз в 1.5 секунды watcher (см. `watcher_loop`) обходит все tmux-сессии
-//! активного проекта, дёргает `tmux::capture_pane` и применяет строгий
-//! паттерн `detect_claude_prompt`. Результат пишется в `AttentionState`,
-//! откуда фронтенд получает флаг для оранжевой подсветки вкладки.
+//! The read-only prompt observer lives in attention_prompt.rs and retains an
+//! uncertain capture only for the previously observed physical pane/process.
+//! Linked aliases share one capture and use the existing primary-session
+//! policy; independent sessions with identical prompt text remain independent.
+//! It never sends keys, approves commands or answers questions. The existing
+//! detect_claude_prompt contract is shared with autoapproval and stays intact.
 //!
-//! ### Контракт детектора
-//!
-//! `detect_claude_prompt` срабатывает на известные формы меню выбора Claude
-//! Code (см. `detect_permission_prompt`): трёхопционный permission
-//! (`❯ 1. Yes` + `2. Yes,` + `3. No`), двухопционный (`❯ 1. Yes` + `2. No`),
-//! Claude in Chrome (`❯ 1. Allow` + `2. Deny`/`2. Allow all`), а также plan и
-//! question по их footer'ам.
-//!
-//! AND-семантика внутри каждой формы выбрана сознательно: каждый маркер по
-//! отдельности может встретиться в обычном выводе (например, в логах), но
-//! сочетание — практически однозначно prompt. Маркеры намеренно «короткие»,
-//! чтобы покрыть разные варианты Claude UI (file create, edit, bash и т.п.).
-//!
-//! ### Состояние
-//!
-//! `AttentionState` хранит `HashMap<session_name, bool>` под `tokio::RwLock`.
-//! Async-замок обязателен: и watcher_loop, и axum-хендлеры (Phase 3) дёргают
-//! `snapshot`/`set` из tokio runtime.
+//! Working stars come from AgentStatsStore task metadata and exact bindings,
+//! not terminal hashes. Echo idle is derived only from observed journal ends.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
 
 use tokio::sync::RwLock;
+
+#[path = "attention_prompt.rs"]
+mod prompts;
 
 /// Сколько секунд непрерывного просмотра сессии (attached>0) достаточно, чтобы
 /// считать её «просмотренной» и завершить idle-эпизод «следующего шага»:
@@ -43,8 +35,30 @@ use tokio::sync::RwLock;
 /// здесь это «сколько пользователь смотрел сессию», там — «сколько она молчала».
 const VIEW_DISMISS_SECS: u64 = 10;
 
-/// Разделяемое состояние «у каких сессий сейчас открыт Claude permission
-/// prompt».
+#[cfg(test)]
+#[path = "attention_activity_tests.rs"]
+mod agent_activity_tests;
+
+/// One coherent journal-derived projection for the session tab DTO.
+#[derive(Debug, Clone, Default)]
+pub struct SessionAgentActivity {
+    pub is_generating: bool,
+    pub started_at_ms: Option<i64>,
+    pub working_agent_count: usize,
+    pub providers: Vec<crate::agents::AgentProvider>,
+}
+impl SessionAgentActivity {
+    pub fn age_secs(&self, now_ms: i64) -> Option<u64> {
+        self.is_generating.then(|| {
+            now_ms
+                .saturating_sub(self.started_at_ms.unwrap_or(now_ms))
+                .max(0) as u64
+                / 1000
+        })
+    }
+}
+
+/// Разделяемое состояние сессий, в которых агент ждёт разрешения или ответа.
 ///
 /// Ключ — имя tmux-сессии (то же, что `tmux::SessionInfo::name`). Значение
 /// `true` означает «нужно подсветить вкладку оранжевым».
@@ -56,7 +70,9 @@ const VIEW_DISMISS_SECS: u64 = 10;
 pub struct AttentionState {
     map: Arc<RwLock<HashMap<String, bool>>>,
     generating: Arc<RwLock<HashMap<String, bool>>>,
-    /// Последний наблюдённый хэш pane на сессию.
+    agent_activity: Arc<RwLock<HashMap<String, SessionAgentActivity>>>,
+    agent_busy: Arc<RwLock<HashSet<String>>>,
+    /// Legacy test-only hash state; production does not infer work from pixels.
     ///
     /// Используется в `update_generation` для получения «сырого» сигнала
     /// `changed = prev != current`. Само поле НЕ хранит финальный флаг
@@ -66,8 +82,9 @@ pub struct AttentionState {
     /// При первом наблюдении сессии (нет prev) `changed` всегда `false`:
     /// нет точки сравнения. Это сознательное решение, чтобы избежать ложного
     /// срабатывания на самой первой итерации watcher'а.
+    #[cfg(test)]
     last_gen_hash: Arc<RwLock<HashMap<String, u64>>>,
-    /// Момент начала текущей непрерывной серии генерации на сессию.
+    /// Original journal task start projected onto a monotonic clock.
     ///
     /// Ставится при переходе финального флага `is_generating` `false→true`
     /// (см. `set_generating`) и удаляется когда флаг гаснет. Используется
@@ -107,6 +124,9 @@ impl AttentionState {
         Self {
             map: Arc::new(RwLock::new(HashMap::new())),
             generating: Arc::new(RwLock::new(HashMap::new())),
+            agent_activity: Arc::new(RwLock::new(HashMap::new())),
+            agent_busy: Arc::new(RwLock::new(HashSet::new())),
+            #[cfg(test)]
             last_gen_hash: Arc::new(RwLock::new(HashMap::new())),
             gen_started_at: Arc::new(RwLock::new(HashMap::new())),
             idle_started_at: Arc::new(RwLock::new(HashMap::new())),
@@ -151,33 +171,69 @@ impl AttentionState {
 
     /// Возвращает копию состояния «генерирует / работает» по всем сессиям.
     ///
-    /// Семантика `is_generating`: за прошедший тик watcher'а (1.5с) содержимое
-    /// последних 50 строк pane изменилось, и этот сырой сигнал прошёл через
-    /// дедупликацию `deduplicate_generating` (group by `session_group`).
-    /// Только primary linked-сессии получает `true`, остальные — `false`,
-    /// чтобы индикатор не дублировался во всех вкладках одной группы.
-    /// Независимые сессии (`session_group=None`) не группируются и светятся
-    /// каждая сама. На практике это означает, что что-то рисуется на экране
-    /// — Claude печатает, выводится stream tool output, идёт `tail -f`, и т.п.
-    /// Frontend подсвечивает такие сессии пульсирующим значком.
+    /// Значение поступает из журнала работающей задачи и точной привязки
+    /// native session ID к панели. Только primary linked-сессии получает
+    /// true; потоки build/tail и перерисовки терминала на сигнал не влияют.
+    /// Для согласованного чтения возраста и счётчика используйте
+    /// [`Self::agent_activity_snapshot`].
     pub async fn generating_snapshot(&self) -> HashMap<String, bool> {
         self.generating.read().await.clone()
+    }
+    pub async fn agent_activity_snapshot(&self) -> HashMap<String, SessionAgentActivity> {
+        self.agent_activity.read().await.clone()
+    }
+    /// Silence, unknown probes and detach are visual changes, not task ends.
+    async fn apply_agent_activity(
+        &self,
+        activity: HashMap<String, SessionAgentActivity>,
+        busy: HashSet<String>,
+        finished: HashSet<String>,
+    ) {
+        *self.agent_busy.write().await = busy.clone();
+        let now_ms = crate::agents::store::now_ms();
+        let now = Instant::now();
+        *self.generating.write().await = activity
+            .iter()
+            .map(|(name, a)| (name.clone(), a.is_generating))
+            .collect();
+        *self.gen_started_at.write().await = activity
+            .iter()
+            .filter_map(|(name, a)| {
+                a.age_secs(now_ms).map(|age| {
+                    (
+                        name.clone(),
+                        now.checked_sub(std::time::Duration::from_secs(age))
+                            .unwrap_or(now),
+                    )
+                })
+            })
+            .collect();
+        *self.agent_activity.write().await = activity;
+        let attached = self.attached_since.read().await;
+        let mut idle = self.idle_started_at.write().await;
+        for name in &busy {
+            idle.remove(name);
+        }
+        for name in finished {
+            if !busy.contains(&name) && !attached.contains_key(&name) {
+                idle.insert(name, now);
+            } else {
+                idle.remove(&name);
+            }
+        }
     }
 
     /// Устанавливает финальный флаг `is_generating` для одной сессии.
     ///
-    /// Это «писатель» карты `generating` — единственное место, через которое
-    /// финальное значение попадает в наблюдаемое состояние (что видят
-    /// `generating_snapshot` и `/api/sessions`). Сюда пишет дедуп-фаза
-    /// `watcher_loop` уже после того, как сырые `changed`-сигналы от
-    /// `update_generation` свёрнуты с учётом `session_group`
-    /// (linked-сессии меняются одновременно и должны давать общий флаг,
-    /// иначе индикатор горит во всех вкладках одной группы).
+    /// Legacy helper retained only for tests of the old boolean-front contract.
+    /// Production writes coherent journal activity through apply_agent_activity
+    /// and never derives Echo idle from a disappearing visual flag.
     ///
     /// Семантика записи аналогична [`AttentionState::set`]: ключ не удаляется
     /// при `false` (всегда `insert`), что позволяет фронтенду надёжно
     /// различать «никогда не видели сессию» (нет ключа) и «видели, флаг
     /// потушен» (есть ключ со значением `false`).
+    #[cfg(test)]
     pub async fn set_generating(&self, name: &str, flag: bool) {
         let prev = {
             let mut map = self.generating.write().await;
@@ -266,10 +322,11 @@ impl AttentionState {
 
         let idle = self.idle_started_at.read().await;
         let needs_attention = self.map.read().await;
+        let busy = self.agent_busy.read().await;
         idle.iter()
             .filter(|(name, _)| {
                 // Исключаем сессии с активным prompt'ом (needs_attention=true).
-                !needs_attention.get(*name).copied().unwrap_or(false)
+                !needs_attention.get(*name).copied().unwrap_or(false) && !busy.contains(*name)
             })
             .map(|(name, t)| (name.clone(), t.elapsed().as_secs()))
             .collect()
@@ -283,6 +340,7 @@ impl AttentionState {
     /// карту не попадают. Используется хендлером `/api/sessions` для поля
     /// `SessionDto::generating_since_secs`, на основе которого фронтенд строит
     /// tooltip синего индикатора работы.
+    #[cfg(test)]
     pub async fn generating_age_snapshot(&self) -> HashMap<String, u64> {
         let started = self.gen_started_at.read().await;
         started
@@ -307,6 +365,7 @@ impl AttentionState {
     ///
     /// Эта развязка позволяет дедуп-фазе видеть «сырой» сигнал без побочного
     /// влияния на финальное состояние.
+    #[cfg(test)]
     pub async fn update_generation(&self, name: &str, current_hash: u64) -> bool {
         let mut map = self.last_gen_hash.write().await;
         let prev = map.insert(name.to_string(), current_hash);
@@ -375,7 +434,11 @@ pub fn detect_claude_prompt(pane: &str) -> bool {
         return false;
     }
     let norm = normalize_ws(pane);
-    detect_permission_prompt(&norm) || detect_plan_prompt(&norm) || detect_question_prompt(&norm)
+    // Permission разбирается ПОСТРОЧНО, поэтому получает сырую панель:
+    // `normalize_ws` схлопывает переносы в пробелы, и всё меню слилось бы в
+    // один «пункт». Перенос длинного пункта парсер склеивает сам, а plan и
+    // question по-прежнему ищутся по footer'у — им нормализация нужна.
+    detect_permission_prompt(pane) || detect_plan_prompt(&norm) || detect_question_prompt(&norm)
 }
 
 /// Гейт против «процитированного prompt'а»: настоящий prompt Claude Code
@@ -398,13 +461,14 @@ pub fn detect_claude_prompt(pane: &str) -> bool {
 ///
 /// Берутся последние 4 непустые строки: в узком терминале footer переносится
 /// по словам, и «Esc to cancel» может уехать со своей строки на соседнюю.
-/// Перед этим с конца срезается TODO-виджет ([`todo_widget_start`]) — он
-/// рисуется ПОД prompt'ом и иначе выталкивает footer за это окно.
-/// Набор искомых footer-фраз — [`BOTTOM_FOOTER_MARKERS`].
+/// Перед этим с конца срезаются виджеты, которые Claude Code рисует ПОД
+/// prompt'ом и которые иначе выталкивают footer за это окно, — см.
+/// [`trim_bottom_widgets`]. Набор искомых footer-фраз —
+/// [`BOTTOM_FOOTER_MARKERS`].
 pub(crate) fn prompt_at_bottom(pane: &str) -> bool {
     let lines: Vec<&str> = pane.lines().filter(|l| !l.trim().is_empty()).collect();
-    // Всё, что ниже начала TODO-виджета, — не часть prompt'а.
-    let end = todo_widget_start(&lines).unwrap_or(lines.len());
+    // Всё, что ниже виджетов, — не часть prompt'а.
+    let end = trim_bottom_widgets(&lines);
     let mut tail: Vec<&str> = lines[..end].iter().rev().take(4).copied().collect();
     // Возвращаем исходный порядок строк: footer мог перенестись («… Esc to» /
     // «cancel»), и склейка в обратном порядке разорвала бы искомую фразу.
@@ -439,8 +503,124 @@ pub(crate) fn prompt_at_bottom(pane: &str) -> bool {
 ///
 /// Chrome-форма (панель заканчивается самим меню) footer'а не имеет вовсе и
 /// разбирается отдельной веткой [`prompt_at_bottom`].
-const BOTTOM_FOOTER_MARKERS: &[&str] =
-    &["Esc to cancel", "to edit in Vim", "shift+tab to approve"];
+const BOTTOM_FOOTER_MARKERS: &[&str] = &["Esc to cancel", "to edit in Vim", "shift+tab to approve"];
+
+/// Граница «настоящего низа панели» для [`prompt_at_bottom`]: индекс первой
+/// строки хвостовых виджетов в списке непустых строк, либо `lines.len()`,
+/// если виджетов внизу нет.
+///
+/// Claude Code рисует под prompt'ом сразу несколько блоков, и они идут в
+/// произвольном сочетании: список задач ([`todo_widget_start`]) и полоса
+/// фоновых агентов ([`agents_widget_start`]). Поэтому срез итеративный —
+/// каждый распознанный виджет отодвигает границу вверх, и следующий
+/// разбирается уже под новой границей. Цикл сходится: обе функции
+/// возвращают индекс СТРОГО меньше переданной длины, иначе граница не
+/// двигается и цикл выходит.
+fn trim_bottom_widgets(lines: &[&str]) -> usize {
+    let mut end = lines.len();
+    loop {
+        let head = &lines[..end];
+        let next = todo_widget_start(head).or_else(|| agents_widget_start(head));
+        match next {
+            Some(i) if i < end => end = i,
+            _ => return end,
+        }
+    }
+}
+
+/// Максимум строк полосы фоновых агентов, которые [`agents_widget_start`]
+/// готов срезать с конца панели.
+///
+/// Развёрнутая полоса (`ctrl+o`) показывает по строке на агента; больше
+/// пары десятков одновременных агентов в панель физически не помещается, а
+/// всё, что глубже, — уже чужой текст.
+const AGENTS_WIDGET_MAX_LINES: usize = 24;
+
+/// Маркер строки фонового агента в полосе: `◯ run-phase (+6) …`.
+///
+/// Взят отдельно от [`TODO_ITEM_MARKERS`] намеренно: `◯` встречается ТОЛЬКО
+/// в этой полосе, тогда как `⏺` — ещё и маркер обычного сообщения ассистента
+/// в потоке вывода. Именно поэтому строка `⏺` засчитывается лишь как
+/// заголовок полосы, и лишь когда под ней уже нашлась хотя бы одна строка
+/// `◯` (см. [`agents_widget_start`]).
+const AGENT_ROW_MARKER: char = '◯';
+
+/// Маркер строки-заголовка полосы фоновых агентов — основной диалог
+/// (`⏺ main`), который Claude Code рисует первой строкой блока.
+const AGENT_HEAD_MARKER: char = '⏺';
+
+/// Маркеры строки режима — второй формы заголовка полосы агентов.
+///
+/// В 2.1.26x полосу, поднятую агентами workflow, Claude Code рисует БЕЗ
+/// строки `⏺ main`: над ней оказывается сама строка режима со счётчиком —
+/// `⏸ plan mode on · 1 shell · ← 2 agents` или `⏵⏵ auto mode on (shift+tab to
+/// cycle) · ← 2 agents · /diff to hide diff`. Пока заголовком считалась
+/// только `⏺`, полоса не срезалась, футер prompt'а уезжал за окно из четырёх
+/// хвостовых строк, и `prompt_at_bottom` отвечал `false`: свечение не
+/// загоралось, авто-апрув молчал. Живой кейс — сессия `main` (apistend) с
+/// двумя агентами workflow и висящим MCP-разрешением.
+const MODE_LINE_MARKERS: &[char] = &['⏵', '⏸'];
+
+/// Строка-заголовок полосы фоновых агентов: либо `⏺ main`, либо строка
+/// режима, в которой Claude Code показывает счётчик агентов.
+///
+/// Счётчик обязателен: строка режима без агентов — обычный статус-бар, и
+/// срезать его нельзя, иначе за виджет примут любой низ экрана.
+fn is_agents_head(t: &str) -> bool {
+    if t.starts_with(AGENT_HEAD_MARKER) {
+        return true;
+    }
+    t.starts_with(MODE_LINE_MARKERS) && t.contains("agents")
+}
+
+/// Индекс первой строки полосы фоновых агентов в хвосте `lines` (только
+/// непустые строки), либо `None` — полосы внизу нет.
+///
+/// Полоса — это заголовок `⏺ main`, под которым идут только строки агентов
+/// с маркером [`AGENT_ROW_MARKER`]:
+///
+/// ```text
+///   ⏺ main
+///   ◯ run-phase (+6)  Delegating CrmRecurrenceRules…   3h 41m · ↓ 718.3k tokens
+/// ```
+///
+/// Claude Code держит её ПОД областью ввода всё время, пока живы фоновые
+/// агенты, из-за чего footer prompt'а уезжает за окно из четырёх хвостовых
+/// строк и гейт [`prompt_at_bottom`] переставал признавать prompt нижним:
+/// авто-апрув молчал, свечение не загоралось. Живой кейс — сессия `213`
+/// (`aira`) с backgrounded `run-phase` и шестью потомками: полоса из двух
+/// строк плюс двухстрочный статус-бар выталкивали `Esc to cancel` на пятую
+/// позицию снизу.
+///
+/// Защита от процитированного prompt'а сохраняется: требование «под
+/// заголовком ТОЛЬКО строки `◯`» плюс сам заголовок означают, что одиночная
+/// строка `⏺ Готово` из потока вывода полосой не считается, а под цитатой в
+/// diff/логе всегда идут поле ввода и статус-бар (`───`, `⏵⏵ auto mode on`),
+/// которые под маркеры не подходят — срез не происходит и гейт по-прежнему
+/// отвечает `false`.
+fn agents_widget_start(lines: &[&str]) -> Option<usize> {
+    let mut rows = 0usize;
+    for (offset, line) in lines.iter().rev().enumerate() {
+        if offset >= AGENTS_WIDGET_MAX_LINES {
+            return None;
+        }
+        let t = line.trim_start();
+        if t.starts_with(AGENT_ROW_MARKER) {
+            rows += 1;
+            continue;
+        }
+        // Заголовок засчитывается только вместе со строками агентов: `⏺` —
+        // ещё и маркер обычного сообщения ассистента, и срезать такую строку
+        // саму по себе означало бы принять УЖЕ ОТВЕЧЕННЫЙ prompt, оставшийся
+        // выше на экране, за активный. То же и для строки режима: без строк
+        // `◯` под ней это просто статус-бар.
+        if rows > 0 && is_agents_head(t) {
+            return Some(lines.len() - 1 - offset);
+        }
+        return None;
+    }
+    None
+}
 
 /// Максимум строк TODO-виджета, которые [`todo_widget_start`] готов срезать
 /// с конца панели.
@@ -456,7 +636,9 @@ const TODO_WIDGET_MAX_LINES: usize = 24;
 ///
 /// `⏺` и `◯` в набор НЕ входят намеренно: `⏺` — маркер обычного сообщения
 /// ассистента в потоке вывода, и срезать такие строки означало бы принять
-/// УЖЕ ОТВЕЧЕННЫЙ prompt, оставшийся выше на экране, за активный.
+/// УЖЕ ОТВЕЧЕННЫЙ prompt, оставшийся выше на экране, за активный. Полосу
+/// фоновых агентов, где эти два символа и встречаются, разбирает отдельная
+/// [`agents_widget_start`] — с обязательным заголовком `⏺` над строками `◯`.
 const TODO_ITEM_MARKERS: &[char] = &['◼', '◻', '☑', '☐', '✓', '✔'];
 
 /// Индекс первой строки TODO-виджета в хвосте `lines` (только непустые
@@ -498,10 +680,7 @@ fn todo_widget_start(lines: &[&str]) -> Option<usize> {
 /// Заголовок TODO-виджета — строка, начинающаяся с числа и слова `task`
 /// (`5 tasks (0 done, 1 in progress, 4 open)`, `1 task (…)`).
 fn is_todo_header(trimmed: &str) -> bool {
-    let digits = trimmed
-        .chars()
-        .take_while(char::is_ascii_digit)
-        .count();
+    let digits = trimmed.chars().take_while(char::is_ascii_digit).count();
     digits > 0 && trimmed[digits..].trim_start().starts_with("task")
 }
 
@@ -513,8 +692,280 @@ pub(crate) fn normalize_ws(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+// ==========================================================================
+// Разбор меню prompt'а
+// ==========================================================================
+
+/// Роль пункта меню — что произойдёт, если его выбрать.
+///
+/// Роль определяется по ТЕКСТУ пункта, а не по его номеру. Номера в Claude
+/// Code не стабильны: за месяц отказ переезжал с третьего пункта на
+/// четвёртый (добавился «Yes, and switch to auto mode»), а расширяющих «Yes»
+/// стало два. Каждая такая редакция ломала детекторы, привязанные к номеру,
+/// и авто-апрув молча переставал работать.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ItemRole {
+    /// Разовое согласие: `Yes`, `Allow`.
+    Approve,
+    /// Согласие, расширяющее ЭТО разрешение: `Yes, and don't ask again …`,
+    /// `Yes, and always allow access to <путь> from this project`,
+    /// `Allow all actions on <host> for this session`.
+    ApproveBroad,
+    /// Согласие, меняющее РЕЖИМ работы CLI: `Yes, and switch to auto mode`,
+    /// пункты плана `auto-accept edits` / `manually approve edits`.
+    ///
+    /// Автоматически не нажимается никогда, даже в broad-режиме: такой пункт
+    /// меняет поведение и для будущих запросов, которых человек ещё не видел.
+    ModeSwitch,
+    /// Отказ: `No`, `Deny`, `No, keep planning`.
+    Refuse,
+    /// Ничего из перечисленного — форма незнакомая.
+    Unknown,
+}
+
+/// Пункт меню: номер (то, что надо нажать) и его роль.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MenuItem {
+    pub(crate) number: u8,
+    pub(crate) text: String,
+    pub(crate) role: ItemRole,
+}
+
+/// Меню prompt'а: пункты в порядке показа плюс признак курсора.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Menu {
+    pub(crate) items: Vec<MenuItem>,
+    /// Был ли в блоке маркер `❯`. У активного меню он есть всегда; его
+    /// отсутствие означает обрывок текста, а не вопрос к человеку.
+    pub(crate) has_cursor: bool,
+}
+
+impl Menu {
+    /// Первый пункт заданной роли.
+    pub(crate) fn first(&self, role: ItemRole) -> Option<&MenuItem> {
+        self.items.iter().find(|i| i.role == role)
+    }
+
+    /// Есть ли в меню отказ.
+    pub(crate) fn has_refusal(&self) -> bool {
+        self.items.iter().any(|i| i.role == ItemRole::Refuse)
+    }
+
+    /// Номера идут подряд с единицы — защита от обрывка.
+    ///
+    /// `2. Yes, and don't ask` + `3. No`, оставшиеся на экране от прошлого
+    /// запроса или попавшие в diff, номерами себя и выдают: настоящее меню
+    /// всегда начинается с первого пункта.
+    pub(crate) fn numbering_is_intact(&self) -> bool {
+        self.items
+            .iter()
+            .enumerate()
+            .all(|(i, it)| it.number as usize == i + 1)
+    }
+
+    /// Форма Claude in Chrome (`Allow` / `Allow all actions on …`).
+    ///
+    /// Отдельный признак нужен потому, что у неё НЕТ пункта отказа: выйти
+    /// предлагается по `esc`, и требовать отказ, как у `Yes`-форм, нельзя.
+    pub(crate) fn is_chrome_form(&self) -> bool {
+        self.items
+            .first()
+            .is_some_and(|i| i.text.trim().to_lowercase().starts_with("allow"))
+    }
+
+    /// Меню — это активный вопрос «делать или нет», а не обрывок текста.
+    pub(crate) fn is_actionable(&self) -> bool {
+        let approves = self
+            .items
+            .iter()
+            .any(|i| matches!(i.role, ItemRole::Approve | ItemRole::ApproveBroad));
+        if !approves || !self.has_cursor || !self.numbering_is_intact() {
+            return false;
+        }
+        // У `Yes`-форм отказ есть всегда; у Chrome-формы его нет вовсе.
+        self.has_refusal() || (self.is_chrome_form() && self.items.len() >= 2)
+    }
+}
+
+/// Маркер курсора в меню Claude Code.
+const CURSOR_MARKER: char = '❯';
+
+/// Строки, на которых разбор меню останавливается: ниже них пунктов уже нет.
+const MENU_STOP_MARKERS: &[&str] = &["Esc to cancel", "Enter to select", "to edit in Vim"];
+
+/// Разбирает меню в НИЖНЕЙ части панели.
+///
+/// Возвращает `None`, если нумерованных пунктов внизу нет.
+///
+/// Разбор идёт от последней строки с курсором `❯`, а не от первой найденной:
+/// настоящий prompt всегда внизу, а выше на экране легко остаётся чужое такое
+/// же меню — `cat` фикстуры, diff, лог прошлого запроса.
+///
+/// Пункт может занимать НЕСКОЛЬКО строк: длинный путь в «Yes, and always allow
+/// access to /very/long/path from this project» переносится по словам. Строки
+/// без номера, идущие за пунктом, присоединяются к нему.
+pub(crate) fn parse_menu(pane: &str) -> Option<Menu> {
+    let lines: Vec<&str> = pane.lines().collect();
+
+    // Якорь — последняя СТРОКА-ПУНКТ, а не последний `❯`: курсором помечено
+    // поле ввода под prompt'ом, и поиск по нему уводил разбор ниже меню.
+    let is_item = |i: usize| parse_item_head(strip_cursor(lines[i])).is_some();
+    let anchor = (0..lines.len()).rev().find(|&i| {
+        if MENU_STOP_MARKERS.iter().any(|m| lines[i].contains(m)) {
+            return false;
+        }
+        is_item(i)
+    })?;
+
+    // Вниз: продолжения последнего пункта (перенос длинного пути по словам).
+    let mut end = anchor;
+    for (idx, line) in lines.iter().enumerate().skip(anchor + 1) {
+        if parse_item_head(strip_cursor(line)).is_some() || is_continuation(line) {
+            end = idx;
+            continue;
+        }
+        break;
+    }
+
+    // Вверх: предыдущие пункты. Курсор может стоять НЕ на первом пункте —
+    // человек подвинул выбор стрелками, — поэтому подъём идёт по номерам, а
+    // не по `❯`. Строка-продолжение между пунктами подъём не прерывает.
+    let mut start = anchor;
+    let mut i = anchor;
+    while i > 0 {
+        let j = i - 1;
+        if is_item(j) {
+            start = j;
+            i = j;
+            continue;
+        }
+        if is_continuation(lines[j]) && j > 0 && is_item(j - 1) {
+            i = j;
+            continue;
+        }
+        break;
+    }
+
+    let mut items: Vec<MenuItem> = Vec::new();
+    let has_cursor = lines[start..=end].iter().any(|l| l.contains(CURSOR_MARKER));
+    for raw in &lines[start..=end] {
+        let t = strip_cursor(raw);
+        match parse_item_head(t) {
+            Some((number, text)) => items.push(MenuItem {
+                number,
+                text: text.to_string(),
+                role: ItemRole::Unknown,
+            }),
+            None => {
+                if let Some(last) = items.last_mut() {
+                    let cont = t.trim();
+                    if !cont.is_empty() {
+                        last.text.push(' ');
+                        last.text.push_str(cont);
+                    }
+                }
+            }
+        }
+    }
+
+    if items.is_empty() {
+        return None;
+    }
+    for item in &mut items {
+        item.role = classify_item(&item.text);
+    }
+    Some(Menu { items, has_cursor })
+}
+
+/// Снимает отступ и маркер курсора: `  ❯ 1. Yes` → `1. Yes`.
+fn strip_cursor(line: &str) -> &str {
+    line.trim_start()
+        .trim_start_matches(CURSOR_MARKER)
+        .trim_start()
+}
+
+/// Строка-продолжение пункта: непустая, без номера, не рамка и не футер.
+fn is_continuation(line: &str) -> bool {
+    let t = strip_cursor(line);
+    let trimmed = t.trim();
+    if trimmed.is_empty() || MENU_STOP_MARKERS.iter().any(|m| trimmed.contains(m)) {
+        return false;
+    }
+    !trimmed.starts_with('─') && !trimmed.starts_with('│') && parse_item_head(t).is_none()
+}
+
+/// Начало пункта: `1. текст` (номер 1..9). Возвращает номер и остаток строки.
+fn parse_item_head(t: &str) -> Option<(u8, &str)> {
+    let mut chars = t.char_indices();
+    let (_, first) = chars.next()?;
+    let digit = first.to_digit(10)?;
+    if digit == 0 {
+        return None;
+    }
+    let (dot_at, dot) = chars.next()?;
+    if dot != '.' {
+        return None;
+    }
+    let rest = t[dot_at + 1..].trim_start();
+    if rest.is_empty() {
+        return None;
+    }
+    Some((digit as u8, rest))
+}
+
+/// Признаки пункта, меняющего режим CLI, а не одно разрешение.
+const MODE_SWITCH_MARKERS: &[&str] = &[
+    "switch to auto mode",
+    "auto mode handles",
+    "auto-accept edits",
+    "manually approve edits",
+    "use auto mode",
+];
+
+/// Признаки расширяющего согласия — оно раздвигает границы ЭТОГО разрешения.
+const BROAD_MARKERS: &[&str] = &[
+    "don't ask again",
+    "dont ask again",
+    "always allow",
+    "allow all",
+    "for this session",
+    "from this project",
+    "during this session",
+];
+
+/// Определяет роль пункта по его тексту.
+///
+/// Апострофы нормализуются: Claude Code рисует типографский `don’t` (U+2019),
+/// а не ASCII-кавычку, и сравнение с `don't ask again` без этого промахивалось
+/// — расширяющий пункт выглядел как обычное «Yes».
+fn classify_item(text: &str) -> ItemRole {
+    let t = text
+        .trim()
+        .to_lowercase()
+        .replace(['\u{2019}', '\u{2018}', '\u{02BC}'], "'");
+    if t.starts_with("no") || t.starts_with("deny") || t.starts_with("cancel") {
+        return ItemRole::Refuse;
+    }
+    let affirmative = t.starts_with("yes") || t.starts_with("allow");
+    if !affirmative {
+        return ItemRole::Unknown;
+    }
+    // Смена режима проверяется РАНЬШЕ расширения: «Yes, and switch to auto
+    // mode · auto mode handles these prompts for you» подходит и под то, и
+    // под другое, но нажимать его автоматически нельзя.
+    if MODE_SWITCH_MARKERS.iter().any(|m| t.contains(m)) {
+        return ItemRole::ModeSwitch;
+    }
+    if BROAD_MARKERS.iter().any(|m| t.contains(m)) {
+        return ItemRole::ApproveBroad;
+    }
+    ItemRole::Approve
+}
+
 /// Permission prompt во всех известных формах:
 /// - трёхопционный: `❯ 1. Yes` + `2. Yes,` + `3. No`;
+/// - четырёхопционный: `❯ 1. Yes` + `2. Yes,` + `3. Yes, and switch to auto
+///   mode` + `4. No`;
 /// - двухопционный: `❯ 1. Yes` + `2. No` (короткий `Do you want to proceed?`);
 /// - Claude in Chrome: `❯ 1. Allow` + `2. Deny` / `2. Allow all`.
 ///
@@ -522,13 +973,13 @@ pub(crate) fn normalize_ws(s: &str) -> String {
 /// оставленный человеку блоклистом авто-апрува, не зажигал свечение — тот же
 /// набор форм распознаёт `auto_approve::classify_prompt`.
 fn detect_permission_prompt(pane: &str) -> bool {
-    if pane.contains("❯ 1. Yes") {
-        return (pane.contains("2. Yes,") && pane.contains("3. No")) || pane.contains("2. No");
-    }
-    if pane.contains("❯ 1. Allow") {
-        return pane.contains("2. Deny") || pane.contains("2. Allow all");
-    }
-    false
+    // РАЗБОР МЕНЮ, А НЕ ПОИСК НОМЕРОВ. Прежняя проверка искала дословные
+    // `❯ 1. Yes` + `2. Yes,` + `3. No`, и каждая редакция CLI, добавлявшая
+    // пункт, гасила и свечение, и авто-апрув: в 2.1.26x между согласием и
+    // отказом появился `3. Yes, and switch to auto mode`, отказ уехал на
+    // четвёртый пункт, и форма перестала опознаваться. Теперь форма — это
+    // «есть согласие И есть отказ», независимо от их номеров и количества.
+    parse_menu(pane).is_some_and(|m| m.is_actionable())
 }
 
 /// Plan prompt (`ExitPlanMode`) в обеих известных редакциях: старой — footer
@@ -659,6 +1110,70 @@ Do you want to make this edit?
  Esc to cancel · Tab to amend · ctrl+e to explain
 ";
 
+    /// Живой кейс 07.09.2026, сессия `main` (проект apistend): разрешение на
+    /// MCP-инструмент, поднятое агентом workflow, и полоса из двух фоновых
+    /// агентов ПОД prompt'ом.
+    ///
+    /// Отличие от [`AGENTS_WIDGET_FIXTURE`] — заголовок полосы. Строки
+    /// `⏺ main` здесь НЕТ: над агентами идёт сама строка режима со счётчиком
+    /// (`⏸ plan mode on · 1 shell · ← 2 agents`). Пока заголовком считалась
+    /// только `⏺`, полоса не срезалась, footer уезжал за окно из четырёх
+    /// хвостовых строк — свечение не горело, авто-апрув молчал.
+    const AGENTS_MODE_HEAD_FIXTURE: &str = "\
+ Tool use · from the \"apistend-research\" workflow
+
+   b24-dev-mcp — Bitrix-Method-Details Tool: (MCP)
+
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and don't ask again for b24-dev-mcp — Bitrix-Method-Details commands
+      in /Users/igorgerasimov/claudeWorkspace/apistend
+   3. No
+
+ Esc to cancel · Tab to amend
+  …/claudeWorkspace/apistend/design-handoff │ 20%: 171k[▓▓░░░░░░░░]663k │ ~$27.70
+  ⏸ plan mode on · 1 shell · ← 2 agents
+
+  ◯ apistend-research  Исследование API Bitrix24/Ozon/WB и точных значений макета
+  ◯ apistend-specs     Проверка доступности машиночитаемых спецификаций Ozon/WB
+";
+
+    /// Строка режима БЕЗ счётчика агентов — обычный статус-бар. Срезать его
+    /// нельзя: иначе за виджет принимается любой низ экрана, и процитированный
+    /// в diff'е prompt снова становится «нижним».
+    const MODE_LINE_NO_AGENTS_FIXTURE: &str = "\
+   ❯ 1. Yes
+     2. No
+   Esc to cancel
+ diff --git a/src/x.rs b/src/x.rs
+ +  ❯ 1. Yes
+ +  2. No
+────────────────────────────────────────────────────────────────────────────────
+❯ расскажи про это
+────────────────────────────────────────────────────────────────────────────────
+  ~/project │ main
+  ⏵⏵ auto mode on (shift+tab to cycle)
+";
+
+    /// Полоса агентов под prompt'ом со СТРОКОЙ РЕЖИМА вместо `⏺ main`
+    /// срезается, и footer снова попадает в окно гейта.
+    #[test]
+    fn the_agents_strip_is_trimmed_when_the_mode_line_heads_it() {
+        assert!(
+            prompt_at_bottom(AGENTS_MODE_HEAD_FIXTURE),
+            "полоса агентов workflow с заголовком-строкой режима должна срезаться"
+        );
+        assert!(detect_claude_prompt(AGENTS_MODE_HEAD_FIXTURE));
+    }
+
+    /// Строка режима без счётчика агентов заголовком не считается: низ экрана
+    /// не срезается, и цитата prompt'а из diff'а не принимается за активную.
+    #[test]
+    fn a_mode_line_without_agents_is_not_a_widget_head() {
+        assert!(!prompt_at_bottom(MODE_LINE_NO_AGENTS_FIXTURE));
+        assert!(!detect_claude_prompt(MODE_LINE_NO_AGENTS_FIXTURE));
+    }
+
     #[test]
     fn detects_full_prompt() {
         assert!(detect_claude_prompt(PROMPT_FIXTURE));
@@ -711,18 +1226,86 @@ Do you want to proceed?
         assert!(detect_claude_prompt(&pane));
     }
 
-    /// Строки НИЖЕ prompt'а (виджет фоновых агентов, который Claude Code
-    /// рисует под областью ввода) уводят footer за окно из четырёх хвостовых
-    /// строк — гейт перестаёт признавать prompt нижним. Тест фиксирует
-    /// известную границу: если такая раскладка встретится живьём, авто-апрув
-    /// и свечение по ней не сработают, и лечится это расширением гейта, а не
-    /// правкой классификатора. TODO-виджет из этой границы уже вынут — см.
-    /// [`bottom_gate_ignores_todo_widget_below_prompt`]; агентские `⏺`/`◯`
-    /// намеренно оставлены (см. [`TODO_ITEM_MARKERS`]).
+    /// Живой кейс: полоса фоновых агентов под prompt'ом. Claude Code рисует
+    /// её ПОД областью ввода всё время, пока живы backgrounded-агенты, и она
+    /// уводила footer за окно из четырёх хвостовых строк — авто-апрув молчал
+    /// и свечение не загоралось. Срезается [`agents_widget_start`].
     #[test]
-    fn bottom_gate_stops_at_widgets_below_prompt() {
-        let pane = format!("{PROMPT_FIXTURE}⏺ main\n◯ run-phase Фаза 1\n◯ e2e-writer тесты\n◯ security-audit\n");
+    fn bottom_gate_ignores_agents_widget_below_prompt() {
+        let pane = format!(
+            "{PROMPT_FIXTURE}⏺ main\n◯ run-phase Фаза 1\n◯ e2e-writer тесты\n◯ security-audit\n"
+        );
+        assert!(prompt_at_bottom(&pane));
+        assert!(detect_claude_prompt(&pane));
+    }
+
+    /// Полная раскладка сессии `213` (`aira`): под prompt'ом остаются ДВЕ
+    /// строки статус-бара плюс двухстрочная полоса агентов — footer уезжал
+    /// на пятую позицию снизу. Именно этот кейс и не подтверждался.
+    #[test]
+    fn bottom_gate_ignores_agents_widget_under_status_bar() {
+        let pane = "\
+Bash command · from the general-purpose agent
+  cd ~/claudeWorkspace/aira && grep -n '\\.vk\\b' Sources/Crm/*.swift
+Do you want to proceed?
+❯ 1. Yes
+  2. No
+ Esc to cancel · Tab to amend · ctrl+e to explain
+  …/claudeWorkspace/airo │ feat/aira-native-backend ✗ │ 28%: 242k
+  ⏵⏵ auto mode on · 5 shells · ← 2 agents
+
+  ⏺ main
+  ◯ run-phase (+6)  Delegating CrmRecurrenceRules   3h 41m · ↓ 718.3k tokens
+";
+        assert!(prompt_at_bottom(pane));
+        assert!(detect_claude_prompt(pane));
+    }
+
+    /// Полоса и TODO-виджет одновременно: срез итеративный, граница едет
+    /// вверх через оба блока (см. [`trim_bottom_widgets`]).
+    #[test]
+    fn bottom_gate_ignores_todo_widget_and_agents_widget_together() {
+        let pane = format!(
+            "{PROMPT_FIXTURE}\
+  2 tasks (0 done, 1 in progress, 1 open)
+  ◼ Починить гейт
+  ◻ Прогнать тесты
+  ⏺ main
+  ◯ run-phase Фаза 17
+"
+        );
+        assert!(prompt_at_bottom(&pane));
+    }
+
+    /// Одинокая строка `⏺ …` внизу — обычное сообщение ассистента, а не
+    /// полоса агентов. Срезать её нельзя: выше на экране может висеть УЖЕ
+    /// ОТВЕЧЕННЫЙ prompt, и срез принял бы его за активный.
+    #[test]
+    fn agents_widget_needs_rows_under_head() {
+        let pane = format!(
+            "{PROMPT_FIXTURE}\n\n⏺ Готово, тесты зелёные\n⏺ Ещё сообщение\n⏺ И ещё\n⏺ И ещё одно\n"
+        );
         assert!(!prompt_at_bottom(&pane));
+    }
+
+    /// Процитированный prompt: под ним поле ввода, статус-бар и полоса
+    /// агентов. Полоса срезается, но открывшийся низ — статус-бар, а не
+    /// footer, поэтому гейт по-прежнему отвечает `false`.
+    #[test]
+    fn agents_widget_trim_keeps_quoted_prompt_protection() {
+        let pane = "\
+Do you want to proceed?
+❯ 1. Yes
+  2. No
+ Esc to cancel · Tab to amend · ctrl+e to explain
+───────────────────────────────────────────────
+❯ покажи фикстуру
+───────────────────────────────────────────────
+  ~/proj │ master ✗ │ ⏵⏵ auto mode on · ← 2 agents
+  ⏺ main
+  ◯ run-phase Фаза 1
+";
+        assert!(!prompt_at_bottom(pane));
     }
 
     /// Живой кейс: plan-prompt редакции 2.1.x. Footer'а `Enter to select ·
@@ -955,7 +1538,9 @@ Claude in Chrome wants to navigate
         // Только первый маркер — false.
         assert!(!detect_claude_prompt("❯ 1. Yes\nsome other text"));
         // Первый + второй, без третьего — false.
-        assert!(!detect_claude_prompt("❯ 1. Yes\n2. Yes, and don't ask again"));
+        assert!(!detect_claude_prompt(
+            "❯ 1. Yes\n2. Yes, and don't ask again"
+        ));
         // Второй + третий, без первого — false.
         assert!(!detect_claude_prompt("2. Yes, and don't ask\n3. No"));
         // Первый + третий, без второго — false.
@@ -1397,7 +1982,11 @@ Claude in Chrome wants to navigate
                 "session {name}: detected=false везде → флаг должен быть false (got true)"
             );
         }
-        assert_eq!(out.len(), 3, "все сессии должны присутствовать в результате");
+        assert_eq!(
+            out.len(),
+            3,
+            "все сессии должны присутствовать в результате"
+        );
     }
 
     /// Дополнительный кейс: 3 detached-сессии в одной группе, все detected
@@ -1445,7 +2034,10 @@ Claude in Chrome wants to navigate
         let h2 = hash_pane("hello world");
         let h3 = hash_pane("hello world!");
         assert_eq!(h1, h2, "одинаковый ввод → одинаковый hash");
-        assert_ne!(h1, h3, "разный ввод → разный hash (DefaultHasher достаточен)");
+        assert_ne!(
+            h1, h3,
+            "разный ввод → разный hash (DefaultHasher достаточен)"
+        );
     }
 
     // ===========================================================================
@@ -1461,12 +2053,7 @@ Claude in Chrome wants to navigate
     /// уникальным и воспроизводимым (нужно для tie-break по id в
     /// `pick_primary_gen`). `changed` — сырой сигнал от `update_generation`
     /// (prev != current).
-    fn mk_gen(
-        name: &str,
-        attached: u32,
-        group: Option<&str>,
-        changed: bool,
-    ) -> GenSnapshot {
+    fn mk_gen(name: &str, attached: u32, group: Option<&str>, changed: bool) -> GenSnapshot {
         GenSnapshot {
             name: name.to_string(),
             id: format!("${}", name),
@@ -1604,117 +2191,42 @@ Claude in Chrome wants to navigate
     }
 }
 
-/// Фоновый watcher-loop: каждые 1500мс обходит ВСЕ tmux-сессии,
-/// захватывает их панели через [`crate::tmux::capture_pane`] и обновляет
-/// `attention` соответствующим флагом.
-///
-/// ### Параметры
-///
-/// Принимает только `attention` — состояние, в которое пишутся флаги. Раньше
-/// watcher фильтровал сессии по `tmux_prefix` активного проекта, но в рамках
-/// фичи cross-project sessions visibility этот фильтр снят: фронтенду нужны
-/// флаги для всех сессий, чтобы корректно подсвечивать вкладки в любом
-/// проекте (а также orphan-сессии без проекта).
-///
-/// ### Устойчивость
-///
-/// - Сбой `tmux::list_sessions` или `tmux::capture_pane` не валит loop:
-///   используется `unwrap_or_default`. Это правильное поведение, т.к. tmux-
-///   сервер может отсутствовать (нет сессий — пустой вектор) и сессия может
-///   исчезнуть между `list` и `capture` (`capture_pane` сама вернёт
-///   `Ok(String::new())`).
-/// - Loop никогда не завершается штатно — он жив до завершения процесса.
-///
-/// ### Запуск
-///
-/// Стартуется через `tokio::spawn(watcher_loop(attention))` из `main.rs`.
-pub async fn watcher_loop(attention: Arc<AttentionState>) {
+/// Refresh all-session attention and journal-derived activity every 1500ms.
+/// The prompt observer inventories all windows/panes once, deduplicates shared
+/// physical pane captures, and aggregates waiting permissions/questions. A
+/// failed read preserves only that pane's known signal; normal answered output
+/// clears it. Copy mode is unknown and cannot create attention from history.
+/// This pass is independent of the autoapproval toggle and statistics config.
+/// Existing linked-primary selection and explicit-only Echo idle are retained.
+/// Session-inventory failure preserves the previous coherent state until the
+/// next successful tick; deleted sessions are pruned after successful listing.
+pub async fn watcher_loop(attention: Arc<AttentionState>, agents: crate::agents::AgentStatsStore) {
     use std::time::Duration;
+    let mut observer = AgentActivityObserver::new(crate::agents::store::now_ms());
+    let mut prompt_observer = prompts::Observer::default();
 
     loop {
         tokio::time::sleep(Duration::from_millis(1500)).await;
 
-        let sessions = crate::tmux::list_sessions().await.unwrap_or_default();
+        let sessions = match crate::tmux::list_sessions().await {
+            Ok(sessions) => sessions,
+            Err(error) => {
+                tracing::debug!(%error,"attention session inventory unavailable");
+                continue;
+            }
+        };
 
-        // Шаг 1: собрать состояние всех сессий (имя, attached, id, hash, detected).
-        // Параллельно собираем `gens` — снапшоты сырого сигнала `is_generating`,
-        // которые после цикла пройдут через `deduplicate_generating` (linked-
-        // сессии и одинаковый pane должны давать общий флаг).
-        let mut collected: Vec<SessionAttention> = Vec::with_capacity(sessions.len());
+        // Terminal capture is used only by the existing orange prompt detector.
+        // Journal activity is projected after the independent prompt pass.
+        let collected = prompt_observer.collect(&sessions, &attention.snapshot().await).await;
         let mut gens: Vec<GenSnapshot> = Vec::with_capacity(sessions.len());
         for s in sessions.iter() {
-            // Prompt может висеть в ФОНОВОМ окне сессии (пользователь смотрит
-            // соседнее), поэтому обходим все Claude-панели, как auto_approve.
-            // `capture_pane` остаётся fallback'ом, когда Claude-панели не
-            // опознаны по имени процесса.
-            let claude_panes = crate::tmux::list_claude_pane_targets(&s.name)
-                .await
-                .unwrap_or_default();
-            let mut detected = false;
-            let mut pane = String::new();
-            if claude_panes.is_empty() {
-                pane = crate::tmux::capture_pane(&s.name).await.unwrap_or_default();
-                detected = detect_claude_prompt(&pane);
-            } else {
-                for pt in claude_panes.iter() {
-                    let p = crate::tmux::capture_pane_target(&s.name, &pt.target)
-                        .await
-                        .unwrap_or_default();
-                    if detect_claude_prompt(&p) {
-                        detected = true;
-                        pane = p;
-                        break;
-                    }
-                    if pane.is_empty() {
-                        pane = p;
-                    }
-                }
-            }
-            let pane_hash = hash_pane(&pane);
-
-            // Generation-detector: захват последних 50 строк pane (включая
-            // scrollback) и сравнение хэша с предыдущим тиком. Если
-            // содержимое менялось — Claude/процесс что-то рисует.
-            //
-            // Отдельный capture с lines=50 (а не переиспользование `pane`)
-            // выбран сознательно: `capture_pane` хэширует **видимую**
-            // часть (без scrollback) ради дедупа prompt-детектора, а здесь
-            // нужны именно последние 50 строк истории — иначе быстрый
-            // ввод/вывод, выходящий за пределы экрана, мог бы пропуститься.
-            //
-            // `update_generation` возвращает «сырой» сигнал `changed = prev !=
-            // current` и НЕ пишет финальный флаг — финал решается в дедуп-фазе
-            // ниже через `deduplicate_generating` + `set_generating`.
-            let pane50 = crate::tmux::capture_pane_full(&s.name, 50)
-                .await
-                .unwrap_or_default();
-            let gen_hash = hash_pane(&pane50);
-            let changed = attention.update_generation(&s.name, gen_hash).await;
-
-            tracing::debug!(
-                session = %s.name,
-                group = ?s.session_group,
-                pane_hash,
-                detected,
-                pane_len = pane.len(),
-                gen_hash,
-                changed,
-                "attention check"
-            );
-
-            collected.push(SessionAttention {
-                name: s.name.clone(),
-                id: s.id.clone(),
-                attached: s.attached,
-                session_group: s.session_group.clone(),
-                detected,
-            });
             gens.push(GenSnapshot {
                 name: s.name.clone(),
                 id: s.id.clone(),
                 attached: s.attached,
                 session_group: s.session_group.clone(),
-                changed,
+                changed: false,
             });
         }
 
@@ -1724,10 +2236,7 @@ pub async fn watcher_loop(attention: Arc<AttentionState>) {
             attention.set(&name, flag).await;
         }
 
-        // Обновляем множество просматриваемых (attached>0) сессий ДО записи
-        // is_generating: set_generating подавляет постановку idle-метки для
-        // attached-сессий (см. его docstring) — чтобы переключение/просмотр
-        // сессий не зажигали голубое свечение «следующего шага».
+        // Viewing a session suppresses Echo idle even after a real task end.
         {
             use std::collections::HashSet;
             let attached_names: HashSet<String> = sessions
@@ -1738,14 +2247,14 @@ pub async fn watcher_loop(attention: Arc<AttentionState>) {
             attention.update_attached(&attached_names).await;
         }
 
-        // Шаг 2b: дедупликация is_generating. Свёртка сырых `changed`-сигналов
-        // по двум осям группировки (gen_hash + session_group), затем запись
-        // финального флага во всех сессиях — в т.ч. явный `false` для тех,
-        // кто не получил primary (сбрасывает индикатор при стабилизации).
-        let final_gens = deduplicate_generating(&gens);
-        for (name, flag) in final_gens {
-            attention.set_generating(&name, flag).await;
-        }
+        let live = agents.snapshot().await;
+        let recent = agents
+            .recent_tasks(crate::agents::store::now_ms() - 24 * 3_600_000)
+            .await;
+        let (activity, busy, finished) = observer.update(&gens, &live, &recent);
+        attention
+            .apply_agent_activity(activity, busy, finished)
+            .await;
 
         // Шаг 3: cleanup карт для исчезнувших сессий. tmux может убить сессию
         // между тиками — без prune карты `last_gen_hash` и `generating` будут
@@ -1761,6 +2270,7 @@ pub async fn watcher_loop(attention: Arc<AttentionState>) {
                 .write()
                 .await
                 .retain(|k, _| live.contains(k.as_str()));
+            #[cfg(test)]
             attention
                 .last_gen_hash
                 .write()
@@ -1814,7 +2324,7 @@ pub async fn watcher_loop(attention: Arc<AttentionState>) {
 /// флага), tmux id (`$0`), attached (число прикреплённых клиентов),
 /// `session_group` (имя tmux session-group — единственная ось группировки
 /// после удаления `pane_hash`) и `detected` (исходный результат
-/// `detect_claude_prompt`).
+/// native interactive prompt detection).
 #[derive(Debug, Clone)]
 struct SessionAttention {
     name: String,
@@ -1828,7 +2338,7 @@ struct SessionAttention {
 /// в одной итерации `watcher_loop`.
 ///
 /// Структурно-парный к `SessionAttention`, но описывает другой сигнал:
-/// «pane менялся за последний тик». Содержит всё, что нужно для выбора
+/// «на панели работает задача агента». Содержит всё для выбора
 /// primary в группе:
 /// - `name` — ключ итогового флага в `AttentionState::generating`;
 /// - `id` — tmux id вида `$0` (используется для tie-break — наибольший id
@@ -1837,8 +2347,7 @@ struct SessionAttention {
 /// - `session_group` — имя tmux session-group (`Some(_)` означает linked-
 ///   сессии, которые меняются одновременно и должны давать общий флаг) —
 ///   единственная ось группировки после удаления `gen_hash`;
-/// - `changed` — «сырой» сигнал от `AttentionState::update_generation`:
-///   `prev != current` хэш pane. Это исходное состояние ДО дедупа, которое
+/// - `changed` — исходное наличие работающей задачи ДО дедупа, которое
 ///   `deduplicate_generating` свернёт по группам (linked-сессии должны
 ///   подсветиться только в primary, иначе индикатор горит во всех вкладках
 ///   одной группы).
@@ -1851,11 +2360,152 @@ struct GenSnapshot {
     changed: bool,
 }
 
+/// A completion is news only after this observer actually saw that task work.
+/// Historical replay, quiet waiting and unavailable sources never create idle.
+struct AgentActivityObserver {
+    started_at_ms: i64,
+    seen: HashMap<String, (i64, HashSet<String>)>,
+    finished: HashSet<String>,
+}
+impl AgentActivityObserver {
+    fn new(started_at_ms: i64) -> Self {
+        Self {
+            started_at_ms,
+            seen: HashMap::new(),
+            finished: HashSet::new(),
+        }
+    }
+    fn update(
+        &mut self,
+        sessions: &[GenSnapshot],
+        snapshot: &crate::agents::AgentSnapshot,
+        recent: &[crate::agents::AgentTask],
+    ) -> (
+        HashMap<String, SessionAgentActivity>,
+        HashSet<String>,
+        HashSet<String>,
+    ) {
+        let live_names: HashSet<_> = sessions.iter().map(|s| s.name.clone()).collect();
+        let mut activity: HashMap<String, SessionAgentActivity> = sessions
+            .iter()
+            .map(|s| (s.name.clone(), SessionAgentActivity::default()))
+            .collect();
+        let mut busy = HashSet::new();
+        let mut observed = HashSet::new();
+        let mut per_session: HashMap<
+            String,
+            (HashSet<String>, BTreeSet<crate::agents::AgentProvider>),
+        > = HashMap::new();
+        for task in snapshot
+            .live
+            .iter()
+            .chain(&snapshot.waiting)
+            .chain(&snapshot.unknown)
+        {
+            observed.insert(task.session_id.clone());
+            let names: HashSet<String> = task
+                .bindings
+                .iter()
+                .map(|b| b.tmux_session.clone())
+                .filter(|name| live_names.contains(name))
+                .collect();
+            busy.extend(names.iter().cloned());
+            self.seen
+                .insert(task.session_id.clone(), (task.started_at_ms, names.clone()));
+            if task.state != crate::agents::AgentTaskState::Working {
+                continue;
+            }
+            for name in names {
+                let a = activity.get_mut(&name).expect("known session");
+                a.started_at_ms = Some(
+                    a.started_at_ms
+                        .map_or(task.started_at_ms, |at| at.min(task.started_at_ms)),
+                );
+                let (ids, providers) = per_session.entry(name).or_default();
+                ids.insert(task.id.clone());
+                providers.insert(task.provider);
+            }
+        }
+        for (name, (ids, providers)) in per_session {
+            let a = activity.get_mut(&name).expect("known session");
+            a.working_agent_count = ids.len();
+            a.providers = providers.into_iter().collect();
+            a.is_generating = !ids.is_empty();
+        }
+        let flags: HashMap<_, _> = deduplicate_generating(
+            &sessions
+                .iter()
+                .cloned()
+                .map(|mut s| {
+                    s.changed = activity[&s.name].is_generating;
+                    s
+                })
+                .collect::<Vec<_>>(),
+        )
+        .into_iter()
+        .collect();
+        for (name, a) in &mut activity {
+            if !flags.get(name).copied().unwrap_or(false) {
+                *a = SessionAgentActivity::default();
+            }
+        }
+        // A disappeared unended task was forgotten/expired/offline, not done.
+        let open_sources: HashSet<_> = recent
+            .iter()
+            .filter(|t| t.ended_at_ms.is_none())
+            .map(|t| t.session_id.clone())
+            .collect();
+        let known_sources: HashSet<_> = recent.iter().map(|t| t.session_id.clone()).collect();
+        self.seen.retain(|id, _| {
+            observed.contains(id) || known_sources.contains(id) && !open_sources.contains(id)
+        });
+        let mut ended_names = HashSet::new();
+        for task in recent {
+            let Some(end) = task.ended_at_ms else {
+                continue;
+            };
+            if task.completed.is_none()
+                || end < self.started_at_ms
+                || !self.finished.insert(task.id.clone())
+            {
+                continue;
+            }
+            if let Some((started, names)) = self.seen.get(&task.session_id) {
+                if end >= *started {
+                    ended_names.extend(
+                        names
+                            .iter()
+                            .filter(|name| live_names.contains(*name) && !busy.contains(*name))
+                            .cloned(),
+                    );
+                }
+            }
+        }
+        let finished = deduplicate_generating(
+            &sessions
+                .iter()
+                .cloned()
+                .map(|mut s| {
+                    s.changed = ended_names.contains(&s.name);
+                    s
+                })
+                .collect::<Vec<_>>(),
+        )
+        .into_iter()
+        .filter_map(|(name, flag)| flag.then_some(name))
+        .collect();
+        let recent_ids: HashSet<_> = recent.iter().map(|t| t.id.as_str()).collect();
+        self.finished.retain(|id| recent_ids.contains(id.as_str()));
+        (activity, busy, finished)
+    }
+}
+
 /// Хэширует содержимое панели в стабильный `u64`.
 ///
 /// Использует `std::collections::hash_map::DefaultHasher`: достаточно для
 /// эквивалентности «один и тот же текст → один хэш» в рамках одного процесса.
 /// Криптостойкость не требуется.
+#[cfg(test)]
 fn hash_pane(pane: &str) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
@@ -1935,8 +2585,7 @@ fn deduplicate_attention(items: &[SessionAttention]) -> Vec<(String, bool)> {
     // двух НЕЗАВИСИМЫХ сессий — гасить у одной из них реальный prompt
     // неверно. См. deduplicate_attention doc-комментарий.
     {
-        let mut by_group: std::collections::HashMap<&str, usize> =
-            std::collections::HashMap::new();
+        let mut by_group: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
         for (i, it) in items.iter().enumerate() {
             if let Some(g) = &it.session_group {
                 match by_group.get(g.as_str()) {
@@ -1950,8 +2599,7 @@ fn deduplicate_attention(items: &[SessionAttention]) -> Vec<(String, bool)> {
     }
 
     // Группируем индексы по корню.
-    let mut groups: std::collections::HashMap<usize, Vec<usize>> =
-        std::collections::HashMap::new();
+    let mut groups: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
     for i in 0..n {
         let r = find(&mut parent, i);
         groups.entry(r).or_default().push(i);
@@ -1994,8 +2642,11 @@ fn deduplicate_attention(items: &[SessionAttention]) -> Vec<(String, bool)> {
 /// 3. fallback: лексикографически наибольшее имя среди `detected=true`.
 fn pick_primary(items: &[SessionAttention], members: &[usize]) -> Option<usize> {
     // Кандидаты — только те, у кого detected=true.
-    let mut detected_idx: Vec<usize> =
-        members.iter().copied().filter(|&i| items[i].detected).collect();
+    let mut detected_idx: Vec<usize> = members
+        .iter()
+        .copied()
+        .filter(|&i| items[i].detected)
+        .collect();
     if detected_idx.is_empty() {
         return None;
     }
@@ -2051,8 +2702,11 @@ fn pick_primary(items: &[SessionAttention], members: &[usize]) -> Option<usize> 
 /// дедупликация не должна зажигать индикатор «из ничего».
 fn pick_primary_gen(items: &[GenSnapshot], members: &[usize]) -> Option<usize> {
     // Кандидаты — только те, у кого changed=true.
-    let mut changed_idx: Vec<usize> =
-        members.iter().copied().filter(|&i| items[i].changed).collect();
+    let mut changed_idx: Vec<usize> = members
+        .iter()
+        .copied()
+        .filter(|&i| items[i].changed)
+        .collect();
     if changed_idx.is_empty() {
         return None;
     }
@@ -2149,8 +2803,7 @@ fn deduplicate_generating(items: &[GenSnapshot]) -> Vec<(String, bool)> {
     // — лишь случайное совпадение последних 50 строк двух НЕЗАВИСИМЫХ сессий,
     // и гасить индикатор «генерации» у одной из них неверно.
     {
-        let mut by_group: std::collections::HashMap<&str, usize> =
-            std::collections::HashMap::new();
+        let mut by_group: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
         for (i, it) in items.iter().enumerate() {
             if let Some(g) = &it.session_group {
                 match by_group.get(g.as_str()) {
@@ -2164,8 +2817,7 @@ fn deduplicate_generating(items: &[GenSnapshot]) -> Vec<(String, bool)> {
     }
 
     // Группируем индексы по корню.
-    let mut groups: std::collections::HashMap<usize, Vec<usize>> =
-        std::collections::HashMap::new();
+    let mut groups: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
     for i in 0..n {
         let r = find(&mut parent, i);
         groups.entry(r).or_default().push(i);

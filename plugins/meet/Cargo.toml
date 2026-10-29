@@ -84,7 +84,14 @@ uuid = { version = "1.23", features = ["v4"] }
 # остаётся неотменяемым, и инвариант «openssl в дереве нет» держится
 # построением, а не дисциплиной (разбор — в шапке корневого Cargo.toml).
 # Новых узлов не добавляет: reqwest уже тянут devforge и forge-vk.
-reqwest = { workspace = true }
+#
+# `multipart` нужна облачной расшифровке (Ф14): `POST /audio/transcriptions`
+# принимает файл только формой. Feature ДОБАВЛЯЕТСЯ к объявлению workspace, а
+# не подменяет его: `default-features = false` остаётся неотменяемым, TLS
+# по-прежнему rustls. Новых узлов в дерево не приносит — ровно ту же feature
+# уже включает `forge-vk`, `mime_guess` за ней уже в дереве, и гейты
+# `cargo tree -d` / `cargo tree -i openssl-sys` остаются пустыми.
+reqwest = { workspace = true, features = ["multipart"] }
 
 # Контрольная сумма скачанной модели. Хэши взяты из `x-linked-etag`
 # HuggingFace (у LFS-файлов это SHA-256 содержимого) и сверены с локальной
@@ -114,6 +121,13 @@ forge-cdp = { path = "../forge-cdp" }
 # зависимости не входит, его системная инструкция говорит про переписку из
 # ВКонтакте.
 forge-claude-runner = { path = "../claude-runner" }
+
+# Ядро голосовых сообщений. Ребро направлено СЮДА, а не наоборот: движки
+# whisper.cpp и polza.ai вынесены из этого плагина в общий крейт, потому что та
+# же расшифровка понадобилась голосовым в VK, Telegram и Bitrix. В `forge-meet`
+# на прежних путях остались обратные `pub use` — ни одно место вызова и ни один
+# тест плагина от переезда не изменились.
+forge-voice = { path = "../voice" }
 
 [dev-dependencies]
 # ГЕРМЕТИЧНОСТЬ ОБЯЗАТЕЛЬНА: каждый тест ставит FORGE_MEET_CONFIG_PATH,

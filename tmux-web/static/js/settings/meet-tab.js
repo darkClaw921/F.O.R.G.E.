@@ -50,6 +50,7 @@ export const MEET_GROUPS = [
     { key: 'bot', title: 'Бот во встрече', advanced: false },
     { key: 'transcribe', title: 'Расшифровка', advanced: false },
     { key: 'summary', title: 'Саммари', advanced: false },
+    { key: 'cloud', title: 'Облако polza.ai', advanced: false },
     { key: 'timeouts', title: 'Автовыход', advanced: false },
     { key: 'storage', title: 'Хранилище', advanced: false },
     { key: 'limits', title: 'Параллелизм', advanced: true },
@@ -67,6 +68,8 @@ export const MEET_LABELS = {
     whisper_timeout_secs: 'Таймаут расшифровки, с',
     pertrack_transcription: 'Расшифровывать дорожки по отдельности, где дорожка = человек',
     summary_enabled: 'Считать саммари после расшифровки',
+    claude_enabled: 'Разрешать локальные LLM-запуски (claude -p / kimi -p)',
+    llm_backend: 'Локальный движок саммари (облако — отдельным переключателем)',
     summary_timeout_secs: 'Таймаут саммари, с',
     summary_max_chars: 'Потолок длины транскрипта для саммари, символов',
     alone_timeout_secs: 'Бот остался один, с',
@@ -76,12 +79,307 @@ export const MEET_LABELS = {
     vad_off_db: 'Порог выключения, дБ над шумом',
     vad_confirm_ms: 'Подтверждение речи, мс',
     vad_hangover_ms: 'Пауза внутри реплики, мс',
+    silence_gate_dbfs: 'Порог «записана тишина», dBFS (пик тише — встреча признаётся пустой)',
     max_concurrent_recordings: 'Одновременных записей',
     max_concurrent_summaries: 'Одновременных саммари',
     max_cache_bytes: 'Дисковый бюджет записей, байт (0 — не подрезать)',
     retention_days: 'Хранить дней (0 — вечно)',
     retention_min_keep: 'Последних записей не удалять никогда',
+    stt_backend: 'Где расшифровывать',
+    summary_backend: 'Где считать саммари',
+    cloud_stt_model: 'Облачная модель расшифровки',
+    cloud_stt_window_secs: 'Окно нарезки аудио для облака, с',
+    cloud_summary_model: 'Облачная модель саммари',
+    cloud_base_url: 'Адрес API',
+    polza_api_key: 'Ключ API (показывается маской; пустое поле убирает ключ)',
 };
+
+/** Подписи переключателей стадий. */
+export const BACKEND_LABELS = {
+    cloud: 'в облаке (polza.ai)',
+    local: 'локально',
+};
+
+/**
+ * Коды нехватки — словами. Те же коды, что у `deps::blocker_hint` в бэкенде;
+ * здесь они превращаются в причину ОТКАТА у переключателя стадии.
+ */
+export const BLOCKER_LABELS = {
+    cloud_not_configured: 'ключ API не задан',
+    whisper_unavailable: 'whisper не найден',
+    model_unavailable: 'модели whisper нет на диске',
+    metal_unavailable: 'нет GPU (Metal)',
+    ffmpeg_unavailable: 'нет ffmpeg',
+    claude_cli_unavailable: 'Claude CLI не найден',
+};
+
+/**
+ * Символ маски ключа.
+ *
+ * Тот же, что `crate::cloud::MASK_CHAR` в бэкенде. Здесь он нужен ровно затем,
+ * чтобы НЕ ОТПРАВИТЬ МАСКУ ОБРАТНО: `GET` отдаёт ключ только маской, и форма,
+ * которая вернёт её в `PUT`, получит 400 (бэкенд узнаёт свою маску и
+ * отказывается принимать её за ключ) либо, не будь той проверки, затёрла бы
+ * настоящий ключ строкой из точек.
+ */
+export const KEY_MASK_CHAR = '•';
+
+/**
+ * Что означает выбранная стадия ПРЯМО СЕЙЧАС, с учётом окружения.
+ *
+ * Отдельная чистая функция, потому что это единственное место, где «облако» и
+ * «локально» превращаются в проверяемое обещание: облако без ключа и локальная
+ * расшифровка без Metal одинаково НЕ ЗАПУСТЯТСЯ, и узнать об этом человек
+ * обязан у переключателя, а не из упавшей встречи через час.
+ *
+ * @param {string} key — `stt_backend` | `summary_backend`
+ * @param {string} value — `cloud` | `local`
+ * @param {{cloud?: object, deps?: object, config?: object}} ctx — блоки ответа
+ *        `/api/meet/status`
+ * @returns {{tone: 'ok'|'warn', text: string}}
+ */
+export function backendNote(key, value, ctx) {
+    const c = ctx || {};
+    const cloud = c.cloud || {};
+    const deps = c.deps || {};
+    const cfg = c.config || {};
+    const stage = key === 'stt_backend' ? 'Расшифровка' : 'Саммари';
+
+    // ОТКАТ ГЕЙТА — ПЕРВЫМ ДЕЛОМ.
+    //
+    // Заказанный путь может быть нерабочим, и тогда бэкенд не отказывает, а
+    // считает вторым (`deps::choose_route`, инцидент `forge-0s0l5`). Человек
+    // обязан увидеть подмену здесь: молча она хуже честного отказа — он будет
+    // думать, что платит за облако, пока считает локальный whisper.
+    const isStt = key === 'stt_backend';
+    const chosen = isStt ? cfg.stt_backend : cfg.summary_backend;
+    const effective = isStt ? cfg.stt_effective : cfg.summary_effective;
+    const why = isStt ? cfg.stt_fallback_reason : cfg.summary_fallback_reason;
+    if (why && chosen === value && effective && effective !== value) {
+        return {
+            tone: 'warn',
+            text: `${stage} ЗАКАЗАНА ${BACKEND_LABELS[value] || value}, а считается `
+                + `${BACKEND_LABELS[effective] || effective}: ${BLOCKER_LABELS[why] || why}. `
+                + 'Либо почините заказанный путь, либо переключите стадию явно.',
+        };
+    }
+
+    if (value === 'cloud') {
+        if (cloud.configured !== true) {
+            return {
+                tone: 'warn',
+                text: `${stage} в облаке НЕ ЗАПУСТИТСЯ: ключ API не задан. `
+                    + 'Впишите его в разделе «Облако polza.ai» ниже.',
+            };
+        }
+        if (cloud.error) {
+            return {
+                tone: 'warn',
+                text: `${stage} в облаке: polza.ai не ответил `
+                    + `(${cloud.error.message || cloud.error.code || 'причина неизвестна'}). `
+                    + 'Пока сервис недоступен, стадия будет падать.',
+            };
+        }
+        const left = cloud.key && cloud.key.limit_remaining;
+        if (typeof left === 'number' && left <= 0) {
+            return {
+                tone: 'warn',
+                text: `${stage} в облаке: лимит ключа исчерпан (остаток ${left}). `
+                    + 'Пополните лимит либо переключите стадию на локальный расчёт.',
+            };
+        }
+        const model = key === 'stt_backend' ? cloud.stt_model : cloud.summary_model;
+        return {
+            tone: 'ok',
+            text: `${stage} считается в облаке polza.ai${model ? `, модель ${model}` : ''}. `
+                + 'GPU для неё не нужен, но каждая встреча стоит денег.',
+        };
+    }
+
+    if (key === 'stt_backend') {
+        if (deps.gpu_metal !== true) {
+            return {
+                tone: 'warn',
+                text: 'Локальная расшифровка НЕ ЗАПУСТИТСЯ: правило проекта разрешает локальные '
+                    + 'модели только на GPU (Metal), а его здесь нет. Оставьте облако.',
+            };
+        }
+        if (deps.whisper && deps.whisper.found === false) {
+            return {
+                tone: 'warn',
+                text: 'Локальная расшифровка НЕ ЗАПУСТИТСЯ: whisper не найден. '
+                    + 'brew install whisper-cpp либо оставьте облако.',
+            };
+        }
+        return {
+            tone: 'ok',
+            text: 'Расшифровка идёт на этой машине: звук никуда не уезжает, '
+                + 'и пословные метки времени есть только здесь.',
+        };
+    }
+
+    return {
+        tone: 'ok',
+        text: 'Саммари считает локальный Claude CLI: транскрипт не уходит в polza.ai.',
+    };
+}
+
+/**
+ * Сумма в рублях. Валюта у polza.ai одна, и подписывать её обязательно: «461»
+ * без знака читается как доллары.
+ */
+export function formatRub(n) {
+    const v = Number(n);
+    if (!Number.isFinite(v)) return '—';
+    // Копеечные цены за минуту (0,048 ₽) при двух знаках превратились бы в
+    // «0,05 ₽» и стёрли бы разницу втрое между моделями расшифровки.
+    const digits = Math.abs(v) > 0 && Math.abs(v) < 1 ? 3 : 2;
+    return `${v.toFixed(digits).replace('.', ',')} ₽`;
+}
+
+/**
+ * Цена модели человеческой строкой.
+ *
+ * **Отсутствие цены — это «цену не отдали», а НЕ «бесплатно».** Наивный разбор
+ * каталога читает `pricing` верхнего уровня, где у всех записей пусто, и молча
+ * показывает ноль; узнают об этом по счёту в конце месяца. Здесь цена приходит
+ * готовой из `top_provider.pricing` (разбирает бэкенд), а пустое значение
+ * называет себя вслух.
+ */
+export function modelPrice(m) {
+    const p = (m && m.pricing) || null;
+    if (!p) return 'цена не указана';
+    if (p.stt_per_minute !== null && p.stt_per_minute !== undefined) {
+        return `${formatRub(p.stt_per_minute)}/мин`;
+    }
+    const parts = [];
+    if (p.prompt_per_million !== null && p.prompt_per_million !== undefined) {
+        parts.push(`${formatRub(p.prompt_per_million)}/млн вход`);
+    }
+    if (p.completion_per_million !== null && p.completion_per_million !== undefined) {
+        parts.push(`${formatRub(p.completion_per_million)}/млн выход`);
+    }
+    return parts.length ? parts.join(' · ') : 'цена не указана';
+}
+
+/** Подпись строки каталога: имя, цена и метка непригодности. */
+export function modelOptionLabel(m) {
+    const price = modelPrice(m);
+    const broken = m && m.timestamps === false ? ' — БЕЗ ТАЙМКОДОВ' : '';
+    return `${(m && m.id) || ''} — ${price}${broken}`;
+}
+
+/**
+ * Пригодность облачной модели расшифровки.
+ *
+ * Ограничение сервиса, а не наше: таймкоды даёт ОДНА модель. Флаг `timestamps`
+ * приезжает с бэкенда (`crate::cloud::stt_gives_timestamps`), чтобы имя
+ * пригодной модели не появилось во фронте третьей копией.
+ */
+export function sttModelNote(m) {
+    if (!m) {
+        return {
+            tone: 'warn',
+            text: 'Такой модели нет в каталоге polza.ai: расшифровка в облаке упадёт на первой же '
+                + 'встрече. Выберите модель из списка.',
+        };
+    }
+    if (m.timestamps === false) {
+        return {
+            tone: 'warn',
+            text: `${m.id} НЕ ДАЁТ ТАЙМКОДОВ ВООБЩЕ. Она дешевле и быстрее, но расшифровку нечем `
+                + 'положить на таймлайн, и атрибуция спикеров сломается целиком: реплики достанутся '
+                + 'не тем людям. Пригодна только модель, помеченная таймкодами.',
+        };
+    }
+    return {
+        tone: 'ok',
+        text: `${m.id}: таймкоды посегментные. Пословных в облаке не даёт ни одна модель, поэтому `
+            + 'сегмент с низкой уверенностью помечается как наложение, а не режется по границе слова.',
+    };
+}
+
+/** Токенов во входе и выходе саммари часовой встречи — для оценки стоимости. */
+export const HOUR_PROMPT_TOKENS = 30_000;
+export const HOUR_COMPLETION_TOKENS = 2_000;
+
+/**
+ * Во что обойдётся саммари часовой встречи выбранной моделью, рублей.
+ *
+ * `null` — цены нет, и выдумывать её нельзя: «бесплатно» здесь было бы враньём.
+ */
+export function summaryCostEstimate(m) {
+    const p = (m && m.pricing) || null;
+    if (!p) return null;
+    const prompt = Number(p.prompt_per_million);
+    const completion = Number(p.completion_per_million);
+    if (!Number.isFinite(prompt) && !Number.isFinite(completion)) return null;
+    const a = Number.isFinite(prompt) ? (prompt * HOUR_PROMPT_TOKENS) / 1e6 : 0;
+    const b = Number.isFinite(completion) ? (completion * HOUR_COMPLETION_TOKENS) / 1e6 : 0;
+    return a + b;
+}
+
+/** Подпись модели саммари: контекст и цена часовой встречи. */
+export function summaryModelNote(m) {
+    if (!m) {
+        return {
+            tone: 'warn',
+            text: 'Такой модели нет в каталоге polza.ai: саммари в облаке не посчитается.',
+        };
+    }
+    const cost = summaryCostEstimate(m);
+    const ctx = Number(m.context_length);
+    const parts = [];
+    if (Number.isFinite(ctx) && ctx > 0) {
+        parts.push(`Контекст ${ctx.toLocaleString('ru-RU')} токенов`);
+        if (ctx < HOUR_PROMPT_TOKENS) {
+            return {
+                tone: 'warn',
+                text: `${m.id}: контекст ${ctx} токенов меньше часовой встречи (≈ ${HOUR_PROMPT_TOKENS} `
+                    + 'токенов) — транскрипт придётся обрезать, и саммари потеряет середину.',
+            };
+        }
+    }
+    parts.push(cost === null
+        ? 'цена не указана — сколько будет стоить саммари, сервис не сказал'
+        : `саммари часовой встречи обойдётся примерно в ${formatRub(cost)}`);
+    return { tone: 'ok', text: `${m.id}. ${parts.join('; ')}.` };
+}
+
+/**
+ * Остаток средств и лимита ключа одной строкой.
+ *
+ * @param {?object} dto — тело `GET /api/meet/cloud/balance`
+ * @returns {{tone: 'ok'|'warn'|'wait', text: string}}
+ */
+export function balanceLine(dto) {
+    if (!dto) return { tone: 'wait', text: 'Остаток: спрашиваем…' };
+    if (dto.configured !== true) {
+        return { tone: 'warn', text: 'Остаток неизвестен: ключ API не задан.' };
+    }
+    if (dto.error) {
+        return {
+            tone: 'warn',
+            text: `Остаток узнать не удалось: ${dto.error.message || dto.error.code}.`,
+        };
+    }
+    const parts = [];
+    const b = dto.balance;
+    if (b) {
+        parts.push(`Остаток: ${formatRub(b.amount)} (потрачено ${formatRub(b.spent)})`);
+    }
+    const k = dto.key;
+    let tone = 'ok';
+    if (k && k.limit_remaining !== null && k.limit_remaining !== undefined) {
+        const reset = { daily: 'сброс ежедневно', monthly: 'сброс ежемесячно' }[k.limit_reset]
+            || (k.limit_reset ? `сброс: ${k.limit_reset}` : 'период сброса неизвестен');
+        const of = (k.limit === null || k.limit === undefined) ? '' : ` из ${formatRub(k.limit)}`;
+        parts.push(`Лимит ключа: ${formatRub(k.limit_remaining)}${of}, ${reset}`);
+        if (Number(k.limit_remaining) <= 0) tone = 'warn';
+    }
+    if (parts.length === 0) return { tone: 'warn', text: 'Остаток неизвестен: сервис ничего не сказал.' };
+    return { tone, text: `${parts.join('. ')}.` };
+}
 
 /** Подписи режимов окна. */
 export const WINDOW_MODE_LABELS = {
@@ -186,11 +484,16 @@ export async function buildMeetSettings(host, deps) {
     let config = null;
     let status = null;
     let models = null;
+    let catalogue = null;
     try {
-        [config, status, models] = await Promise.all([
+        [config, status, models, catalogue] = await Promise.all([
             api.getMeetConfig(),
             api.getMeetStatus ? api.getMeetStatus() : null,
             api.getModels ? api.getModels() : null,
+            // КАТАЛОГ ОБЛАКА — ЧЕРЕЗ `catch`, а не в общей связке отказа: это
+            // поход нашего сервера в ЧУЖОЙ сервис, и молчащий polza.ai не имеет
+            // права оставить человека без формы, в которой чинится ключ.
+            api.getCloudModels ? api.getCloudModels().catch(() => null) : null,
         ]);
     } catch (e) {
         // Форму с умолчаниями НЕ показываем: «Сохранить» затёрло бы реальный
@@ -265,6 +568,17 @@ export async function buildMeetSettings(host, deps) {
     }
 
     // --- 3. Настройки по разделам -------------------------------------------
+    //
+    // Контекст переключателей стадий: облако и окружение приезжают из
+    // `/api/meet/status`, и подсказка у переключателя считается по ним.
+    refs.ctx = {
+        cloud: (status && status.cloud) || null,
+        deps: (status && status.deps) || null,
+        // Решения гейта: чем стадия посчитается ФАКТИЧЕСКИ и почему это не то,
+        // что заказано.
+        config: (status && status.config) || null,
+    };
+    refs.catalogue = catalogue;
     const byGroup = new Map();
     for (const f of (config.fields || [])) {
         if (!byGroup.has(f.group)) byGroup.set(f.group, []);
@@ -283,6 +597,7 @@ export async function buildMeetSettings(host, deps) {
                 'Для продвинутых: значения подбираются на живых записях, наугад менять не стоит.'));
         }
         for (const f of fields) fs.appendChild(buildField(f, refs));
+        if (group.key === 'cloud') buildCloudBlock(fs, api, refs);
         host.appendChild(fs);
     }
 
@@ -442,6 +757,59 @@ function buildProfileBlock(profile, api, refs) {
     return fs;
 }
 
+/**
+ * Хвост раздела «Облако»: остаток средств и состояние каталога моделей.
+ *
+ * # Почему баланс приезжает ОТДЕЛЬНЫМ запросом и позже формы
+ *
+ * Потому что это второй поход в чужой сервис. В `GET /api/meet/status` его
+ * намеренно нет: статус гейтит панель плагина, и подвисший polza.ai выключил
+ * бы встречи целиком. Здесь тот же принцип на уровне вкладки: форма уже
+ * нарисована и работает, а строка остатка дозаполняется, когда ответ придёт.
+ * Отказ — строчка, а не сломанная вкладка.
+ */
+function buildCloudBlock(fs, api, refs) {
+    const cat = refs.catalogue;
+    if (cat && cat.error) {
+        statusLine(fs, {
+            tone: 'warn',
+            text: `Каталог моделей не приехал: ${cat.error.message || cat.error.code}. `
+                + 'Модели остаются полями ввода — имя придётся вписать руками.',
+        });
+    } else if (cat && cat.configured === false) {
+        statusLine(fs, {
+            tone: 'warn',
+            text: 'Каталог моделей не запрашивался: ключ API не задан. '
+                + 'Впишите ключ и откройте вкладку заново.',
+        });
+    } else if (cat && Number.isFinite(cat.total)) {
+        fs.appendChild(el('div', 'notify-hint',
+            `Каталог polza.ai: ${cat.total} моделей, из них пригодных для расшифровки `
+            + `${(cat.stt || []).length} и для саммари ${(cat.chat || []).length}.`));
+    }
+
+    const line = statusLine(fs, balanceLine(null));
+    line.dataset.meetAct = 'balance';
+    refs.balance = line;
+    const paint = (info) => {
+        line.textContent = info.text;
+        line.className = info.tone === 'warn' ? 'notify-error' : 'notify-hint';
+        line.dataset.meetTone = info.tone;
+    };
+    if (typeof api.getCloudBalance !== 'function') {
+        paint({ tone: 'wait', text: 'Остаток: неизвестен.' });
+        return;
+    }
+    // ОТДЕЛЬНЫЙ ПРОМИС С `catch`: этим запросом вкладку уронить нельзя.
+    refs.balancePromise = (async () => {
+        try {
+            paint(balanceLine(await api.getCloudBalance()));
+        } catch (e) {
+            paint({ tone: 'warn', text: `Остаток узнать не удалось: ${errText(e)}` });
+        }
+    })();
+}
+
 /** Строка модели: имя, вес, состояние, кнопка скачать/удалить. */
 function buildModelRow(m, models, api, refs) {
     const li = el('li', 'meet-model');
@@ -485,14 +853,71 @@ function buildModelRow(m, models, api, refs) {
     return li;
 }
 
+/**
+ * Список моделей каталога для поля — либо `null`, если списка нет.
+ *
+ * Стадии смотрят в РАЗНЫЕ списки: расшифровка в `stt`, саммари в `chat`.
+ * Смешанный список предлагал бы выбрать генератор картинок саммаризатором.
+ */
+export function cloudCatalogueFor(key, catalogue) {
+    if (!catalogue || catalogue.error) return null;
+    const list = key === 'cloud_stt_model' ? catalogue.stt
+        : key === 'cloud_summary_model' ? catalogue.chat
+            : null;
+    return Array.isArray(list) && list.length ? list : null;
+}
+
 /** Одно поле настроек. */
 function buildField(f, refs) {
     const wrap = el('div', 'meet-field');
     wrap.dataset.meetField = f.key;
     const label = MEET_LABELS[f.key] || f.key;
 
+    // КАТАЛОГ ОБЛАКА ПРЕВРАЩАЕТ ПОЛЕ ВВОДА В СПИСОК. Имя модели, набранное
+    // руками, проверяется только на живой встрече: опечатка стоит часа записи.
+    const cloudList = cloudCatalogueFor(f.key, refs.catalogue);
     let input;
-    if (f.kind === 'bool') {
+    if (cloudList) {
+        const row = el('label', null);
+        row.appendChild(document.createTextNode(`${label} `));
+        input = document.createElement('select');
+        const known = cloudList.some((m) => m.id === f.value);
+        if (!known) {
+            // Модель из конфига, которой в каталоге нет, обязана остаться
+            // видимой: иначе открытие вкладки МОЛЧА переключило бы стадию на
+            // чужую модель первым же сохранением.
+            const opt = document.createElement('option');
+            opt.value = String(f.value === undefined || f.value === null ? '' : f.value);
+            opt.textContent = `${opt.value} — нет в каталоге polza.ai`;
+            opt.selected = true;
+            input.appendChild(opt);
+        }
+        for (const m of cloudList) {
+            const opt = document.createElement('option');
+            opt.value = m.id;
+            opt.textContent = modelOptionLabel(m);
+            if (m.id === f.value) opt.selected = true;
+            input.appendChild(opt);
+        }
+        input.value = String(f.value === undefined || f.value === null ? '' : f.value);
+        row.appendChild(input);
+        wrap.appendChild(row);
+
+        const note = el('div', 'notify-hint', '');
+        note.dataset.meetModelNote = f.key;
+        const paint = () => {
+            const picked = cloudList.find((m) => m.id === String(input.value)) || null;
+            const n = f.key === 'cloud_stt_model' ? sttModelNote(picked) : summaryModelNote(picked);
+            note.textContent = n.text;
+            note.className = n.tone === 'warn' ? 'notify-error' : 'notify-hint';
+            note.dataset.meetTone = n.tone;
+        };
+        paint();
+        input.addEventListener('change', paint);
+        wrap.appendChild(note);
+        refs.modelNotes = refs.modelNotes || new Map();
+        refs.modelNotes.set(f.key, note);
+    } else if (f.kind === 'bool') {
         const row = el('label', 'modal-check notify-check');
         input = document.createElement('input');
         input.type = 'checkbox';
@@ -507,7 +932,7 @@ function buildField(f, refs) {
         for (const c of f.choices || []) {
             const opt = document.createElement('option');
             opt.value = c;
-            opt.textContent = WINDOW_MODE_LABELS[c] || c;
+            opt.textContent = WINDOW_MODE_LABELS[c] || BACKEND_LABELS[c] || c;
             if (c === f.value) opt.selected = true;
             input.appendChild(opt);
         }
@@ -518,7 +943,12 @@ function buildField(f, refs) {
         const row = el('label', null);
         row.appendChild(document.createTextNode(`${label} `));
         input = document.createElement('input');
-        input.type = f.kind === 'text' ? 'text' : 'number';
+        // СЕКРЕТ — ТЕКСТОВОЕ ПОЛЕ, А НЕ ЧИСЛОВОЕ: сервер присылает МАСКУ
+        // (`pza_RIcg••••…`), и числовой ввод показал бы её пустой строкой. Тип
+        // `password` здесь не нужен и вреден: показывать нечего — значение уже
+        // замаскировано на сервере, а точки поверх точек прятали бы от
+        // человека, какой именно ключ настроен.
+        input.type = f.kind === 'text' || f.kind === 'secret' ? 'text' : 'number';
         if (f.min !== null && f.min !== undefined) input.min = String(f.min);
         if (f.max !== null && f.max !== undefined) input.max = String(f.max);
         if (f.kind === 'float') input.step = '0.5';
@@ -529,6 +959,36 @@ function buildField(f, refs) {
 
     input.dataset.meetKey = f.key;
     input.dataset.meetKind = f.kind;
+
+    // ПЕРЕКЛЮЧАТЕЛЬ СТАДИИ ОБЪЯСНЯЕТ СЕБЯ НА МЕСТЕ и обновляется по выбору, а
+    // не после сохранения: облако без ключа и локальный расчёт без Metal не
+    // работают одинаково молча.
+    if (f.key === 'stt_backend' || f.key === 'summary_backend') {
+        input.dataset.meetBackend = f.key === 'stt_backend' ? 'stt' : 'summary';
+        const note = el('div', 'notify-hint', '');
+        note.dataset.meetBackendNote = input.dataset.meetBackend;
+        const paint = () => {
+            const n = backendNote(f.key, String(input.value), refs.ctx);
+            note.textContent = n.text;
+            note.className = n.tone === 'warn' ? 'notify-error' : 'notify-hint';
+            note.dataset.meetTone = n.tone;
+        };
+        paint();
+        input.addEventListener('change', paint);
+        wrap.appendChild(note);
+        refs.backendNotes = refs.backendNotes || new Map();
+        refs.backendNotes.set(f.key, note);
+    }
+
+    // КЛЮЧ ПОКАЗАН МАСКОЙ, И ОБ ЭТОМ СКАЗАНО. Иначе строка из точек читается
+    // как «поле заполнено чем-то непонятным», и человек стирает её на всякий
+    // случай — то есть выключает облако, сам того не желая.
+    if (f.kind === 'secret') {
+        wrap.appendChild(el('div', 'notify-hint',
+            'Показана только маска — полный ключ не покидает сервер. Не трогайте поле, '
+            + 'чтобы оставить ключ прежним; впишите новый, чтобы заменить; очистите, '
+            + 'чтобы убрать ключ и выключить облако.'));
+    }
     // ЗНАЧЕНИЕ ИЗ ОКРУЖЕНИЯ — ТОЛЬКО ДЛЯ ЧТЕНИЯ: переменная сильнее файла, и
     // редактируемое поле означало бы «сохранил, а работает старое».
     if (f.env_locked === true) {
@@ -556,6 +1016,13 @@ function collect(refs) {
         else value = String(input.value);
         if (typeof value === 'number' && !Number.isFinite(value)) continue;
         if (value === f.value) continue;
+        // МАСКА НАЗАД НЕ УХОДИТ. Значение секрета, в котором есть символ маски,
+        // — это то, что нарисовал сервер, а не то, что ввёл человек: отправка
+        // такого значения даёт 400 (бэкенд узнаёт свою маску), а до появления
+        // той проверки затирала бы настоящий ключ строкой из точек. Сравнения
+        // `value === f.value` выше недостаточно: правка соседнего символа в
+        // маске оставила бы её маской.
+        if (f.kind === 'secret' && String(value).includes(KEY_MASK_CHAR)) continue;
         out[f.key] = value;
     }
     return out;

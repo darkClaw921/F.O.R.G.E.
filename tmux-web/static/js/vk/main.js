@@ -849,8 +849,53 @@ export function buildHandlers() {
         // Приём (Ф7): кадр несёт ИНДЕКС вложения — без него прогресс второго
         // фото сообщения прилетел бы в карточку первого.
         download_progress: (evt) => vkMedia.onDownloadProgress(evt),
+
+        // --- расшифровка голосовых (ГС-Ф3) ---
+        // Кадры уходят в DOM-событие, а не в конкретный модуль, и это не
+        // лень: текст под голосовым рисует ОБЩИЙ для трёх мессенджеров модуль
+        // (ГС-Ф5), который подключается К панели, а не встраивается в её
+        // main.js. Событие — единственная развязка, которая не заставит
+        // править этот файл второй раз, когда модуль появится.
+        //
+        // Адресация — тройка (dialog_id, message_id, index): сервер вещает
+        // кадры БЕЗ фильтрации по вкладке, и подписчик обязан сам понять, его
+        // ли это карточка.
+        voice_transcribe_started: (evt) => emitVoiceFrame('started', evt),
+        voice_transcribe_delta: (evt) => emitVoiceFrame('delta', evt),
+        voice_transcribe_done: (evt) => emitVoiceFrame('done', evt),
+        voice_transcribe_error: (evt) => emitVoiceFrame('error', evt),
     };
     return local.handlers;
+}
+
+/**
+ * Имя DOM-события, которым панель отдаёт кадры расшифровки наружу.
+ *
+ * Одно на все четыре кадра: вид кадра лежит в `detail.phase`. Четыре разных
+ * события заставили бы подписчика вешать четыре слушателя и снимать четыре.
+ *
+ * Объявлено в `js/vk/media.js` — там же, где карточка, которая на него
+ * подписывается: этот файл импортирует media.js, и обратный импорт замкнул бы
+ * цикл. Здесь имя только переэкспортируется, чтобы прежние импорты из main.js
+ * продолжали работать.
+ */
+export const VOICE_FRAME_EVENT = vkMedia.VOICE_FRAME_EVENT;
+
+/** Перекладывает кадр расшифровки в DOM-событие панели. */
+function emitVoiceFrame(phase, evt) {
+    if (!evt) return;
+    document.dispatchEvent(
+        new CustomEvent(VOICE_FRAME_EVENT, {
+            detail: {
+                phase,
+                plugin: 'vk',
+                dialogId: String(evt.dialog_id ?? ''),
+                messageId: String(evt.message_id ?? ''),
+                index: Number(evt.index ?? 0),
+                frame: evt,
+            },
+        }),
+    );
 }
 
 /**

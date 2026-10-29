@@ -1,0 +1,3 @@
+# SourceState::refresh_session_ids
+
+Rebuilds per-source identity metadata after a successful source replacement/read, retention pruning or v3 cache load. Distinct AgentSessionId references are collected before encoding, so repeated historical events do not repeatedly serialize the same provider/profile/native tuple. session_ids includes event owners and parent references for open-root polling; event_session_ids includes actual owners only for availability reconciliation. The owner cache is transient serde-skipped state and never changes the v3 persisted representation. Call whenever the source events vector changes; unchanged metadata ticks reuse both sets. This preserves last-good contributions and healthy duplicate-source precedence.

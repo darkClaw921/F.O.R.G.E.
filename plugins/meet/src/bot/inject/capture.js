@@ -241,6 +241,27 @@
     }
   }
 
+  /**
+   * `msid` потока — идентификатор, которым SDP называет ВЛАДЕЛЬЦА дорожки.
+   *
+   * У LiveKit (vcc.airlabs.pro, измерено живьём) он имеет вид
+   * `PA_<sid участника>|TR_<sid дорожки>`, и левая половина одинакова у всех
+   * дорожек одного человека. Это единственная ось, на которой связь
+   * «дорожка ↔ человек» разрешается БЕЗ корреляции по времени: корреляция
+   * ошибается на перебивающихся репликах, а `msid` — факт протокола.
+   *
+   * Пустая строка и `undefined` равносильны отсутствию: площадки, не
+   * раскрывающие поток, — рядовой случай, и на них ось просто не работает.
+   */
+  function streamMsid(stream) {
+    if (!stream) { return null; }
+    var id = null;
+    try { id = stream.id; } catch (e) { return null; }
+    if (typeof id !== "string") { return null; }
+    id = id.trim();
+    return id === "" ? null : id;
+  }
+
   // --- жизненный цикл треков ------------------------------------------------
 
   /**
@@ -263,6 +284,7 @@
     if (state.localIds[track.id]) {
       return;
     }
+    var msid = streamMsid(stream);
     var known = state.tracks[track.id];
     if (known) {
       // Тот же источник из другого тапа. Дорожка одна; поднимаем только
@@ -270,6 +292,20 @@
       if (!known.ended && PATH_RANK[path] > PATH_RANK[known.path]) {
         known.path = path;
         notePath(path);
+      }
+      // РЕНЕГОТИАЦИЯ УТОЧНЯЕТ `msid`, но дорожку заново не заводит. У SFU
+      // дорожка приезжает дважды: сперва в общем потоке-заглушке, потом — в
+      // своём, где `msid` уже называет владельца. Завести её второй раз
+      // нельзя (звук уже пишется в `raw/track-N.wav` под своим номером), а
+      // молча потерять уточнение — значит остаться без самой надёжной
+      // ступени привязки трека к человеку.
+      //
+      // Повтор ТОГО ЖЕ значения уточнением не считается: событий `track` от
+      // SFU много, и на каждое шло бы по сообщению ни о чём.
+      if (msid && msid !== known.msid) {
+        var was = known.msid;
+        known.msid = msid;
+        emit("track_msid", { t: known.id, idx: known.idx, m: msid, was: was });
       }
       return;
     }
@@ -295,11 +331,19 @@
       startOffsetMs: axisMs(),
       path: path,
       ended: false,
-      node: null
+      node: null,
+      msid: msid
     };
     state.tracks[track.id] = entry;
     notePath(path);
-    emit("track_added", { t: track.id, idx: idx, off: entry.startOffsetMs, p: path });
+    // `msid` уезжает ВМЕСТЕ с появлением дорожки, а не отдельным событием:
+    // разбор журнала заводит дорожку по ПЕРВОМУ упоминанию, и связь, приехав
+    // следом, досталась бы уже заведённой записи. Поля просто нет, когда
+    // площадка потока не раскрыла, — выдуманный `msid` хуже отсутствующего,
+    // потому что ложная ось привязки назначает имя молча и уверенно.
+    var added = { t: track.id, idx: idx, off: entry.startOffsetMs, p: path };
+    if (msid) { added.m = msid; }
+    emit("track_added", added);
 
     var ms = stream && stream.getAudioTracks ? stream : new MediaStream([track]);
     entry.sink = keepAlive(ms);

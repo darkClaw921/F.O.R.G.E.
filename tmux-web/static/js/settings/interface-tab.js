@@ -12,6 +12,9 @@
 //   auto_approve_broad       — bool (checkbox), default false
 //   auto_approve_questions   — bool (checkbox), default TRUE
 //   auto_approve_blocklist   — string[] (textarea, по строке), default []
+//   claude_llm_enabled       — bool (checkbox), default false
+//   claude_llm_backend       — string (select claude|kimi), default "claude";
+//                              облако — env-трио FORGE_LLM_CLOUD_* (приоритет)
 //
 // ВАЖНО про дефолты: все фичи-тумблеры выключены при нулевой конфигурации,
 // поэтому их чекбоксы инициализируются строго `=== true`. Идиома `!== false`
@@ -257,6 +260,57 @@ export function buildInterfaceForm(settings, onSaved) {
     blockWrap.appendChild(blocklist);
     fs.appendChild(blockWrap);
 
+    // LLM-эскалация блоклиста — единственное место tmux-web, которое само
+    // спавнит `claude -p`. Запуски Claude CLI в проекте по умолчанию
+    // выключены глобально: без этого тумблера (или переменной
+    // FORGE_CLAUDE_RUNNER_ENABLED=1) блоклист-совпадения остаются человеку.
+    const llmWrap = document.createElement('label');
+    llmWrap.className = 'modal-check notify-check';
+    const llm = document.createElement('input');
+    llm.type = 'checkbox';
+    llm.className = 'claude-llm-enabled';
+    // Дефолт — выключено (см. шапку файла): инициализация строго `=== true`.
+    llm.checked = s.claude_llm_enabled === true;
+    llm.title =
+        'Разрешить авто-апруву спрашивать Claude CLI (claude -p), можно ли ' +
+        'подтвердить команду из стоп-листа. Запуски Claude CLI по умолчанию ' +
+        'выключены и расходуют токены; без включения совпадения по блоклисту ' +
+        'всегда остаются вам. Для всех запусков разом есть переменная ' +
+        'FORGE_CLAUDE_RUNNER_ENABLED=1.';
+    llmWrap.appendChild(llm);
+    llmWrap.appendChild(
+        document.createTextNode(' LLM-эскалация блоклиста (claude -p / kimi -p)'),
+    );
+    fs.appendChild(llmWrap);
+
+    // Движок вердикта: claude (дефолт) или kimi. Облако выбирается не здесь,
+    // а env-трио FORGE_LLM_CLOUD_* — заданный ключ облака побеждает этот
+    // выбор (см. VerdictBackend::resolve на бэке).
+    const llmBackendRow = document.createElement('div');
+    llmBackendRow.className = 'notify-field';
+    const llmBackendLabel = document.createElement('label');
+    llmBackendLabel.textContent = 'Движок вердикта';
+    const llmBackend = document.createElement('select');
+    llmBackend.className = 'claude-llm-backend';
+    for (const [value, text] of [
+        ['claude', 'Claude CLI (claude -p)'],
+        ['kimi', 'Kimi CLI (kimi --print)'],
+    ]) {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = text;
+        llmBackend.appendChild(opt);
+    }
+    llmBackend.value = s.claude_llm_backend === 'kimi' ? 'kimi' : 'claude';
+    llmBackend.title =
+        'Какой локальный CLI спрашивает вердикт для команд из стоп-листа. ' +
+        'Облачный провайдер включается переменными FORGE_LLM_CLOUD_BASE_URL, ' +
+        'FORGE_LLM_CLOUD_API_KEY и FORGE_LLM_CLOUD_MODEL — заданный ключ ' +
+        'облака имеет приоритет над этим выбором.';
+    llmBackendRow.appendChild(llmBackendLabel);
+    llmBackendRow.appendChild(llmBackend);
+    fs.appendChild(llmBackendRow);
+
     // Зависимые контролы неактивны, пока выключен главный тумблер: они не
     // имеют самостоятельного смысла и включённый вид вводил бы в заблуждение.
     const syncAutoApprove = () => {
@@ -264,9 +318,11 @@ export function buildInterfaceForm(settings, onSaved) {
         broad.disabled = !on;
         questions.disabled = !on;
         blocklist.disabled = !on;
+        llm.disabled = !on;
         broadWrap.style.opacity = on ? '' : '0.5';
         qWrap.style.opacity = on ? '' : '0.5';
         blockWrap.style.opacity = on ? '' : '0.5';
+        llmWrap.style.opacity = on ? '' : '0.5';
     };
     ap.addEventListener('change', syncAutoApprove);
     syncAutoApprove();
@@ -303,6 +359,8 @@ export function buildInterfaceForm(settings, onSaved) {
             auto_approve_enabled: !!ap.checked,
             auto_approve_broad: !!broad.checked,
             auto_approve_questions: !!questions.checked,
+            claude_llm_enabled: !!llm.checked,
+            claude_llm_backend: llmBackend.value,
             // Полная замена списка (backend не мержит) — пустые строки
             // отбрасываем здесь, санитайзер на бэке делает то же самое.
             auto_approve_blocklist: blocklist.value

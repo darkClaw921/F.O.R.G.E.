@@ -10,6 +10,29 @@
 //! <cache_dir>/media/avatars/<user_id>.avatar.meta.json            ← метаданные
 //! ```
 //!
+//! С Ф6 `<cache_dir>` — это каталог ОДНОГО портала
+//! (`~/.forge/bitrix-cache/<portal>/`), а не общий корень: `dialog_id` и
+//! `message_id` у разных порталов совпадают сплошь и рядом, и до разведения по
+//! подкаталогам два портала честно перетирали вложения друг друга. Модуль об
+//! этом не знает — он по-прежнему строит путь от `cfg.cache_dir`, а
+//! пер-портальным его делает [`crate::config::BitrixConfig::for_portal`].
+//!
+//! # Дисковый бюджет считается НА ПОРТАЛ
+//!
+//! `max_cache_bytes` — общая настройка (она в корне `bitrix.toml`), но
+//! применяется к каждому порталу ОТДЕЛЬНО: [`sweep_once`] берёт
+//! [`total_bytes`] своего `cache_dir`, то есть свой подкаталог. Решение
+//! осознанное. Общий бюджет на сумму означал бы, что активный портал вытесняет
+//! вложения тихого — вплоть до того, что вкладка, которой неделю не
+//! пользовались, скачивает каждый файл заново, хотя её собственный кэш
+//! крошечный. Подчистка обязана оставаться свойством ВКЛАДКИ, а не гонкой
+//! между ними. Цена решения названа прямо: фактический потолок на диске —
+//! `max_cache_bytes × число порталов`, и при трёх порталах дефолт стоит
+//! уменьшить.
+//!
+//! Подчистка при этом НЕ привязана к подключению: скачанные медиа переживают
+//! logout, поэтому свой воркер-подметальщик есть и у отключённой вкладки.
+//!
 //! `<dialog>` — КАНОНИЧЕСКАЯ форма идентификатора диалога Bitrix24: `chat27`,
 //! `sg12` или голое число личного диалога (`19`). Каталог `avatars`
 //! столкнуться с ней не может по построению: имя диалога либо состоит из одних
@@ -753,7 +776,10 @@ struct Entry {
     bin: PathBuf,
     /// Сайдкар меты (может отсутствовать — тогда запись битая и уйдёт первой).
     meta: PathBuf,
-    /// Суммарный вес пары.
+    /// Сайдкар посчитанной огибающей (есть только у аудио, см.
+    /// [`forge_voice::waveform::SIDECAR_SUFFIX`]).
+    wave: PathBuf,
+    /// Суммарный вес записи со всеми сайдкарами.
     bytes: u64,
     /// Время последнего использования (приближённо).
     mtime: SystemTime,
@@ -833,17 +859,29 @@ pub async fn sweep_once(cfg: &BitrixConfig, protected: &HashSet<String>) -> Swee
                 continue;
             }
             let Some(stem) = name.strip_suffix(".bin") else {
-                continue; // .meta.json учитывается вместе со своим .bin
+                continue; // .meta.json и .wave.json учитываются со своим .bin
             };
             let meta = dir.join(format!("{stem}.meta.json"));
             let meta_len = tokio::fs::metadata(&meta)
                 .await
                 .map(|m| m.len())
                 .unwrap_or(0);
+            // Огибающая ходит за байтами: считаться она может только по ним, и
+            // пережить их не должна — иначе после подчистки в каталоге
+            // остались бы вечные сироты, которые никто уже не удалит.
+            let wave = dir.join(format!(
+                "{stem}{}",
+                forge_voice::waveform::SIDECAR_SUFFIX
+            ));
+            let wave_len = tokio::fs::metadata(&wave)
+                .await
+                .map(|m| m.len())
+                .unwrap_or(0);
             entries.push(Entry {
                 bin: entry.path(),
                 meta,
-                bytes: md.len() + meta_len,
+                wave,
+                bytes: md.len() + meta_len + wave_len,
                 mtime: md.modified().unwrap_or(UNIX_EPOCH),
                 id: format!("{dir_name}/{stem}"),
             });
@@ -869,6 +907,7 @@ pub async fn sweep_once(cfg: &BitrixConfig, protected: &HashSet<String>) -> Swee
             continue;
         }
         let _ = tokio::fs::remove_file(&e.meta).await;
+        let _ = tokio::fs::remove_file(&e.wave).await;
         stats.removed += 1;
         stats.freed += e.bytes;
         stats.total_after = stats.total_after.saturating_sub(e.bytes);

@@ -17,8 +17,9 @@
  *              <link rel=apple-touch-icon>, <link rel=stylesheet href=/css/pwa.css>;
  *            - сохранить vapidPublicKey в window.__FORGE_PWA (для push.js, Фаза 5);
  *            - import('./register.js') → registerServiceWorker();
- *            - хук для Фазы 5: ленивый импорт install.js/push.js/mobile.js и
- *              разбор location.search (?tab=/?view=/?share-target=).
+ *            - хук для Фазы 5: ленивый импорт install.js/push.js/mobile.js.
+ *   2) Разбор location.search (?tab=/?view=/?share-target=) идёт В ОБЕИХ
+ *      ветках: диплинк — обычная ссылка, а не функция PWA.
  *
  * Без enabled НИКАКИХ побочных эффектов на разметку — поведение страницы как
  * без PWA (строгий opt-in, ценой одного кадра задержки theme-color).
@@ -47,6 +48,14 @@ const CACHE_PREFIX = 'forge-';
     }
 
     const enabled = !!(cfg && cfg.enabled === true);
+
+    // Диплинки (?tab=/?view=/?share-target=) к PWA отношения не имеют: это
+    // обычные ссылки, которыми открывают экран в новой вкладке браузера — в
+    // частности, кнопка «Открыть в новой вкладке» на вкладке «Аналитика».
+    // Пока разбор стоял внутри enabled-ветки, такая ссылка молча открывала
+    // терминал, если сервер запущен без --pwa (то есть почти всегда).
+    // Не await: ожидание готовности UI не должно задерживать снятие SW ниже.
+    handleLaunchParams();
 
     if (!enabled) {
         await disablePwa();
@@ -77,10 +86,8 @@ const CACHE_PREFIX = 'forge-';
     loadPush();
     loadMobile();
 
-    // Разбор shortcuts / share-target из location.search. Выполняется после
-    // готовности основного UI (ожидание appReady) — иначе switchTab/
-    // showDailySummary вызовутся до инициализации main.js и упадут.
-    handleLaunchParams();
+    // Launch-параметры разобраны выше — до развилки enabled, потому что они
+    // работают и без PWA.
 })();
 
 // ──────────────────────── Фаза 5: ленивые модули ──────────────────────
@@ -154,7 +161,8 @@ function whenAppReady(timeoutMs = 8000) {
 /**
  * Разбирает launch-параметры из manifest shortcuts / share_target:
  *   • ?tab=tasks|echo|git|docker|telescope|terminal → switchTab(name)
- *   • ?view=daily-summary                           → showDailySummary()
+ *   • ?view=daily-summary | analytics               → showDailySummary() /
+ *                                                     showAnalytics()
  *   • ?share-target=1 (+ title/text/url)            → вставить в Echo-композер
  * Никакого backend-роута: share_target в manifest — метод GET, обработка чисто
  * клиентская (csrf не задействован). Делается ПОСЛЕ готовности UI.
@@ -183,8 +191,8 @@ async function handleLaunchParams() {
     try {
         if (isShare) {
             await routeShareTarget(params);
-        } else if (view === 'daily-summary') {
-            await routeView(view);
+        } else if (view) {
+            await routeView(view, params.get('analyticsMode'));
         } else if (tab) {
             await routeTab(tab);
         }
@@ -204,11 +212,22 @@ async function routeTab(name) {
     if (mod && typeof mod.switchTab === 'function') mod.switchTab(name);
 }
 
-/** Открывает представление по ?view= (сейчас — только daily-summary). */
-async function routeView(view) {
-    if (view !== 'daily-summary') return;
-    const mod = await import('../daily-summary/daily-summary.js');
-    if (mod && typeof mod.showDailySummary === 'function') mod.showDailySummary();
+/**
+ * Открывает представление по `?view=`.
+ *
+ * Белый список, а не «любое имя модуля»: значение приходит из адресной строки,
+ * и динамический импорт по нему был бы дырой в статике.
+ */
+async function routeView(view, analyticsMode) {
+    if (view === 'daily-summary') {
+        const mod = await import('../daily-summary/daily-summary.js');
+        if (mod && typeof mod.showDailySummary === 'function') mod.showDailySummary();
+        return;
+    }
+    if (view === 'analytics') {
+        const mod = await import('../analytics/analytics.js');
+        if (mod && typeof mod.showAnalytics === 'function') mod.showAnalytics(undefined, analyticsMode === 'claude' ? 'claude' : 'agents');
+    }
 }
 
 /**

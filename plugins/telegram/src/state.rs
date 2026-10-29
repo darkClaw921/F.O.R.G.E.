@@ -50,8 +50,30 @@
 //! пересеваются целиком: списки диалогов приходят страницами (основной
 //! список, архив, папки), и полная замена стирала бы знание о чатах из
 //! соседних страниц — то есть возвращала бы исходный дефект.
+//!
+//! ## Промах кэша флагов: [`TelegramState::flags_probed`]
+//!
+//! Дополнение страницами оставляет дыру: чат, замьюченный ТОЧЕЧНО и не
+//! попавший ни в одну загруженную страницу, кэшу неизвестен, и потребитель
+//! вынужден брать дефолт категории — то есть считать его звенящим. Закрывает
+//! дыру ленивый резолв ([`crate::updates::probe_dialog_flags`]): один
+//! `messages.getPeerDialogs` на диалог. Чтобы этот резолв не повторялся на
+//! каждом сообщении из чата, который Telegram нам отдавать отказывается,
+//! попытка «застолбляется» в [`TelegramState::flags_probed`] — не более
+//! одного RPC на диалог за сессию.
+//!
+//! ## Зачем [`TelegramState::dialog_kinds`]
+//!
+//! Категория уведомлений («личные»/«группы»/«каналы») по одному лишь
+//! `PeerId` не выводится: мегагруппа и broadcast-канал — оба
+//! `PeerKind::Channel`. Пока категорию угадывали по тегу id, мегагруппа с
+//! УНАСЛЕДОВАННЫМИ настройками получала дефолт каналов: у пользователя
+//! заглушены «все группы», а чат звенел. Настоящий `kind` известен там, где
+//! есть данные чата (листинг диалогов, ответ `messages.getPeerDialogs`), —
+//! оттуда он и запоминается.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -193,6 +215,38 @@ pub struct TelegramState {
     /// Хранится множество «в архиве», а не флаг на каждый диалог: архив —
     /// меньшинство, а знать надо ровно про него.
     pub archived_ids: RwLock<HashSet<i64>>,
+    /// Папки аккаунта (dialog filters), если мы их уже спрашивали.
+    ///
+    /// Нужны АВТОРАЗБОРУ голосовых: белый список Telegram задаётся папками, а
+    /// принадлежность чата папке из одного его id не выводится — правила
+    /// папки читают и вид чата, и mute, и непрочитанное
+    /// ([`dto::dialog_in_folder`]).
+    ///
+    /// Кэш живёт до ближайшего `updateDialogFilter*`: правки папок Telegram
+    /// присылает сам, а спрашивать их на каждое входящее голосовое — лишний
+    /// RPC в потоке апдейтов.
+    pub folders: RwLock<Option<Vec<crate::dto::FolderDto>>>,
+    /// Категория диалога (`user` / `group` / `channel`) по [`dialog_key`].
+    ///
+    /// Нужна ровно для выбора глобального дефолта уведомлений, когда у
+    /// диалога своих настроек нет (см. блок «Зачем dialog_kinds» в шапке).
+    pub dialog_kinds: RwLock<HashMap<i64, &'static str>>,
+    /// Диалоги, для которых ленивый резолв флагов уже запускался.
+    ///
+    /// Пишется ДО запроса и не снимается при неудаче: цена промаха — лишний
+    /// тост, цена повторов — RPC на каждое входящее сообщение и прямой путь
+    /// к `FLOOD_WAIT` (см. [`TelegramState::claim_flags_probe`]).
+    pub flags_probed: RwLock<HashSet<i64>>,
+    /// Досевался ли уже архив в кэш флагов (один раз на процесс).
+    pub archive_seeded: AtomicBool,
+    /// Спрашивали ли мы у Telegram глобальные дефолты уведомлений.
+    ///
+    /// Стартовое значение [`NotifyDefaults`] («ничего не заглушено») —
+    /// заглушка, а не ответ, и отличать одно от другого обязательно: всё, что
+    /// ЗАПОМИНАЕТ разрешённый `muted` (ленивый резолв, досев архива), считает
+    /// его с наследованием от дефолтов. Записать в кэш значение, посчитанное
+    /// от заглушки, значит закрепить ошибку до конца сессии.
+    pub notify_defaults_loaded: AtomicBool,
     /// Дедуп одновременных скачиваний: ключ медиа → «оповещу, когда готово».
     pub media_inflight: Mutex<HashMap<String, Arc<Notify>>>,
     /// JoinHandle'ы фоновых воркеров — abort'ятся при shutdown.
@@ -228,6 +282,23 @@ pub struct TelegramState {
     /// потолок параллелизма и таблица `run_id → процесс`, по которой работает
     /// отмена. Хаб на запрос не знал бы ни о чём из этого.
     pub analysis: crate::analysis::AnalysisHub,
+    /// Реестр идущих расшифровок голосовых ([`forge_voice::VoiceHub`]).
+    ///
+    /// Создаётся безусловно, как и реестр анализа: отсутствие ffmpeg, весов и
+    /// ключа облака — отказ КОНКРЕТНОГО запроса со своим кодом, а не повод не
+    /// поднять вкладку мессенджера.
+    ///
+    /// Потолки (сколько прогонов разом и сколько ждать один) читаются из
+    /// `voice.toml` ОДИН раз, в конструкторе: менять их на лету значило бы
+    /// бросать уже идущие прогоны. Всё остальное — движок, язык, ключ —
+    /// перечитывается на каждый запрос ([`TelegramState::voice_config`]).
+    pub voice: forge_voice::VoiceHub,
+    /// Ключи, которые АВТОРАЗБОР уже брал в работу (Ф4).
+    ///
+    /// Отдельно от дедупа реестра: тот не пускает второй прогон, пока идёт
+    /// первый, а стор не даёт пересчитывать готовое, — но прогон, уже
+    /// закончившийся ОТКАЗОМ, повторная доставка апдейта запускала бы снова.
+    pub voice_seen: forge_voice::auto::SeenKeys,
 }
 
 impl TelegramState {
@@ -264,12 +335,39 @@ impl TelegramState {
         // run'а идёт под тем же `Mutex`, что и правка заметки из хендлера.
         // Ядро анализа общее на три мессенджера, поэтому конфиг ему передаётся
         // полями, а не типом: `TelegramConfig` крейту не виден по построению.
-        let analysis = crate::analysis::AnalysisHub::new(
+        let (llm_backend, llm_transport, active_cli) = crate::analysis::resolve_transport(
+            config.llm_backend,
             config.claude_cli_path.clone(),
+            config.kimi_cli_path.clone(),
+            forge_claude_runner::CloudTransportCfg {
+                base_url: config.llm_cloud_base_url.clone(),
+                api_key: config.llm_cloud_api_key.clone(),
+                model: config.llm_cloud_model.clone(),
+            },
+        );
+        let analysis = crate::analysis::AnalysisHub::new(
+            active_cli,
             config.analysis_model.clone(),
             config.analysis_timeout_secs,
         )
+        .with_transport(llm_backend, llm_transport, config.claude_cli_path.clone())
+        // Запуски LLM-запросов по умолчанию выключены глобально (см.
+        // forge_claude_runner): либо явный флаг конфига, либо
+        // FORGE_CLAUDE_RUNNER_ENABLED=1 для всех плагинов разом.
+        .with_claude_enabled(config.claude_enabled || forge_claude_runner::env_runs_enabled())
         .with_store(prompts.clone(), config.prompts_path.clone());
+        // Потолки расшифровки — из `voice.toml`, который лежит рядом с файлом
+        // сессии (в бою это `~/.config/forge/`). Битый файл не имеет права
+        // мешать плагину подняться: берём встроенные умолчания, а внятный
+        // отказ `voice_config` выдаст роут при первом нажатии кнопки.
+        let (voice_path, meet_path) = forge_voice::config::paths_next_to(&config.session_path);
+        let voice_cfg =
+            forge_voice::VoiceConfig::load_from(&voice_path, &meet_path).unwrap_or_default();
+        let voice = forge_voice::VoiceHub::new(
+            Arc::new(crate::ws::protocol::TgVoiceSink::new(broadcast.clone())),
+            voice_cfg.max_parallel,
+            voice_cfg.run_timeout(),
+        );
         Arc::new(Self {
             config,
             credentials: RwLock::new(credentials),
@@ -282,6 +380,11 @@ impl TelegramState {
             notify_defaults: RwLock::new(NotifyDefaults::default()),
             notify_overrides: RwLock::new(HashMap::new()),
             archived_ids: RwLock::new(HashSet::new()),
+            folders: RwLock::new(None),
+            dialog_kinds: RwLock::new(HashMap::new()),
+            flags_probed: RwLock::new(HashSet::new()),
+            archive_seeded: AtomicBool::new(false),
+            notify_defaults_loaded: AtomicBool::new(false),
             media_inflight: Mutex::new(HashMap::new()),
             workers: Mutex::new(Vec::new()),
             shutdown: CancellationToken::new(),
@@ -290,7 +393,51 @@ impl TelegramState {
             ws_idle_timeout,
             prompts,
             analysis,
+            voice,
+            voice_seen: forge_voice::auto::SeenKeys::default(),
         })
+    }
+
+    /// Настройки голосовых сообщений — ЧИТАЮТСЯ ЗАНОВО на каждый запрос.
+    ///
+    /// `voice.toml` правят руками ровно тогда, когда что-то не работает:
+    /// вписывают ключ polza.ai, переключают движок. Конфиг, прочитанный один
+    /// раз при старте, означал бы «перезапустите devforge, чтобы настройка
+    /// подействовала». Файл маленький, чтение стоит одного `open`.
+    ///
+    /// Ищется РЯДОМ с файлом сессии — см.
+    /// [`forge_voice::config::paths_next_to`]: в бою это `~/.config/forge/`, а
+    /// в тестах — временный каталог, и изоляция получается без единой
+    /// переменной окружения.
+    ///
+    /// # Errors
+    ///
+    /// [`forge_voice::VoiceError::Config`] — файл не разбирается; в тексте
+    /// назван КОНКРЕТНЫЙ файл (`voice.toml` или `meet.toml`).
+    pub fn voice_config(&self) -> Result<forge_voice::VoiceConfig, forge_voice::VoiceError> {
+        let (voice, meet) = self.voice_paths();
+        forge_voice::VoiceConfig::load_from(&voice, &meet)
+    }
+
+    /// Пути `voice.toml` и `meet.toml`, которыми пользуется этот плагин.
+    ///
+    /// Отдельным методом, потому что их нужно ДВОИМ: чтению настроек и записи
+    /// выбранного движка (`PUT …/voice/settings`). Второе написание
+    /// `paths_next_to` означало бы, что роут пишет не в тот файл, который
+    /// читает состояние, — и заметили бы это только на чужой машине.
+    #[must_use]
+    pub fn voice_paths(&self) -> (std::path::PathBuf, std::path::PathBuf) {
+        forge_voice::config::paths_next_to(&self.config.session_path)
+    }
+
+    /// Стор готовых расшифровок рядом с медиа-кэшем плагина.
+    ///
+    /// Корень — тот же `cache_dir`, что у вложений: расшифровка живёт рядом с
+    /// файлом, который расшифровывали, и чистка кэша по диалогу сносит их
+    /// одним каталогом.
+    #[must_use]
+    pub fn voice_store(&self) -> forge_voice::TranscriptStore {
+        forge_voice::TranscriptStore::new(&self.config.cache_dir)
     }
 
     /// Приёмник кадров анализа для [`crate::analysis::AnalysisHub::start`].
@@ -500,7 +647,14 @@ impl TelegramState {
 
     /// Регистрирует фонового воркера для последующего graceful shutdown.
     pub async fn register_worker(&self, handle: JoinHandle<()>) {
-        self.workers.lock().await.push(handle);
+        let mut guard = self.workers.lock().await;
+        // Отработавшие ручки выбрасываются ЗДЕСЬ, а не при остановке. До Ф4
+        // список пополнялся считаные разы за жизнь процесса (лонгпол, sweeper,
+        // GC загрузок), и расти ему было некуда. Авторазбор голосовых
+        // регистрирует ЗАДАЧУ НА СООБЩЕНИЕ — без подчистки открытая на неделю
+        // панель копила бы по ручке на каждое голосовое аккаунта.
+        guard.retain(|h| !h.is_finished());
+        guard.push(handle);
     }
 
     /// Останавливает всех зарегистрированных воркеров.
@@ -656,6 +810,70 @@ impl TelegramState {
         self.set_archived(dialog_id, archived).await;
     }
 
+    /// Запоминает категорию диалога (`user` / `group` / `channel`).
+    ///
+    /// Неизвестное значение игнорируется: в кэше категорий лучше дыра, чем
+    /// строка, по которой [`NotifyDefaults::for_kind`] молча вернёт `false`.
+    pub async fn set_dialog_kind(&self, dialog_id: i64, kind: &str) {
+        let Some(kind) = dto::kind_static(kind) else {
+            return;
+        };
+        self.dialog_kinds.write().await.insert(dialog_id, kind);
+    }
+
+    /// Категория диалога, если мы её видели. `None` ⇒ «не знаем».
+    pub async fn dialog_kind(&self, dialog_id: i64) -> Option<&'static str> {
+        self.dialog_kinds.read().await.get(&dialog_id).copied()
+    }
+
+    /// Столбит право сходить за флагами диалога в сеть.
+    ///
+    /// `true` ⇒ ленивый резолв запускается впервые и должен быть выполнен;
+    /// `false` ⇒ по этому диалогу попытка уже была (успешная или нет), и
+    /// повторять её нельзя. Запись остаётся навсегда — см. блок «Промах кэша
+    /// флагов» в шапке модуля.
+    pub async fn claim_flags_probe(&self, dialog_id: i64) -> bool {
+        self.flags_probed.write().await.insert(dialog_id)
+    }
+
+    /// Спрашивали ли мы у Telegram глобальные дефолты уведомлений.
+    ///
+    /// `false` ⇒ в [`TelegramState::notify_defaults`] лежит заглушка, и
+    /// запоминать посчитанный по ней `muted` нельзя (см. поле).
+    pub fn notify_defaults_known(&self) -> bool {
+        self.notify_defaults_loaded.load(Ordering::SeqCst)
+    }
+
+    /// Отмечает, что дефолты уведомлений реально прочитаны у Telegram.
+    pub fn mark_notify_defaults_loaded(&self) {
+        self.notify_defaults_loaded.store(true, Ordering::SeqCst);
+    }
+
+    /// Папки аккаунта из кэша; `None` — мы их ещё не спрашивали.
+    pub async fn cached_folders(&self) -> Option<Vec<crate::dto::FolderDto>> {
+        self.folders.read().await.clone()
+    }
+
+    /// Кладёт свежий список папок в кэш.
+    pub async fn set_folders(&self, folders: Vec<crate::dto::FolderDto>) {
+        *self.folders.write().await = Some(folders);
+    }
+
+    /// Забывает папки — их правку прислал `updateDialogFilter*`.
+    pub async fn forget_folders(&self) {
+        *self.folders.write().await = None;
+    }
+
+    /// Столбит право досеять архив (один раз на процесс).
+    ///
+    /// `true` ⇒ досев ещё не делался. Реконнект сам по себе досев не
+    /// повторяет: у флапающего соединения это был бы лишний RPC каждые
+    /// несколько секунд, а изменения архива приезжают апдейтом
+    /// `updateFolderPeers`.
+    pub fn claim_archive_seed(&self) -> bool {
+        !self.archive_seeded.swap(true, Ordering::SeqCst)
+    }
+
     /// Засевает кэши флагов свежим списком диалогов.
     ///
     /// Вызывается роутом `GET /api/telegram/dialogs`: каждый листинг —
@@ -669,6 +887,7 @@ impl TelegramState {
     pub async fn remember_dialogs(&self, dialogs: &[DialogDto]) {
         let mut muted_guard = self.notify_overrides.write().await;
         let mut archived_guard = self.archived_ids.write().await;
+        let mut kinds_guard = self.dialog_kinds.write().await;
         for d in dialogs {
             let Some(key) = dialog_key(&d.id) else {
                 continue;
@@ -678,6 +897,11 @@ impl TelegramState {
                 archived_guard.insert(key);
             } else {
                 archived_guard.remove(&key);
+            }
+            // Листинг — единственный источник, который отличает мегагруппу
+            // от broadcast-канала: у DTO `kind` посчитан по данным чата.
+            if let Some(kind) = dto::kind_static(&d.kind) {
+                kinds_guard.insert(key, kind);
             }
         }
     }

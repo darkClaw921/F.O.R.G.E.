@@ -585,10 +585,33 @@ async fn start_stage(
     let deps = state.deps_snapshot().await;
     let dep_blocker = match stage {
         Ok(Stage::Summarizing) => summary_blocker(state),
-        _ => deps.transcribe_blocker(),
+        // Чего не хватает — зависит от ВЫБРАННОГО пути: облаку не нужны ни
+        // whisper, ни модель на диске, ни Metal, зато нужен ключ.
+        _ => deps.transcribe_blocker_for(state.config.stt_backend, state.config.cloud_configured()),
     };
 
     let meeting = meetings::get(state, meeting_id).await.ok();
+
+    // ПОВТОР ЭТАПА РАЗРЕШАЕТ ДИСК, А НЕ ЯРЛЫК СТАТУСА.
+    //
+    // `can_transition` перечисляет этапы одинаково для всех терминальных
+    // состояний, потому что ярлык не знает, что осталось на диске: отменённая
+    // встреча может нести полный набор файлов (остановка кнопкой, а отмена
+    // после пост-обработки), а `ready` — лишиться их после ретенции. Поэтому
+    // здесь проверяется вход конкретного этапа: саммари нужен транскрипт,
+    // расшифровке и перекодированию — звук.
+    // Только для повтора из `cancelled`: у `ready` и `failed` состав данных
+    // гарантирован построением статуса (провал саммари даёт `ready`, до
+    // `failed` доходят лишь отказы записи и расшифровки), а отмену жмут в
+    // любой момент — и на пустой комнате, и после готовой пост-обработки.
+    if let (Some(row), Ok(st)) = (meeting.as_ref(), stage.as_ref()) {
+        if row.status == MeetStatus::Cancelled {
+            if let Some(missing) = missing_input(row, *st) {
+                return Err(MeetError::DepUnavailable(missing));
+            }
+        }
+    }
+
     check_ladder(Preconditions {
         dep_blocker,
         busy: false,
@@ -607,14 +630,104 @@ async fn start_stage(
     }))
 }
 
+/// Чего не хватает для запрошенного этапа. `None` — вход на месте.
+///
+/// Проверяется ПУТЬ в записи, а не файл на диске. Разница существенна:
+/// вычищенная ретенцией встреча получает статус `pruned`, из которого
+/// переходов нет вовсе, — то есть случай «путь остался, файла нет» закрыт
+/// статусом. А вот отменённая на пустой комнате встреча не имеет пути к
+/// транскрипту вообще, и отказать ей надо здесь, до запуска пайплайна.
+///
+/// `match` БЕЗ ветки `_`: этапов ровно три, и новый (появись он в
+/// [`Stage`]) обязан получить здесь явное решение, а не молча проскочить
+/// проверку входа. Ветка-заглушка тут стоила бы ровно этой гарантии —
+/// компилятор перестал бы напоминать.
+fn missing_input(row: &crate::db::repo::MeetingRow, stage: Stage) -> Option<&'static str> {
+    let exists = |p: &Option<String>| p.as_deref().is_some_and(|path| !path.trim().is_empty());
+    match stage {
+        Stage::Summarizing => {
+            if exists(&row.transcript_path) {
+                None
+            } else {
+                Some("transcript_missing")
+            }
+        }
+        Stage::Transcribing | Stage::Transcoding => {
+            if exists(&row.audio_path) {
+                None
+            } else {
+                Some("audio_missing")
+            }
+        }
+    }
+}
+
 /// Почему саммари сейчас невозможно. `None` — возможно.
 ///
-/// Отдельной пробы Claude CLI нет намеренно: его отсутствие обнаруживается при
-/// запуске и попадает в `summary_status = failed` вместе с хвостом stderr —
-/// то есть человек всё равно узнаёт причину, но не ценой ещё одного
-/// периодического процесса на старте devforge.
+/// Обе стороны проверяются БЕЗ единого процесса и сетевого вызова: у облака —
+/// наличие ключа, у локального пути — наличие файла Claude CLI. Запускать его
+/// ради пробы нельзя (лишний процесс на каждом гейте), а знать, работает ли
+/// сторона, надо: без этого нечем выбрать маршрут.
+///
+/// Отказ наступает, только когда не работает НИ ОДНА сторона: облако без ключа
+/// при живом Claude CLI — это не отказ, а откат на локальный путь (таблица —
+/// в [`crate::deps::choose_route`]).
 fn summary_blocker(state: &Arc<MeetState>) -> Option<&'static str> {
-    (!state.config.summary_enabled).then_some("summary_disabled")
+    crate::deps::plan_summary(
+        state.config.summary_backend,
+        state.config.summary_enabled,
+        state.config.cloud_configured(),
+        &state.config.claude_cli_path,
+        state.config.claude_enabled || forge_claude_runner::env_runs_enabled(),
+    )
+    .err()
+}
+
+/// Тело `POST /api/meet/meetings/:id/source`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AttachSourceRequest {
+    pub plugin: String,
+    pub chat_id: String,
+    pub message_id: i64,
+}
+
+/// `POST /api/meet/meetings/:id/source` — привязать УЖЕ СУЩЕСТВУЮЩУЮ встречу
+/// к сообщению.
+///
+/// ЗАЧЕМ ОТДЕЛЬНЫЙ ВХОД. Связь «встреча ↔ сообщение» до сих пор возникала
+/// ровно в одном месте — при старте записи (`POST /api/meet/meetings` с
+/// тройкой). Если встреча по каким-то причинам стартовала без неё, вернуть
+/// связь было НЕЧЕМ: кнопка у сообщения строится только из этой таблицы,
+/// попап открывается только из кнопки, а повторный клик заводил новую пустую
+/// запись вместо показа готовой. Живой кейс 07.09.2026 — Телемост
+/// f61cfa7a…: расшифровка и саммари на диске, а в ленте «можно записать».
+///
+/// Таблица источников для этого и задумана («одну ссылку кидают в двух
+/// чатах»), поэтому роут только открывает доступ к существующей
+/// `repo::sources::attach`, которая заодно публикует бейдж.
+pub async fn attach_source(
+    State(state): State<Arc<MeetState>>,
+    Path(id): Path<String>,
+    body: axum::body::Bytes,
+) -> Result<Json<StartResponse>, MeetError> {
+    let req: AttachSourceRequest = serde_json::from_slice(&body)
+        .map_err(|e| MeetError::BadRequest(format!("тело не разбирается: {e}")))?;
+    if req.plugin.trim().is_empty() || req.chat_id.trim().is_empty() {
+        return Err(MeetError::BadRequest(
+            "источник задаётся тройкой plugin + chat_id + message_id".to_string(),
+        ));
+    }
+    // Встреча должна существовать: привязка к несуществующей записи оставила
+    // бы в ленте кнопку, которая ведёт в никуда.
+    let row = meetings::get(&state, &id).await?;
+    let key = SourceKey::new(req.plugin, req.chat_id, req.message_id);
+    crate::db::repo::sources::attach(&state, &key, &id).await?;
+    Ok(Json(StartResponse {
+        meeting_id: row.id,
+        attached: true,
+        status: row.status,
+        mode: row.mode,
+    }))
 }
 
 /// `POST /api/meet/meetings/:id/retry?from=` — повтор этапа.

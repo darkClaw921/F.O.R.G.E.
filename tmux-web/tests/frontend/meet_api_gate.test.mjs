@@ -279,8 +279,13 @@ const STATUS_BODY = {
     // самим бэкендом делает meet_contract, здесь — только целостность таблицы.
     // Обновлено в Ф3: `POST /:id/confirm` (ассистированный вход);
     // в Ф5: `POST /deps/recheck`; в Ф6: `POST /:id/summary` (пересчёт саммари);
-    // в Ф8: `DELETE /profile` (сброс постоянного профиля браузера).
-    eq(API.MEET_ROUTES.length, 23, 'в таблице двадцать три роута');
+    // в Ф8: `DELETE /profile` (сброс постоянного профиля браузера);
+    // в Ф16: `GET /cloud/models` и `GET /cloud/balance` (каталог облачных
+    // моделей и остаток средств — ключ остаётся на сервере);
+    // в Ф6: `POST /:id/source` (привязать готовую встречу к сообщению —
+    // без неё кнопка в ленте заводит новую пустую запись вместо показа уже
+    // записанной встречи).
+    eq(API.MEET_ROUTES.length, 26, 'в таблице двадцать шесть роутов');
     const seen = new Set();
     for (const r of API.MEET_ROUTES) {
         const sig = `${r.method} ${r.path}`;
@@ -335,7 +340,7 @@ const STATUS_BODY = {
     API.resetMeetGate();
     eq(API.meetEnabled(), false, 'после сброса плагин снова выключен');
     eq(STORE._debugMeetStore().cached, 0, 'кэш стора очищен');
-    eq(CORE.meetPlatforms().map((p) => p.platform), ['telemost', 'meet', 'zoom', 'teams'], 'реестр платформ вернулся к встроенному');
+    eq(CORE.meetPlatforms().map((p) => p.platform), ['telemost', 'meet', 'zoom', 'teams', 'vcc'], 'реестр платформ вернулся к встроенному');
 }
 
 // ==========================================================================

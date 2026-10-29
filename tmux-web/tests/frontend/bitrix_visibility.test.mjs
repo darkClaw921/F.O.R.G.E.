@@ -230,6 +230,74 @@ const ids = (list) => list.map((d) => d.id);
 }
 
 // ---------------------------------------------------------------------------
+// ПЕР-ПОРТАЛЬНЫЕ НАСТРОЙКИ (Ф7.4) — чистые предикаты
+//
+// Правило чтения одно на три стороны (хост user_settings.rs, плагин
+// forge_voice::prefs, этот модуль): запись портала → пустая карта значит
+// плоские ключи → иначе дефолты. Разъезд любой из трёх означал бы, что панель
+// показывает одно, а авторазбор слушается другого.
+// ---------------------------------------------------------------------------
+
+{
+    // 1. Запись портала выигрывает у плоских ключей.
+    const withMap = {
+        ...settings(true, ['user'], []),
+        bitrix_portal_prefs: {
+            acme: { filter_enabled: true, visible_kinds: ['task'] },
+            beta: { filter_enabled: true, visible_peers: ['chat3'] },
+        },
+    };
+    const acme = V.normalizeFilter(withMap, 'acme');
+    const beta = V.normalizeFilter(withMap, 'beta');
+    eq(ids(V.visibleDialogs(ALL, acme)), ['chat7'], 'портал A: свой белый список по видам');
+    eq(ids(V.visibleDialogs(ALL, beta)), ['chat3'], 'портал B: свой поимённый выбор');
+    // ГЛАВНОЕ обещание фазы: `chat7` у двух порталов — разные чаты.
+    ok(V.dialogIdVisible('chat7', acme, ALL) && !V.dialogIdVisible('chat7', beta, ALL),
+        'настройки портала A не влияют на видимость в портале B');
+
+    // 2. Карта НЕПУСТА, а записи портала нет ⇒ ДЕФОЛТЫ, а не чужой список.
+    const fresh = V.normalizeFilter(withMap, 'gamma');
+    ok(!fresh.enabled && !V.filterActive(fresh), 'портал без записи: фильтра нет');
+    eq(ids(V.visibleDialogs(ALL, fresh)), ids(ALL), 'портал без записи видит всё');
+    ok(V.dialogIdVisible('chat404', fresh, []), 'и незнакомый диалог тоже — фильтра ведь нет');
+
+    // 3. Карта ПУСТА ⇒ плоские ключи (портал-мигрант видит своё прежнее).
+    const flatOnly = settings(true, ['user'], []);
+    eq(ids(V.visibleDialogs(ALL, V.normalizeFilter(flatOnly, 'acme'))), ['19'],
+        'карты нет: любой портал читает плоские ключи');
+    const emptyMap = { ...flatOnly, bitrix_portal_prefs: {} };
+    eq(ids(V.visibleDialogs(ALL, V.normalizeFilter(emptyMap, 'acme'))), ['19'],
+        'пустая карта читается так же, как её отсутствие');
+
+    // 4. Портал НЕ ПЕРЕДАН — поведение ровно как до Ф7: плоские ключи.
+    eq(ids(V.visibleDialogs(ALL, V.normalizeFilter(withMap))), ['19'],
+        'без портала читаются плоские ключи, а не случайная запись карты');
+
+    // 5. Мусор в карте не роняет разбор и не включает фильтр молча.
+    for (const junk of [42, 'нет', [], { acme: 'да' }, { acme: null }]) {
+        const f = V.normalizeFilter({ bitrix_portal_prefs: junk }, 'acme');
+        ok(!V.filterActive(f), `мусор в карте (${JSON.stringify(junk)}) — фильтра нет`);
+    }
+
+    // 6. Скоуп голосовых лежит в той же записи и читается тем же правилом:
+    //    хост пишет пять полей в одну запись, и форма настроек берёт их отсюда.
+    const prefs = V.portalPrefs({
+        bitrix_voice_scope_peers: ['19'],
+        bitrix_portal_prefs: { acme: { voice_scope_peers: ['chat7'] } },
+    }, 'acme');
+    eq(prefs.voice_scope_peers, ['chat7'], 'скоуп берётся из записи портала');
+    eq(V.portalPrefs({ bitrix_voice_scope_peers: ['19'] }, 'acme').voice_scope_peers, ['19'],
+        'без карты скоуп берётся из плоского ключа');
+
+    // 7. Тело PATCH собирает ЭТОТ модуль — имя карты не должно быть написано
+    //    вторым местом в форме настроек.
+    eq(V.portalPrefsPatch('acme', { filter_enabled: true }),
+        { bitrix_portal_prefs: { acme: { filter_enabled: true } } },
+        'portalPrefsPatch кладёт поля в запись своего портала');
+    eq(V.PORTAL_PREFS_KEY, 'bitrix_portal_prefs', 'имя карты совпадает с ключом хоста');
+}
+
+// ---------------------------------------------------------------------------
 // ЧЕТЫРЕ ТОЧКИ ПРИМЕНЕНИЯ (Ф11)
 //
 // Перечень точек продублирован в ШАПКЕ js/bitrix/visibility.js — намеренно:
@@ -372,6 +440,121 @@ function applyFilter(enabled, kinds, peers) {
     applyFilter(false);
     ok(MAIN.maybeToast(frameFor('chat404')) !== null,
         'без фильтра: неизвестный диалог уведомление показывает');
+}
+
+// ---------------------------------------------------------------------------
+// ЧЕТЫРЕ ТОЧКИ — НА ЖИВЫХ МОДУЛЯХ, НО У КАЖДОГО ПОРТАЛА СВОИ (Ф7.4)
+//
+// Пропуск портала так же опасен, как пропуск самой точки: кадры всех порталов
+// приходят в ОДИН сокет, и общий фильтр протекал бы в обе стороны — прятал бы
+// в одном портале чат, отмеченный в другом, и звенел бы тостом из чата,
+// который просили скрыть.
+// ---------------------------------------------------------------------------
+
+{
+    const API = await import(new URL('../../static/js/bitrix/api.js', import.meta.url).href);
+    const PORTALS = await import(new URL('../../static/js/bitrix/portals.js', import.meta.url).href);
+
+    // Реестр порталов ставится ЖИВЫМ путём (кадр `portals`), а не подменой
+    // внутренностей: активный портал обязан оказаться одновременно и в
+    // `portals.js` (по нему решается «свой ли кадр»), и в `api.js` (по нему
+    // читаются настройки). Разъезд этих двух значений — ровно тот класс
+    // ошибок, ради которого точка входа одна.
+    PORTALS.applyPortalsFrame({
+        portals: [{ id: 'acme', title: 'Acme' }, { id: 'beta', title: 'Beta' }],
+    });
+
+    /** Карта настроек: в портале A видны только личные, в B — только чаты. */
+    function applyPortalPrefs(map) {
+        delete userSettings.bitrix_filter_enabled;
+        delete userSettings.bitrix_visible_kinds;
+        delete userSettings.bitrix_visible_peers;
+        userSettings.bitrix_portal_prefs = map;
+        STATE.invalidateVisibilityFilter();
+    }
+
+    applyPortalPrefs({
+        acme: { filter_enabled: true, visible_kinds: ['user'] },
+        beta: { filter_enabled: true, visible_kinds: ['chat'] },
+    });
+
+    STATE.b24State.dialogs = [
+        { id: '19', kind: 'user', unread_count: 3, title: 'Иванов' },
+        { id: 'chat3', kind: 'chat', unread_count: 1, title: 'Общий' },
+        { id: 'chat7', kind: 'task', unread_count: 5, title: 'Задача', task_id: '1' },
+    ];
+    STATE.b24State.activeDir = 'all';
+
+    // ── АКТИВЕН ПОРТАЛ A ── (первый в кадре реестра)
+    eq(PORTALS.activePortalId(), 'acme', 'первый портал реестра стал активным');
+    eq(API.activePortal(), 'acme', 'и заголовок запросов адресован ему же');
+    STATE.invalidateVisibilityFilter();
+
+    // Точка 1: колонка.
+    DIALOGS.renderAll();
+    eq($dialogList.querySelectorAll('.b24-dialog').map((li) => li.dataset.dialogId), ['19'],
+        'портал A: колонка показывает его белый список');
+    // Точка 2: счётчики директорий.
+    DIALOGS.renderDirs();
+    eq($dirCounts.all.textContent, '1', 'портал A: ~/all считает его видимые строки');
+    // Точка 3: бейдж.
+    MAIN.recomputeUnread();
+    eq($unread.textContent, '3', 'портал A: бейдж считает непрочитанное его видимых');
+
+    // ── ПЕРЕКЛЮЧИЛИСЬ НА ПОРТАЛ B: те же строки, ДРУГОЙ результат ──
+    PORTALS.switchPortal('beta');
+    STATE.invalidateVisibilityFilter();
+
+    DIALOGS.renderAll();
+    eq($dialogList.querySelectorAll('.b24-dialog').map((li) => li.dataset.dialogId), ['chat3'],
+        'точка 1: настройки портала A на портал B не влияют');
+    DIALOGS.renderDirs();
+    eq($dirCounts.all.textContent, '1', 'точка 2: директории считаются по списку портала B');
+    eq($dirCounts.tasks.textContent, '',
+        'точка 2: чат задачи скрыт в B — его директория пуста');
+    MAIN.recomputeUnread();
+    eq($unread.textContent, '1', 'точка 3: бейдж считает непрочитанное видимых в B');
+
+    // ── ТОЧКА 4: ТОСТ СПРАШИВАЕТ ПОРТАЛ КАДРА ──
+    const frame = (dialogId) => ({
+        dialog_id: dialogId,
+        muted: false,
+        message: {
+            id: Date.now(), dialog_id: dialogId, out: false, system: false,
+            text: 'входящее', sender: { id: '2', name: 'Петров' },
+        },
+    });
+    $toasts.childNodes.slice().forEach((n) => n.remove());
+    $panel.hidden = true;
+
+    // Свой (активный) портал B: решает ЕГО список, а не A.
+    ok(MAIN.maybeToast(frame('chat3'), 'beta') !== null,
+        'точка 4: чат, видимый в B, даёт тост в B');
+    ok(MAIN.maybeToast(frame('19'), 'beta') === null,
+        'точка 4: личный диалог скрыт в B — тоста нет, хотя в A он виден');
+
+    // ЧУЖОЙ портал: списка его диалогов нет, и решает поимённый выбор.
+    applyPortalPrefs({
+        acme: { filter_enabled: true, visible_peers: ['chat42'] },
+        beta: { filter_enabled: true, visible_kinds: ['chat'] },
+    });
+    ok(MAIN.maybeToast(frame('chat42'), 'acme') !== null,
+        'точка 4: чужой портал, диалог отмечен ПОИМЁННО — тост показывается');
+    ok(MAIN.maybeToast(frame('chat43'), 'acme') === null,
+        'точка 4: чужой портал, диалог не отмечен — fail-closed, тоста нет');
+
+    // Фоновый портал БЕЗ записи в карте фильтра не имеет вовсе — и его тосты
+    // больше не подавляются чужой настройкой. Ровно это ограничение снимала
+    // Ф7.4: до неё белый список активного портала глушил соседей.
+    ok(MAIN.maybeToast(frame('chat55'), 'gamma') !== null,
+        'точка 4: у портала без настроек тост проходит, чужой фильтр его не глушит');
+
+    // Возврат окружения в исходное состояние — тесты ниже (если появятся) не
+    // должны наследовать активный портал и карту.
+    PORTALS.resetPortals();
+    API.setActivePortal('');
+    delete userSettings.bitrix_portal_prefs;
+    STATE.invalidateVisibilityFilter();
 }
 
 console.log(`${checks - failures}/${checks} ассертов прошло (frontend/bitrix_visibility)`);

@@ -23,6 +23,7 @@
 //! | Тип ([`PromptKind`]) | Маркеры (после `normalize_ws`) | Выбор |
 //! |---|---|---|
 //! | `Permission3` | `❯ 1. Yes` + `2. Yes,` + `3. No` | `1`, в broad-режиме `2` |
+//! | `Permission4` | `❯ 1. Yes` + `2. Yes,` + `3. Yes,` + `4. No` | `1`, в broad-режиме `2` |
 //! | `Permission2` | `❯ 1. Yes` + `2. No` | всегда `1` |
 //! | `AllowDeny` | `❯ 1. Allow` + `2. Deny` | всегда `1` |
 //! | `AllowBroad` | `❯ 1. Allow` + `2. Allow all actions on` | `1`, в broad-режиме `2` |
@@ -82,6 +83,12 @@
 //! ОТРИЦАТЕЛЬНЫЙ — только [`NEGATIVE_VERDICT_TTL`]: один неудачный ответ
 //! модели (или ответ по мусорному тексту) иначе хоронил висящий prompt до
 //! рестарта, и никакая смена обстоятельств уже не помогала.
+//!
+//! Вызовы `claude -p` — **opt-in и по умолчанию выключены**: без настройки
+//! `UserSettings::claude_llm_enabled` (или глобальной
+//! `FORGE_CLAUDE_RUNNER_ENABLED=1`, включающей запуски во всех компонентах
+//! F.O.R.G.E.) эскалация не запускается вообще и блоклист-совпадения остаются
+//! человеку. Это единственное место tmux-web, спавнящее Claude CLI.
 //!
 //! # Защита от ложных и повторных нажатий
 //!
@@ -224,6 +231,9 @@ impl ApprovalHistory {
 pub enum PromptKind {
     /// Permission с тремя пунктами: `Yes` / `Yes, and don't ask again` / `No`.
     Permission3,
+    /// Permission с четырьмя пунктами: `Yes` / `Yes, and always allow <…>` /
+    /// `Yes, and switch to auto mode` / `No`.
+    Permission4,
     /// Permission с двумя пунктами: `Yes` / `No`.
     Permission2,
     /// Claude in Chrome: `Allow` / `Deny`.
@@ -277,29 +287,41 @@ pub fn classify_prompt(pane: &str) -> Option<PromptKind> {
         }
     }
 
-    if norm.contains("❯ 1. Allow") {
-        if norm.contains("2. Allow all") {
-            return Some(PromptKind::AllowBroad);
-        }
-        if norm.contains("2. Deny") {
-            return Some(PromptKind::AllowDeny);
-        }
+    // ФОРМА ОПОЗНАЁТСЯ ПО РАЗОБРАННОМУ МЕНЮ, А НЕ ПО НОМЕРАМ ПУНКТОВ.
+    //
+    // Прежние ветки искали дословные `❯ 1. Yes` + `2. Yes,` + `3. No`, и
+    // каждая редакция CLI, добавлявшая пункт, выключала авто-апрув целиком:
+    // в 2.1.26x между согласием и отказом появился `3. Yes, and switch to
+    // auto mode`, отказ уехал на четвёртый пункт — и форма перестала
+    // опознаваться. Разбор (`attention::parse_menu`) смотрит на РОЛИ пунктов,
+    // поэтому переносит и добавление пунктов, и их перестановку, и сдвиг
+    // курсора стрелками.
+    let menu = crate::attention::parse_menu(pane)?;
+    if !menu.is_actionable() {
         return None;
     }
-
-    if norm.contains("❯ 1. Yes") {
-        // `2. Yes,` — это «Yes, and don't ask again …»: единственная форма, в
-        // которой второй пункт расширяет разрешение, а не отказывает.
-        if norm.contains("2. Yes,") && norm.contains("3. No") {
-            return Some(PromptKind::Permission3);
-        }
-        if norm.contains("2. No") {
-            return Some(PromptKind::Permission2);
-        }
-        return None;
+    let broad_item = menu.first(crate::attention::ItemRole::ApproveBroad);
+    if menu.is_chrome_form() {
+        return Some(if broad_item.is_some() {
+            PromptKind::AllowBroad
+        } else {
+            PromptKind::AllowDeny
+        });
     }
+    Some(match (broad_item.is_some(), menu.items.len()) {
+        (false, _) => PromptKind::Permission2,
+        (true, n) if n >= 4 => PromptKind::Permission4,
+        (true, _) => PromptKind::Permission3,
+    })
+}
 
-    None
+/// Номер пункта строкой — то, что уходит в `tmux send-keys`.
+///
+/// Таблица вместо `format!`: [`Decision`] носит `&'static str`, и выбор
+/// пункта не должен тянуть за собой аллокацию на каждом тике воркера.
+fn digit(n: u8) -> Option<&'static str> {
+    const DIGITS: [&str; 9] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+    DIGITS.get(n.checked_sub(1)? as usize).copied()
 }
 
 /// Результат [`decide`]: что делать с распознанным prompt'ом.
@@ -334,9 +356,41 @@ pub fn decide(kind: PromptKind, pane: &str, s: &UserSettings) -> Decision {
         _ => {}
     }
 
-    let broad =
-        s.auto_approve_broad && matches!(kind, PromptKind::Permission3 | PromptKind::AllowBroad);
-    let choice = if broad { "2" } else { "1" };
+    // НОМЕР ПУНКТА БЕРЁТСЯ ИЗ МЕНЮ, А НЕ ИЗ КОНСТАНТЫ.
+    //
+    // Раньше здесь были литералы «1» и «2». Они верны ровно до следующей
+    // редакции CLI: в четырёхопционной форме второй пункт — «Yes, and always
+    // allow access to <путь>», третий — «Yes, and switch to auto mode», и
+    // сдвиг на один пункт означал бы переключение режима вместо разрешения
+    // доступа. Теперь роль пункта решает, что нажать, а номер берётся у него
+    // же.
+    let Some(menu) = crate::attention::parse_menu(pane) else {
+        return Decision::Skip;
+    };
+    use crate::attention::ItemRole;
+
+    let broad_allowed = s.auto_approve_broad;
+    // Расширяющее согласие — только настоящее расширение ЭТОГО разрешения.
+    // Пункт `ModeSwitch` («Yes, and switch to auto mode») в выбор не входит
+    // никогда: он меняет поведение и для будущих запросов, которых человек
+    // ещё не видел.
+    let picked = if broad_allowed {
+        // Broad предпочитает расширение, но довольствуется разовым «Yes»,
+        // если расширяющего пункта в форме нет.
+        menu.first(ItemRole::ApproveBroad)
+            .or_else(|| menu.first(ItemRole::Approve))
+    } else {
+        // Без broad расширяющий пункт не жмётся НИКОГДА — даже если он
+        // единственное согласие в меню. Это и есть смысл выключенной
+        // настройки: разрешение выдаётся ровно на один раз.
+        menu.first(ItemRole::Approve)
+    };
+    let Some(item) = picked else {
+        return Decision::Skip;
+    };
+    let Some(choice) = digit(item.number) else {
+        return Decision::Skip;
+    };
 
     if is_dangerous(pane, &s.auto_approve_blocklist) {
         return Decision::Blocked(choice);
@@ -482,6 +536,40 @@ fn is_edit_request(cleaned: &str) -> bool {
     FORMS.iter().any(|f| lower.starts_with(f))
 }
 
+/// Подстроки, по которым строка опознаётся как ПОДСКАЗКА САМОГО CLI, а не
+/// часть команды.
+///
+/// Всё в нижнем регистре; сравнение регистронезависимое.
+const CLI_NOTICE_MARKERS: &[&str] = &[
+    "tip:",
+    "auto mode handles these prompts",
+    "cannot be auto-allowed",
+    "approve only if you trust",
+    "can pick up untrusted hooks",
+    "manual approval required",
+];
+
+/// Убирает из текста запроса подсказки и предупреждения самого Claude Code.
+///
+/// Нужно ТОЛЬКО для LLM-эскалации блоклиста. Эти строки не являются командой,
+/// зато читаются моделью как довод против: живьём («Approve only if you trust
+/// it», «find with '-exec' … cannot be auto-allowed») они склоняли Sonnet к
+/// `approve=false` на безобидной сборке релиза — при этом ответ был
+/// НЕСТАБИЛЬНЫМ, и один и тот же экран то проходил, то нет.
+///
+/// Блоклист по-прежнему смотрит на текст ЦЕЛИКОМ ([`danger_scope`]): его
+/// задача — не пропустить опасную подстроку, и сужать ему область незачем.
+fn strip_cli_notices(region: &str) -> String {
+    region
+        .lines()
+        .filter(|line| {
+            let lower = line.to_lowercase();
+            !CLI_NOTICE_MARKERS.iter().any(|m| lower.contains(m))
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// Максимальная длина `subject` в записи истории (в символах).
 const SUBJECT_MAX_CHARS: usize = 200;
 
@@ -604,28 +692,124 @@ const VERDICT_CACHE_CAP: usize = 512;
 /// CLI в 5 минут на панель, а не на каждый тик.
 const NEGATIVE_VERDICT_TTL: Duration = Duration::from_secs(300);
 
-/// Исход обращения к `claude -p` — см. [`llm_blocklist_verdict`].
+/// Исход обращения к LLM — см. [`llm_blocklist_verdict`].
 enum LlmOutcome {
     /// Модель ответила: `true` — апрувить, `false` — оставить человеку.
     Verdict(bool),
-    /// Бинарник `claude` не найден в PATH — эскалацию можно выключать до
-    /// конца работы процесса, повторные попытки бессмысленны.
+    /// Бинарник CLI не найден в PATH (или облако не настроено) — эскалацию
+    /// можно выключать до конца работы процесса, повторные попытки бессмысленны.
     Unavailable,
     /// Разовый сбой (таймаут, не-нулевой exit, кривой вывод) — не кэшировать,
     /// на следующем тике попробуем ещё раз.
     Failed,
 }
 
-/// Спрашивает у Sonnet через локальный `claude -p`, безопасно ли подтвердить
-/// команду из блоклиста.
+/// Каким движком спрашивается вердикт LLM-эскалации.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VerdictBackend {
+    /// Локальный `claude -p` (как исторически).
+    Claude,
+    /// Локальный `kimi --print -p` (Kimi CLI).
+    Kimi,
+    /// Облачный OpenAI-совместимый провайдер — env-трио
+    /// `FORGE_LLM_CLOUD_BASE_URL` / `FORGE_LLM_CLOUD_API_KEY` /
+    /// `FORGE_LLM_CLOUD_MODEL`. Настраивается ТОЛЬКО через env: в UI секреты
+    /// не вводятся, а без ключа облако бессмысленно.
+    Cloud,
+}
+
+impl VerdictBackend {
+    /// Резолв: облако побеждает, когда задан его ключ; иначе — выбор из
+    /// настройки (`claude` по умолчанию, `kimi` — явно).
+    fn resolve(settings: &UserSettings) -> Self {
+        if std::env::var("FORGE_LLM_CLOUD_API_KEY")
+            .map(|v| !v.trim().is_empty())
+            .unwrap_or(false)
+        {
+            return Self::Cloud;
+        }
+        match settings.claude_llm_backend.trim().to_lowercase().as_str() {
+            "kimi" => Self::Kimi,
+            _ => Self::Claude,
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Claude => "claude",
+            Self::Kimi => "kimi",
+            Self::Cloud => "cloud",
+        }
+    }
+}
+
+/// Облачный провайдер вердикта: адрес, ключ и модель из env-трио.
+struct CloudVerdictCfg {
+    base_url: String,
+    api_key: String,
+    model: String,
+}
+
+fn cloud_verdict_cfg() -> Option<CloudVerdictCfg> {
+    let api_key = std::env::var("FORGE_LLM_CLOUD_API_KEY").ok()?;
+    if api_key.trim().is_empty() {
+        return None;
+    }
+    Some(CloudVerdictCfg {
+        base_url: std::env::var("FORGE_LLM_CLOUD_BASE_URL")
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| "https://api.polza.ai/api/v1".to_string()),
+        api_key,
+        model: std::env::var("FORGE_LLM_CLOUD_MODEL")
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| "google/gemini-3.5-flash".to_string()),
+    })
+}
+
+/// Разрешены ли вызовы `claude -p` для LLM-эскалации блоклиста.
 ///
-/// CLI использует авторизацию Claude Code на машине, поэтому API-ключ не
-/// нужен. Рабочая директория — временная папка: `claude -p` в корне проекта
-/// потянул бы CLAUDE.md и память проекта, что тут не нужно и замедляет ответ.
+/// Настройка `UserSettings::claude_llm_enabled` (default `false`) ИЛИ
+/// глобальная `FORGE_CLAUDE_RUNNER_ENABLED=1` — та же переменная, что
+/// включает запуски `claude -p` во всех плагинах F.O.R.G.E. (Echo, Meet,
+/// Bitrix24/VK/Telegram). Без явного разрешения блоклист-совпадение остаётся
+/// человеку — ни одного процесса `claude` не спавнится.
+fn claude_llm_allowed(settings: &UserSettings) -> bool {
+    settings.claude_llm_enabled
+        || std::env::var("FORGE_CLAUDE_RUNNER_ENABLED")
+            .map(|v| matches!(v.trim().to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+            .unwrap_or(false)
+}
+
+/// Спрашивает у LLM через выбранный движок, безопасно ли подтвердить команду
+/// из блоклиста.
+///
+/// Вызывается только когда [`claude_llm_allowed`] разрешил запуски: без
+/// разрешения процесс не спавнится и запрос не уходит вообще.
+///
+/// Локальные CLI используют авторизацию самого CLI на машине, поэтому
+/// API-ключ не нужен. Рабочая директория — временная папка: CLI в корне
+/// проекта потянул бы его память и конфиги, что тут не нужно и замедляет
+/// ответ. Облако — OpenAI-совместимый POST, настраивается env-трио
+/// `FORGE_LLM_CLOUD_*` (см. [`VerdictBackend::Cloud`]).
+///
 /// Модель просят ответить строго одним JSON-объектом; из вывода на всякий
 /// случай вырезается диапазон от первой `{` до последней `}` (модель может
 /// обернуть ответ в markdown-фенс).
-async fn llm_blocklist_verdict(command: &str) -> LlmOutcome {
+async fn llm_blocklist_verdict(
+    command: &str,
+    cwd: Option<&str>,
+    backend: VerdictBackend,
+) -> LlmOutcome {
+    let where_am_i = match cwd {
+        Some(path) if !path.trim().is_empty() => format!(
+            "Сессия, из которой пришёл запрос, работает в каталоге: {path}\n\
+             Пути внутри него — файлы ЭТОГО проекта, а не чужого; временные рабочие копии\n\
+             (`.forge-worktrees/…`, `/private/tmp/claude-501/…`, `/tmp/…`) относятся к нему же.\n\n"
+        ),
+        _ => String::new(),
+    };
     let prompt = format!(
         "Ты — фильтр безопасности авто-подтверждения команд в среде разработчика.\n\
          Команда попала в блоклист авто-апрува по опасной подстроке (rm -rf, git reset --hard, drop table и т.п.).\n\
@@ -639,19 +823,39 @@ async fn llm_blocklist_verdict(command: &str) -> LlmOutcome {
          системные пути, чужие проекты), сам .git или git-историю (rm -rf .git, git push --force, \
          git reset --hard с потерей чужих коммитов), боевые базы данных (drop/truncate/delete), \
          пользовательские данные или систему — и во всех сомнительных случаях.\n\n\
+         Штатные операции разработки сами по себе НЕ повод отказать: смена ветки, \
+         `git pull --ff-only`, коммит, публикация тега, мерж своего PR, сборка и деплой \
+         релиза, удаление и пересборка каталога артефактов.\n\n\
+         {where_am_i}\
          Не используй инструменты. Ответь СРАЗУ и ТОЛЬКО одним JSON-объектом вида \
          {{\"approve\": true|false, \"reason\": \"коротко почему\"}} — без markdown и пояснений.\n\n\
          Запрос на подтверждение:\n{command}"
     );
 
+    // Облако: один нестриминговый POST; вердикт — из choices[0].message.content.
+    if backend == VerdictBackend::Cloud {
+        return match cloud_blocklist_verdict(&prompt).await {
+            Ok(stdout) => parse_verdict_json(&stdout),
+            Err(outcome) => outcome,
+        };
+    }
+
+    // Локальные CLI. Claude: `claude -p --model sonnet <prompt>`; Kimi:
+    // `kimi --print -p <prompt>` — LLM_MODEL это модель claude, у kimi своя
+    // модель по умолчанию, флаг `-m` здесь не передаётся.
+    let mut cli = tokio::process::Command::new(backend.as_str());
+    match backend {
+        VerdictBackend::Claude => {
+            cli.arg("-p").arg("--model").arg(LLM_MODEL).arg(&prompt);
+        }
+        VerdictBackend::Kimi => {
+            cli.arg("--print").arg("-p").arg(&prompt);
+        }
+        VerdictBackend::Cloud => unreachable!("облако обработано выше"),
+    }
     let result = tokio::time::timeout(
         LLM_TIMEOUT,
-        tokio::process::Command::new("claude")
-            .arg("-p")
-            .arg("--model")
-            .arg(LLM_MODEL)
-            .arg(prompt)
-            .current_dir(std::env::temp_dir())
+        cli.current_dir(std::env::temp_dir())
             .stdin(std::process::Stdio::null())
             .kill_on_drop(true)
             .output(),
@@ -660,15 +864,18 @@ async fn llm_blocklist_verdict(command: &str) -> LlmOutcome {
 
     let out = match result {
         Err(_) => {
-            tracing::warn!("auto-approve LLM: claude -p timed out");
+            tracing::warn!(backend = backend.as_str(), "auto-approve LLM: CLI timed out");
             return LlmOutcome::Failed;
         }
         Ok(Err(e)) if e.kind() == std::io::ErrorKind::NotFound => {
-            tracing::warn!("auto-approve LLM: `claude` not found in PATH, escalation disabled");
+            tracing::warn!(
+                backend = backend.as_str(),
+                "auto-approve LLM: CLI not found in PATH, escalation disabled"
+            );
             return LlmOutcome::Unavailable;
         }
         Ok(Err(e)) => {
-            tracing::warn!(error = %e, "auto-approve LLM: claude -p spawn failed");
+            tracing::warn!(backend = backend.as_str(), error = %e, "auto-approve LLM: CLI spawn failed");
             return LlmOutcome::Failed;
         }
         Ok(Ok(out)) => out,
@@ -676,23 +883,91 @@ async fn llm_blocklist_verdict(command: &str) -> LlmOutcome {
 
     if !out.status.success() {
         tracing::warn!(
+            backend = backend.as_str(),
             status = %out.status,
             stderr = %String::from_utf8_lossy(&out.stderr),
-            "auto-approve LLM: claude -p non-zero exit"
+            "auto-approve LLM: CLI non-zero exit"
         );
         return LlmOutcome::Failed;
     }
 
-    let stdout = String::from_utf8_lossy(&out.stdout);
+    parse_verdict_json(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// Облачный вызов вердикта: POST `{base}/chat/completions` без стрима,
+/// ответ — `choices[0].message.content`.
+async fn cloud_blocklist_verdict(prompt: &str) -> Result<String, LlmOutcome> {
+    let cfg = match cloud_verdict_cfg() {
+        Some(c) => c,
+        None => {
+            tracing::warn!("auto-approve LLM: облако не настроено (FORGE_LLM_CLOUD_API_KEY пуст)");
+            return Err(LlmOutcome::Unavailable);
+        }
+    };
+    let body = serde_json::json!({
+        "model": cfg.model,
+        "messages": [{"role": "user", "content": prompt}],
+    });
+    let result = tokio::time::timeout(
+        LLM_TIMEOUT,
+        reqwest::Client::new()
+            .post(format!(
+                "{}/chat/completions",
+                cfg.base_url.trim_end_matches('/')
+            ))
+            .bearer_auth(&cfg.api_key)
+            .json(&body)
+            .send(),
+    )
+    .await;
+    let resp = match result {
+        Err(_) => {
+            tracing::warn!("auto-approve LLM: облачный запрос timed out");
+            return Err(LlmOutcome::Failed);
+        }
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "auto-approve LLM: облачный запрос не ушёл");
+            return Err(LlmOutcome::Failed);
+        }
+        Ok(Ok(r)) => r,
+    };
+    if !resp.status().is_success() {
+        tracing::warn!(status = %resp.status(), "auto-approve LLM: облако ответило отказом");
+        return Err(LlmOutcome::Failed);
+    }
+    let v: serde_json::Value = match resp.json().await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(error = %e, "auto-approve LLM: ответ облака не разбирается");
+            return Err(LlmOutcome::Failed);
+        }
+    };
+    match v
+        .get("choices")
+        .and_then(|c| c.get(0))
+        .and_then(|c| c.get("message"))
+        .and_then(|m| m.get("content"))
+        .and_then(|c| c.as_str())
+    {
+        Some(text) => Ok(text.to_string()),
+        None => {
+            tracing::warn!("auto-approve LLM: в ответе облака нет choices[0].message.content");
+            Err(LlmOutcome::Failed)
+        }
+    }
+}
+
+/// Вытаскивает `{"approve": bool}` из произвольного текстового ответа модели.
+fn parse_verdict_json(stdout: &str) -> LlmOutcome {
     let json_slice = match (stdout.find('{'), stdout.rfind('}')) {
         (Some(a), Some(b)) if a < b => &stdout[a..=b],
         _ => {
-            tracing::warn!(output = %stdout, "auto-approve LLM: no JSON in claude output");
+            tracing::warn!(output = %stdout, "auto-approve LLM: no JSON in LLM output");
             return LlmOutcome::Failed;
         }
     };
     let Ok(parsed) = serde_json::from_str::<serde_json::Value>(json_slice) else {
-        tracing::warn!(output = %stdout, "auto-approve LLM: bad JSON in claude output");
+        tracing::warn!(output = %stdout, "auto-approve LLM: bad JSON in LLM output");
         return LlmOutcome::Failed;
     };
     let Some(approve) = parsed["approve"].as_bool() else {
@@ -831,9 +1106,17 @@ pub async fn run(state: AppState) {
                     Decision::Blocked(c) => {
                         // Блоклист. Пробуем LLM-эскалацию: вердикт из кэша
                         // или один вызов `claude -p`.
-                        let region = extract_command_region(&pane)
-                            .unwrap_or_else(|| extract_subject(&pane));
-                        let allow = if !llm_available || region.is_empty() {
+                        // Модели уходит текст БЕЗ подсказок самого CLI: они не часть
+                        // команды, зато читаются как довод против (см.
+                        // `strip_cli_notices`).
+                        let region = strip_cli_notices(
+                            &extract_command_region(&pane)
+                                .unwrap_or_else(|| extract_subject(&pane)),
+                        );
+                        let allow = if !llm_available
+                            || region.is_empty()
+                            || !claude_llm_allowed(&settings)
+                        {
                             false
                         } else {
                             let vkey = hash_pane(&region);
@@ -845,22 +1128,32 @@ pub async fn run(state: AppState) {
                             });
                             match cached {
                                 Some((v, _)) => v,
-                                None => match llm_blocklist_verdict(&region).await {
-                                    LlmOutcome::Verdict(v) => {
-                                        if verdicts.len() >= VERDICT_CACHE_CAP {
-                                            verdicts.clear();
+                                None => {
+                                    // Рабочая директория панели: без неё любой
+                                    // абсолютный путь выглядит для модели чужим
+                                    // проектом, и она отказывает.
+                                    let cwd =
+                                        crate::tmux::pane_cwd(&s.name, pane_target).await.ok();
+                                    let backend = VerdictBackend::resolve(&settings);
+                                    match llm_blocklist_verdict(&region, cwd.as_deref(), backend)
+                                        .await
+                                    {
+                                        LlmOutcome::Verdict(v) => {
+                                            if verdicts.len() >= VERDICT_CACHE_CAP {
+                                                verdicts.clear();
+                                            }
+                                            verdicts.insert(vkey, (v, now_secs()));
+                                            v
                                         }
-                                        verdicts.insert(vkey, (v, now_secs()));
-                                        v
+                                        LlmOutcome::Unavailable => {
+                                            llm_available = false;
+                                            false
+                                        }
+                                        // Разовый сбой не кэшируем: на следующем
+                                        // тике попробуем ещё раз.
+                                        LlmOutcome::Failed => false,
                                     }
-                                    LlmOutcome::Unavailable => {
-                                        llm_available = false;
-                                        false
-                                    }
-                                    // Разовый сбой не кэшируем: на следующем
-                                    // тике попробуем ещё раз.
-                                    LlmOutcome::Failed => false,
-                                },
+                                }
                             }
                         };
                         if !allow {
@@ -1069,6 +1362,78 @@ drwxr-xr-x  5 user staff 160 Jan  1 00:00 .
   3. No
  Esc to cancel · Tab to amend · ctrl+e to explain
 ";
+
+    /// Живой экран 23.09.2026: релизная команда с `rm -rf release` под
+    /// подсказкой auto mode; пункт 2 — переключение режима, отказ на третьем.
+    const RELEASE_PROMPT: &str = "\
+⏺ Создать PR, смержить и собрать релиз
+  ⎿  $ d=/private/tmp/claude-501/scratchpad
+     n=$(curl -s -m 60 -H @\"$d/gitea.hdr\" -X POST http://192.168.11.192:3001/api/v1/repos/…
+────────────────────────────────────────────────
+ Bash command
+ Tip: auto mode handles these prompts for you — choose \"switch to auto mode\" below
+
+   │ d=/private/tmp/claude-501/scratchpad
+   │ code=$(curl -s -m 60 -o /dev/null -w '%{http_code}' -X POST \"http://192.168.11.192:3001/api/v1/repos/profi48/svod-plugin-support/pulls/$n/merge\" -d @\"$d/merge4.json\")
+   │ cd /Users/igorgerasimov/claudeWorkspace/svod-plugin-support && git checkout -q main && GIT_TERMINAL_PROMPT=0 git pull -q --ff-only && rm -rf release && docker compose --profile release run --rm -T release 2>&1 | tail -3
+   Создать PR, смержить и собрать релиз
+
+ │ This command changes directory before running a version-control command, which can pick up untrusted hooks or repository configuration from the target directory. Approve only if you trust it.
+
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and switch to auto mode · auto mode handles these prompts for you
+   3. No
+";
+
+    /// Подсказки и предупреждения CLI не уезжают в LLM-эскалацию, а команда —
+    /// уезжает целиком.
+    #[test]
+    fn cli_notices_are_stripped_before_the_llm_sees_the_command() {
+        let region = extract_command_region(RELEASE_PROMPT).expect("блок запроса есть");
+        assert!(
+            region.contains("Approve only if you trust it."),
+            "предупреждение обязано быть в блоке для блоклиста: {region}"
+        );
+
+        let clean = strip_cli_notices(&region);
+        for notice in [
+            "Tip: auto mode handles",
+            "Approve only if you trust it.",
+            "can pick up untrusted hooks",
+        ] {
+            assert!(!clean.contains(notice), "{notice} осталось в тексте: {clean}");
+        }
+        assert!(clean.contains("rm -rf release"), "команда потерялась: {clean}");
+        assert!(clean.contains("Bash command"), "заголовок потерялся: {clean}");
+
+        // Блоклист смотрит на текст ЦЕЛИКОМ и продолжает срабатывать.
+        assert!(is_dangerous(RELEASE_PROMPT, &[]));
+    }
+
+    /// Разбор живого релизного экрана 23.09.2026: подсказка auto mode и
+    /// предупреждение CLI про `cd` форму не ломают, пункт `ModeSwitch` не
+    /// выбирается, а решение — блокировка блоклистом (`rm -rf`), после которой
+    /// слово за LLM-эскалацией.
+    #[test]
+    fn live_release_prompt_is_blocked_by_the_blocklist_not_misparsed() {
+        assert_eq!(
+            classify_prompt(RELEASE_PROMPT),
+            Some(PromptKind::Permission2),
+            "пункт переключения режима не является согласием, форма двухопционная"
+        );
+        for broad in [false, true] {
+            assert_eq!(
+                decide(
+                    PromptKind::Permission2,
+                    RELEASE_PROMPT,
+                    &settings(broad, true, &[])
+                ),
+                Decision::Blocked("1"),
+                "broad={broad}: нажать можно было бы только разовое «Yes»"
+            );
+        }
+    }
 
     fn settings(broad: bool, questions: bool, blocklist: &[&str]) -> UserSettings {
         UserSettings {
@@ -1767,6 +2132,253 @@ Do you want to proceed?
  Esc to cancel · Tab to amend · ctrl+e to explain
 ";
         assert_eq!(classify_prompt(pane), Some(PromptKind::Permission3));
+    }
+
+    // =====================================================================
+    // Краевые ситуации разбора меню
+    // =====================================================================
+    //
+    // Каждый случай здесь — либо уже случившийся живой отказ, либо форма,
+    // которую CLI может показать завтра. Разбор по РОЛЯМ пунктов вместо
+    // поиска номеров затевался ровно ради них.
+
+    /// Живой кейс 07.09.2026: к трём пунктам добавился «switch to auto mode»,
+    /// и отказ уехал на четвёртый. Нажать надо ВТОРОЙ пункт — расширение
+    /// доступа к пути, а не смену режима CLI.
+    const PERMISSION4: &str = "\
+Bash command
+  rm -f /tmp/.sshpw && echo \"временный файл удалён\"
+Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and always allow access to /private/tmp from this project
+   3. Yes, and switch to auto mode · auto mode handles these prompts for you
+   4. No
+ Esc to cancel · Tab to amend
+";
+
+    #[test]
+    fn a_fourth_option_does_not_break_the_form() {
+        assert_eq!(classify_prompt(PERMISSION4), Some(PromptKind::Permission4));
+    }
+
+    /// ГЛАВНОЕ ПРАВИЛО ЧЕТЫРЁХОПЦИОННОЙ ФОРМЫ: broad жмёт расширение доступа
+    /// (пункт 2), а НЕ «switch to auto mode» (пункт 3). Смена режима меняет
+    /// поведение и для будущих запросов, которых человек ещё не видел.
+    #[test]
+    fn broad_never_switches_the_cli_mode() {
+        let mut s = UserSettings::default();
+        s.auto_approve_broad = true;
+        assert_eq!(
+            decide(PromptKind::Permission4, PERMISSION4, &s),
+            Decision::Press("2")
+        );
+
+        s.auto_approve_broad = false;
+        assert_eq!(
+            decide(PromptKind::Permission4, PERMISSION4, &s),
+            Decision::Press("1")
+        );
+    }
+
+    /// Курсор стоит НЕ на первом пункте: человек подвинул выбор стрелками и
+    /// отошёл. Меню от этого не перестаёт быть меню, а нажимать всё равно
+    /// нужно свой пункт по номеру, а не «тот, где курсор».
+    #[test]
+    fn a_moved_cursor_does_not_hide_the_menu() {
+        let pane = "\
+Bash command
+  ls -la
+Do you want to proceed?
+   1. Yes
+   2. Yes, and don't ask again for: ls commands
+ ❯ 3. No
+ Esc to cancel · Tab to amend
+";
+        assert_eq!(classify_prompt(pane), Some(PromptKind::Permission3));
+        let mut s = UserSettings::default();
+        s.auto_approve_broad = true;
+        assert_eq!(decide(PromptKind::Permission3, pane, &s), Decision::Press("2"));
+    }
+
+    /// Длинный пункт переносится по словам — номер остаётся на первой строке,
+    /// а признак расширения («from this project») уезжает на вторую. Без
+    /// склейки продолжения пункт выглядел бы как обычное «Yes».
+    #[test]
+    fn a_wrapped_option_keeps_its_role() {
+        let pane = "\
+Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and always allow access to
+      /Users/igor/very/long/path/that/wraps from this project
+   3. No
+ Esc to cancel · Tab to amend
+";
+        assert_eq!(classify_prompt(pane), Some(PromptKind::Permission3));
+        let mut s = UserSettings::default();
+        s.auto_approve_broad = true;
+        assert_eq!(decide(PromptKind::Permission3, pane, &s), Decision::Press("2"));
+    }
+
+    /// Обрывок меню без первого пункта — не prompt. Номера выдают его: у
+    /// настоящего меню нумерация начинается с единицы.
+    #[test]
+    fn a_menu_fragment_is_not_a_prompt() {
+        let pane = "\
+   2. Yes, and don't ask again
+   3. No
+ Esc to cancel · Tab to amend
+";
+        assert_eq!(classify_prompt(pane), None);
+    }
+
+    /// Форма, где расширяющий пункт ЕДИНСТВЕННОЕ согласие, а broad выключен.
+    /// Жать нечего: разового «Yes» нет, а расширять разрешение без спроса
+    /// нельзя — это ровно то, что настройка запрещает.
+    #[test]
+    fn without_broad_a_broad_only_menu_is_left_to_the_human() {
+        let pane = "\
+Claude in Chrome wants to navigate on example.com
+ ❯ 1. Allow all actions on example.com for this session
+   2. Deny (esc)
+";
+        let kind = classify_prompt(pane).expect("форма опознаётся");
+        let mut s = UserSettings::default();
+        s.auto_approve_broad = false;
+        assert_eq!(decide(kind, pane, &s), Decision::Skip);
+
+        s.auto_approve_broad = true;
+        assert_eq!(decide(kind, pane, &s), Decision::Press("1"));
+    }
+
+    /// Пункт «switch to auto mode» без единого обычного «Yes» — жать нечего.
+    /// Такой формы у CLI сегодня нет, но её появление не должно приводить к
+    /// молчаливому переключению режима.
+    #[test]
+    fn a_mode_switch_only_menu_is_never_pressed() {
+        let pane = "\
+Do you want to proceed?
+ ❯ 1. Yes, and switch to auto mode
+   2. No
+ Esc to cancel · Tab to amend
+";
+        let mut s = UserSettings::default();
+        s.auto_approve_broad = true;
+        match classify_prompt(pane) {
+            None => {}
+            Some(kind) => assert_eq!(decide(kind, pane, &s), Decision::Skip),
+        }
+    }
+
+    /// ИНСТРУМЕНТ ДИАГНОСТИКИ, а не проверка: прогоняет разбор по реальным
+    /// панелям всех tmux-сессий машины и печатает, что видит воркер — меню,
+    /// роли пунктов, гейт, свечение, форму.
+    ///
+    /// Держится в наборе намеренно: три из четырёх отказов авто-апрува за
+    /// месяц диагностировались именно так — захватом живой панели, а не
+    /// чтением кода. `#[ignore]`, потому что зависит от машины.
+    ///
+    /// Запуск: cargo test -p devforge live_panes -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn live_panes() {
+        let out = std::process::Command::new("tmux")
+            .args(["list-panes", "-a", "-F", "#{session_name}:#{window_index}.#{pane_index}"])
+            .output()
+            .expect("tmux");
+        for target in String::from_utf8_lossy(&out.stdout).lines() {
+            let cap = std::process::Command::new("tmux")
+                .args(["capture-pane", "-p", "-J", "-t", target])
+                .output()
+                .expect("capture");
+            let pane = String::from_utf8_lossy(&cap.stdout);
+            let menu = crate::attention::parse_menu(&pane);
+            let kind = classify_prompt(&pane);
+            let bottom = crate::attention::prompt_at_bottom(&pane);
+            let glow = crate::attention::detect_claude_prompt(&pane);
+            eprintln!(
+                "{target}: меню={} гейт={bottom} свечение={glow} форма={kind:?}",
+                menu.as_ref().map(|m| m.items.len()).unwrap_or(0),
+            );
+            if let Some(m) = menu {
+                for it in &m.items {
+                    eprintln!("      {}. [{:?}] {}", it.number, it.role, it.text.chars().take(70).collect::<String>());
+                }
+            }
+        }
+    }
+
+    /// Живой кейс 07.09.2026: разрешение MCP-инструмента, поднятое агентом
+    /// workflow. Заголовок блока здесь не `Bash command`, а `Tool use · from
+    /// the "…" workflow`, второй пункт называет имя MCP-сервера и путь.
+    #[test]
+    fn an_mcp_permission_from_a_workflow_agent_is_classified() {
+        let pane = "\
+ Tool use · from the \"apistend-research\" workflow
+
+   b24-dev-mcp — Bitrix-Method-Details Tool: (MCP)
+
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and don't ask again for b24-dev-mcp — Bitrix-Method-Details commands
+      in /Users/igorgerasimov/claudeWorkspace/apistend
+   3. No
+
+ Esc to cancel · Tab to amend
+";
+        assert_eq!(classify_prompt(pane), Some(PromptKind::Permission3));
+        let mut s = UserSettings::default();
+        s.auto_approve_broad = true;
+        assert_eq!(decide(PromptKind::Permission3, pane, &s), Decision::Press("2"));
+    }
+
+    /// Пять пунктов с двумя разными расширениями: жмётся ПЕРВОЕ расширяющее,
+    /// а не последнее и не смена режима. Такой формы у CLI сегодня нет —
+    /// тест держит поведение на случай, когда она появится.
+    #[test]
+    fn with_several_widening_options_the_first_one_wins() {
+        let pane = "\
+Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and always allow access to /tmp from this project
+   3. Yes, and don't ask again for: ls commands
+   4. Yes, and switch to auto mode
+   5. No
+ Esc to cancel · Tab to amend
+";
+        let kind = classify_prompt(pane).expect("форма опознаётся");
+        let mut s = UserSettings::default();
+        s.auto_approve_broad = true;
+        assert_eq!(decide(kind, pane, &s), Decision::Press("2"));
+        s.auto_approve_broad = false;
+        assert_eq!(decide(kind, pane, &s), Decision::Press("1"));
+    }
+
+    /// План остаётся неприкосновенным и в новой форме с четырьмя пунктами:
+    /// его пункты («auto-accept edits», «keep planning») опознаются раньше
+    /// любой permission-ветки.
+    #[test]
+    fn the_plan_prompt_is_still_never_approved() {
+        let pane = "\
+Ready to code?
+ ❯ 1. Yes, and auto-accept edits
+   2. Yes, and manually approve edits
+   3. Yes, and switch to auto mode
+   4. No, keep planning
+ Esc to cancel · Tab to amend
+";
+        assert_eq!(classify_prompt(pane), Some(PromptKind::Plan));
+        let mut s = UserSettings::default();
+        s.auto_approve_broad = true;
+        assert_eq!(decide(PromptKind::Plan, pane, &s), Decision::Skip);
+    }
+
+    /// Девятый пункт — верхняя граница таблицы номеров. Меню с номером за
+    /// её пределами не должно приводить к нажатию мусора.
+    #[test]
+    fn an_out_of_range_number_is_not_pressed() {
+        assert_eq!(digit(9), Some("9"));
+        assert_eq!(digit(10), None);
+        assert_eq!(digit(0), None);
     }
 
     /// Prompt без меню в панели вообще (`Plan`/`Question` рисуют свои

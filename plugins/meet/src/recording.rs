@@ -403,7 +403,72 @@ async fn run_worker(
         return;
     }
 
-    if reason.keeps_files() {
+    // ОСТАНОВКА ДО НАЧАЛА ЗАПИСИ — ОТДЕЛЬНЫЙ ИСХОД, А НЕ ЧАСТНЫЙ СЛУЧАЙ
+    // ШТАТНОГО.
+    //
+    // Ветка ниже вела встречу через `Leaving` → `Transcoding`, и оба перехода
+    // разрешены ТОЛЬКО из `Recording`. Если бот остановился, не дойдя до
+    // записи — а это рядовой случай: вход в несуществующую комнату даёт
+    // маркер «Встреча завершена» за две секунды, Chrome умирает на входе, —
+    // оба `set_status` возвращали `InvalidState`, ошибка гасилась через
+    // `let _`, пост-обработка не ставилась, и строка НАВСЕГДА оставалась в
+    // `launching`.
+    //
+    // Стоило это не только зависшей карточки. `launching` входит в
+    // `MeetStatus::ACTIVE` и в частичный уникальный индекс
+    // `ux_meetings_active_url`, поэтому любой следующий старт по ТОМУ ЖЕ
+    // адресу прицеплялся к мёртвой строке и возвращал `attached: true` без
+    // единого работающего бота. Комната становилась незапускаемой до ручной
+    // отмены или перезапуска devforge.
+    //
+    // Мерило — статус в базе, а не число кадров: «дошли до записи» это ровно
+    // то, что решает, законны ли переходы ниже.
+    let recorded = matches!(
+        meetings::get(&state, &meeting_id).await.map(|r| r.status),
+        Ok(MeetStatus::Recording) | Ok(MeetStatus::Leaving)
+    );
+
+    if !recorded {
+        // Записывать нечего: пост-обработке не с чем работать, и вести
+        // встречу в `Transcoding` значило бы отдать ffmpeg пустой каталог.
+        // `Failed` и `Cancelled` из `launching` таблица переходов разрешает,
+        // расширять её не требуется.
+        let target = if reason == StopReason::DomEnded {
+            MeetStatus::Failed
+        } else {
+            MeetStatus::Cancelled
+        };
+        if let Err(e) =
+            meetings::set_status(&state, &meeting_id, target, Some(reason.as_str())).await
+        {
+            tracing::error!(
+                target: "forge_meet",
+                meeting_id = %meeting_id,
+                error = %e,
+                reason = reason.as_str(),
+                "forge-meet: встреча не переведена в терминальный статус — строка останется активной"
+            );
+        }
+        if let Ok(row) = meetings::get(&state, &meeting_id).await {
+            let _ = std::fs::remove_dir_all(&row.meeting_dir);
+        }
+        state.broadcast_event(MeetServerMsg::Error {
+            meeting_id: Some(meeting_id.clone()),
+            code: reason.as_str().to_string(),
+            message: if reason == StopReason::DomEnded {
+                "Встреча уже завершена — записывать нечего".to_string()
+            } else {
+                "Бот не дошёл до записи".to_string()
+            },
+        });
+        tracing::info!(
+            target: "forge_meet",
+            meeting_id = %meeting_id,
+            reason = reason.as_str(),
+            status = target.as_str(),
+            "forge-meet: остановка до начала записи"
+        );
+    } else if reason.keeps_files() {
         // Штатный путь: выходим из встречи и уходим в пост-обработку.
         let _ = meetings::set_status(&state, &meeting_id, MeetStatus::Leaving, Some(reason.as_str())).await;
         let moved = meetings::set_status(&state, &meeting_id, MeetStatus::Transcoding, Some(reason.as_str())).await;
@@ -474,6 +539,31 @@ async fn apply_event(
         }
         MeetEvent::RecordingStarted { .. } => {
             let _ = meetings::set_status(state, id, MeetStatus::Recording, Some("audio_started")).await;
+        }
+        MeetEvent::MediaWarning { code, detail, .. } => {
+            // Предупреждение обязано пережить процесс: в файловом журнале оно
+            // уже есть, но его читают post factum, а строка `meeting_events`
+            // видна в карточке — то есть человеку, ПОКА ВСТРЕЧА ИДЁТ и её ещё
+            // можно спасти. Статус не меняется: запись продолжается.
+            let _ = crate::db::repo::events::note(
+                state,
+                id,
+                MeetStatus::Recording.as_str(),
+                code,
+                Some(detail),
+            )
+            .await;
+            state.broadcast_event(MeetServerMsg::Error {
+                meeting_id: Some(id.clone()),
+                code: code.clone(),
+                message: detail.clone(),
+            });
+            tracing::warn!(
+                target: "forge_meet",
+                meeting_id = %id,
+                code = %code,
+                "forge-meet: {detail}"
+            );
         }
         MeetEvent::RecordingStopped { reason, .. } => return Some(*reason),
         _ => {}
@@ -607,6 +697,67 @@ mod tests {
         assert!(
             !std::path::Path::new(&meeting_dir).exists(),
             "cancel обязан ВЫБРОСИТЬ данные: каталог {meeting_dir} на месте"
+        );
+    }
+
+    /// ОСТАНОВКА ДО НАЧАЛА ЗАПИСИ ОБЯЗАНА КОНЧИТЬСЯ ТЕРМИНАЛЬНЫМ СТАТУСОМ.
+    ///
+    /// Сценарий без единого события — это бот, у которого поток закрылся, не
+    /// дойдя до записи. Живьём так выглядят вход в несуществующую комнату
+    /// (маркер «Встреча завершена» за две секунды) и смерть Chrome на входе.
+    ///
+    /// Раньше воркер вёл такую встречу через `Leaving` → `Transcoding`, оба
+    /// перехода из `launching` запрещены таблицей, ошибка гасилась через
+    /// `let _`, и строка оставалась в `launching` НАВСЕГДА. Цена — не только
+    /// зависшая карточка: `launching` входит в `ux_meetings_active_url`,
+    /// поэтому следующий старт по тому же адресу цеплялся к мёртвой строке и
+    /// возвращал `attached: true` без единого работающего бота.
+    #[tokio::test]
+    async fn a_stop_before_recording_ends_in_a_terminal_status() {
+        let (state, dir, _f) = stand(BotScript::default()).await;
+        let meeting = create_meeting(&state, dir.path()).await;
+
+        let slot = state.hub.try_acquire_recording().unwrap();
+        let session = start(&state, &meeting, JoinMode::Normal, slot).await.unwrap();
+
+        let mut status = MeetStatus::Launching;
+        for _ in 0..300 {
+            status = meetings::get(&state, &meeting.id).await.unwrap().status;
+            if status.is_terminal() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert!(
+            status.is_terminal(),
+            "встреча зависла в {status:?}: строка осталась активной и заняла адрес навсегда"
+        );
+
+        // Слот обязан вернуться: иначе один промах входа съедал бы место в
+        // очереди записей до перезапуска.
+        //
+        // Ждём, а не проверяем сразу. `start` отдаёт `Arc<RecordingSession>`, и
+        // слот лежит ВНУТРИ сеанса — то есть возвращается он не в момент
+        // `drop` здесь, а когда свою копию `Arc` отпустит воркер. Это разные
+        // моменты, и синхронная проверка ловила не утечку слота, а то, успел
+        // ли воркер доработать: изолированно тест проходил всегда, а в полном
+        // параллельном прогоне падал с `left: 1, right: 2`.
+        //
+        // Ожидание настоящую утечку не прячет: слот, который не вернулся, не
+        // вернётся и за секунду, и тест упадёт — просто с честной причиной.
+        drop(session);
+        let want = state.limits().recordings;
+        for _ in 0..100 {
+            if state.hub.recordings_available() == want {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert_eq!(
+            state.hub.recordings_available(),
+            want,
+            "слот записи не вернулся за секунду после завершения сеанса: \
+             один промах входа съедает место в очереди до перезапуска"
         );
     }
 

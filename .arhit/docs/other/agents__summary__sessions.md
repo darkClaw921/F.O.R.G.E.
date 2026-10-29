@@ -1,0 +1,3 @@
+# agents::summary::sessions
+
+Return filtered task history from AgentIndex, newest startedAtMs first with ID tie-breaker. Date selection includes overlapping work, starts inside the range and explicit endings inside the range, including completion exactly at midnight. Provider/profile/project filters are identical to summary. Limit defaults to 200 and caps at 500; offset is validated against overflow and pagination applies after every filter. Task state is rendered at now_ms; elapsed for an open waiting/unknown task is bounded at its last journal activity, avoiding indefinitely growing historical duration. The returned AgentTask retains original start, explicit provider duration, completion/unknown status and nullable metrics.

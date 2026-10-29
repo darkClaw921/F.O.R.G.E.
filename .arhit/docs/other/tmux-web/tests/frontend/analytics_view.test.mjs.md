@@ -1,0 +1,7 @@
+# tmux-web/tests/frontend/analytics_view.test.mjs
+
+Node-тест логики полноэкранного дашборда аналитики (Фаза 5). 68 проверок, стиль проекта: ok/eq и process.exit(failures ? 1 : 0). Запускается из cargo test через tmux-web/tests/analytics_frontend_suite.rs (список собирается по маске каталога analytics_*, правки списка не требуется).
+
+ЧТО ПРОВЕРЯЕТ. Импортирует static/js/analytics/view-core.js и проверяет четыре места, где дашборд ломается тихо: границы периода («7 дней» не должны превращаться в восемь колонок, переход через год считается календарём, 'all' не шлёт границ), дельту к пустому предыдущему периоду (никаких +Infinity/NaN, окраска по смыслу метрики, а не по знаку), подписи бакетов от границ сервера (сверены с PAUSE_BUCKET_EDGES_MS в rollup.rs и MSG_LEN_EDGES в mod.rs) и развилку viewMode: scanning/idle → прогресс, ready при фоновом доборе → ДАННЫЕ, ready без добора → без поллинга.
+
+СТРАЖИ ПО ТЕКСТУ. analytics.js импортировать в Node нельзя (тянет core/dom.js), поэтому договоры проверяются регуляркой по исходнику с вырезанными комментариями: нет innerHTML, нет своего fetch (сеть только через analytics/api.js — иначе 401 в remote-режиме), есть showAnalytics/hideAnalytics, поллинг гасится clearInterval, обработчик Esc снимается. Плюс точки входа снаружи (ForgeApp.showAnalytics/hideAnalytics в public-api.js, ?view=analytics и не сломанный ?view=daily-summary в pwa/bootstrap.js), наличие разметки #analytics и ref-ов в dom.js, подключение css/analytics.css в style.css и отсутствие литералов цвета в нём.

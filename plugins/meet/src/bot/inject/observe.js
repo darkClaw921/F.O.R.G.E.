@@ -267,6 +267,16 @@ export function forgeReadParticipants(doc, probes) { // FORGE_STRIP_FOR_WORKLET
     var out = [];
     for (var i = 0; i < tiles.length; i++) {
         var tile = tiles[i];
+        // СВОЯ ПЛИТКА ВЫЧИТАЕТСЯ ЗДЕСЬ, а не в Rust по совпадению имён. У
+        // LiveKit (vcc.airlabs.pro, измерено Ф13) бот нарисован такой же
+        // `.lk-participant-tile`, что и люди, и отличается ровно атрибутом
+        // `data-lk-local-participant="true"`. Сравнение по имени работало бы
+        // только пока площадка не тронула имя бота: обрезала пробелы,
+        // приписала «(вы)» — и бот снова участник самому себе.
+        //
+        // Проба пуста у всех площадок, кроме этой, и тогда цикл идёт как
+        // прежде: `forgeMarked` на пустом списке кандидатов даёт false.
+        if (forgeMarked(tile, probes.local_participant_marker || [])) { continue; }
         var nameEl = forgeProbeFirst(tile, probes.participant_name || []);
         var name = nameEl ? forgeText(nameEl) : forgeText(tile);
         if (name.length > 80) { name = name.slice(0, 80); }

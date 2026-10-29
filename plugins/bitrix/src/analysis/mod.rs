@@ -43,7 +43,7 @@ pub mod context;
 pub use forge_chat_analysis::{hub, prompt, prompts};
 
 pub use forge_chat_analysis::{
-    ActiveRun, AnalysisError, AnalysisHub, AnalysisSink, StartOutcome, StartRequest,
-    DEFAULT_ANALYSIS_TIMEOUT_SECS, DELTA_FLUSH_CHARS, DELTA_FLUSH_MS, KIND_ANALYZE, KIND_ASK,
-    KIND_REFRESH, MAX_PARALLEL_ANALYSIS, REASON_CANCELLED, REASON_ERROR, REASON_TIMEOUT,
+    resolve_transport, ActiveRun, AnalysisError, AnalysisHub, AnalysisSink, StartOutcome,
+    StartRequest, DEFAULT_ANALYSIS_TIMEOUT_SECS, DELTA_FLUSH_CHARS, DELTA_FLUSH_MS, KIND_ANALYZE,
+    KIND_ASK, KIND_REFRESH, MAX_PARALLEL_ANALYSIS, REASON_CANCELLED, REASON_ERROR, REASON_TIMEOUT,
 };

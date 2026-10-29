@@ -2410,3 +2410,120 @@
 .tg-analysis-thread .md-table tbody tr:nth-child(even) td {
     background: var(--t-panel);
 }
+
+/* ==========================================================================
+   РАСШИФРОВКА ГОЛОСОВОГО (ГС-Ф5)
+
+   Разметку строит ОБЩИЙ на три панели модуль
+   js/messenger/voice-transcript-core.js, поэтому суффиксы классов здесь те же,
+   что у соседних панелей, — меняется только префикс. Цвета берутся ТОЛЬКО из
+   токенов панели: тогда светлая тема и контраст достаются даром, ровно как у
+   остальных карточек медиа.
+   ========================================================================== */
+.tg-voice {
+    border-top: 1px solid var(--t-grn-faint);
+    padding: 4px 8px 6px 8px;
+    font-size: 10px;
+    color: var(--t-grn-dim);
+}
+/* [hidden] задаётся ЯВНО: у узлов со своим `display` (свёрнутый текст —
+   `-webkit-box`, полоса — `block`) атрибут сам по себе не действует. */
+.tg-voice [hidden] {
+    display: none !important;
+}
+.tg-voice-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+.tg-voice-label {
+    flex: 0 0 auto;
+    letter-spacing: 0.1em;
+    color: var(--t-grn);
+}
+.tg-voice-status {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* Причина отказа длиннее строки состояния и переносится: обрезать её
+   многоточием значит спрятать ровно то, ради чего её показывают. */
+.tg-voice[data-voice-state="error"] .tg-voice-status {
+    color: var(--t-red);
+    white-space: normal;
+}
+.tg-voice-progress {
+    display: block;
+    height: 3px;
+    margin-top: 4px;
+    border-radius: 2px;
+    background: var(--t-grn-faint);
+    overflow: hidden;
+}
+.tg-voice-bar {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: var(--t-grn);
+    transition: width 0.12s linear;
+}
+/* Сама расшифровка — обычный текст сообщения: тот же кегль, те же переносы.
+   `pre-wrap` сохраняет абзацы движка, `anywhere` не даёт длинному слову
+   (ссылке, номеру) раздвинуть карточку. */
+.tg-voice-text {
+    margin-top: 4px;
+    color: var(--t-grn-hi);
+    font-size: 12px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+/* Сворачивание РИСОВАННОЕ: в DOM всегда полный текст, обрезает только CSS —
+   иначе «показать полностью» требовало бы второго запроса. */
+.tg-voice-text-collapsed {
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.tg-voice-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 4px;
+}
+.tg-voice-run,
+.tg-voice-toggle {
+    flex: 0 0 auto;
+    background: transparent;
+    border: 1px solid var(--t-grn-faint);
+    border-radius: 3px;
+    color: var(--t-grn-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    padding: 2px 6px;
+}
+.tg-voice-run:hover:not(:disabled),
+.tg-voice-toggle:hover {
+    color: var(--t-grn);
+    border-color: var(--t-grn-dim);
+}
+.tg-voice-run:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+/* Обе кнопки достижимы табом, и рамка фокуса обязана быть видна: без неё
+   клавиатурная навигация по ленте слепнет. */
+.tg-voice-run:focus-visible,
+.tg-voice-toggle:focus-visible {
+    outline: 1px solid var(--t-grn);
+    outline-offset: 1px;
+}
+@media (prefers-reduced-motion: reduce) {
+    .tg-voice-bar {
+        transition: none;
+    }
+}

@@ -1,0 +1,36 @@
+/* Dense historical ledger; the application theme supplies every color. */
+.agent-history { min-width:0; margin-top:28px; border-top:1px solid var(--border); }
+.agent-history h3 { margin:0 0 12px; font-size:.95rem; font-weight:600; }
+.agent-history-metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(185px,1fr)); margin:0; gap:18px 24px; }
+.agent-history-metric { padding:0 0 12px; border-bottom:1px solid var(--border-soft); min-width:0; }
+.agent-history-metric dt { color:var(--fg-dim); font-size:.78rem; line-height:1.4; }
+.agent-history-metric dd { margin:6px 0 0; color:var(--fg); font-size:1.15rem; font-weight:600; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+.agent-history-coverage { max-width:90ch; margin-top:16px; }
+.agent-history-charts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; margin:24px 0; }
+.agent-history-chart { min-width:0; }
+.agent-history-chart-wide { grid-column:1/-1; }
+.agent-history-chart-canvas { width:100%; min-width:0; color:var(--fg-dim); }
+.agent-history-breakdowns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; }
+.agent-history-breakdown { min-width:0; }
+.agent-history-breakdown>.agent-button { margin-top:10px; }
+.agent-history-sessions { margin-top:28px; }
+.agent-history-scroll { max-width:100%; overflow-x:auto; overscroll-behavior-x:contain; border:1px solid var(--border-soft); border-radius:6px; }
+.agent-history-scroll:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.agent-history-table { width:100%; border-collapse:collapse; text-align:left; font-size:.78rem; }
+.agent-history-table th { background:var(--bg-header); color:var(--fg-dim); font-size:.74rem; font-weight:500; }
+.agent-history-table td,.agent-history-table th { padding:9px 10px; border-bottom:1px solid var(--border-soft); vertical-align:top; }
+.agent-history-table tr:last-child td { border-bottom:0; }
+.agent-history-table td:not(.agent-history-name) { white-space:nowrap; font-variant-numeric:tabular-nums; }
+.agent-history-name { min-width:120px; overflow-wrap:anywhere; max-width:360px; }
+.agent-history-name small,.agent-history-table td>small { display:block; line-height:1.4; margin:3px 0 0; }
+.agent-history-id { color:var(--fg-dim); font-size:.7rem; }
+.agent-history-pagination { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-top:12px; }
+.agent-history-pagination .agent-muted { margin:0; }
+@media(max-width:900px) { .agent-history-breakdowns { grid-template-columns:1fr; } }
+@media(max-width:600px) {
+    .agent-history-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px 16px; }
+    .agent-history-metric dd { font-size:1rem; }
+    .agent-history-charts { grid-template-columns:1fr; gap:20px; }
+    .agent-history-table td,.agent-history-table th { padding:8px; }
+    .agent-history-pagination { gap:8px; }
+}

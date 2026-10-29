@@ -479,7 +479,7 @@ async fn harness() -> (tempfile::TempDir, Arc<StubState>, Arc<B24State>, Router)
             portal: "test-work-2.bitrix24.ru".into(),
         })
         .await;
-    let router = forge_bitrix::routes::build_router(state.clone());
+    let router = forge_bitrix::routes::build_router(forge_bitrix::B24Registry::single(state.clone()));
     (dir, stub.state, state, router)
 }
 

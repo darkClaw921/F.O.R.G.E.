@@ -425,7 +425,7 @@ mod tests {
     }
 
     async fn make_state(cli: PathBuf) -> Arc<EchoState> {
-        let runner = Arc::new(ClaudeRunner::new(cli, 4));
+        let runner = Arc::new(ClaudeRunner::new(cli, 4).with_enabled(true));
         let db = Db::open_memory().await.unwrap();
         db.migrate().await.unwrap();
         let state = Arc::new(EchoState::new(Arc::new(db), runner));
@@ -435,7 +435,7 @@ mod tests {
     }
 
     async fn make_state_with_cap(cli: PathBuf, cap: u64) -> Arc<EchoState> {
-        let runner = Arc::new(ClaudeRunner::new(cli, 4));
+        let runner = Arc::new(ClaudeRunner::new(cli, 4).with_enabled(true));
         let db = Db::open_memory().await.unwrap();
         db.migrate().await.unwrap();
         let cfg = crate::config::EchoConfig {

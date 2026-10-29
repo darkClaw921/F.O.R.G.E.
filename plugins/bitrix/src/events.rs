@@ -709,6 +709,10 @@ async fn run_worker(
         // Каденс выбирается ПО ЧИСЛУ ПОДПИСЧИКОВ (Р4), а idle-пауза вдобавок
         // прерывается их появлением: панель, открытая сразу после ухода в
         // idle, иначе ждала бы первое событие все двадцать секунд.
+        //
+        // Подписчики считаются У ЭТОГО ПОРТАЛА, хотя сокет один на все:
+        // соединение подписывается на broadcast каждого портала отдельно, и
+        // счётчик остаётся пер-портальным (см. `B24State::ws_subscribers`).
         let subscribers = state.ws_subscribers();
         let delay = next_interval(&state.poll, page.has_more, subscribers);
         let alive = if subscribers == 0 {
@@ -769,6 +773,13 @@ async fn dispatch(state: &Arc<B24State>, events: &[EventRaw]) -> usize {
         let muted = state.is_muted(&dialog_id).await;
         for frame in frames_for(ev, &dialog_id, self_id, &state.peers, muted) {
             invalidate_media(state, &frame).await;
+            // Авторазбор голосовых (Ф4). Решение принимается здесь и стоит
+            // разбора уже полученного DTO; страница истории (дескрипторы
+            // файлов), докачка и движок уезжают в фоновую задачу — поток
+            // событий держит ленту всего портала.
+            if let B24ServerMsg::MessageNew { message, .. } = &frame {
+                crate::voice_auto::on_new_message(state, message).await;
+            }
             state.broadcast_event(frame);
             sent += 1;
         }

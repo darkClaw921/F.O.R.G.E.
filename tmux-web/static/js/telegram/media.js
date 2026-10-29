@@ -40,7 +40,9 @@
 
 import { $tgLightbox, $tgLightboxCaption, $tgLightboxClose, $tgLightboxImg } from '../core/dom.js';
 
-import { fetchMedia } from './api.js';
+import { buildWave, noiseSeed } from '../messenger/waveform-core.js';
+import { createVoiceTranscript } from '../messenger/voice-transcript-core.js';
+import { fetchMedia, getVoiceTranscript, transcribeVoice } from './api.js';
 import {
     canShowThumb, durationLabel, formatBytes, isImageKind, isPlayableKind, mediaFileName,
     mediaGlyph, mediaKey, mediaKindLabel, mediaMetaLine, progressLabel, progressPercent,
@@ -248,6 +250,29 @@ export function resetMediaCards() {
 // Карточка
 // ---------------------------------------------------------------------------
 
+/**
+ * Имя DOM-события, которым панель отдаёт кадры расшифровки наружу.
+ *
+ * Объявлено ЗДЕСЬ, а не в `main.js`, хотя рассылает кадры именно он: карточку
+ * рисует этот файл, а `main.js` импортирует его — обратный импорт замкнул бы
+ * цикл. `main.js` берёт имя отсюда и переэкспортирует.
+ */
+export const VOICE_FRAME_EVENT = 'telegram:voice-transcribe';
+
+/**
+ * Текст расшифровки под голосовым — ОБЩИЙ модуль на три панели.
+ *
+ * Панель отдаёт сюда только транспорт, имя события с кадрами и префикс
+ * классов. У Telegram вложение в сообщении ОДНО, поэтому индекс всегда 0 —
+ * ровно как в соли заглушки волны.
+ */
+export const voiceTranscript = createVoiceTranscript({
+    plugin: 'telegram',
+    classPrefix: 'tg-voice',
+    frameEvent: VOICE_FRAME_EVENT,
+    api: { transcribe: transcribeVoice, transcript: getVoiceTranscript },
+});
+
 /** Кнопка карточки в терминальном стиле. */
 function button(label, title) {
     const b = document.createElement('button');
@@ -317,20 +342,16 @@ export function buildMediaCard(msg) {
     body.appendChild(icon);
 
     if (kind === 'voice' || kind === 'audio') {
-        // Псевдо-волна: детерминированная по message_id, чтобы карточка не
-        // «дышала» при каждой перерисовке ленты.
-        const wave = document.createElement('div');
-        wave.className = 'tg-media-wave';
-        wave.setAttribute('aria-hidden', 'true');
-        let seed = (messageId || 1) * 2654435761;
-        for (let i = 0; i < 40; i += 1) {
-            seed = (seed ^ (seed << 13)) >>> 0;
-            seed = (seed ^ (seed >>> 17)) >>> 0;
-            const bar = document.createElement('span');
-            bar.style.height = `${8 + (seed % 24)}px`;
-            wave.appendChild(bar);
-        }
-        body.appendChild(wave);
+        // Звуковая дорожка. У голосовых огибающая приезжает от Telegram
+        // (`DocumentAttributeAudio.waveform`), у обычных аудиофайлов её считает
+        // бэкенд по скачанному файлу; пока её нет — детерминированная по
+        // message_id заглушка, чтобы карточка не «дышала» при перерисовке
+        // ленты. Рисовальщик общий на три панели.
+        body.appendChild(buildWave({
+            waveform: media.waveform,
+            seed: noiseSeed(messageId),
+            className: 'tg-media-wave',
+        }));
         icon.hidden = true;
     }
 
@@ -377,6 +398,12 @@ export function buildMediaCard(msg) {
     card.appendChild(head);
     card.appendChild(body);
     card.appendChild(foot);
+
+    // Блок расшифровки — ПОД подвалом карточки и только у звука. `null` для
+    // прочих видов возвращает сам общий модуль; обычное аудио блок получает —
+    // это то же решение, что у авторазбора (Ф4).
+    const transcript = voiceTranscript.attach({ dialogId, messageId, index: 0, kind });
+    if (transcript) card.appendChild(transcript);
 
     const ctl = {
         el: card,

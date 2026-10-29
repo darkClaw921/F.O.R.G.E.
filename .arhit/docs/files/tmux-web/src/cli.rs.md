@@ -1,0 +1,3 @@
+# tmux-web/src/cli.rs
+
+Ручной парсер CLI-аргументов devforge (без clap). Подкоманды run/start/stop/status/pair/remote, опции --port/--remote/--bind/--token и bool-флаги opt-in плагинов: --pwa, --telegram, --vk, --bitrix, --meet, --tracker (последний — личный таск/тайм-трекер forge-tracker, вкладка «Мои задачи»). Каждый флаг ложится в поле RunOptions и по умолчанию false; окончательное значение резолвится в server_config::resolve с приоритетом CLI > server_config.json > env > default. Флаги плагинов недопустимы у stop/status (has_run_only_flags) и обязаны присутствовать в help_text() — на это есть отдельные тесты (help_text_mentions_tracker и т.п.). Флаги opt-in плагинов дополнительно пробрасываются в дочерний процесс демона через daemon::build_daemon_args.

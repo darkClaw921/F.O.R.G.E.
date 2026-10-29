@@ -664,7 +664,8 @@ textarea.ds-prompt-textarea {
 
 .tg-visibility-group,
 .vk-visibility-group,
-.b24-visibility-group {
+.b24-visibility-group,
+.voice-scope-group {
     font-size: 0.68rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -672,9 +673,42 @@ textarea.ds-prompt-textarea {
     margin: 12px 0 4px;
 }
 
+/* Переключатель ПОРТАЛА в шапке формы видимости Битрикс24 (Ф7.5). Аналога у
+   соседних панелей нет и не будет: аккаунт у них один, и вопрос «чьи это
+   настройки» там не возникает. Ряд остаётся на месте и при единственном
+   портале — он ОТВЕЧАЕТ на вопрос, а не только переключает. */
+
+.b24-visibility-portal-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.b24-visibility-portal-row .b24-visibility-group {
+    margin: 0;
+}
+
+.b24-visibility-portal {
+    flex: 1 1 auto;
+    min-width: 0;
+    font: inherit;
+    font-size: 0.78rem;
+    color: var(--fg);
+    background: var(--bg-header-alt);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 3px 6px;
+}
+
+.b24-visibility-portal:disabled {
+    color: var(--fg-mute);
+}
+
 .tg-visibility-list,
 .vk-visibility-list,
-.b24-visibility-list {
+.b24-visibility-list,
+.voice-scope-list {
     max-height: 220px;
     overflow-y: auto;
     border: 1px solid var(--border-input);
@@ -685,7 +719,8 @@ textarea.ds-prompt-textarea {
 
 .tg-visibility-item,
 .vk-visibility-item,
-.b24-visibility-item {
+.b24-visibility-item,
+.voice-scope-item {
     display: flex;
     align-items: baseline;
     gap: 6px;
@@ -696,7 +731,8 @@ textarea.ds-prompt-textarea {
 
 .tg-visibility-label,
 .vk-visibility-label,
-.b24-visibility-label {
+.b24-visibility-label,
+.voice-scope-label {
     flex: 1 1 auto;
     min-width: 0;
     overflow: hidden;
@@ -708,7 +744,8 @@ textarea.ds-prompt-textarea {
    приглушены и не участвуют в переносе. */
 .tg-visibility-badge,
 .vk-visibility-badge,
-.b24-visibility-badge {
+.b24-visibility-badge,
+.voice-scope-badge {
     flex: 0 0 auto;
     font-size: 0.65rem;
     color: var(--fg-mute);
@@ -716,7 +753,8 @@ textarea.ds-prompt-textarea {
 
 .tg-visibility-search,
 .vk-visibility-search,
-.b24-visibility-search {
+.b24-visibility-search,
+.voice-scope-search {
     width: 100%;
     box-sizing: border-box;
     margin: 4px 0 6px;
@@ -729,14 +767,16 @@ textarea.ds-prompt-textarea {
 }
 .tg-visibility-search:focus,
 .vk-visibility-search:focus,
-.b24-visibility-search:focus {
+.b24-visibility-search:focus,
+.voice-scope-search:focus {
     outline: none;
     border-color: var(--accent);
 }
 
 .tg-visibility-summary,
 .vk-visibility-summary,
-.b24-visibility-summary {
+.b24-visibility-summary,
+.voice-scope-summary {
     margin: 6px 0 2px;
 }
 /* Режим включён, но ничего не выбрано — предупреждение, а не ошибка:
@@ -752,4 +792,137 @@ textarea.ds-prompt-textarea {
 .b24-visibility-save-ok {
     color: var(--ok, #3fa34d);
     margin-bottom: 6px;
+}
+
+/* ── Секция «Голосовые сообщения» (ГС-Ф4) ─────────────────────────────────
+   Одна разметка на три вкладки: её строит js/settings/voice-tab.js. Цвета —
+   только токенами палитры, как во всей этой форме: захардкоженный hex здесь
+   был бы виден на любой чужой теме. */
+.voice-engine-group {
+    /* Тот же заголовок группы, что у списков видимости, — правила выше. */
+    margin-top: 14px;
+}
+
+.voice-engine-select {
+    width: 100%;
+    max-width: 320px;
+    padding: 5px 8px;
+    background: var(--bg-soft, var(--bg));
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font: inherit;
+}
+
+.voice-engine-select:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.voice-engine-shared {
+    margin: 4px 0 0;
+}
+
+/* Движок выбран, но работать сейчас не будет (нет ключа, нет модели). Это
+   предупреждение, а не ошибка: выбор сохранён, чинить нужно окружение. */
+.voice-engine-warning {
+    color: var(--warn, #d08b00);
+    margin: 4px 0 0;
+}
+
+.voice-save-ok {
+    color: var(--ok, #3fa34d);
+    margin-bottom: 6px;
+}
+
+/* ── Блок «В каких чатах разбирать автоматически» ──────────────────────────
+   Общая форма выбора (js/settings/peer-picker.js) с классами `voice-scope-*`;
+   правила списков, строк, пометок и поиска у неё ОБЩИЕ с формами видимости —
+   она дописана в их парные селекторы выше, а не скопирована.
+
+   При выключенном тумблере авторазбора блок остаётся на месте и лишь глохнет:
+   исчезающий блок читался бы как «настройка пропала», а сам выбор при этом
+   никуда не девается и сохраняется как был. */
+.voice-scope {
+    margin-top: 14px;
+}
+
+.voice-scope-off {
+    opacity: 0.5;
+}
+
+.voice-scope-title {
+    margin-top: 0;
+}
+
+.voice-scope-hint {
+    margin: 0 0 4px;
+}
+
+.voice-scope-save-ok {
+    color: var(--ok, #3fa34d);
+    margin-bottom: 6px;
+}
+
+/* ── Вкладка «Аналитика» ───────────────────────────────────────────────────
+   Вкладка намеренно почти не имеет своего CSS: плитки, прогресс-бар и дельты
+   она берёт КЛАССАМИ полноэкранного вью (`css/analytics.css`), чтобы сводка в
+   модалке и дашборд не разъезжались по виду при первой же правке палитры.
+   Здесь только то, что от ширины модалки и правда зависит. */
+
+/* Сетка вью рассчитана на 1400px и от 150px на плитку; в панели настроек это
+   даёт одну колонку в столбик. Здесь шаг мельче, а hero-плитки не занимают
+   двойную ширину — иначе шесть плиток вытягиваются в ленту на пол-экрана. */
+/*
+ * `fieldset` — единственный элемент, у которого браузерное умолчание
+ * `min-width: min-content` НЕ переопределяется каскадом обычных правил: без
+ * явного сброса он раздувается под самый широкий потомок и тянет за собой всю
+ * модалку. Сетка плиток внутри просила 1392px при панели в 762px — карточка
+ * настроек уезжала за экран, а третья плитка обрезалась по краю.
+ */
+.analytics-settings-content .notify-fieldset {
+    min-width: 0;
+}
+
+.analytics-tab-kpi {
+    grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+    gap: 8px;
+    margin-bottom: 12px;
+    /* Ограничитель полноэкранного вью (1400px) в модалке только вредит. */
+    max-width: 100%;
+}
+
+.analytics-tab-kpi[hidden] {
+    display: none;
+}
+
+.analytics-tab-kpi .analytics-tile-hero {
+    grid-column: span 2;
+}
+
+.analytics-tab-kpi .analytics-tile-hero .analytics-tile-value {
+    font-size: 1.4rem;
+}
+
+/*
+ * Спарклайн: высоту задаёт SVG через viewBox, контейнеру нужен лишь отступ.
+ * Пропорции viewBox полноразмерного чарта (720×260) в панели шириной 760px
+ * дают почти 200px высоты — половину видимой части вкладки под одну линию.
+ * Ограничиваем: витрине хватает силуэта, детали смотрят в дашборде.
+ */
+.analytics-tab-spark {
+    margin-bottom: 10px;
+    max-width: 100%;
+}
+
+.analytics-tab-spark svg {
+    max-height: 96px;
+}
+
+.analytics-tab-spark[hidden] {
+    display: none;
+}
+
+.analytics-tab-meta {
+    margin-bottom: 8px;
 }

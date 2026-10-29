@@ -1,0 +1,3 @@
+# AgentStatsStore::request_rescan
+
+HTTP-facing nonblocking rescan entry point. An atomic compare-exchange admits one pending destructive rebuild; concurrent requests return current scanning status without queuing additional resets. The worker holds the same ingestion gate through cursor reset and initial discovery, so regular refresh cannot publish a misleading empty-ready state between them. status() overlays scanning while the background request remains pending. Errors preserve a diagnostic and release admission; configure() uses the awaited rescan path because configuration replacement must be applied before its operation finishes.

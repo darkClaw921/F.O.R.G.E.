@@ -95,6 +95,16 @@ pub type MessagePayload = crate::dto::MessageDto;
 /// карточка выглядит иначе, чем после перезагрузки вкладки (Ф10).
 pub type TaskPayload = crate::tasks::TaskDto;
 
+/// Вкладка портала — то же DTO, что отдаёт `GET /api/bitrix/portals`.
+///
+/// Алиас, а не отдельный тип, по той же причине, что и [`DialogPayload`]:
+/// строка вкладок рисуется и по ответу роута, и по кадру
+/// [`B24ServerMsg::Portals`], и расхождение форм означало бы, что вкладка,
+/// приехавшая realtime'ом, выглядит иначе, чем после перезагрузки страницы.
+/// Секрета в ней нет по построению — ни вебхука, ни отпечатка, ни хоста (см.
+/// шапку [`crate::routes::portals`]).
+pub type PortalPayload = crate::routes::portals::PortalDto;
+
 /// То, что летит в broadcast-канал [`crate::state::B24State`] и дальше —
 /// каждому WS-подписчику.
 ///
@@ -109,6 +119,30 @@ pub enum B24ServerMsg {
     /// Текущее состояние подключения. Отправляется ПЕРВЫМ кадром после
     /// апгрейда и при каждом переходе [`crate::state::LoginFlow`].
     LoginState(LoginStateDto),
+
+    /// Состав или статусы порталов изменились (Ф5).
+    ///
+    /// Отправляется снапшотом сразу после `login_state` каждого слота, затем
+    /// на каждое изменение состава реестра — добавление, отвязку,
+    /// переименование, перестановку вкладок
+    /// ([`crate::registry::B24Registry::subscribe_composition`]) — и на каждый
+    /// переход автомата подключения любого портала (сменился `connected`).
+    ///
+    /// А вот на `counters` — НЕТ: они идут постоянно, и полный список вкладок
+    /// на каждый счётчик был бы чистым шумом. Бейдж вкладки фронт двигает
+    /// самим кадром `counters` (у того есть `portal_id`), а поле `unread`
+    /// здесь — снимок для холодного старта.
+    ///
+    /// Полный список, а не патч, — в отличие от `dialogs_patch`: вкладок
+    /// единицы, а порядок в списке И ЕСТЬ порядок вкладок, и собирать его из
+    /// приращений значило бы заново решать задачу, которую реестр уже решил.
+    ///
+    /// Форма строки — ровно та же, что у `GET /api/bitrix/portals`
+    /// ([`PortalPayload`]): ни вебхука, ни его отпечатка, ни хоста портала.
+    Portals {
+        /// Вкладки В ПОРЯДКЕ РЕЕСТРА.
+        portals: Vec<PortalPayload>,
+    },
 
     /// Изменились строки списка диалогов.
     ///
@@ -287,6 +321,83 @@ pub enum B24ServerMsg {
         total: Option<u64>,
     },
 
+    /// Расшифровка голосового началась (голосовые-Ф3).
+    ///
+    /// Четвёрка кадров `voice_transcribe_*` стоит сразу за `download_progress`:
+    /// расшифровка продолжает жизненный цикл вложения, который начинается его
+    /// скачиванием. Состав и имена полей ОБЯЗАНЫ совпадать с VK и Telegram — на
+    /// этом держится общий фронт-модуль (Ф5), один на три мессенджера. Поэтому
+    /// координаты здесь разложены по трём полям, а не свёрнуты в `key`, как у
+    /// `download_progress`.
+    VoiceTranscribeStarted {
+        /// Идентификатор прогона.
+        run_id: String,
+        /// Диалог (`chat123`, `sg45`, `77`).
+        dialog_id: String,
+        /// Сообщение с голосовым.
+        message_id: i64,
+        /// Номер вложения в сообщении.
+        index: u8,
+        /// `local` | `cloud`: человек имеет право знать, ушло ли голосовое в
+        /// чужое облако, ДО того, как оно туда ушло.
+        engine: String,
+    },
+    /// Прогресс расшифровки, проценты.
+    ///
+    /// КОАЛЕСЦИРОВАН в [`B24VoiceSink`]: whisper печатает прогресс десятками
+    /// строк в секунду, и слать каждую значило бы переполнить broadcast, то
+    /// есть получить `Lagged` и [`B24ServerMsg::Resync`] посреди расшифровки.
+    VoiceTranscribeDelta {
+        /// Идентификатор прогона.
+        run_id: String,
+        /// Диалог.
+        dialog_id: String,
+        /// Сообщение с голосовым.
+        message_id: i64,
+        /// Номер вложения.
+        index: u8,
+        /// Проценты `0..=100`.
+        percent: u8,
+    },
+    /// Расшифровка готова; текст уже лежит в сторе.
+    VoiceTranscribeDone {
+        /// Идентификатор прогона.
+        run_id: String,
+        /// Диалог.
+        dialog_id: String,
+        /// Сообщение с голосовым.
+        message_id: i64,
+        /// Номер вложения.
+        index: u8,
+        /// Текст расшифровки целиком.
+        text: String,
+        /// Язык, как его назвал движок; пустая строка — не назвал.
+        language: String,
+        /// Каким движком получено.
+        engine: String,
+        /// Длительность записи, мс.
+        duration_ms: i64,
+    },
+    /// Расшифровка не удалась.
+    ///
+    /// `code` отдельно от текста: по нему фронт различает случаи
+    /// (`metal_unavailable` — «включите облако или почините GPU»,
+    /// `voice_no_key` — «введите ключ»).
+    VoiceTranscribeError {
+        /// Идентификатор прогона.
+        run_id: String,
+        /// Диалог.
+        dialog_id: String,
+        /// Сообщение с голосовым.
+        message_id: i64,
+        /// Номер вложения.
+        index: u8,
+        /// Машинный код отказа (`forge_voice::VoiceError::code`).
+        code: String,
+        /// Человеческий текст с хвостом stderr.
+        message: String,
+    },
+
     /// Фоновая операция не удалась.
     ///
     /// REST-ошибки едут своим конвертом ([`crate::routes::error`]); этот кадр
@@ -383,6 +494,49 @@ pub enum B24ServerMsg {
     Ping,
 }
 
+/// Кадр НА ПРОВОДЕ: [`B24ServerMsg`] плюс обязательный `portal_id` (Ф5).
+///
+/// # Почему конверт, а не поле в каждом варианте
+///
+/// Сокет `/ws/bitrix` один на все порталы, и по `portal_id` фронт решает,
+/// рисовать ли кадр в открытой ленте или поднять бейдж соседней вкладки. Поле
+/// обязано быть в КАЖДОМ кадре — включая те, что появятся в будущих фазах.
+/// Разложи его по двум десяткам вариантов enum'а — и первый же новый вариант
+/// приехал бы без него, причём МОЛЧА: кадр без `portal_id` не отличим от кадра
+/// активного портала, то есть чужая переписка утекла бы в открытую ленту.
+///
+/// Конверт делает это невозможным по типам: в сокет отправляется только он
+/// ([`crate::ws::send_server_msg`]), а собрать его без `portal_id` нельзя.
+///
+/// # Почему `flatten`, а не вложенный объект
+///
+/// `{"type":"message_new","portal_id":"acme",…}`, а не
+/// `{"portal_id":"acme","msg":{…}}`: форма ВСЕХ существующих кадров остаётся
+/// прежней, и фронт (а он читает `msg.dialog_id`, а не `msg.msg.dialog_id`)
+/// продолжает работать, ничего не зная о новом поле, пока Ф8 не научит его им
+/// пользоваться.
+///
+/// Заимствует, а не владеет: кадры бывают тяжёлыми (`message_new` с полным
+/// текстом), и оборачивание не повод их клонировать.
+#[derive(Debug, Clone, Serialize)]
+pub struct B24Frame<'a> {
+    /// Кому принадлежит событие. НИКОГДА не пуст: у слота без портала это
+    /// [`crate::ws::VACANT_PORTAL_ID`], у служебных кадров сокета —
+    /// [`crate::ws::SOCKET_PORTAL_ID`].
+    pub portal_id: &'a str,
+    /// Сам кадр, разложенный в том же объекте.
+    #[serde(flatten)]
+    pub msg: &'a B24ServerMsg,
+}
+
+impl<'a> B24Frame<'a> {
+    /// Собирает кадр для отправки.
+    #[must_use]
+    pub fn new(portal_id: &'a str, msg: &'a B24ServerMsg) -> Self {
+        Self { portal_id, msg }
+    }
+}
+
 /// Мост между ядром анализа и broadcast-каналом плагина
 /// ([`forge_chat_analysis::AnalysisSink`]).
 ///
@@ -477,6 +631,132 @@ pub enum B24ClientMsg {
     Pong,
 }
 
+/// На сколько процентов должна вырасти полоса, чтобы уехал новый кадр.
+///
+/// Пять: у голосового на минуту это два десятка кадров вместо сотен, а на глаз
+/// полоса всё равно движется непрерывно. Ноль означал бы кадр на каждую строку
+/// stderr whisper'а — то есть переполнение broadcast и `Resync` посреди
+/// расшифровки.
+pub const VOICE_PROGRESS_STEP: u8 = 5;
+
+/// Приёмник кадров расшифровки для ядра ([`forge_voice::VoiceSink`]).
+///
+/// Близнец [`B24AnalysisSink`] и живёт рядом по той же причине: ядро
+/// `forge-voice` не знает ни [`B24ServerMsg`], ни broadcast'а, а перевод в наш
+/// кадр обязан лежать там же, где объявлен сам кадр.
+///
+/// Коалесцинг прогресса ведётся ПО ПРОГОНУ (`run_id`), а не одним счётчиком на
+/// приёмник: при потолке параллелизма больше единицы два прогона перемешали бы
+/// проценты, и полоса каждого дёргалась бы назад.
+#[derive(Debug, Clone)]
+pub struct B24VoiceSink {
+    tx: tokio::sync::broadcast::Sender<B24ServerEvent>,
+    /// Последний ОТПРАВЛЕННЫЙ процент каждого идущего прогона.
+    sent: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, u8>>>,
+}
+
+impl B24VoiceSink {
+    /// Оборачивает broadcast-канал состояния.
+    #[must_use]
+    pub fn new(tx: tokio::sync::broadcast::Sender<B24ServerEvent>) -> Self {
+        Self {
+            tx,
+            sent: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        }
+    }
+
+    /// Координаты вложения из ключа ядра.
+    ///
+    /// `message_id` в ядре — строка (у трёх мессенджеров он разного типа), а в
+    /// кадре Bitrix это `i64`. Неразбираемое значение даёт `0`, а не панику:
+    /// ключ собирается из проверенного `CacheKey`, но кадр — не то место, где
+    /// стоит падать.
+    fn coords(key: &forge_voice::VoiceKey) -> (String, i64, u8) {
+        (
+            key.peer.clone(),
+            key.message_id.parse().unwrap_or(0),
+            key.index,
+        )
+    }
+
+    /// Забыть прогон: он кончился.
+    fn forget(&self, run_id: &str) {
+        if let Ok(mut map) = self.sent.lock() {
+            map.remove(run_id);
+        }
+    }
+}
+
+impl forge_voice::VoiceSink for B24VoiceSink {
+    fn started(&self, run_id: &str, key: &forge_voice::VoiceKey, engine: &str) {
+        let (dialog_id, message_id, index) = Self::coords(key);
+        if let Ok(mut map) = self.sent.lock() {
+            map.insert(run_id.to_string(), 0);
+        }
+        let _ = self.tx.send(B24ServerMsg::VoiceTranscribeStarted {
+            run_id: run_id.to_string(),
+            dialog_id,
+            message_id,
+            index,
+            engine: engine.to_string(),
+        });
+    }
+
+    fn progress(&self, run_id: &str, key: &forge_voice::VoiceKey, percent: u8) {
+        let percent = percent.min(100);
+        {
+            let Ok(mut map) = self.sent.lock() else { return };
+            let last = map.get(run_id).copied().unwrap_or(0);
+            // Сотня уезжает всегда: на ней фронт гасит полосу.
+            if percent < 100 && percent < last.saturating_add(VOICE_PROGRESS_STEP) {
+                return;
+            }
+            map.insert(run_id.to_string(), percent);
+        }
+        let (dialog_id, message_id, index) = Self::coords(key);
+        let _ = self.tx.send(B24ServerMsg::VoiceTranscribeDelta {
+            run_id: run_id.to_string(),
+            dialog_id,
+            message_id,
+            index,
+            percent,
+        });
+    }
+
+    fn error(&self, run_id: &str, key: &forge_voice::VoiceKey, code: &str, message: &str) {
+        self.forget(run_id);
+        let (dialog_id, message_id, index) = Self::coords(key);
+        let _ = self.tx.send(B24ServerMsg::VoiceTranscribeError {
+            run_id: run_id.to_string(),
+            dialog_id,
+            message_id,
+            index,
+            code: code.to_string(),
+            message: message.to_string(),
+        });
+    }
+
+    fn done(
+        &self,
+        run_id: &str,
+        key: &forge_voice::VoiceKey,
+        transcript: &forge_voice::Transcript,
+    ) {
+        self.forget(run_id);
+        let (dialog_id, message_id, index) = Self::coords(key);
+        let _ = self.tx.send(B24ServerMsg::VoiceTranscribeDone {
+            run_id: run_id.to_string(),
+            dialog_id,
+            message_id,
+            index,
+            text: transcript.text.clone(),
+            language: transcript.language.clone(),
+            engine: transcript.engine.as_str().to_string(),
+            duration_ms: transcript.duration_ms,
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -491,10 +771,21 @@ mod tests {
     /// ЗАМОРОЖЕННЫЙ КОНТРАКТ: набор тегов дословно совпадает с константой
     /// `SERVER_FRAMES` во фронтовом `js/bitrix/ws.js`. Переименование обязано
     /// валить тест, а не приводить к молчаливому «no handler».
-    #[test]
-    fn server_frame_tags_are_frozen() {
-        let all = [
+    /// По одному экземпляру КАЖДОГО кадра, в порядке объявления.
+    ///
+    /// Общий источник для двух замороженных проверок сразу: состав тегов
+    /// ([`server_frame_tags_are_frozen`]) и обязательный `portal_id`
+    /// ([`every_frame_on_the_wire_carries_a_portal_id`]). Разойдись эти два
+    /// списка — новый кадр проверялся бы только одним из правил.
+    fn all_server_frames() -> Vec<B24ServerMsg> {
+        vec![
             B24ServerMsg::LoginState(LoginStateDto::default()),
+            B24ServerMsg::Portals {
+                portals: vec![crate::routes::portals::PortalDto {
+                    id: "acme".into(),
+                    ..Default::default()
+                }],
+            },
             B24ServerMsg::DialogsPatch {
                 dialogs: vec![],
                 removed: vec![],
@@ -560,6 +851,38 @@ mod tests {
                 received: 0,
                 total: None,
             },
+            B24ServerMsg::VoiceTranscribeStarted {
+                run_id: "voice-1".into(),
+                dialog_id: "chat7".into(),
+                message_id: 1,
+                index: 0,
+                engine: "cloud".into(),
+            },
+            B24ServerMsg::VoiceTranscribeDelta {
+                run_id: "voice-1".into(),
+                dialog_id: "chat7".into(),
+                message_id: 1,
+                index: 0,
+                percent: 40,
+            },
+            B24ServerMsg::VoiceTranscribeDone {
+                run_id: "voice-1".into(),
+                dialog_id: "chat7".into(),
+                message_id: 1,
+                index: 0,
+                text: "привет, это голосовое".into(),
+                language: "ru".into(),
+                engine: "cloud".into(),
+                duration_ms: 4200,
+            },
+            B24ServerMsg::VoiceTranscribeError {
+                run_id: "voice-1".into(),
+                dialog_id: "chat7".into(),
+                message_id: 1,
+                index: 0,
+                code: "metal_unavailable".into(),
+                message: "whisper не подтвердил Metal".into(),
+            },
             B24ServerMsg::Error {
                 code: "bitrix_error".into(),
                 message: "…".into(),
@@ -592,12 +915,18 @@ mod tests {
             },
             B24ServerMsg::Resync,
             B24ServerMsg::Ping,
-        ];
+        ]
+    }
+
+    #[test]
+    fn server_frame_tags_are_frozen() {
+        let all = all_server_frames();
         let tags: Vec<String> = all.iter().map(tag).collect();
         assert_eq!(
             tags,
             vec![
                 "login_state",
+                "portals",
                 "dialogs_patch",
                 "message_new",
                 "message_update",
@@ -610,6 +939,10 @@ mod tests {
                 "task_update",
                 "upload_progress",
                 "download_progress",
+                "voice_transcribe_started",
+                "voice_transcribe_delta",
+                "voice_transcribe_done",
+                "voice_transcribe_error",
                 "error",
                 "analysis_started",
                 "analysis_delta",
@@ -619,6 +952,55 @@ mod tests {
                 "ping",
             ]
         );
+    }
+
+    /// ЗАМОРОЖЕННЫЙ КОНТРАКТ Ф5: на проводе у КАЖДОГО кадра есть непустой
+    /// `portal_id`, и добавление поля не изменило форму самого кадра.
+    ///
+    /// Пустое значение здесь так же опасно, как отсутствующее: фронт не смог
+    /// бы отличить «кадр слота без портала» от «кадр активной вкладки» и
+    /// показал бы чужое событие в открытой ленте.
+    #[test]
+    fn every_frame_on_the_wire_carries_a_portal_id() {
+        for msg in all_server_frames() {
+            let v = serde_json::to_value(B24Frame::new("acme", &msg)).unwrap();
+            assert_eq!(
+                v["portal_id"], "acme",
+                "кадр без portal_id: {v}"
+            );
+            // Конверт плоский: тег остался на верхнем уровне, поля кадра — тоже.
+            assert_eq!(v["type"], tag(&msg), "тег кадра съеден конвертом: {v}");
+            assert!(
+                v.get("msg").is_none(),
+                "кадр не должен уезжать вложенным объектом: {v}"
+            );
+        }
+    }
+
+    /// Кадр `portals` несёт ту же форму, что `GET /api/bitrix/portals`, и ни
+    /// следа секрета.
+    #[test]
+    fn the_portals_frame_never_leaks_a_webhook() {
+        let msg = B24ServerMsg::Portals {
+            portals: vec![crate::routes::portals::PortalDto {
+                id: "acme".into(),
+                title: "Акме".into(),
+                connected: true,
+                login: LoginStateDto::default(),
+                unread: 3,
+            }],
+        };
+        let v = serde_json::to_value(B24Frame::new("acme", &msg)).unwrap();
+        assert_eq!(v["type"], "portals");
+        assert_eq!(v["portals"][0]["id"], "acme");
+        assert_eq!(v["portals"][0]["unread"], 3);
+        let text = serde_json::to_string(&v).unwrap();
+        for forbidden in ["webhook", "rest/", "host", "fingerprint"] {
+            assert!(
+                !text.contains(forbidden),
+                "в кадре portals появилось поле {forbidden}: {text}"
+            );
+        }
     }
 
     #[test]

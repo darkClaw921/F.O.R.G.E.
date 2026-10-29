@@ -67,7 +67,7 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Path, RawQuery, State};
+use axum::extract::{Path, RawQuery};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
@@ -75,8 +75,10 @@ use serde_json::json;
 
 use crate::api::B24Client;
 use crate::dto;
+use crate::registry::B24Registry;
 use crate::routes::dialogs::{map_portal_error, query_i64, query_str, require_ready};
 use crate::routes::error::ApiError;
+use crate::routes::Portal;
 use crate::state::B24State;
 use crate::tasks::{self, ActionMatrix, TaskDto};
 use crate::ws::protocol::B24ServerMsg;
@@ -90,8 +92,8 @@ use crate::ws::protocol::B24ServerMsg;
 /// `<REAL_STATUS: 5` (проверено живьём: вернула обе открытые задачи), а
 /// закрытость — прямым `REAL_STATUS: 5`.
 pub const FILTERS: [(&str, &str); 5] = [
-    ("all", "все"),
-    ("mine", "мои"),
+    ("all", "все мои"),
+    ("mine", "я ответственный"),
     ("active", "в работе"),
     ("expired", "просрочены"),
     ("closed", "завершены"),
@@ -175,7 +177,7 @@ pub struct TaskActionResp {
 /// у `matchit` приоритетнее параметра, но полагаться на порядок объявления
 /// нельзя — тест `the_counters_route_is_not_shadowed_by_the_id_route`
 /// фиксирует поведение.
-pub fn router() -> Router<Arc<B24State>> {
+pub fn router() -> Router<Arc<B24Registry>> {
     Router::new()
         .route("/api/bitrix/tasks", get(get_tasks))
         .route("/api/bitrix/tasks/counters", get(get_task_counters))
@@ -223,8 +225,16 @@ pub fn normalize_filter(raw: Option<&str>) -> &'static str {
 ///
 /// `now` передаётся аргументом, а не берётся из часов: граница просрочки —
 /// ровно то, что обязано быть детерминированным в тесте.
+///
+/// **Каждый пресет ограничен участием владельца вебхука** (`MEMBER`: любая
+/// роль — постановщик, ответственный, соисполнитель, наблюдатель). Без этого
+/// администратор портала видел бы в «все» задачи всей компании, а в «мои» —
+/// только те, где он ответственный.
 pub fn portal_filter(preset: &str, self_id: i64, responsible: Option<i64>, group: Option<i64>, now: i64) -> serde_json::Value {
     let mut filter = serde_json::Map::new();
+    if self_id > 0 {
+        filter.insert(tasks::FILTER_MEMBER_KEY.into(), json!(self_id));
+    }
     match preset {
         "mine" => {
             filter.insert("RESPONSIBLE_ID".into(), json!(self_id.max(0)));
@@ -287,7 +297,7 @@ pub fn format_portal_date(now: i64) -> String {
 /// `409 not_authorized`, `503 not_connected`, `400 invalid_input` (мусор в
 /// числовых параметрах), плюс ошибки портала.
 pub async fn get_tasks(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     RawQuery(raw): RawQuery,
 ) -> Result<Json<TasksResp>, ApiError> {
     // Ступени 1–2. Разбор параметров — ПОСЛЕ них и только после них.
@@ -356,7 +366,7 @@ pub async fn get_tasks(
 /// `409 not_authorized`, `503 not_connected`, `404 unknown_task`, плюс ошибки
 /// портала.
 pub async fn get_task(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path(id): Path<String>,
 ) -> Result<Json<TaskDto>, ApiError> {
     let client = require_ready(&state).await?;
@@ -376,7 +386,7 @@ pub async fn get_task(
 ///
 /// `409 not_authorized`, `503 not_connected`, плюс ошибки портала.
 pub async fn get_task_counters(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
 ) -> Result<Json<TaskCountersResp>, ApiError> {
     let client = require_ready(&state).await?;
     let now = dto::now_unix();
@@ -434,7 +444,7 @@ pub async fn get_task_counters(
 /// `404 unknown_task`, `400 invalid_input`, `501 method_unavailable`, плюс
 /// ошибки портала (`ACCESS_DENIED` → `409 send_forbidden`).
 pub async fn post_task_action(
-    State(state): State<Arc<B24State>>,
+    Portal(state): Portal,
     Path((id, action)): Path<(String, String)>,
 ) -> Result<Json<TaskActionResp>, ApiError> {
     let client = require_ready(&state).await?;
@@ -604,10 +614,15 @@ mod tests {
     #[test]
     fn the_presets_use_real_status_only() {
         let all = portal_filter("all", 1, None, None, 0);
-        assert!(all.as_object().unwrap().is_empty(), "«все» — без фильтра");
+        assert_eq!(
+            all,
+            json!({"MEMBER": 1}),
+            "«все» — это все задачи С УЧАСТИЕМ, а не весь портал"
+        );
 
         let mine = portal_filter("mine", 7, None, None, 0);
         assert_eq!(mine["RESPONSIBLE_ID"], 7);
+        assert_eq!(mine["MEMBER"], 7);
 
         let active = portal_filter("active", 1, None, None, 0);
         assert_eq!(active["<REAL_STATUS"], 5);
@@ -633,7 +648,23 @@ mod tests {
 
         // Мусорные значения не попадают в фильтр вовсе.
         let f = portal_filter("all", 1, Some(-3), Some(-1), 0);
-        assert!(f.as_object().unwrap().is_empty());
+        assert_eq!(f, json!({"MEMBER": 1}));
+    }
+
+    /// Каждый пресет ограничен участием владельца вебхука в ЛЮБОЙ роли; без
+    /// известного владельца ограничение не ставится (ноль дал бы пустой
+    /// список).
+    #[test]
+    fn every_preset_is_scoped_to_membership() {
+        for (preset, _) in FILTERS {
+            let f = portal_filter(preset, 2816, None, None, 1_785_993_630);
+            assert_eq!(f[tasks::FILTER_MEMBER_KEY], 2816, "пресет '{preset}': {f}");
+            let f = portal_filter(preset, 0, None, None, 1_785_993_630);
+            assert!(
+                f.get(tasks::FILTER_MEMBER_KEY).is_none(),
+                "пресет '{preset}' без владельца: {f}"
+            );
+        }
     }
 
     /// Ступень 3: `:id` — это чужой ввод, и «не разбирается» = «нет такой

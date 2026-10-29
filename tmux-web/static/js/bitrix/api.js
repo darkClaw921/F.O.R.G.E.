@@ -2,7 +2,10 @@
 //
 // Тонкие обёртки поверх apiFetch (core/api.js) через общий разборщик конверта
 // js/messenger/http-envelope.js. Authorization подставляет подменённый
-// window.fetch из core/auth.js — здесь заголовков нет вовсе.
+// window.fetch из core/auth.js — своего Bearer здесь нет.
+//
+// ЕДИНСТВЕННЫЙ заголовок, который ставит этот модуль, — `X-Forge-Portal`
+// (мультипортальность, Ф8): см. раздел «АДРЕСАЦИЯ ПОРТАЛА» ниже.
 //
 // ============================================================================
 // ПУТИ — ЗАМОРОЖЕННЫЙ КОНТРАКТ
@@ -15,6 +18,10 @@
 //   GET  /api/bitrix/status                       getStatus            (Ф1)
 //   POST /api/bitrix/login/webhook                loginWebhook         (Ф3)
 //   POST /api/bitrix/logout                       logout               (Ф3)
+//   GET  /api/bitrix/portals                      getPortals           (МП)
+//   POST /api/bitrix/portals                      addPortal            (МП)
+//   PATCH  /api/bitrix/portals/:pid               renamePortal/reorderPortals (МП)
+//   DELETE /api/bitrix/portals/:pid               removePortal         (МП)
 //   GET  /api/bitrix/filters                      getFilters           (Ф4)
 //   GET  /api/bitrix/dialogs                      getDialogs           (Ф4)
 //   GET  /api/bitrix/dialogs/:id/messages         getMessages          (Ф5)
@@ -43,6 +50,10 @@
 //   DELETE /api/bitrix/dialogs/:id/analysis          clearSavedAnalysis(Ф12)
 //   POST   /api/bitrix/dialogs/:id/analysis/cancel   cancelAnalysis    (Ф12)
 //   DELETE /api/bitrix/dialogs/:id/analysis/thread   clearThread       (Ф12)
+//   POST   /api/bitrix/voice/:dialog/:mid/:index/transcribe  transcribeVoice    (ГС-Ф3)
+//   GET    /api/bitrix/voice/:dialog/:mid/:index/transcript  getVoiceTranscript (ГС-Ф3)
+//   GET    /api/bitrix/voice/settings                         getVoiceSettings   (ГС-Ф4)
+//   PUT    /api/bitrix/voice/settings                         setVoiceSettings   (ГС-Ф4)
 //
 // Реализованы обёртки только для смонтированных роутов; остальные строки
 // таблицы — карта на будущее, чтобы имена не расползлись.
@@ -65,19 +76,148 @@
 // модуль ровно один раз, телом POST'а, и нигде не задерживается: ни в
 // localStorage/sessionStorage, ни в переменной модуля, ни в URL запроса
 // (query-строка оседает в логах прокси). Разбор трёх форм ввода живёт ТОЛЬКО
-// на бэкенде — второй парсер неизбежно разъехался бы с первым.
+// на бэкенде — второй парсер неизбежно разъехался бы с первым. Добавление
+// портала (`addPortal`) подчиняется тому же правилу дословно: секрет уезжает
+// телом POST'а и не сохраняется здесь ни на одну строку.
+//
+// ============================================================================
+// АДРЕСАЦИЯ ПОРТАЛА (мультипортальность, Ф8)
+// ============================================================================
+//
+// Сервер выбирает портал КАЖДЫЙ запрос, в порядке: заголовок
+// `X-Forge-Portal` → `?portal=` → первый слот реестра (шапка
+// plugins/bitrix/src/routes/portal.rs). Фронт пользуется ПЕРВЫМ каналом —
+// заголовком: query-строка оседает в логах прокси и в истории браузера, а
+// адреса роутов заморожены таблицей выше и обрастать параметром не должны.
+//
+// ДВА способа назвать портал, и оба обязаны существовать:
+//
+//   1. АКТИВНЫЙ ПОРТАЛ — умолчание. `setActivePortal(id)` зовёт строка вкладок
+//      (js/bitrix/portals.js) при переключении, и дальше каждый запрос панели
+//      уходит с этим заголовком сам.
+//   2. ЯВНЫЙ ПОРТАЛ — необязательный аргумент `portal` у обёртки. Нужен форме
+//      настроек (Ф7.5): пикер чатов показывает диалоги ВЫБРАННОГО в форме
+//      портала, а он не обязан совпадать с открытой вкладкой панели.
+//
+// Явный портал добавлен обёрткам, которым он нужен по существу
+// (`getStatus`, `logout`, `getFilters`, `getDialogs`, `getMessages`,
+// голосовые настройки, `fetchBytes` и весь CRUD порталов). Остальным он
+// добавляется одной строкой — параметр прокидывается третьим аргументом
+// `call(path, init, portal)`, других мест правки нет.
+//
+// `portal_id` уходит ДОСЛОВНО так, как его отдал бэкенд: нормализация на
+// сервере регистронезависима, но своя копия правил нормализации во фронте
+// была бы вторым парсером идентификатора — ровно тем, что запрещено про
+// вебхук, и по той же причине.
+//
+// Пока активный портал не выбран (первые миллисекунды жизни панели, до
+// ответа `GET /api/bitrix/portals`), заголовок НЕ ставится вовсе — и сервер
+// штатно отдаёт первый слот реестра. Это не заглушка: реестр никогда не
+// бывает пуст, и «портал по умолчанию» у сервера есть всегда.
+//
+// Новый код ошибки, который обязаны знать потребители, — `404
+// unknown_portal`: заголовок называет портал, которого в реестре больше нет.
+// Реакция ровно одна и живёт в js/bitrix/portals.js — перечитать состав
+// вкладок и переключиться; повторять запрос с тем же id бессмысленно.
 
 import { apiFetch } from '../core/api.js';
 import { createCaller, jsonInit, parseErrorEnvelope } from '../messenger/http-envelope.js';
 
-/** Единственная точка выхода модуля в сеть. */
-const call = createCaller(apiFetch);
+/**
+ * Имя заголовка адресации портала.
+ *
+ * Дословно совпадает с `PORTAL_HEADER` в plugins/bitrix/src/routes/portal.rs
+ * (там он записан в нижнем регистре — так его хранит `http::HeaderMap`;
+ * регистр имени заголовка по HTTP незначим).
+ */
+export const PORTAL_HEADER = 'X-Forge-Portal';
+
+const local = {
+    /**
+     * Активный портал — умолчание для всех запросов панели.
+     *
+     * Пустая строка означает «ещё не выбран»: заголовок тогда не ставится, и
+     * сервер отдаёт первый слот реестра. Хранится ЗДЕСЬ, а не в `b24State`,
+     * потому что это свойство ТРАНСПОРТА: state.js обнуляется при каждом
+     * `clearB24AccountData()`, то есть в том числе при переключении портала —
+     * и активный портал стирался бы ровно тем действием, которое его меняет.
+     */
+    activePortal: '',
+};
+
+/**
+ * Назначить активный портал. Зовёт строка вкладок (js/bitrix/portals.js).
+ *
+ * @param {?string} id — `id` из ответа `GET /api/bitrix/portals`, дословно
+ */
+export function setActivePortal(id) {
+    local.activePortal = (id == null) ? '' : String(id);
+}
+
+/** Активный портал (пустая строка — «не выбран, решает сервер»). */
+export function activePortal() {
+    return local.activePortal;
+}
+
+/**
+ * Заголовки адресации для одного запроса.
+ *
+ * Экспортируется ради потребителей, которые ходят мимо `call`: XHR загрузки
+ * файла (js/bitrix/upload.js — у fetch нет прогресса отправки). Второе место с
+ * именем заголовка было бы вторым шансом разъехаться с сервером.
+ *
+ * @param {?string} [portal] — явный портал; пусто ⇒ активный
+ * @returns {object} — пустой объект, если портал не выбран вовсе
+ */
+export function portalHeaders(portal) {
+    const id = (portal == null || portal === '') ? local.activePortal : String(portal);
+    return id ? { [PORTAL_HEADER]: id } : {};
+}
+
+/** Разборщик конверта поверх apiFetch — без заголовка портала. */
+const rawCall = createCaller(apiFetch);
+
+/**
+ * Единственная точка выхода модуля в сеть.
+ *
+ * Заголовок портала подмешивается ЗДЕСЬ, а не в обёртках: иначе «ни один
+ * запрос не уходит без X-Forge-Portal» превратилось бы в правило, которое
+ * нужно помнить в сорока местах.
+ *
+ * @param {string} path
+ * @param {RequestInit} [init]
+ * @param {?string} [portal] — явный портал; пусто ⇒ активный
+ */
+function call(path, init, portal) {
+    return rawCall(path, withPortal(init, portal));
+}
+
+/**
+ * Достраивает `RequestInit` заголовком портала, не трогая уже заданные.
+ *
+ * @param {RequestInit} [init]
+ * @param {?string} [portal]
+ * @returns {RequestInit}
+ */
+function withPortal(init, portal) {
+    const extra = portalHeaders(portal);
+    const base = init || {};
+    // Заголовки могут быть Headers, массивом пар или объектом. Панель строит
+    // их только объектом (`jsonInit`), поэтому спред достаточен — но пустой
+    // случай обязан оставаться объектом, а не undefined.
+    return { ...base, headers: { ...(base.headers || {}), ...extra } };
+}
 
 /** Пути роутов — единственное место, где они записаны во фронте. */
 export const PATHS = {
     status: '/api/bitrix/status',
     loginWebhook: '/api/bitrix/login/webhook',
     logout: '/api/bitrix/logout',
+    // Состав вкладок (мультипортальность). Пара «коллекция и элемент»:
+    // `:pid` — это `id` из ответа `GET /portals`, он же значение заголовка
+    // `X-Forge-Portal`. Третьего способа назвать портал у API нет.
+    portals: '/api/bitrix/portals',
+    portal: '/api/bitrix/portals/:pid',
     filters: '/api/bitrix/filters',
     dialogs: '/api/bitrix/dialogs',
     // ШАБЛОНЫ, а не готовые адреса: сегменты подставляет `withSeg`, и тогда
@@ -115,6 +255,12 @@ export const PATHS = {
     dialogAnalysis: '/api/bitrix/dialogs/:id/analysis',
     dialogAnalysisCancel: '/api/bitrix/dialogs/:id/analysis/cancel',
     dialogAnalysisThread: '/api/bitrix/dialogs/:id/analysis/thread',
+    // Голосовые сообщения (ГС-Ф3). Адреса и формы ответов совпадают с VK и
+    // Telegram: текст под голосовым рисует один общий модуль, и расхождение в
+    // транспорте означало бы «в VK работает, в Битриксе нет».
+    voiceTranscribe: '/api/bitrix/voice/:dialog/:mid/:index/transcribe',
+    voiceTranscript: '/api/bitrix/voice/:dialog/:mid/:index/transcript',
+    voiceSettings: '/api/bitrix/voice/settings',
 };
 
 /**
@@ -123,10 +269,11 @@ export const PATHS = {
  * 404 означает «плагин выключен» (запущен devforge без `--bitrix`) и штатно
  * приводит к ошибке, которую гейт кнопки вкладки глотает.
  *
+ * @param {?string} [portal] — явный портал; пусто ⇒ активный
  * @returns {Promise<object>} StatusDto
  */
-export function getStatus() {
-    return call(PATHS.status);
+export function getStatus(portal) {
+    return call(PATHS.status, undefined, portal);
 }
 
 /**
@@ -153,10 +300,131 @@ export function loginWebhook(webhook) {
  * невозможно, на портале он продолжает действовать. Об этом обязан сказать UI
  * (текст приходит с сервера полем `logout_hint` в `/status`).
  *
+ * Отвязывает ТОЛЬКО адресуемый портал (Ф3+МП): соседние вкладки остаются на
+ * месте. Слот при этом не исчезает из реестра — исчезает вебхук в нём; чтобы
+ * убрать саму вкладку, нужен [`removePortal`].
+ *
+ * @param {?string} [portal] — явный портал; пусто ⇒ активный
  * @returns {Promise<object>} LoginStateDto
  */
-export function logout() {
-    return call(PATHS.logout, jsonInit('POST', {}));
+export function logout(portal) {
+    return call(PATHS.logout, jsonInit('POST', {}), portal);
+}
+
+// ---------------------------------------------------------------------------
+// Состав вкладок — CRUD порталов (мультипортальность, Ф8)
+//
+// Четыре обёртки на три пути. Соблазн свести подключение сюда же велик, но
+// экран подключения живёт на `/login/webhook` и остаётся там: у него своя
+// форма ответа (`LoginStateDto`), свой автомат состояний и свой набор
+// тестов — см. решение 7 в шапке plugins/bitrix/src/routes/mod.rs.
+// ---------------------------------------------------------------------------
+
+/**
+ * `GET /api/bitrix/portals` — состав строки вкладок.
+ *
+ * Порядок массива И ЕСТЬ порядок вкладок на экране (порядок реестра).
+ *
+ * ЧЕГО В ОТВЕТЕ НЕТ: хоста портала. Он не пересекает границу HTTP вовсе —
+ * узнаваемое имя несёт `id`, а `title` пользователь задаёт сам. ПУСТОЙ
+ * `title` показывается как `id` — это зафиксированное решение, а не
+ * заглушка: своей строки «портал без имени» у вкладки быть не должно, иначе
+ * две безымянные вкладки станут неразличимы.
+ *
+ * Слоты без вебхука сервер отфильтровывает сам, поэтому ПУСТОЙ массив
+ * означает «порталов ещё нет» ⇒ фронт показывает экран подключения. Реестр
+ * при этом пустым не бывает никогда (свежая установка — один пустой слот).
+ *
+ * @param {?string} [portal] — явный портал; на состав списка не влияет,
+ *   но заголовок ставится ради единообразия лестницы проверок сервера
+ * @returns {Promise<object>} `{portals: [{id,title,connected,login,unread}]}`
+ */
+export function getPortals(portal) {
+    return call(PATHS.portals, undefined, portal);
+}
+
+/**
+ * `POST /api/bitrix/portals` — подключить ещё один портал по вебхуку.
+ *
+ * ТЕЛО СОДЕРЖИТ СЕКРЕТ — ровно те же правила, что у [`loginWebhook`]:
+ * значение приходит аргументом, никуда не копируется, разбор трёх форм адреса
+ * делает СЕРВЕР.
+ *
+ * АВТОПОВТОРОВ НЕТ НИ ПРИ КАКИХ УСЛОВИЯХ (правило 2 шапки): портал душит
+ * интенсивность отдельным состоянием `throttled`, и автоповтор его только
+ * продлевает — повтор всегда инициирует пользователь.
+ *
+ * Неудачная проверка вебхука портал НЕ откатывает: `invalid_credentials`,
+ * `throttled` и `disconnected` — это СОСТОЯНИЯ подключённого портала, и
+ * вкладка обязана появиться, показав, что именно не так. Иначе вебхук
+ * пришлось бы вводить второй раз, то есть проносить секрет через фронт
+ * дважды.
+ *
+ * @param {string} webhook — то, что вставил пользователь
+ * @param {?string} [title] — имя вкладки; пусто ⇒ подпишется `id`
+ * @returns {Promise<object>} PortalDto добавленной вкладки
+ */
+export function addPortal(webhook, title) {
+    const body = { webhook: String(webhook || '') };
+    if (title != null && String(title) !== '') body.title = String(title);
+    return call(PATHS.portals, jsonInit('POST', body));
+}
+
+/**
+ * `PATCH /api/bitrix/portals/:pid` — переименовать вкладку.
+ *
+ * Пустая строка СТИРАЕТ имя: вкладка снова подписывается `id` — ровно как
+ * пустая строка стирает заметку к диалогу.
+ *
+ * @param {string} portalId — дословно как отдал бэкенд
+ * @param {string} title
+ * @returns {Promise<object>} PortalDto
+ */
+export function renamePortal(portalId, title) {
+    return call(
+        withSeg(PATHS.portal, ':pid', portalId),
+        jsonInit('PATCH', { title: String(title == null ? '' : title) }),
+    );
+}
+
+/**
+ * `PATCH /api/bitrix/portals/:pid` — переставить вкладки.
+ *
+ * Уезжает ПОЛНЫЙ список `id` в новом порядке, а не позиция одной вкладки:
+ * перетаскивание меняет позиции сразу нескольких, и передавать индекс значило
+ * бы заставлять сервер угадывать, относительно какого состояния списка он
+ * посчитан. Сервер терпит неполный и грязный список — фронт мог отстать от
+ * состава реестра на один запрос.
+ *
+ * Тот же путь, что у переименования, — и это не оплошность: обе операции
+ * меняют один файл read-modify-write'ом и идут через один мьютекс реестра.
+ *
+ * @param {string} portalId — портал, который перетащили (адресат запроса)
+ * @param {Array<string>} order — все `id` в новом порядке
+ * @returns {Promise<object>} PortalDto
+ */
+export function reorderPortals(portalId, order) {
+    const ids = (Array.isArray(order) ? order : []).map((id) => String(id));
+    return call(withSeg(PATHS.portal, ':pid', portalId), jsonInit('PATCH', { order: ids }));
+}
+
+/**
+ * `DELETE /api/bitrix/portals/:pid[?purge_cache=1]` — отвязать портал.
+ *
+ * `purge_cache` — ЕДИНСТВЕННЫЙ параметр панели, который уезжает query-строкой
+ * и не может уехать иначе: у DELETE тела нет. Секрета в нём нет — это флаг.
+ *
+ * Отличие от [`logout`]: тот стирает вебхук, оставляя слот на месте, а этот
+ * убирает саму вкладку из реестра.
+ *
+ * @param {string} portalId
+ * @param {boolean} [purgeCache=false] — снести и локальный кэш портала
+ * @returns {Promise<*>} 204 без тела
+ */
+export function removePortal(portalId, purgeCache = false) {
+    const path = withSeg(PATHS.portal, ':pid', portalId)
+        + (purgeCache ? '?purge_cache=1' : '');
+    return call(path, { method: 'DELETE' });
 }
 
 /**
@@ -167,10 +435,11 @@ export function logout() {
  * сервер отвечает из снимка, не обращаясь к порталу (Р3), поэтому вызов
  * дёшев и его не нужно экономить.
  *
+ * @param {?string} [portal] — явный портал; пусто ⇒ активный
  * @returns {Promise<object>} `{filters: [{key,title,unread}], counters: {...}}`
  */
-export function getFilters() {
-    return call(PATHS.filters);
+export function getFilters(portal) {
+    return call(PATHS.filters, undefined, portal);
 }
 
 /**
@@ -180,7 +449,12 @@ export function getFilters() {
  * кодирует значения, а ручная склейка рано или поздно уедет с неэкранированным
  * значением директории.
  *
- * @param {{limit?: number, offset?: number, filter?: string}} [params]
+ * `portal` — ЯВНЫЙ портал (Ф7.5): пикер чатов в форме настроек показывает
+ * диалоги ВЫБРАННОГО в форме портала, а он не обязан совпадать с открытой
+ * вкладкой панели.
+ *
+ * @param {{limit?: number, offset?: number, filter?: string,
+ *   portal?: string}} [params]
  * @returns {Promise<object>} `{dialogs: DialogDto[], has_more: boolean}`
  */
 export function getDialogs(params = {}) {
@@ -189,7 +463,7 @@ export function getDialogs(params = {}) {
     if (Number.isFinite(params.offset)) q.set('offset', String(Math.trunc(params.offset)));
     if (params.filter) q.set('filter', String(params.filter));
     const qs = q.toString();
-    return call(qs ? `${PATHS.dialogs}?${qs}` : PATHS.dialogs);
+    return call(qs ? `${PATHS.dialogs}?${qs}` : PATHS.dialogs, undefined, params.portal);
 }
 
 /** Кодирует сегмент пути: `dialog_id` — это чужая строка (`chat7`, `19`, `sg12`). */
@@ -223,7 +497,7 @@ function withSeg(template, placeholder, value) {
  *
  * @param {string} dialogId
  * @param {{limit?: number, beforeId?: number, afterId?: number,
- *   signal?: object}} [opts]
+ *   signal?: object, portal?: string}} [opts]
  * @returns {Promise<object>} `{messages: MessageDto[], has_more: boolean}`
  */
 export function getMessages(dialogId, opts = {}) {
@@ -233,7 +507,7 @@ export function getMessages(dialogId, opts = {}) {
     else if (Number.isFinite(opts.afterId) && opts.afterId > 0) q.set('after_id', String(Math.trunc(opts.afterId)));
     const qs = q.toString();
     const path = withSeg(PATHS.dialogMessages, ':id', dialogId) + (qs ? `?${qs}` : '');
-    return call(path, opts.signal ? { signal: opts.signal } : undefined);
+    return call(path, opts.signal ? { signal: opts.signal } : undefined, opts.portal);
 }
 
 /**
@@ -550,11 +824,18 @@ export function avatarUrl(userId) {
  * разборщиком, что и у остальных роутов панели: решения принимаются по коду, а
  * не по HTTP-статусу и не по тексту.
  *
+ * ЗАГОЛОВОК ПОРТАЛА СТАВИТСЯ И ЗДЕСЬ. Вложение адресуется тройкой
+ * диалог/сообщение/индекс, и одна и та же тройка у двух порталов означает
+ * РАЗНЫЕ файлы: без заголовка вкладка второго портала показывала бы картинки
+ * первого. Именно поэтому байты идут через `fetch`, а не через `img.src`, —
+ * заголовок к `src` не приделать.
+ *
  * @param {string} path — результат [`mediaUrl`] либо [`avatarUrl`]
+ * @param {?string} [portal] — явный портал; пусто ⇒ активный
  * @returns {Promise<Response>}
  */
-export async function fetchBytes(path) {
-    const res = await apiFetch(path);
+export async function fetchBytes(path, portal) {
+    const res = await apiFetch(path, withPortal(undefined, portal));
     if (res.ok) return res;
     // Тело ошибки — наш конверт `{"error":{code,message}}`; не-JSON (502 от
     // прокси) штатно превращается в «HTTP 502» без исключения.
@@ -748,3 +1029,99 @@ export function cancelAnalysis(dialogId, runId) {
     if (runId) body.run_id = String(runId);
     return call(withSeg(PATHS.dialogAnalysisCancel, ':id', dialogId), jsonInit('POST', body));
 }
+
+// ---------------------------------------------------------------------------
+// Голосовые сообщения (ГС-Ф3).
+// ---------------------------------------------------------------------------
+
+/** Подставляет все три сегмента адреса вложения. */
+function voicePath(template, dialogId, messageId, index) {
+    return withSeg(
+        withSeg(withSeg(template, ':dialog', dialogId), ':mid', messageId),
+        ':index',
+        String(Number(index || 0)),
+    );
+}
+
+/**
+ * POST /api/bitrix/voice/:dialog/:mid/:index/transcribe — запустить расшифровку.
+ *
+ * Ответ приходит СРАЗУ: сама расшифровка идёт секунды или минуты, а прогресс
+ * едет кадрами `voice_transcribe_*` по /ws/bitrix.
+ *
+ * ТРИ исхода: `{ready: true, text}` — уже посчитано (движок не запускался);
+ * `{run_id, attached: false}` — прогон запущен; `{run_id, attached: true}` —
+ * расшифровка этого вложения уже идёт (вторая вкладка, повторный клик).
+ *
+ * Решать по `err.code`, а не по тексту: `voice_not_audio`, `voice_too_long`,
+ * `voice_no_ffmpeg`, `voice_no_whisper`, `voice_no_model`, `voice_no_key`,
+ * `voice_busy`, `metal_unavailable`.
+ *
+ * @param {string} dialogId `chat123` | `sg45` | `77`
+ * @param {number|string} messageId
+ * @param {number} index номер вложения в сообщении
+ * @param {{force?: boolean}} [opts] `force` — пересчитать, даже если готово
+ * @returns {Promise<{run_id: ?string, attached: boolean, ready: boolean, engine: string, text?: string}>}
+ */
+export async function transcribeVoice(dialogId, messageId, index, opts) {
+    const q = opts && opts.force ? '?force=1' : '';
+    return call(
+        voicePath(PATHS.voiceTranscribe, dialogId, messageId, index) + q,
+        jsonInit('POST', {}),
+    );
+}
+
+/**
+ * GET /api/bitrix/voice/:dialog/:mid/:index/transcript — готовая расшифровка.
+ *
+ * Расшифровки нет — это `{ready: false}` с пустым текстом, а НЕ ошибка. Ни
+ * одного обращения к порталу: ответ читается из локального файла, поэтому
+ * работает и при исчерпанном лимите запросов.
+ *
+ * @param {string} dialogId
+ * @param {number|string} messageId
+ * @param {number} index
+ * @returns {Promise<{ready: boolean, text: string, language: string, engine: string, duration_ms: number, created_at: ?number}>}
+ */
+export async function getVoiceTranscript(dialogId, messageId, index) {
+    return call(voicePath(PATHS.voiceTranscript, dialogId, messageId, index));
+}
+
+/**
+ * GET /api/bitrix/voice/settings — каким движком расшифровываются голосовые.
+ *
+ * Настройка ОБЩАЯ для всех мессенджеров: она живёт в `voice.toml` рядом с
+ * ключом polza.ai, а не в `user_settings.json`. Поэтому три панели читают её
+ * своими роутами, но видят одно и то же значение.
+ *
+ * Ключ облака НИКОГДА не приходит — только признак `cloud_key_set`.
+ * `warning` (если он есть) объясняет, чего выбранному движку не хватает:
+ * `voice_no_key`, `voice_no_model`, `voice_no_whisper`, `voice_no_ffmpeg`.
+ *
+ * Логина в мессенджере роут НЕ требует: движок настраивают до входа.
+ *
+ * @param {?string} [portal] — явный портал (Ф7.3); пусто ⇒ активный
+ * @returns {Promise<{engine: string, cloud_key_set: boolean, warning?: {code: string, message: string}}>}
+ */
+export async function getVoiceSettings(portal) {
+    return call(PATHS.voiceSettings, undefined, portal);
+}
+
+/**
+ * PUT /api/bitrix/voice/settings — переключить движок расшифровки.
+ *
+ * Выбор СОХРАНЯЕТСЯ, даже если движок сейчас нерабочий: в ответе тогда придёт
+ * `warning`. Отказ приходит только на чужое слово (`400 invalid_input`).
+ *
+ * @param {string} engine `local` | `cloud`
+ * @param {?string} [portal] — явный портал (Ф7.3); пусто ⇒ активный
+ * @returns {Promise<{engine: string, cloud_key_set: boolean, warning?: {code: string, message: string}}>}
+ */
+export async function setVoiceSettings(engine, portal) {
+    return call(
+        PATHS.voiceSettings,
+        jsonInit('PUT', { engine: String(engine || '') }),
+        portal,
+    );
+}
+

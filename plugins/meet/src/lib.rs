@@ -70,6 +70,7 @@
 //! `Router`. Auth решается порядком регистрации.
 
 pub mod bot;
+pub mod cloud;
 pub mod config;
 pub mod db;
 pub mod deps;

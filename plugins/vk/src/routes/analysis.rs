@@ -817,6 +817,13 @@ mod tests {
             // подменить путь, обязан упереться в `claude_unavailable`, а не
             // случайно запустить настоящий CLI разработчика.
             claude_cli_path: dir.path().join("no-such-claude"),
+            // Запуски `claude -p` по умолчанию выключены глобально (см.
+            // forge_claude_runner): тестовый стенд включает их явно; тесты
+            // без подменённого CLI всё равно отсекаются проверкой выше.
+            claude_enabled: true,
+            // Дефолт конфига — облако polza.ai; стенд гоняет мок-CLI, поэтому
+            // бэкенд фиксируем на claude явно.
+            llm_backend: forge_claude_runner::LlmBackend::Claude,
             ..VkConfig::default()
         };
         cfg(&mut c);

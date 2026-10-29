@@ -28,3 +28,7 @@ isNextStepEnabled() читает state.userSettings.next_step_enabled ленив
 Известная шероховатость: bootstrap.js зовёт fetchSessions() до fetchUserSettings(), поэтому первый fetchNextSteps всегда гейтится; при включённой фиче свечение появится на тик позже (3с) или сразу по WS.
 
 См. [[interface-settings-toggles]].
+
+## Статистика агентов
+
+Актуальный источник синей звезды: is_generating и её tooltip относятся к подтверждённой задаче агента из backend journal tracker. generatingTooltip импортирован из ../agents/session-indicator.js; возраст generating_since_secs — от начала текущей/самой ранней задачи, а working_agent_count и agent_providers уточняют число и провайдеров. Старое объяснение про изменение последних 50 строк и private formatDuration удалены. Pulse CSS, needs_attention и next-step поведение не менялись.

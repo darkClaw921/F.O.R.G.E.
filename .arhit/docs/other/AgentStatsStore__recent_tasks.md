@@ -1,0 +1,3 @@
+# AgentStatsStore::recent_tasks
+
+Small journal-only task metadata view for explicit-end observation by Echo and attention. Filters to recent tasks with an explicit journal completion/abort or an unended journal task; synthetic Interrupted tasks have endedAt but completed=None and are excluded. An offline cut therefore cannot become a completion or trigger the next-step idle action. After new journal work, the newly started offline-resume epoch appears with its own ID and startedAt; a later true journal end is exposed normally. Process matching must use runtime_tasks instead, because a still-alive process may retain its interrupted native session and manual pane binding.

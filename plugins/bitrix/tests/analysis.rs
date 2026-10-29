@@ -451,6 +451,12 @@ fn state_with_cli(cli: std::path::PathBuf) -> (tempfile::TempDir, Arc<B24State>)
         config_path: dir.path().join("bitrix.toml"),
         prompts_path: dir.path().join("prompts.json"),
         claude_cli_path: cli,
+        // Запуски `claude -p` по умолчанию выключены глобально (см.
+        // forge_claude_runner): стенд с мок-CLI включает их явно.
+        claude_enabled: true,
+        // Дефолт конфига — облако polza.ai; стенд гоняет мок-CLI, поэтому
+        // бэкенд фиксируем на claude явно.
+        llm_backend: forge_claude_runner::LlmBackend::Claude,
         ..BitrixConfig::default()
     };
     (dir, B24State::new(cfg))
@@ -591,7 +597,7 @@ async fn shutdown_kills_a_running_analysis() {
 
     // Полный teardown плагина, а не только хаба: проверяется именно то, что
     // `forge_bitrix::shutdown` до хаба доходит.
-    forge_bitrix::shutdown(&state).await;
+    forge_bitrix::registry::shutdown_portal(&state).await;
 
     // Снова опрос: смерть процесса — событие ядра, не таймер теста.
     wait_until!(
@@ -606,7 +612,7 @@ async fn shutdown_kills_a_running_analysis() {
     );
 
     // Идемпотентность: второй teardown не паникует и не находит, что убивать.
-    forge_bitrix::shutdown(&state).await;
+    forge_bitrix::registry::shutdown_portal(&state).await;
     assert_eq!(state.analysis.active_count().await, 0);
 }
 

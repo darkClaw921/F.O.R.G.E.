@@ -102,74 +102,16 @@ impl DepBinary {
 
 /// Флаги whisper.cpp, ФАКТИЧЕСКИ поддержанные установленной версией.
 ///
+/// **Определение переехало в [`forge_voice::whisper`]** вместе с самим движком:
+/// разбор `--help` нужен всем, кто запускает whisper, а плагинам-мессенджерам
+/// он нужен ровно так же, как плагину встреч. Здесь остался обратный `pub use`
+/// по прежнему пути — `crate::deps::WhisperFlags` продолжает резолвиться.
+///
 /// Проверяются программно разбором `--help`, а не гаданием по номеру версии:
 /// формула brew, сборка из исходников и старый бинарь в `~/bin` дают три
-/// разных набора, и «версия 1.9.2» ничего о них не говорит.
-///
-/// `--help` печатается в **stderr** (измерено в Ф0) — парсер обязан читать
-/// именно его.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WhisperFlags {
-    /// `-p N` — число процессоров. Всегда передаём `1`: параллелизм ломает
-    /// таймкоды на границах чанков, а таймкоды здесь несут имена спикеров.
-    pub processors: bool,
-    /// `-bs N` — ширина луча.
-    pub beam_size: bool,
-    /// `-fa`. В 1.9.2 УЖЕ дефолт `true`, обратный флаг `-nfa`, поэтому в argv
-    /// не попадает — но найденный в help ошибкой не считается.
-    pub flash_attn: bool,
-    /// `-ojf` — потокенные метки. Без них резать сегмент по границе смены
-    /// спикера нечем.
-    pub output_json_full: bool,
-    /// `-pp` — прогресс в stderr.
-    pub print_progress: bool,
-    /// `-of` — путь вывода без расширения.
-    pub output_file: bool,
-    /// `--vad`. **Без `-vm` роняет процесс по SIGABRT** (exit 134, измерено в
-    /// Ф0), поэтому одного этого флага мало — нужна ещё модель VAD.
-    pub vad: bool,
-    /// `-vm` — модель VAD.
-    pub vad_model: bool,
-}
-
-impl Default for WhisperFlags {
-    /// Базовый набор: то, что есть в любой сборке whisper.cpp начиная с 1.5.
-    ///
-    /// VAD по умолчанию ВЫКЛЮЧЕН, и это не осторожность ради осторожности:
-    /// `--vad` без `-vm` не ругается, а падает по SIGABRT.
-    fn default() -> Self {
-        Self {
-            processors: true,
-            beam_size: true,
-            flash_attn: false,
-            output_json_full: true,
-            print_progress: true,
-            output_file: true,
-            vad: false,
-            vad_model: false,
-        }
-    }
-}
-
-impl WhisperFlags {
-    /// Разбирает вывод `whisper-cli --help`.
-    ///
-    /// Ищем длинные имена (`--output-json-full`), а не короткие: короткое
-    /// `-p` встречается внутри других строк справки, а длинное — нет.
-    pub fn parse_help(help: &str) -> Self {
-        let has = |needle: &str| help.contains(needle);
-        Self {
-            processors: has("--processors"),
-            beam_size: has("--beam-size"),
-            flash_attn: has("--flash-attn"),
-            output_json_full: has("--output-json-full"),
-            print_progress: has("--print-progress"),
-            output_file: has("--output-file"),
-            vad: has("--vad"),
-            vad_model: has("--vad-model"),
-        }
-    }
-}
+/// разных набора, и «версия 1.9.2» ничего о них не говорит. `--help`
+/// печатается в **stderr** (измерено в Ф0) — парсер обязан читать именно его.
+pub use forge_voice::whisper::WhisperFlags;
 
 /// Полный отчёт о внешнем окружении. Уезжает в `GET /api/meet/status` и в
 /// кадр `deps`.
@@ -237,7 +179,7 @@ impl DepsReport {
         (!self.can_record()).then_some("chrome_unavailable")
     }
 
-    /// Код ошибки для лестницы 409, если расшифровать нельзя.
+    /// Код ошибки для лестницы 409, если расшифровать нельзя ЛОКАЛЬНО.
     pub fn transcribe_blocker(&self) -> Option<&'static str> {
         if !self.whisper.is_ready() {
             Some("whisper_unavailable")
@@ -249,6 +191,268 @@ impl DepsReport {
             None
         }
     }
+
+    /// Что мешает расшифровать ОБЛАКОМ. `None` — облачный путь рабочий.
+    ///
+    /// В облачном режиме отсутствие `whisper-cli`, весов на диске (1,6 ГБ) и
+    /// Metal препятствием не является: ни одно из трёх облаку не нужно, и
+    /// отказ по ним был бы отказом по требованию, которого никто не
+    /// предъявлял.
+    ///
+    /// Единственная внешняя зависимость облачного пути — `ffmpeg`: запись
+    /// режется на окна и сжимается в mp3 НАШЕЙ стороной (сырой WAV роняет их
+    /// шлюз с `Maximum call stack size exceeded`, а предел сервиса — около 60
+    /// секунд ПО СТЕНЕ на запрос).
+    pub fn cloud_transcribe_blocker(&self, cloud_configured: bool) -> Option<&'static str> {
+        if !cloud_configured {
+            return Some("cloud_not_configured");
+        }
+        // До первой пробы не мешаем — по той же причине, что и у записи:
+        // «ещё не смотрели» не равно «ничего нет».
+        if self.probed && !self.ffmpeg.is_ready() {
+            return Some("ffmpeg_unavailable");
+        }
+        None
+    }
+
+    /// **КАКИМ ПУТЁМ ПОЙДЁТ РАСШИФРОВКА** — по таблице [`choose_route`].
+    pub fn plan_transcribe(
+        &self,
+        backend: crate::config::SttBackend,
+        cloud_configured: bool,
+    ) -> Result<StagePlan, &'static str> {
+        choose_route(
+            if backend.is_cloud() {
+                Route::Cloud
+            } else {
+                Route::Local
+            },
+            self.cloud_transcribe_blocker(cloud_configured),
+            self.transcribe_blocker(),
+        )
+    }
+
+    /// Код ошибки для лестницы 409, если расшифровать нельзя НИ ОДНИМ путём.
+    ///
+    /// Тонкая обёртка над [`plan_transcribe`](Self::plan_transcribe): пока у
+    /// стадии есть хоть один рабочий путь, блокировки нет вообще — гейт
+    /// ДЕГРАДИРУЕТ, а не отказывает (см. [`choose_route`]).
+    pub fn transcribe_blocker_for(
+        &self,
+        backend: crate::config::SttBackend,
+        cloud_configured: bool,
+    ) -> Option<&'static str> {
+        self.plan_transcribe(backend, cloud_configured).err()
+    }
+}
+
+// --- выбор пути стадии --------------------------------------------------------
+
+/// Путь, которым стадия пойдёт ФАКТИЧЕСКИ.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Route {
+    Cloud,
+    Local,
+}
+
+impl Route {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Cloud => "cloud",
+            Self::Local => "local",
+        }
+    }
+
+    pub fn is_cloud(self) -> bool {
+        matches!(self, Self::Cloud)
+    }
+
+    /// Противоположный путь — то, на что откатываются.
+    fn other(self) -> Self {
+        match self {
+            Self::Cloud => Self::Local,
+            Self::Local => Self::Cloud,
+        }
+    }
+}
+
+/// Решение гейта по одной стадии: куда идём и был ли откат.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StagePlan {
+    /// Путь, который отработает.
+    pub route: Route,
+    /// Почему не пошли туда, куда просил конфиг. `None` — пошли как заказано.
+    pub fallback_reason: Option<&'static str>,
+}
+
+impl StagePlan {
+    fn direct(route: Route) -> Self {
+        Self {
+            route,
+            fallback_reason: None,
+        }
+    }
+
+    /// Откат виден снаружи: по этому признаку пишется событие журнала и
+    /// заполняется поле в `GET /api/meet/status`.
+    pub fn is_fallback(&self) -> bool {
+        self.fallback_reason.is_some()
+    }
+
+    /// Код события журнала встречи для стадии расшифровки.
+    pub fn stt_event(&self) -> Option<&'static str> {
+        self.fallback_reason.map(|_| {
+            if self.route.is_cloud() {
+                "stt_fallback_cloud"
+            } else {
+                "stt_fallback_local"
+            }
+        })
+    }
+
+    /// Код события журнала встречи для стадии саммари.
+    pub fn summary_event(&self) -> Option<&'static str> {
+        self.fallback_reason.map(|_| {
+            if self.route.is_cloud() {
+                "summary_fallback_cloud"
+            } else {
+                "summary_fallback_local"
+            }
+        })
+    }
+
+    /// Текст события: чего не хватило и куда из-за этого ушли.
+    pub fn fallback_note(&self) -> Option<String> {
+        self.fallback_reason.map(|why| {
+            format!(
+                "{} недоступно ({why}), считаем {}: {}",
+                self.route.other().as_str(),
+                self.route.as_str(),
+                blocker_hint(why)
+            )
+        })
+    }
+}
+
+/// **ТАБЛИЦА ГЕЙТА — ОДНА НА ОБЕ СТАДИИ.**
+///
+/// Гейт ДЕГРАДИРУЕТ, а не блокирует: отказ имеет смысл ровно тогда, когда не
+/// работает НИ ОДИН путь. Причина правила — живой инцидент `forge-0s0l5`: Ф15
+/// сделала умолчанием `cloud`, у пользователя не оказалось ключа, и две
+/// записанные встречи (12 и 63 минуты) ушли в `failed / cloud_not_configured`
+/// при полностью готовом локальном whisper с моделью и Metal. Рабочая
+/// установка стала неработающей от смены умолчания.
+///
+/// Восемь строк, `wanted` × «облако рабочее» × «локальный путь рабочий»:
+///
+/// | конфиг | облако | локально | путь | событие журнала |
+/// |---|---|---|---|---|
+/// | cloud | да | да | облако | — |
+/// | cloud | да | нет | облако | — |
+/// | cloud | нет | да | **локально** | `*_fallback_local` |
+/// | cloud | нет | нет | — | 409 с кодом облачной причины |
+/// | local | да | да | локально | — |
+/// | local | нет | да | локально | — |
+/// | local | да | нет | **облако** | `*_fallback_cloud` |
+/// | local | нет | нет | — | 409 с кодом локальной причины |
+///
+/// Код отказа берётся у ЗАКАЗАННОГО пути, а не у запасного: человек, который
+/// выбрал облако, чинит ключ, а не ставит полтора гигабайта весов.
+///
+/// Молчаливой подмены не бывает: непустой `fallback_reason` обязателен к
+/// показу — иначе человек будет думать, что платит за облако, пока считает
+/// локальный whisper (и наоборот).
+pub fn choose_route(
+    wanted: Route,
+    cloud_blocker: Option<&'static str>,
+    local_blocker: Option<&'static str>,
+) -> Result<StagePlan, &'static str> {
+    let (wanted_blocker, spare_blocker) = match wanted {
+        Route::Cloud => (cloud_blocker, local_blocker),
+        Route::Local => (local_blocker, cloud_blocker),
+    };
+    match (wanted_blocker, spare_blocker) {
+        (None, _) => Ok(StagePlan::direct(wanted)),
+        (Some(why), None) => Ok(StagePlan {
+            route: wanted.other(),
+            fallback_reason: Some(why),
+        }),
+        (Some(why), Some(_)) => Err(why),
+    }
+}
+
+/// Что делать человеку с кодом отказа. Текст доходит до него в теле 409 и в
+/// журнале встречи, поэтому он обязан называть ДЕЙСТВИЕ, а не диагноз.
+pub fn blocker_hint(code: &str) -> &'static str {
+    match code {
+        "cloud_not_configured" => {
+            "укажите ключ polza.ai в настройках плагина или в FORGE_MEET_POLZA_KEY"
+        }
+        "whisper_unavailable" => "поставьте whisper.cpp (brew install whisper-cpp)",
+        "model_unavailable" => "скачайте модель whisper в каталог моделей",
+        "metal_unavailable" => "нужен Metal-GPU: локальные модели на CPU не считаются",
+        "ffmpeg_unavailable" => "поставьте ffmpeg (brew install ffmpeg)",
+        "claude_cli_unavailable" => {
+            "поставьте Claude CLI или Kimi CLI, либо укажите путь в конфиге плагина"
+        }
+        "claude_runs_disabled" => {
+            "включите LLM-запуски: claude_enabled = true в конфиге плагина или FORGE_CLAUDE_RUNNER_ENABLED=1"
+        }
+        "summary_disabled" => "включите саммари в настройках плагина",
+        _ => "проверьте состояние внешних компонентов в панели плагина",
+    }
+}
+
+/// Что мешает считать саммари ЛОКАЛЬНО.
+///
+/// Отдельной пробы Claude CLI нет (она стоила бы процесса на старте devforge),
+/// поэтому готовность локального пути — это наличие файла: `claude_cli_path`
+/// как он есть либо одноимённый бинарь в `PATH`. Проверка синхронная и без
+/// запуска: она нужна ровно затем, чтобы отличить «локальный путь есть» от
+/// «локального пути нет» при выборе маршрута.
+pub fn summary_local_blocker(cli_path: &Path) -> Option<&'static str> {
+    let name = cli_path.to_string_lossy();
+    find_in_path(&name)
+        .is_none()
+        .then_some("claude_cli_unavailable")
+}
+
+/// **КАКИМ ПУТЁМ ПОЙДЁТ САММАРИ.** Та же таблица, что и у расшифровки
+/// ([`choose_route`]), только зависимости другие: облаку нужен ключ,
+/// локальному пути — Claude CLI плюс явное разрешение запусков
+/// (`claude_enabled` — без него локальный маршрут даёт `claude_runs_disabled`,
+/// чтобы отказ случился до спавна процесса, а не внутри раннера).
+///
+/// `summary_disabled` стоит ПЕРЕД таблицей: выключенное саммари — это не
+/// нехватка пути, а прямой отказ человека его считать, и подменять его чем бы
+/// то ни было нельзя.
+pub fn plan_summary(
+    backend: crate::config::SummaryBackend,
+    enabled: bool,
+    cloud_configured: bool,
+    cli_path: &Path,
+    claude_enabled: bool,
+) -> Result<StagePlan, &'static str> {
+    if !enabled {
+        return Err("summary_disabled");
+    }
+    choose_route(
+        if backend.is_cloud() {
+            Route::Cloud
+        } else {
+            Route::Local
+        },
+        (!cloud_configured).then_some("cloud_not_configured"),
+        // Запуски `claude -p` по умолчанию ВЫКЛЮЧЕНЫ (см. forge_claude_runner):
+        // без явного разрешения локальный маршрут считается отсутствующим —
+        // иначе run умер бы уже внутри раннера с менее внятной диагностикой.
+        if claude_enabled {
+            summary_local_blocker(cli_path)
+        } else {
+            Some("claude_runs_disabled")
+        },
+    )
 }
 
 // --- пробы --------------------------------------------------------------------
@@ -570,6 +774,170 @@ mod tests {
         assert_eq!(d.transcribe_blocker(), Some("model_unavailable"));
         d.model_ready = true;
         assert_eq!(d.transcribe_blocker(), Some("metal_unavailable"));
+    }
+
+    // --- таблица гейта: восемь строк -------------------------------------------
+
+    /// Отчёт, у которого локальный путь ГОТОВ ровно так, как был готов у
+    /// пользователя в инциденте `forge-0s0l5`: whisper, модель, Metal, ffmpeg.
+    fn local_ready() -> DepsReport {
+        let mut d = DepsReport {
+            probed: true,
+            model_ready: true,
+            gpu_metal: Some(true),
+            ..Default::default()
+        };
+        d.whisper.found = Some(true);
+        d.ffmpeg.found = Some(true);
+        d
+    }
+
+    /// Тот же отчёт, но локального движка нет вовсе.
+    fn local_dead() -> DepsReport {
+        let mut d = local_ready();
+        d.whisper.found = Some(false);
+        d.model_ready = false;
+        d.gpu_metal = Some(false);
+        d
+    }
+
+    /// **ВОСЕМЬ СТРОК ТАБЛИЦЫ РАСШИФРОВКИ.**
+    ///
+    /// Гейт деградирует, а не блокирует: отказ остаётся ровно в двух строках
+    /// из восьми — там, где не работает НИ ОДИН путь.
+    #[test]
+    fn the_transcription_gate_degrades_instead_of_blocking() {
+        use crate::config::SttBackend::{Cloud, Local};
+
+        // конфиг, ключ облака, локальный движок → путь, причина отката
+        let table: [(crate::config::SttBackend, bool, bool, Result<(Route, Option<&str>), &str>); 8] = [
+            (Cloud, true, true, Ok((Route::Cloud, None))),
+            (Cloud, true, false, Ok((Route::Cloud, None))),
+            // РОВНО ИНЦИДЕНТ forge-0s0l5.
+            (Cloud, false, true, Ok((Route::Local, Some("cloud_not_configured")))),
+            (Cloud, false, false, Err("cloud_not_configured")),
+            (Local, true, true, Ok((Route::Local, None))),
+            (Local, false, true, Ok((Route::Local, None))),
+            (Local, true, false, Ok((Route::Cloud, Some("whisper_unavailable")))),
+            (Local, false, false, Err("whisper_unavailable")),
+        ];
+
+        for (backend, key, local, want) in table {
+            let deps = if local { local_ready() } else { local_dead() };
+            let got = deps.plan_transcribe(backend, key);
+            let label = format!("{}/ключ={key}/локально={local}", backend.as_str());
+            match want {
+                Ok((route, reason)) => {
+                    let plan = got.unwrap_or_else(|e| panic!("{label}: неожиданный отказ {e}"));
+                    assert_eq!(plan.route, route, "{label}");
+                    assert_eq!(plan.fallback_reason, reason, "{label}");
+                    assert_eq!(
+                        plan.is_fallback(),
+                        reason.is_some(),
+                        "{label}: откат обязан быть виден"
+                    );
+                    // Событие журнала есть ровно тогда, когда есть откат:
+                    // молчаливая подмена движка хуже честного отказа.
+                    assert_eq!(plan.stt_event().is_some(), reason.is_some(), "{label}");
+                }
+                Err(code) => assert_eq!(got, Err(code), "{label}"),
+            }
+        }
+    }
+
+    /// Событие отката называет ОБА пути и то, чего не хватило.
+    #[test]
+    fn a_fallback_note_names_the_missing_piece_and_where_it_went() {
+        let plan = local_ready()
+            .plan_transcribe(crate::config::SttBackend::Cloud, false)
+            .unwrap();
+        assert_eq!(plan.stt_event(), Some("stt_fallback_local"));
+        let note = plan.fallback_note().unwrap();
+        assert!(note.contains("cloud_not_configured"), "{note}");
+        assert!(note.contains("считаем local"), "{note}");
+        assert!(note.contains("polza"), "{note}: нужен совет, что поставить");
+
+        let back = local_dead()
+            .plan_transcribe(crate::config::SttBackend::Local, true)
+            .unwrap();
+        assert_eq!(back.stt_event(), Some("stt_fallback_cloud"));
+    }
+
+    /// Ffmpeg — единственная внешняя зависимость облачного пути, и его
+    /// отсутствие тоже повод откатиться, а не отказать.
+    #[test]
+    fn a_cloud_path_without_ffmpeg_falls_back_too() {
+        let mut d = local_ready();
+        d.ffmpeg.found = Some(false);
+        let plan = d
+            .plan_transcribe(crate::config::SttBackend::Cloud, true)
+            .unwrap();
+        assert_eq!(plan.route, Route::Local);
+        assert_eq!(plan.fallback_reason, Some("ffmpeg_unavailable"));
+
+        // А вот когда локального пути нет — это уже отказ, и код облачный.
+        let mut dead = local_dead();
+        dead.ffmpeg.found = Some(false);
+        assert_eq!(
+            dead.plan_transcribe(crate::config::SttBackend::Cloud, true),
+            Err("ffmpeg_unavailable")
+        );
+    }
+
+    /// **ВОСЕМЬ СТРОК ТАБЛИЦЫ САММАРИ** — та же таблица, другие зависимости.
+    #[test]
+    fn the_summary_gate_degrades_by_the_same_table() {
+        use crate::config::SummaryBackend::{Cloud, Local};
+
+        let dir = tempfile::tempdir().unwrap();
+        let present = dir.path().join("claude");
+        std::fs::write(&present, b"#!/bin/sh\n").unwrap();
+        let missing = dir.path().join("no-such-claude");
+
+        let table: [(crate::config::SummaryBackend, bool, bool, Result<(Route, Option<&str>), &str>); 8] = [
+            (Cloud, true, true, Ok((Route::Cloud, None))),
+            (Cloud, true, false, Ok((Route::Cloud, None))),
+            (Cloud, false, true, Ok((Route::Local, Some("cloud_not_configured")))),
+            (Cloud, false, false, Err("cloud_not_configured")),
+            (Local, true, true, Ok((Route::Local, None))),
+            (Local, false, true, Ok((Route::Local, None))),
+            (Local, true, false, Ok((Route::Cloud, Some("claude_cli_unavailable")))),
+            (Local, false, false, Err("claude_cli_unavailable")),
+        ];
+
+        for (backend, key, cli, want) in table {
+            let path = if cli { &present } else { &missing };
+            let got = plan_summary(backend, true, key, path, true);
+            let label = format!("{}/ключ={key}/cli={cli}", backend.as_str());
+            match want {
+                Ok((route, reason)) => {
+                    let plan = got.unwrap_or_else(|e| panic!("{label}: неожиданный отказ {e}"));
+                    assert_eq!(plan.route, route, "{label}");
+                    assert_eq!(plan.fallback_reason, reason, "{label}");
+                    assert_eq!(plan.summary_event().is_some(), reason.is_some(), "{label}");
+                }
+                Err(code) => assert_eq!(got, Err(code), "{label}"),
+            }
+        }
+
+        // ВЫКЛЮЧЕННОЕ саммари не подменяется ничем: это отказ человека
+        // считать, а не нехватка пути.
+        assert_eq!(
+            plan_summary(Cloud, false, true, &present, true),
+            Err("summary_disabled")
+        );
+
+        // ВЫКЛЮЧЕННЫЕ запуски claude блокируют ЛОКАЛЬНЫЙ маршрут так же, как
+        // отсутствие CLI: при живом бинаре и облачном ключе план уходит в
+        // облако с пометкой `claude_runs_disabled`, а без ключа — в отказ.
+        let plan = plan_summary(Local, true, true, &present, false)
+            .unwrap_or_else(|e| panic!("неожиданный отказ {e}"));
+        assert_eq!(plan.route, Route::Cloud);
+        assert_eq!(plan.fallback_reason, Some("claude_runs_disabled"));
+        assert_eq!(
+            plan_summary(Local, true, false, &present, false),
+            Err("claude_runs_disabled")
+        );
     }
 
     /// Порядок кандидатов зафиксирован пробой Ф0, и последний из них опасен:

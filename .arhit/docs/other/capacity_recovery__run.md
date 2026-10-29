@@ -1,0 +1,3 @@
+# capacity_recovery::run
+
+Spawned unconditionally at FORGE startup with a cheap AgentRuntime clone, independently of auto_approve_enabled. A tokio interval skips missed ticks and inspects only fresh available native inventory. Physical pane IDs deduplicate linked sessions; state is retained across temporary candidate ambiguity and reset on changed process identities. Each eligible pane is captured and observed; final live PID/start and unchanged screen checks precede a one-command-queue literal continuation plus Enter. Consumes the occurrence before transport mutation, so ambiguous write errors do not flood the composer. Logs contain pane/PID/attempt metadata only. No journal indexing, API requests, model calls or background job scheduling occur.

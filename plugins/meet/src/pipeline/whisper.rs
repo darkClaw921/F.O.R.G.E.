@@ -1,21 +1,31 @@
 //! Запуск whisper.cpp с ГАРАНТИЕЙ, что расчёт идёт на GPU.
 //!
-//! Модуль НЕ импортирует `axum` и `http`.
+//! # Движок переехал в `forge-voice`
 //!
-//! # Правило «локальные модели только на GPU» исполняется СТРУКТУРНО
+//! Сам движок (сборка argv, Metal-гард, разбор вывода, [`WhisperFlags`]) живёт
+//! теперь в [`forge_voice::whisper`]. Причина — та же расшифровка понадобилась
+//! голосовым сообщениям в VK, Telegram и Bitrix, а вторая реализация
+//! структурного GPU-гарда означала бы, что правило проекта держится в двух
+//! местах и однажды разойдётся в одном из них.
 //!
-//! Два независимых механизма, и ни один из них не комментарий:
+//! Здесь остался ТОНКИЙ СЛОЙ ПЛАГИНА: обратные `pub use` по прежним путям и
+//! четыре функции, которые лезут в [`crate::config::MeetConfig`] и
+//! [`crate::deps::DepsReport`] — то, чего ядру знать нельзя.
 //!
-//! 1. **`-ng` и `--no-gpu` НИКОГДА не попадают в argv.** [`build_args`] —
-//!    чистая функция, и на неё есть тест, перебирающий комбинации настроек:
-//!    ни при какой из них запрещённый флаг не появляется. Приём взят из теста
-//!    приватности в `claude-runner`.
+//! # Правило «локальные модели только на GPU» никуда не делось
+//!
+//! Оно исполняется СТРУКТУРНО и целиком в ядре:
+//!
+//! 1. **`-ng` и `--no-gpu` НИКОГДА не попадают в argv.**
+//!    [`forge_voice::whisper::build_args`] — чистая функция, и на неё есть
+//!    тест, перебирающий комбинации настроек. Аргументы, пришедшие из конфига,
+//!    просеивает [`forge_voice::whisper::sanitize_extra_args`].
 //! 2. **stderr прогона парсится на [`METAL_NEEDLE`].** Не нашли — процесс
 //!    УБИВАЕТСЯ с `metal_unavailable`, а не досчитывает молча на процессоре.
 //!
 //! Цена нарушения измерена в Ф0: те же двадцать секунд аудио считаются 14
-//! секунд на GPU и 0,7× реального времени на CPU. Разрыв по энкоду
-//! пятнадцатикратный, час аудио на CPU — почти полтора часа расчёта.
+//! секунд на GPU и 0,7× реального времени на CPU. Час аудио на CPU — почти
+//! полтора часа расчёта.
 //!
 //! # ПОЧЕМУ ГАРД СМОТРИТ НА ТОЧНЫЙ ПРЕФИКС, А НЕ НА ПОДСТРОКУ
 //!
@@ -32,399 +42,28 @@
 //! когда считать на нём не собирается. Гард вида
 //! `stderr.contains("ggml_metal")` пропустил бы CPU-прогон — то есть молча
 //! нарушил бы правило проекта тем единственным способом, который невозможно
-//! заметить по результату: транскрипт получился бы точно такой же, только
-//! через полтора часа.
-//!
-//! **Поле `systeminfo` из JSON для гарда не годится тоже**: у GPU- и
-//! CPU-прогона оно побайтово одинаково (проверено сравнением файлов) — это
-//! флаги сборки, а не использованный бэкенд.
+//! заметить по результату.
 //!
 //! # `--vad` без `-vm` — не ошибка, а SIGABRT
 //!
 //! `whisper-cli --vad` без модели VAD завершается кодом 134 со стеком
 //! `ggml_abort` (измерено в Ф0). Поэтому «не собирать `--vad` без `-vm`» —
-//! инвариант [`build_args`], а не проверка в рантайме: рантайму тут уже
-//! нечего проверять, процесс умер.
+//! инвариант сборки argv, а не проверка в рантайме.
 
 use std::path::{Path, PathBuf};
+
+pub use forge_voice::whisper::{
+    build_args, cpu_declared, is_service_token, metal_confirmed, parse_output_json, parse_progress,
+    run, sanitize_extra_args, RunOptions, WhisperFlags, WhisperOutcome, WhisperRequest,
+    WhisperSegment, WhisperToken, CPU_MARKERS, FORBIDDEN_ARGS, METAL_NEEDLE,
+};
+
+// Нужны ТЕЛАМ существующих тестов, которые переезд не переписывал: они собирают
+// `RunOptions` руками и меряют, за сколько гард снимает прогон.
+#[cfg(test)]
 use std::time::Duration;
-
+#[cfg(test)]
 use tokio_util::sync::CancellationToken;
-
-use super::proc::{self, LineVerdict, ProcError};
-use crate::deps::WhisperFlags;
-
-/// Опорная строка Metal-гарда. **Точный префикс строки stderr.**
-pub const METAL_NEEDLE: &str = "ggml_metal_init:";
-
-/// Строки, которыми whisper прямо объявляет расчёт на процессоре.
-///
-/// Существуют ради скорости реакции: гард и без них снял бы прогон по
-/// истечении окна ожидания, но эти строки печатаются сразу, и ждать после них
-/// нечего.
-pub const CPU_MARKERS: [&str; 2] = [
-    "whisper_backend_init_gpu: no GPU found",
-    "whisper_backend_init: using BLAS backend",
-];
-
-/// Флаги, которых не должно быть в argv НИКОГДА.
-pub const FORBIDDEN_ARGS: [&str; 2] = ["-ng", "--no-gpu"];
-
-/// Подтверждает ли вывод, что расчёт пошёл на GPU.
-///
-/// Требует строку, НАЧИНАЮЩУЮСЯ с [`METAL_NEEDLE`]: `contains` поймал бы
-/// `whisper: ggml_metal_init: …` в чужом сообщении, а `contains("ggml_metal")`
-/// — всегдашние строки инициализации устройства.
-pub fn metal_confirmed(stderr: &str) -> bool {
-    stderr.lines().any(|l| l.trim_start().starts_with(METAL_NEEDLE))
-}
-
-/// Объявляет ли строка расчёт на процессоре.
-pub fn cpu_declared(line: &str) -> bool {
-    CPU_MARKERS.iter().any(|m| line.contains(m))
-}
-
-/// Что запускать.
-#[derive(Debug, Clone)]
-pub struct WhisperRequest {
-    /// Путь к бинарю (из проб `deps.rs`).
-    pub bin: PathBuf,
-    /// Файл модели.
-    pub model: PathBuf,
-    /// Вход: WAV 16 кГц моно.
-    pub wav: PathBuf,
-    /// Префикс вывода БЕЗ расширения — `-of` дописывает его сам.
-    pub out_prefix: PathBuf,
-    pub language: String,
-    pub beam_size: u32,
-    /// Модель VAD. `None` — `--vad` не собирается вовсе.
-    pub vad_model: Option<PathBuf>,
-}
-
-impl WhisperRequest {
-    /// Файл, который whisper положит при `-ojf`.
-    pub fn json_path(&self) -> PathBuf {
-        let mut p = self.out_prefix.clone().into_os_string();
-        p.push(".json");
-        PathBuf::from(p)
-    }
-}
-
-/// Собирает argv. **Чистая функция — ядро инвариантов фазы.**
-///
-/// Что и почему:
-///
-/// | флаг | зачем |
-/// |---|---|
-/// | `-m`, `-f`, `-of` | модель, вход, префикс вывода |
-/// | `-l` | язык из конфига |
-/// | `-p 1` | НЕ ПАРАЛЛЕЛИТЬ: параллелизм ломает таймкоды на границах чанков, а таймкоды здесь несут имена спикеров |
-/// | `-bs 5` | ширина луча |
-/// | `-ojf` | ПОТОКЕННЫЕ метки. Посегментные по 5–30 с регулярно перекрывают смену спикера; потокенные позволяют разрезать сегмент ровно на границе |
-/// | `-pp` | прогресс в stderr |
-///
-/// `-fa` НЕ передаётся: в 1.9.2 он уже дефолт `true`, а обратный флаг —
-/// `-nfa` (измерено в Ф0). Найденный пробой `-fa` при этом ошибкой не
-/// считается, просто не используется.
-pub fn build_args(req: &WhisperRequest, flags: &WhisperFlags) -> Vec<String> {
-    let mut args: Vec<String> = vec![
-        "-m".into(),
-        req.model.display().to_string(),
-        "-f".into(),
-        req.wav.display().to_string(),
-    ];
-
-    if !req.language.trim().is_empty() {
-        args.push("-l".into());
-        args.push(req.language.trim().to_string());
-    }
-    if flags.processors {
-        // Ровно единица. Значение совпадает с дефолтом whisper, но дефолт —
-        // не контракт: в чужой сборке он может быть другим, а таймкоды здесь
-        // несут имена спикеров.
-        args.push("-p".into());
-        args.push("1".into());
-    }
-    if flags.beam_size {
-        args.push("-bs".into());
-        args.push(req.beam_size.max(1).to_string());
-    }
-    if flags.output_json_full {
-        args.push("-ojf".into());
-    }
-    if flags.print_progress {
-        args.push("-pp".into());
-    }
-
-    // VAD — ТОЛЬКО парой. Один `--vad` роняет процесс по SIGABRT, и никакая
-    // проверка в рантайме этого не поймает: процесса уже нет.
-    if let Some(vad) = &req.vad_model {
-        if flags.vad && flags.vad_model {
-            args.push("--vad".into());
-            args.push("-vm".into());
-            args.push(vad.display().to_string());
-        }
-    }
-
-    if flags.output_file {
-        args.push("-of".into());
-        args.push(req.out_prefix.display().to_string());
-    }
-    args
-}
-
-/// Настройки прогона.
-#[derive(Debug, Clone)]
-pub struct RunOptions {
-    /// Потолок всего прогона.
-    pub timeout: Duration,
-    /// Сколько ждать доказательства GPU, прежде чем убить процесс.
-    ///
-    /// Не совпадает с таймаутом всего прогона: расшифровка часа аудио идёт
-    /// минуты, а `ggml_metal_init:` печатается в первые секунды — правда, на
-    /// холодной машине перед ней успевает пройти `ggml_metal_library_init`,
-    /// который в первый раз занимает 12,5 секунды.
-    pub metal_grace: Duration,
-    pub cancel: CancellationToken,
-}
-
-impl Default for RunOptions {
-    fn default() -> Self {
-        Self {
-            timeout: Duration::from_secs(crate::config::DEFAULT_WHISPER_TIMEOUT_SECS),
-            metal_grace: Duration::from_secs(crate::config::DEFAULT_METAL_GRACE_SECS),
-            cancel: CancellationToken::new(),
-        }
-    }
-}
-
-/// Токен вывода whisper с потокенной меткой.
-#[derive(Debug, Clone, PartialEq)]
-pub struct WhisperToken {
-    pub text: String,
-    pub start_ms: i64,
-    pub end_ms: i64,
-    pub p: f64,
-}
-
-/// Сегмент вывода whisper.
-#[derive(Debug, Clone, PartialEq)]
-pub struct WhisperSegment {
-    pub start_ms: i64,
-    pub end_ms: i64,
-    pub text: String,
-    /// Потокенные (subword) метки — «Кол», «лег», «и». Склейка в слова —
-    /// работа [`crate::pipeline::speakers`].
-    pub tokens: Vec<WhisperToken>,
-}
-
-/// Итог прогона.
-#[derive(Debug, Clone)]
-pub struct WhisperOutcome {
-    pub segments: Vec<WhisperSegment>,
-    /// Хвост stderr — уезжает в журнал встречи даже при успехе.
-    pub stderr_tail: String,
-    /// Подтверждён ли Metal. Всегда `true`: иначе прогон не дошёл бы сюда.
-    pub metal: bool,
-}
-
-/// Служебные токены whisper: `[_BEG_]`, `[_TT_123]` и подобные.
-fn is_service_token(text: &str) -> bool {
-    let t = text.trim();
-    t.starts_with("[_") && t.ends_with(']')
-}
-
-/// Разбирает `<output>.json`, оставленный `-ojf`.
-pub fn parse_output_json(raw: &str) -> Result<Vec<WhisperSegment>, String> {
-    let v: serde_json::Value =
-        serde_json::from_str(raw).map_err(|e| format!("вывод whisper не разбирается: {e}"))?;
-    let items = v
-        .get("transcription")
-        .and_then(|t| t.as_array())
-        .ok_or_else(|| "в выводе whisper нет массива transcription".to_string())?;
-
-    let ms = |node: &serde_json::Value, key: &str| -> i64 {
-        node.get("offsets")
-            .and_then(|o| o.get(key))
-            .and_then(serde_json::Value::as_i64)
-            .unwrap_or(0)
-    };
-
-    let mut out = Vec::with_capacity(items.len());
-    for item in items {
-        let text = item
-            .get("text")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("")
-            .trim()
-            .to_string();
-        let tokens: Vec<WhisperToken> = item
-            .get("tokens")
-            .and_then(|t| t.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|t| {
-                        let text = t.get("text").and_then(serde_json::Value::as_str)?;
-                        // Служебные токены в массиве лежат с нулевой
-                        // длительностью и словами не являются.
-                        if is_service_token(text) {
-                            return None;
-                        }
-                        Some(WhisperToken {
-                            text: text.to_string(),
-                            start_ms: ms(t, "from"),
-                            end_ms: ms(t, "to"),
-                            p: t.get("p").and_then(serde_json::Value::as_f64).unwrap_or(1.0),
-                        })
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        // Пустые сегменты whisper выдаёт на тишине; в транскрипте им не место.
-        if text.is_empty() && tokens.is_empty() {
-            continue;
-        }
-        out.push(WhisperSegment {
-            start_ms: ms(item, "from"),
-            end_ms: ms(item, "to"),
-            text,
-            tokens,
-        });
-    }
-    Ok(out)
-}
-
-/// Разбирает строку прогресса `-pp`: `whisper_print_progress_callback:
-/// progress =  40%`.
-pub fn parse_progress(line: &str) -> Option<u8> {
-    let rest = line.split("progress =").nth(1)?;
-    let digits: String = rest
-        .trim()
-        .chars()
-        .take_while(char::is_ascii_digit)
-        .collect();
-    digits.parse::<u8>().ok().map(|p| p.min(100))
-}
-
-/// Запускает whisper и возвращает разобранный вывод.
-///
-/// Гард встроен в чтение stderr: как только whisper объявляет расчёт на
-/// процессоре — или как только истекает окно ожидания без `ggml_metal_init:`
-/// — процесс убивается, и функция отвечает `metal_unavailable`.
-pub async fn run(
-    req: &WhisperRequest,
-    flags: &WhisperFlags,
-    opts: &RunOptions,
-    on_progress: Option<&(dyn Fn(u8) + Send + Sync)>,
-) -> Result<WhisperOutcome, ProcError> {
-    let args = build_args(req, flags);
-    debug_assert!(
-        !args.iter().any(|a| FORBIDDEN_ARGS.contains(&a.as_str())),
-        "в argv whisper попал запрещённый флаг: {args:?}"
-    );
-
-    // Старый вывод убираем: `-ojf` пишет файл, и остаток прошлого прогона
-    // выглядел бы результатом текущего, если тот упадёт до записи.
-    let json_path = req.json_path();
-    let _ = std::fs::remove_file(&json_path);
-    if let Some(parent) = json_path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-
-    let metal = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let watcher_metal = metal.clone();
-    let watch = move |line: &str| -> LineVerdict {
-        if line.trim_start().starts_with(METAL_NEEDLE) {
-            watcher_metal.store(true, std::sync::atomic::Ordering::SeqCst);
-        }
-        if let Some(p) = parse_progress(line) {
-            if let Some(cb) = on_progress {
-                cb(p);
-            }
-        }
-        if cpu_declared(line) && !watcher_metal.load(std::sync::atomic::Ordering::SeqCst) {
-            return LineVerdict::Kill(
-                "metal_unavailable",
-                format!(
-                    "whisper объявил расчёт на процессоре ({}), прогон снят: \
-                     локальные модели считаются только на GPU",
-                    line.trim()
-                ),
-            );
-        }
-        LineVerdict::Continue
-    };
-
-    // Окно ожидания живёт отдельной задачей: она гасит прогон, если
-    // `ggml_metal_init:` так и не появилась — например, у сборки, которая
-    // вообще ничего про Metal не печатает.
-    let grace_cancel = opts.cancel.child_token();
-    let watchdog_token = grace_cancel.clone();
-    let watchdog_metal = metal.clone();
-    let grace = opts.metal_grace;
-    let timed_out = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let watchdog_flag = timed_out.clone();
-    let watchdog = tokio::spawn(async move {
-        tokio::time::sleep(grace).await;
-        if !watchdog_metal.load(std::sync::atomic::Ordering::SeqCst) {
-            watchdog_flag.store(true, std::sync::atomic::Ordering::SeqCst);
-            watchdog_token.cancel();
-        }
-    });
-
-    let result = proc::run_watched(&req.bin, &args, opts.timeout, &grace_cancel, watch).await;
-    watchdog.abort();
-
-    let metal_seen = metal.load(std::sync::atomic::Ordering::SeqCst);
-    let stderr_tail = match &result {
-        Ok(t) => t.clone(),
-        Err(e) => e.stderr_tail.clone(),
-    };
-
-    if timed_out.load(std::sync::atomic::Ordering::SeqCst) {
-        return Err(ProcError::new(
-            "metal_unavailable",
-            format!(
-                "whisper не подтвердил Metal за {grace:?} (нет строки {METAL_NEEDLE}), \
-                 прогон снят: считать на процессоре запрещено правилом проекта"
-            ),
-            stderr_tail,
-        ));
-    }
-    result?;
-
-    // Процесс мог закончиться сам, ни разу не сказав про Metal, — быстрый
-    // CPU-прогон или чужая сборка. Транскрипт при этом даже есть, и именно
-    // поэтому проверка обязана стоять ЗДЕСЬ, а не только по таймеру.
-    if !metal_seen {
-        let _ = std::fs::remove_file(&json_path);
-        return Err(ProcError::new(
-            "metal_unavailable",
-            format!(
-                "whisper закончил без строки {METAL_NEEDLE}: расчёт шёл не на GPU, \
-                 результат отброшен"
-            ),
-            stderr_tail,
-        ));
-    }
-
-    let raw = std::fs::read_to_string(&json_path).map_err(|e| {
-        ProcError::new(
-            "no_output",
-            format!("whisper не оставил {}: {e}", json_path.display()),
-            stderr_tail.clone(),
-        )
-    })?;
-    let segments = parse_output_json(&raw)
-        .map_err(|e| ProcError::new("bad_output", e, stderr_tail.clone()))?;
-
-    Ok(WhisperOutcome {
-        segments,
-        stderr_tail,
-        metal: true,
-    })
-}
 
 /// Путь к модели распознавания из конфига.
 pub fn model_path(cfg: &crate::config::MeetConfig) -> PathBuf {

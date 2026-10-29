@@ -39,6 +39,12 @@ export const WS_BACKOFFS_MS = [1000, 2000, 5000, 10000];
 export const SERVER_FRAMES = [
     'login_state', 'new_message', 'message_edited', 'message_deleted',
     'typing', 'online', 'read', 'upload_progress', 'download_progress',
+    // Расшифровка голосовых (ГС-Ф3) — сразу за `download_progress`: она
+    // продолжает жизненный цикл вложения, который начинается его скачиванием.
+    // Порядок обязан совпадать с enum'ом TgServerMsg, его сверяет
+    // telegram_contract.test.mjs.
+    'voice_transcribe_started', 'voice_transcribe_delta',
+    'voice_transcribe_done', 'voice_transcribe_error',
     'notify_settings', 'notify_defaults_changed', 'folders_changed',
     'analysis_started', 'analysis_delta', 'analysis_done', 'analysis_error',
     'resync', 'ping',

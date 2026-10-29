@@ -589,6 +589,12 @@ pub async fn download_media(
         .map_err(|e| ApiError::not_connected(format!("could not store media in the cache: {e}")))?;
     guard.disarm();
 
+    // Звуковая огибающая для аудио БЕЗ атрибута Telegram: у голосовых она уже
+    // приехала в `info.waveform` бесплатно и точно, а обычный аудиофайл её не
+    // несёт. Расчёт в ФОН: человек ждёт байты, волна доедет со следующей
+    // выдачей `MediaDto`.
+    crate::voice::spawn_waveform(&state, key, meta.clone(), !info.waveform.is_empty());
+
     tracing::debug!(
         target: "forge_telegram",
         dialog_id = %dialog_id,

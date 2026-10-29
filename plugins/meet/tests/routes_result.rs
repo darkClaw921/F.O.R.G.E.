@@ -78,8 +78,16 @@ impl Stand {
             // Файла по этому пути по умолчанию нет: тест, которому нужен
             // саммаризатор, кладёт туда мок сам.
             claude_cli_path: bin.join("claude"),
+            // Запуски `claude -p` по умолчанию выключены глобально
+            // (см. forge_claude_runner): стенд с мок-CLI включает их явно.
+            claude_enabled: true,
             summary_timeout_secs: 10,
             whisper_gate_poll_ms: 20,
+            // ЯВНО ЛОКАЛЬНЫЙ ПУТЬ: лестница проверок здесь про whisper,
+            // модель и Metal, а умолчание плагина — облако (Ф15). Облачную
+            // лестницу проверяет `the_dependency_ladder_follows_the_backend`.
+            stt_backend: forge_meet::config::SttBackend::Local,
+            summary_backend: forge_meet::config::SummaryBackend::Local,
             ..MeetConfig::default()
         };
         let state = MeetState::new(cfg);
@@ -172,6 +180,31 @@ impl Stand {
             .app
             .clone()
             .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let code = resp.status();
+        let bytes = axum::body::to_bytes(resp.into_body(), 1 << 22).await.unwrap();
+        let json = if bytes.is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null)
+        };
+        (code, json)
+    }
+
+    /// POST с телом — для роутов, которым нужен не пустой `{}`.
+    async fn post_json(&self, uri: &str, body: Value) -> (StatusCode, Value) {
+        let resp = self
+            .app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(uri)
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
             .await
             .unwrap();
         let code = resp.status();
@@ -415,6 +448,10 @@ async fn a_retry_that_makes_no_sense_here_is_409_invalid_state() {
     // Встреча ещё входит в комнату: повторять нечего, файлов нет.
     let s = Stand::at(MeetStatus::Joining).await;
     s.with_whisper_ready().await;
+    // Саммаризатор на месте НАМЕРЕННО: лестница проверяет нехватку
+    // компонентов РАНЬШЕ перехода, и без мока отказ пришёл бы кодом
+    // `claude_cli_unavailable` — то есть тест перестал бы проверять переход.
+    mocks::mock_claude_success(&s.bin, "claude", "## Резюме").unwrap();
 
     for stage in ["transcoding", "transcribing", "summarizing"] {
         let (code, body) = s
@@ -506,6 +543,124 @@ async fn a_missing_model_has_its_own_code() {
     assert_eq!(body["error"], "model_unavailable", "{body}");
 }
 
+/// **ЛЕСТНИЦА ЗАВИСИТ ОТ ВЫБРАННОГО ПУТИ, И ДЕГРАДАЦИЯ ИДЁТ В ОБЕ СТОРОНЫ.**
+///
+/// Та же машина, тот же отчёт проб — но в облачном режиме отсутствие whisper,
+/// модели и Metal перестаёт быть препятствием, а мешает отсутствие ключа. И
+/// наоборот: локальному пути отсутствие ключа не мешает НИЧЕМУ.
+#[tokio::test]
+async fn the_dependency_ladder_follows_the_backend() {
+    let s = Stand::ready().await;
+    // Чистая машина: whisper нет, модели нет, Metal нет — но ffmpeg есть.
+    {
+        let mut deps = s.state.deps.write().await;
+        deps.probed = true;
+        deps.whisper.found = Some(false);
+        deps.model_ready = false;
+        deps.gpu_metal = None;
+        deps.ffmpeg.found = Some(true);
+        deps.ffmpeg.path = Some("/bin/true".to_string());
+    }
+    let snapshot = s.state.deps_snapshot().await;
+
+    // Роутер на конфиге, отличающемся ТОЛЬКО переключателем и ключом: база,
+    // каталоги и отчёт проб те же самые.
+    async fn variant(
+        base: &Arc<MeetState>,
+        snapshot: forge_meet::deps::DepsReport,
+        cfg: MeetConfig,
+    ) -> axum::Router {
+        let db = base.db().unwrap();
+        let state = MeetState::new(cfg);
+        state.attach_db(db).unwrap();
+        *state.deps.write().await = snapshot;
+        forge_meet::register_routes(axum::Router::new(), state)
+    }
+    let ask = |app: axum::Router, id: String| async move {
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/meet/meetings/{id}/retry?from=transcribing"))
+                    .header("content-type", "application/json")
+                    .body(Body::from("{}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let code = resp.status();
+        let bytes = axum::body::to_bytes(resp.into_body(), 1 << 22).await.unwrap();
+        let json: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+        (code, json)
+    };
+
+    // 1. Облако с ключом: ни одного из трёх локальных требований не осталось.
+    let mut cfg = s.state.config.clone();
+    cfg.stt_backend = forge_meet::config::SttBackend::Cloud;
+    cfg.polza_api_key = forge_meet::cloud::SecretKey::new("pza_LADDERladderLADDER_test");
+    let (code, body) = ask(variant(&s.state, snapshot.clone(), cfg.clone()).await, s.id.clone()).await;
+    assert_ne!(
+        code,
+        StatusCode::CONFLICT,
+        "облаку не нужны ни whisper, ни модель, ни Metal: {body}"
+    );
+
+    // 2. Облако без ключа: отказ, но СВОИМ кодом — человек чинит ключ, а не
+    //    ставит полтора гигабайта весов.
+    cfg.polza_api_key = forge_meet::cloud::SecretKey::default();
+    let (code, body) = ask(variant(&s.state, snapshot.clone(), cfg.clone()).await, s.id.clone()).await;
+    assert_eq!(code, StatusCode::CONFLICT, "{body}");
+    assert_eq!(body["error"], "cloud_not_configured", "{body}");
+
+    // 3. Локальный путь без ключа: ключ ни при чём, жалоба про whisper.
+    cfg.stt_backend = forge_meet::config::SttBackend::Local;
+    let (code, body) = ask(variant(&s.state, snapshot.clone(), cfg.clone()).await, s.id.clone()).await;
+    assert_eq!(code, StatusCode::CONFLICT, "{body}");
+    assert_eq!(body["error"], "whisper_unavailable", "{body}");
+
+    // 4. **РЕГРЕССИЯ `forge-0s0l5`.** Облако по умолчанию, ключа нет, зато
+    //    локальный движок ГОТОВ — отказа не бывает: гейт откатывается, а
+    //    роут пропускает повтор.
+    let mut ready_local = snapshot.clone();
+    ready_local.whisper.found = Some(true);
+    ready_local.whisper.path = Some("/bin/true".to_string());
+    ready_local.model_ready = true;
+    ready_local.gpu_metal = Some(true);
+    cfg.stt_backend = forge_meet::config::SttBackend::Cloud;
+    let (_code, body) = ask(variant(&s.state, ready_local.clone(), cfg.clone()).await, s.id.clone()).await;
+    // Проверяется КОД отказа, а не его отсутствие: встречу уже увёл в
+    // `transcribing` вариант 1 выше, и повторный переход туда же законно
+    // отвергается таблицей состояний. Важно ровно одно — нехватки
+    // компонентов среди причин больше нет.
+    assert_ne!(
+        body["error"], "cloud_not_configured",
+        "готовый локальный whisper обязан подхватить встречу: {body}"
+    );
+
+    // И статус ЧЕСТНО рассказывает, чем встреча посчитается на самом деле:
+    // молчаливая подмена движка хуже отказа.
+    let app = variant(&s.state, ready_local, cfg).await;
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/meet/status")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "status не падает никогда");
+    let bytes = axum::body::to_bytes(resp.into_body(), 1 << 22).await.unwrap();
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(body["config"]["stt_backend"], "cloud", "заказ не подменяется: {body}");
+    assert_eq!(body["config"]["stt_effective"], "local", "{body}");
+    assert_eq!(
+        body["config"]["stt_fallback_reason"], "cloud_not_configured",
+        "{body}"
+    );
+    assert!(body["config"]["stt_blocker"].is_null(), "{body}");
+}
+
 /// Саммари, ВЫКЛЮЧЕННОЕ конфигом, отвечает своим кодом, а не молча ничего не
 /// делает.
 #[tokio::test]
@@ -557,6 +712,9 @@ async fn a_failed_meeting_may_retry_the_transcription_but_not_the_summary() {
         .await
         .unwrap();
     s.with_whisper_ready().await;
+    // Саммаризатор на месте: проверяется ЗАПРЕТ ПЕРЕХОДА, а не нехватка
+    // компонентов (лестница смотрит компоненты раньше перехода).
+    mocks::mock_claude_success(&s.bin, "claude", "## Резюме").unwrap();
 
     let (code, body) = s
         .post(&format!("/api/meet/meetings/{}/retry?from=summarizing", s.id))
@@ -599,4 +757,111 @@ async fn every_new_route_is_reachable_and_declared() {
     // POST на тот же адрес саммари — другой обработчик, и он существует.
     let (code, _) = s.post(&format!("/api/meet/meetings/{}/summary", s.id)).await;
     assert_ne!(code, StatusCode::METHOD_NOT_ALLOWED);
+}
+
+/// Живой кейс 07.09.2026 (Телемост, f61cfa7a…): запись остановили кнопкой,
+/// пост-обработка дошла до конца — на диске звук, транскрипт и саммари, — а
+/// статус после этого стал `cancelled`. Пересчёт саммари отвечал 409
+/// `invalid_state`, хотя данные лежали рядом.
+#[tokio::test]
+async fn a_cancelled_meeting_with_a_transcript_can_be_resummarised() {
+    // Отмена приходит ВО ВРЕМЯ пост-обработки — ровно так было в живом кейсе:
+    // из терминального `ready` отмена запрещена, и правильно.
+    let s = Stand::at(MeetStatus::Summarizing).await;
+    mocks::mock_claude_success(&s.bin, "claude", "## Резюме после отмены").unwrap();
+
+    // Пути артефактов проставлены — так их оставляет прошедшая пост-обработка.
+    repo::meetings::set_paths(
+        &s.state,
+        &s.id,
+        Some(&s.dir.join("audio.m4a").display().to_string()),
+        Some(&s.dir.join("transcript.md").display().to_string()),
+        Some(&s.dir.join("summary.md").display().to_string()),
+    )
+    .await
+    .unwrap();
+    repo::meetings::set_status(&s.state, &s.id, MeetStatus::Cancelled, Some("user_cancel"))
+        .await
+        .unwrap();
+
+    let (code, body) = s.post(&format!("/api/meet/meetings/{}/summary", s.id)).await;
+    assert_eq!(code, StatusCode::OK, "отменённая встреча с транскриптом: {body}");
+    assert_eq!(body["from"], "summarizing");
+
+    assert_eq!(
+        s.wait_summary(SummaryStatus::Ready).await,
+        SummaryStatus::Ready,
+        "саммари не досчиталось"
+    );
+    let md = std::fs::read_to_string(s.dir.join("summary.md")).unwrap();
+    assert!(md.contains("Резюме после отмены"), "{md}");
+}
+
+/// Обратная сторона: отмена на пустой комнате не оставляет транскрипта, и
+/// суммировать нечего. Отказ должен быть внятным — с кодом про недостающий
+/// вход, а не падением внутри пайплайна.
+#[tokio::test]
+async fn a_cancelled_meeting_without_a_transcript_refuses_with_a_named_code() {
+    let s = Stand::at(MeetStatus::Summarizing).await;
+    mocks::mock_claude_success(&s.bin, "claude", "## Резюме").unwrap();
+    repo::meetings::set_status(&s.state, &s.id, MeetStatus::Cancelled, Some("alone_timeout"))
+        .await
+        .unwrap();
+
+    let (code, body) = s.post(&format!("/api/meet/meetings/{}/summary", s.id)).await;
+    assert_eq!(code, StatusCode::CONFLICT, "{body}");
+    assert_eq!(body["error"], "transcript_missing", "{body}");
+}
+
+/// Живой кейс 07.09.2026 (Телемост, f61cfa7a…): встреча записалась и
+/// обработалась, но связи с сообщением у неё не оказалось — кнопка в ленте
+/// показывала «можно записать», а клик заводил новую пустую запись вместо
+/// показа готовой. Привязать существующую встречу к сообщению было нечем.
+#[tokio::test]
+async fn an_existing_meeting_can_be_attached_to_a_message() {
+    let s = Stand::ready().await;
+
+    let (code, body) = s
+        .post_json(
+            &format!("/api/meet/meetings/{}/source", s.id),
+            serde_json::json!({"plugin": "vk", "chat_id": "71297061", "message_id": 213794}),
+        )
+        .await;
+    assert_eq!(code, StatusCode::OK, "{body}");
+    assert_eq!(body["attached"], true);
+    assert_eq!(body["meeting_id"], s.id);
+
+    // Бейдж обязан появиться сразу: кнопка в ленте читает индекс, а не базу.
+    let badge = s
+        .state
+        .badge_of(&forge_meet::db::repo::SourceKey::new("vk", "71297061", 213794))
+        .await;
+    assert!(badge.is_some(), "бейдж не опубликован — кнопка останется пустой");
+}
+
+/// Половина адреса хуже его отсутствия: бейдж повис бы на несуществующем
+/// сообщении, и кнопка вела бы в никуда.
+#[tokio::test]
+async fn attaching_with_an_incomplete_address_is_refused() {
+    let s = Stand::ready().await;
+    let (code, _) = s
+        .post_json(
+            &format!("/api/meet/meetings/{}/source", s.id),
+            serde_json::json!({"plugin": "", "chat_id": "7", "message_id": 1}),
+        )
+        .await;
+    assert_eq!(code, StatusCode::BAD_REQUEST);
+}
+
+/// Привязка к несуществующей встрече — 404, а не тихое создание строки.
+#[tokio::test]
+async fn attaching_to_an_unknown_meeting_is_not_found() {
+    let s = Stand::ready().await;
+    let (code, _) = s
+        .post_json(
+            "/api/meet/meetings/00000000-0000-0000-0000-000000000000/source",
+            serde_json::json!({"plugin": "vk", "chat_id": "7", "message_id": 1}),
+        )
+        .await;
+    assert_eq!(code, StatusCode::NOT_FOUND);
 }

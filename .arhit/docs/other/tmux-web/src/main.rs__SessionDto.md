@@ -1,0 +1,3 @@
+# tmux-web/src/main.rs::SessionDto
+
+GET /api/sessions remains backward compatible with flattened tmux SessionInfo plus independent needs_attention, is_generating and optional generating_since_secs. New working_agent_count and agent_providers describe journal tasks on the primary tab of a linked group. Bool, original task start/age, count and provider slugs are read from one AttentionState::agent_activity_snapshot; terminal screen changes no longer drive these fields. Existing folder/origin/remote enrichment stays unchanged. Agent REST routes merge into the router before the existing Bearer/CSRF layers, and the background journal/runtime workers operate independently of the Analytics screen.

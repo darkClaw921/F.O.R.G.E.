@@ -64,7 +64,11 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::api::error::{CODE_ACCESS_DENIED, CODE_AUTH_FAILED, CODE_CAPTCHA, CODE_INTERNAL_SERVER};
+use crate::api::error::{
+    CODE_ACCESS_DENIED, CODE_AUTH_FAILED, CODE_CAPTCHA, CODE_FLOOD_CONTROL,
+    CODE_INTERNAL_SERVER, CODE_METHOD_QUOTA, RETRY_AFTER_FLOOD_CONTROL,
+    RETRY_AFTER_METHOD_QUOTA,
+};
 use crate::api::schema::LongPollHistoryRaw;
 use crate::api::{VkClient, VkError};
 use crate::dto::{dialog_id_string, MessageDto, PeerNames, CHAT_PEER_BASE};
@@ -1157,6 +1161,26 @@ pub async fn supervisor(state: Arc<VkState>) {
                     return;
                 }
                 tracing::warn!(target: "forge_vk", error = %e, "forge-vk: could not obtain the LongPoll cursor");
+                // Коды 9 и 29 — «слишком часто». Лестница backoff'а упирается
+                // в минуту и дальше повторяет её вечно, то есть при живом
+                // flood control супервизор до конца дней шлёт ОДИН И ТОТ ЖЕ
+                // `messages.getLongPollServer` раз в минуту — ровно тот
+                // однотипный повтор, за который VK ограничение и держит.
+                // Здесь VK сам сказал, сколько ждать: ждём столько.
+                if let Some(pause) = flood_pause_for(&e) {
+                    tracing::warn!(
+                        target: "forge_vk",
+                        pause_secs = pause.as_secs(),
+                        "forge-vk: VK is throttling this token — waiting the full period instead of the backoff ladder"
+                    );
+                    if !sleep_or_shutdown(&state, pause).await {
+                        return;
+                    }
+                    // Лестница НЕ двигается: пауза VK не ступень нашего
+                    // backoff'а, а внешнее требование, и следующая обычная
+                    // ошибка должна начинать отсчёт с начала.
+                    continue;
+                }
                 if !backoff_sleep(&state, step).await {
                     return;
                 }
@@ -1248,11 +1272,32 @@ async fn wait_authorized(state: &Arc<VkState>) -> bool {
 
 /// Пауза перед следующей попыткой. `false` ⇒ пришёл shutdown.
 async fn backoff_sleep(state: &Arc<VkState>, step: usize) -> bool {
-    let delay = state.lp.backoff_at(step);
+    sleep_or_shutdown(state, state.lp.backoff_at(step)).await
+}
+
+/// Сон, прерываемый остановкой плагина. `false` ⇒ пришёл shutdown.
+async fn sleep_or_shutdown(state: &Arc<VkState>, delay: Duration) -> bool {
     tokio::select! {
         biased;
         () = state.shutdown.cancelled() => false,
         () = tokio::time::sleep(delay) => true,
+    }
+}
+
+/// Сколько ждать, если VK притормозил запросы сам.
+///
+/// `None` — обычная ошибка, ей полагается лестница backoff'а. `Some(d)` — VK
+/// назвал (кодом) свой собственный период: минута на flood control, час на
+/// исчерпанную квоту метода. Повторять раньше бессмысленно и вредно —
+/// однотипные повторы ровно за это ограничение и назначают.
+fn flood_pause_for(err: &VkError) -> Option<Duration> {
+    match err {
+        VkError::Api { code, .. } => match *code {
+            CODE_FLOOD_CONTROL => Some(Duration::from_secs(RETRY_AFTER_FLOOD_CONTROL)),
+            CODE_METHOD_QUOTA => Some(Duration::from_secs(RETRY_AFTER_METHOD_QUOTA)),
+            _ => None,
+        },
+        _ => None,
     }
 }
 
@@ -1394,6 +1439,13 @@ async fn run_worker(state: &Arc<VkState>, client: &VkClient, mut cursor: LpCurso
                     );
                 }
                 for frame in frames {
+                    // Авторазбор голосовых (Ф4). Решение принимается здесь и
+                    // стоит разбора уже полученного DTO; докачка и движок
+                    // уезжают в фоновую задачу, потому что лонгпол в это время
+                    // держит очередь событий всего аккаунта.
+                    if let VkServerMsg::NewMessage { message, .. } = &frame {
+                        crate::voice_auto::on_new_message(state, message).await;
+                    }
                     state.broadcast_event(frame);
                 }
 
@@ -2615,6 +2667,36 @@ mod tests {
             .await
             .expect("wait_authorized завис на отменённом токене");
         assert!(!woke);
+    }
+
+    /// Коды «слишком часто» получают ПОЛНУЮ паузу VK, а не ступень лестницы:
+    /// иначе супервизор шлёт тот же `messages.getLongPollServer` раз в минуту
+    /// всё время, пока ограничение живо, и сам его поддерживает.
+    #[test]
+    fn flood_codes_get_the_full_vk_pause() {
+        let api = |code: i64| VkError::Api {
+            code,
+            msg: "throttled".into(),
+            captcha_sid: None,
+            captcha_img: None,
+            redirect_uri: None,
+        };
+        assert_eq!(
+            flood_pause_for(&api(CODE_FLOOD_CONTROL)),
+            Some(Duration::from_secs(RETRY_AFTER_FLOOD_CONTROL))
+        );
+        assert_eq!(
+            flood_pause_for(&api(CODE_METHOD_QUOTA)),
+            Some(Duration::from_secs(RETRY_AFTER_METHOD_QUOTA))
+        );
+        // Всё остальное — обычная лестница backoff'а.
+        assert_eq!(flood_pause_for(&api(CODE_INTERNAL_SERVER)), None);
+        assert_eq!(
+            flood_pause_for(&VkError::Transport {
+                reason: "connection reset".into()
+            }),
+            None
+        );
     }
 
     /// Backoff прерывается shutdown'ом: воркер не имеет права держать

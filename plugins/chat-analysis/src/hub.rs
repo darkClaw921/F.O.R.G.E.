@@ -160,6 +160,9 @@ pub struct StartRequest {
 pub struct AnalysisHub {
     runner: ClaudeRunner,
     cli_path: PathBuf,
+    /// Выбранный LLM-бэкенд (из конфига плагина). Нужен хабу для
+    /// `cli_available()` и для текстов 409-ответов.
+    backend: forge_claude_runner::LlmBackend,
     model: Option<String>,
     /// Хранилище заметок и разборов — ТО ЖЕ, что у состояния плагина (`Arc` на
     /// один `Mutex`), плюс путь файла. `None` в тестах, которым сохранение
@@ -192,6 +195,7 @@ impl std::fmt::Debug for AnalysisHub {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AnalysisHub")
             .field("cli_path", &self.cli_path)
+            .field("backend", &self.backend.as_str())
             .field("model", &self.model)
             .field("has_store", &self.store.is_some())
             .finish_non_exhaustive()
@@ -208,10 +212,42 @@ impl AnalysisHub {
         Self {
             runner,
             cli_path,
+            backend: forge_claude_runner::LlmBackend::Claude,
             model,
             store: None,
             active: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    /// Переключает runner на выбранный конфигом транспорт (`kimi`-CLI или
+    /// `cloud`). `cli_path` обновляется до пути активного CLI (для 409-сообщений
+    /// и `cli_path()`); для облака остаётся путь claude — в сообщениях тогда
+    /// фигурирует `backend`.
+    #[must_use]
+    pub fn with_transport(
+        mut self,
+        backend: forge_claude_runner::LlmBackend,
+        transport: forge_claude_runner::Transport,
+        cli_path: PathBuf,
+    ) -> Self {
+        self.runner = self.runner.with_transport(transport);
+        self.backend = backend;
+        self.cli_path = cli_path;
+        self
+    }
+
+    /// Разрешает запуски `claude -p` для анализов этого хаба.
+    ///
+    /// Runner по умолчанию ВЫКЛЮЧЕН (см. `forge_claude_runner`): без этого
+    /// вызова `start` вернёт run, который тут же завершится ошибкой
+    /// «claude runner disabled». Плагины прокидывают сюда
+    /// `claude_enabled`-флаг своего конфига ИЛИ
+    /// `forge_claude_runner::env_runs_enabled()` — тогда переменная
+    /// `FORGE_CLAUDE_RUNNER_ENABLED=1` включает анализы во всех плагинах разом.
+    #[must_use]
+    pub fn with_claude_enabled(mut self, enabled: bool) -> Self {
+        self.runner = self.runner.with_enabled(enabled);
+        self
     }
 
     /// Подключает хранилище разборов (см. [`Self::store`]).
@@ -230,10 +266,20 @@ impl AnalysisHub {
         &self.cli_path
     }
 
-    /// Есть ли чем запускать анализ.
+    /// Есть ли чем запускать анализ: для локальных CLI — существует ли бинарь
+    /// активного вида, для облака — настроен ли транспорт (ключ + модель).
     #[must_use]
     pub fn cli_available(&self) -> bool {
-        self.cli_path.exists()
+        match self.runner.transport() {
+            forge_claude_runner::Transport::Cli { path, .. } => path.exists(),
+            forge_claude_runner::Transport::Cloud(cfg) => cfg.configured(),
+        }
+    }
+
+    /// Выбранный LLM-бэкенд (для текстов ошибок и healthz-ответов).
+    #[must_use]
+    pub fn backend(&self) -> forge_claude_runner::LlmBackend {
+        self.backend
     }
 
     /// Сколько анализов идёт прямо сейчас.
@@ -456,6 +502,42 @@ impl AnalysisHub {
             );
         }
     }
+}
+
+/// Резолв «поля конфига мессенджера → транспорт хаба».
+///
+/// Три мессенджера (bitrix/vk/telegram) имеют ОДИНАКОВЫЙ набор полей
+/// (`llm_backend`, `kimi_cli_path`, `llm_cloud_*`), и этот хелпер — единственная
+/// точка, где из них собирается [`Transport`]. Возвращает также путь активного
+/// локального CLI (для 409-сообщений и `cli_path()`): у облака его нет, и там
+/// возвращается путь claude — в текстах тогда фигурирует `backend`.
+#[must_use]
+pub fn resolve_transport(
+    backend: forge_claude_runner::LlmBackend,
+    claude_cli_path: PathBuf,
+    kimi_cli_path: PathBuf,
+    cloud: forge_claude_runner::CloudTransportCfg,
+) -> (
+    forge_claude_runner::LlmBackend,
+    forge_claude_runner::Transport,
+    PathBuf,
+) {
+    let transport = match backend {
+        forge_claude_runner::LlmBackend::Claude => forge_claude_runner::Transport::Cli {
+            kind: forge_claude_runner::CliKind::Claude,
+            path: claude_cli_path.clone(),
+        },
+        forge_claude_runner::LlmBackend::Kimi => forge_claude_runner::Transport::Cli {
+            kind: forge_claude_runner::CliKind::Kimi,
+            path: kimi_cli_path.clone(),
+        },
+        forge_claude_runner::LlmBackend::Cloud => forge_claude_runner::Transport::Cloud(cloud),
+    };
+    let active_cli = match backend {
+        forge_claude_runner::LlmBackend::Kimi => kimi_cli_path,
+        _ => claude_cli_path,
+    };
+    (backend, transport, active_cli)
 }
 
 /// Контекст пампера.
@@ -718,6 +800,7 @@ sleep 30
 
     fn hub_with(dir: &tempfile::TempDir, script: &str) -> AnalysisHub {
         AnalysisHub::new(mock_cli(dir, script), Some("sonnet".into()), 30)
+            .with_claude_enabled(true)
     }
 
     fn req(dialog_id: &str) -> StartRequest {

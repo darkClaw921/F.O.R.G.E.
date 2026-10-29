@@ -1,0 +1,3 @@
+# agents.settings.rootRow
+
+Создаёт persistent DOM row дополнительного источника с provider select, path/profile inputs и remove. Каждый input вложен в label.agent-field с постоянной подписью «Агент», «Каталог журналов» или «Папка профиля», поэтому заполненные длинные пути различимы. rows держит ссылки на исходные controls, read()/submit() получают их значения без пересоздания при poll. Remove удаляет только свою строку и запись rows; defaultProfile вычисляется при сохранении для пустого profile. Responsive CSS переносит path/profile wrappers на полную ширину, выравнивает remove с provider input и оставляет естественную высоту остальных полей.
