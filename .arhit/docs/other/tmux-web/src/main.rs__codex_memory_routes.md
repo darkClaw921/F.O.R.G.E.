@@ -1,0 +1,3 @@
+# tmux-web/src/main.rs::codex_memory_routes
+
+The authenticated devforge router registers GET and PUT /api/codex-memory through codex_memory::get_memory and codex_memory::put_memory, adjacent to the existing unchanged Claude memory route. Both use the current local server filesystem and global CODEX_HOME rather than session cwd. Native generated memory and persistent agent-memory Markdown share the brain modal. GET returns index_name/index and named file bodies; PUT validates source-relative existing filenames and never creates directories or follows symlinks. Remote scopes return empty reads and reject writes. The module performs blocking I/O on Tokio blocking workers and reports bounded-read truncation for the UI.

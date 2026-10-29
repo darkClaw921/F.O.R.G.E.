@@ -1,7 +1,3 @@
 # deduplicate_generating
 
-Дедуплицирует флаги is_generating (индикатор ✶) среди tmux-сессий одной итерации watcher_loop. Структурно-парная к deduplicate_attention, но работает с сырым сигналом changed (prev != current хэш последних 50 строк pane от update_generation) вместо detected.
-
-ОСЬ ГРУППИРОВКИ — ТОЛЬКО session_group (union-find). Ось gen_hash УДАЛЕНА (фикс бага 2026-05-25, симметрично deduplicate_attention): без linked-сессий совпавший gen_hash — случайное совпадение содержимого двух независимых сессий, гасить индикатор у одной из них неверно.
-
-Внутри группы: если ни одна не changed — все false; если хотя бы одна changed — primary через pick_primary_gen (attached>0 побеждает, иначе max id), ему true, остальным false. Независимые сессии (group=None) не группируются → ✶ горит на каждой реально работающей сессии.
+Select one primary star among linked tmux sessions by session_group only. Input GenSnapshot.changed now means a working root journal task is exactly bound to that session; production no longer supplies pane hash changes. Independent sessions never group by screen text. Primary preference remains attached first, then lexically largest tmux session ID, preserving existing alias behavior. The activity observer expands exact same-pane aliases before this step and deduplicates task IDs per tab, so one root can light only the chosen linked primary while global workingCount remains1. The same grouping helper approves explicit task-end idle on one linked primary, never on raw visual disappearance.

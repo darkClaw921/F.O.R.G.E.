@@ -1,3 +1,4 @@
+import { generatingTooltip } from '../agents/session-indicator.js';
 // tmux-web — Sessions (Phase 1 ES Modules refactor)
 //
 // 1:1 копии из IIFE `tmux-web/static/app.js`:
@@ -101,32 +102,6 @@ function syncHomeVisibility() {
     }
 }
 
-// Человекочитаемая длительность из секунд: «5 с», «1 мин 20 с», «2 ч 3 мин».
-function formatDuration(totalSecs) {
-    const secs = Math.max(0, Math.floor(totalSecs));
-    if (secs < 60) return `${secs} с`;
-    const mins = Math.floor(secs / 60);
-    const rem = secs % 60;
-    if (mins < 60) return rem ? `${mins} мин ${rem} с` : `${mins} мин`;
-    const hours = Math.floor(mins / 60);
-    const remMin = mins % 60;
-    return remMin ? `${hours} ч ${remMin} мин` : `${hours} ч`;
-}
-
-// Текст кастомного tooltip синего индикатора работы (✶), кладётся в
-// data-tooltip спарка и показывается через js/ui/tooltip.js. Объясняет,
-// ПОЧЕМУ индикатор горит: в этой сессии содержимое терминала (последние 50
-// строк pane) изменилось за последний тик watcher'а (1.5 с) — Claude печатает,
-// идёт вывод процесса и т.п. generating_since_secs (если есть) показывает,
-// как давно началась текущая непрерывная серия генерации.
-function generatingTooltip(s) {
-    const base = `Индикатор работы: в сессии «${s.name}» содержимое терминала меняется`;
-    if (typeof s.generating_since_secs === 'number') {
-        return `${base} — генерация идёт уже ${formatDuration(s.generating_since_secs)}`;
-    }
-    return `${base} прямо сейчас`;
-}
-
 export function buildSessionItem(s) {
     const li = document.createElement('li');
     li.className = 'session-item';
@@ -138,7 +113,7 @@ export function buildSessionItem(s) {
     }
     // Голубое свечение, если для сессии есть предложение «следующего шага».
     // Визуально отдельно от синего спарка ✶ (is_generating ниже) — это два
-    // независимых индикатора: ✶ = Claude печатает прямо сейчас, has-next-step =
+    // независимых индикатора: ✶ = агент выполняет задачу, has-next-step =
     // эпизод завершён и есть готовое предложение что делать дальше. Класс
     // снимается автоматически при перерендере, когда предложение исчезает из
     // state.nextSteps (poll или WS NextStepEvent{has_suggestion:false}).
@@ -146,7 +121,9 @@ export function buildSessionItem(s) {
     // Отдельная проверка настройки здесь не нужна: при выключенной фиче
     // fetchNextSteps() держит state.nextSteps пустым (и бэкенд ничего не
     // генерирует), так что условие ниже само по себе не срабатывает.
-    if (state.nextSteps && state.nextSteps[s.name]) {
+    // A waiting permission/question takes priority over an older suggestion.
+    // Keeping both classes would let the later cyan glow CSS hide the orange.
+    if (!s.needs_attention && state.nextSteps && state.nextSteps[s.name]) {
         li.classList.add('has-next-step');
     }
     li.dataset.session = s.name;

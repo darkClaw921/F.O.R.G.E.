@@ -68,15 +68,17 @@
 //! # Два источника списка (Р3)
 //!
 //! ```text
-//!   im.recent.get   — ОСНОВА: отдаёт всё, включая чаты задач; страниц не умеет
+//!   im.recent.get   — ВЕРХУШКА: есть чаты задач, но страниц нет и отдаёт
+//!                     лишь часть списка (живьём 16 из 81, 33 из 213)
 //!         +
-//!   im.recent.list  — ДОЗАГРУЗКА: умеет страницы, но чатов задач НЕ отдаёт
+//!   im.recent.list  — ХВОСТ: умеет страницы, но чатов задач НЕ отдаёт
 //! ```
 //!
-//! Ни один из них в одиночку не даёт полного списка. Основа — первый; второй
-//! подключается, только когда первый пришёл «под завязку»
-//! ([`RECENT_GET_SATURATION`]) и запрошенное окно за его пределами. Склейка —
-//! [`crate::dto::merge_dialogs`], приоритет у `im.recent.get`.
+//! Ни один из них в одиночку не даёт полного списка, поэтому оба зовутся
+//! ВСЕГДА: первая страница `im.recent.list` едет в том же `batch`, что и
+//! `im.recent.get` ([`crate::api::B24Client::dialogs_bundle`]), дальнейшие —
+//! по мере нужды окна. Склейка — [`crate::dto::merge_dialogs`], приоритет у
+//! `im.recent.get`.
 //!
 //! # ЛЕСТНИЦА ПРОВЕРОК: 409 → 503 → 404 → 400
 //!
@@ -137,14 +139,6 @@ pub const DEFAULT_LIMIT: i64 = 40;
 /// бессмысленно, а отдавать больше — значит держать в памяти страницу, которую
 /// колонка всё равно рисует по мере прокрутки.
 pub const MAX_LIMIT: i64 = 200;
-
-/// Сколько строк `im.recent.get` считается «пришёл под завязку».
-///
-/// У метода нет ни `LIMIT`, ни страниц, но и бесконечным его ответ не бывает:
-/// на длинных списках портал отдаёт верхушку. Ровно двести — граница, после
-/// которой нельзя считать, что список кончился, и подключается дозагрузка
-/// через `im.recent.list` (Р3).
-pub const RECENT_GET_SATURATION: usize = 200;
 
 /// Сколько страниц `im.recent.list` разрешено дозагрузить за один запрос.
 ///
@@ -613,36 +607,48 @@ pub async fn get_dialogs(
     let offset = query_i64(q, "offset")?.max(Some(0)).unwrap_or(0).max(0);
     let dir = normalize_dir(query_str(q, "filter"));
 
-    // --- источник 1: основа списка + счётчики одним пакетом (Р3) ---
+    // --- источники 1+2: верхушка, первая страница хвоста и счётчики одним
+    // пакетом (Р3) ---
     let now = dto::now_unix();
-    let (mut items, counters) = client.cold_start().await.map_err(|e| map_portal_error(&e))?;
+    let self_id = state.self_id().await;
+    let crate::api::methods::DialogsBundle {
+        recent: mut items,
+        counters,
+        list: first_page,
+        tasks: member_tasks,
+    } = client
+        .dialogs_bundle(Some(self_id))
+        .await
+        .map_err(|e| map_portal_error(&e))?;
     state
         .set_counters(CountersDto::from_raw(&counters), now)
         .await;
     let base_len = items.len();
 
-    // --- источник 2: дозагрузка, только если основа пришла под завязку ---
+    // --- дозагрузка хвоста `im.recent.list`, пока его не хватает странице ---
+    //
+    // Смещение считается по САМОМУ `im.recent.list`, а не по длине
+    // `im.recent.get`: в последнем есть чаты задач, которых в первом нет, и
+    // смещение «по основе» перепрыгивало бы через непоказанные диалоги.
     let mut extra = Vec::new();
-    if base_len >= RECENT_GET_SATURATION {
+    let mut list_more = false;
+    if let Some(page) = first_page {
+        list_more = page.has_more && !page.items.is_empty();
+        extra.extend(page.items);
         let needed = (offset + limit) as usize;
-        let mut page_offset = base_len as i64;
         for _ in 0..MAX_EXTRA_PAGES {
-            if base_len + extra.len() >= needed {
+            if !list_more || extra.len() >= needed {
                 break;
             }
             let page = client
-                .recent_list(MAX_LIMIT, page_offset)
+                .recent_list(MAX_LIMIT, extra.len() as i64)
                 .await
                 .map_err(|e| map_portal_error(&e))?;
-            let got = page.items.len();
-            extra.extend(page.items);
             // `LIMIT` НЕ гарантирует ровно N записей (портал фильтрует после
             // выборки), поэтому признак конца — только `hasMore`, а смещение
             // двигается на реально пришедшее число.
-            if !page.has_more || got == 0 {
-                break;
-            }
-            page_offset += got as i64;
+            list_more = page.has_more && !page.items.is_empty();
+            extra.extend(page.items);
         }
     }
 
@@ -671,7 +677,6 @@ pub async fn get_dialogs(
     }
 
     // --- проекция, директория, сортировка, страница ---
-    let self_id = state.self_id().await;
     let peers = &state.peers;
     let project = |list: &mut Vec<crate::api::schema::RecentItemRaw>| -> Vec<DialogDto> {
         std::mem::take(list)
@@ -679,7 +684,31 @@ pub async fn get_dialogs(
             .filter_map(|i| dto::dialog_from_raw(i, self_id, peers))
             .collect()
     };
-    let mut dialogs = dto::merge_dialogs(project(&mut items), project(&mut extra));
+    let dialogs = dto::merge_dialogs(project(&mut items), project(&mut extra));
+
+    // --- чаты задач с участием, в которых давно тихо (их нет в `im.recent.*`) ---
+    //
+    // Индекс `task_id ↔ chat_id` наполняется попутно и бесплатно: лента такой
+    // задачи потом открывается без лишнего запроса.
+    let origin = state.webhook().await.portal_origin();
+    let task_rows: Vec<DialogDto> = member_tasks
+        .iter()
+        .filter_map(|raw| {
+            let task = crate::tasks::task_from_raw(raw, origin.as_deref(), now);
+            if let Ok(id) = task.id.parse::<i64>() {
+                state.remember_task(
+                    id,
+                    task.chat_id,
+                    crate::tasks::ActionMatrix::from_raw(&raw.action),
+                    now,
+                );
+            }
+            dto::dialog_from_task(&task)
+        })
+        .collect();
+    let dialogs_before_tasks = dialogs.len();
+    let mut dialogs = dto::merge_dialogs(dialogs, task_rows);
+    let task_only = dialogs.len() - dialogs_before_tasks;
 
     dialogs.retain(|d| dir_matches(dir, d));
     // Закреплённые сверху, дальше — по дате изменения (портал уже отдаёт их в
@@ -697,7 +726,11 @@ pub async fn get_dialogs(
         .skip(offset.max(0) as usize)
         .take(limit as usize)
         .collect();
-    let has_more = offset + (page.len() as i64) < total;
+    // Хвост портала, который ещё не дозагружен, — тоже «есть ещё»: иначе
+    // упор в `MAX_EXTRA_PAGES` выглядел бы для фронта концом списка. Но только
+    // при непустой странице: за потолком дозагрузки страница пуста при живом
+    // `hasMore`, и фронт листал бы её бесконечно.
+    let has_more = offset + (page.len() as i64) < total || (list_more && !page.is_empty());
 
     tracing::debug!(
         target: "forge_bitrix",
@@ -706,7 +739,7 @@ pub async fn get_dialogs(
         offset,
         limit,
         base_len,
-        extra_pages = usize::from(!extra.is_empty()),
+        task_only,
         "forge-bitrix: dialogs listed"
     );
     Ok(Json(DialogsResp {

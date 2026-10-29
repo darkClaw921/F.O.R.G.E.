@@ -1,0 +1,3 @@
+# tmux-web/static/js/agents/api.js
+
+REST-клиент статистики через существующий apiFetch с origin-aware маршрутизацией и установленным слоем авторизации/CSRF. createAgentsApi принимает request и origin для независимого тестирования. status/live/summary/projects/sessions читают метаданные; queryString пропускает только поля диапазона, провайдера, профиля, проекта и пагинации. rescan запускает фоновый пересбор. config/configure работают с разрешённой конфигурацией. bindings/inventory и bind/unbind сохраняют sessionId как точную строку JSON tuple и передают её JSON-телом; 204 не разбирается как JSON. refreshPrices обновляет каталог, ошибки не подменяются успешными пустыми данными. Ошибки содержат HTTP статус и серверное описание.

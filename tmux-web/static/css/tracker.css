@@ -1,0 +1,1875 @@
+/* tmux-web — вкладка «Мои задачи» (плагин forge-tracker)
+ *
+ * Терминальная стилистика панелей Telegram / VK / Битрикс24 СОХРАНЕНА (это
+ * идентичность devforge), акцент — ядовито-зелёный фосфор `#33FF88`.
+ *
+ * ПОЧЕМУ ЗЕЛЁНЫЙ, ЕСЛИ ЗЕЛЁНЫЙ «ЗАНЯТ» TELEGRAM. У мессенджеров цвет разводит
+ * ОДНОРОДНЫЕ панели: три ленты переписки выглядят одинаково, и человек
+ * отправит сообщение не в тот чат, если не различит их мгновенно. Трекер
+ * однородным им не является: у него нет ни ленты, ни поля отправки, ни списка
+ * диалогов — спутать его с мессенджером нельзя даже случайно. Зато он обязан
+ * читаться как «терминал задач», а канонический фосфор монитора — именно
+ * зелёный. Тон при этом другой: у Telegram мягкий `#4EC9B0` (бирюза), здесь
+ * `#33FF88` (чистый фосфор) на почти чёрном `#050805`.
+ *
+ * Палитра взята из макета ~/Documents/ForgeTracker.pen (переменные t-bg,
+ * t-panel, t-bar, t-active, acc, acc-dim, acc-faint, muted) — файл здесь
+ * источник истины, значения не подбирались на глаз.
+ *
+ * Панель живёт в собственной палитре и НЕ наследует токены приложения: все
+ * цвета объявлены на #tracker, поэтому вкладка выглядит одинаково при любой
+ * теме devforge. Светлоту панели выбирает СВОЙ тумблер ◐ (auto/dark/light,
+ * js/tracker/theme.js): он проставляет `data-tracker-theme` на #tracker, а
+ * этот файл держит под каждое значение полный набор токенов --t-*.
+ *
+ * Разметка — index.html (#tracker), поведение — js/tracker/*.
+ *
+ * ИНВАРИАНТ ФАЙЛА: ни одного селектора с префиксом `.tg-`/`#tg-`/`.vk-`/
+ * `#vk-`/`.b24-`/`#b24-` и ни одного упоминания `#telegram`, `#vk`,
+ * `#bitrix`. Панели не должны уметь красить друг друга.
+ *
+ * ВАЖНО про сайзинг: #main это flex-колонка. Панель обязана быть
+ * `flex: 1 1 auto; min-height: 0`, иначе лента задач с overflow растягивает
+ * контейнер и ломает layout соседних вкладок.
+ */
+
+/* ==== Шрифт ==============================================================
+   Объявления продублированы из css/telegram.css / css/vk.css / css/bitrix.css
+   НАМЕРЕННО: вынести все @font-face в общий файл было бы чище, но это правка
+   чужих панельных стилей, а правило «css/telegram.css и css/vk.css не
+   редактируются» дороже одного дубля. @font-face идемпотентен — браузер
+   грузит файл один раз независимо от числа объявлений. */
+@font-face {
+    font-family: "JetBrains Mono";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: local("JetBrains Mono"), local("JetBrainsMono-Regular"),
+         url("/vendor/fonts/jetbrains-mono/JetBrainsMono-Regular.woff2") format("woff2");
+}
+@font-face {
+    font-family: "JetBrains Mono";
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: local("JetBrains Mono Bold"), local("JetBrainsMono-Bold"),
+         url("/vendor/fonts/jetbrains-mono/JetBrainsMono-Bold.woff2") format("woff2");
+}
+
+/* ---- Кнопка ✇ в #settings-bar ----
+   Живёт в общей теме приложения (как ✈/Ⓥ/Ⓑ), поэтому здесь токены
+   devforge, а не палитра панели: кнопка — часть шапки, а не трекера. */
+#tracker-toggle {
+    position: relative;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--fg-mute);
+    font-size: 1rem;
+    line-height: 1;
+    padding: 2px 6px;
+    transition: background 0.15s ease, transform 0.15s ease;
+}
+#tracker-toggle:hover {
+    background: var(--bg-input-hover);
+    color: var(--fg);
+    transform: scale(1.08);
+}
+/* Бейдж числа идущих таймеров: наполняется в фазе 5, разметка есть всегда. */
+#trk-running-badge {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+    border-radius: 7px;
+    background: #33ff88;
+    color: #05170d;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 14px;
+    text-align: center;
+    pointer-events: none;
+}
+
+/* ==== Панель ============================================================ */
+
+#tracker {
+    /* Обязательный сайзинг: без него лента задач распирает #main. */
+    flex: 1 1 auto;
+    min-height: 0;
+
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.55;
+    background: var(--t-bg);
+    color: var(--t-acc-dim);
+
+    /* НАТИВНЫЕ ПИКЕРЫ ПОДЧИНЯЮТСЯ ТОЛЬКО color-scheme. Всплывающий календарь
+       `<input type="date">`, стрелки `type="number"` и иконка часов рисуются
+       БРАУЗЕРОМ, и никакой CSS до них не достаёт: на тёмной панели без этой
+       строки выпадает ослепительно белый календарь, а стрелки пропадают,
+       сливаясь с фоном. Тема панели своя (data-tracker-theme), поэтому и
+       color-scheme проставляется здесь, а не наследуется от страницы. */
+    color-scheme: dark;
+
+    /* Тёмная палитра — дефолт (в т.ч. при data-tracker-theme="dark").
+       Роли «рамка» и «приглушённый текст» разведены в два токена намеренно:
+       один и тот же цвет не может быть и тем, и другим — либо рамка кричит,
+       либо подпись невидима. */
+    --t-bg: #050805;
+    --t-panel: #070C08;
+    --t-bar: #0A100C;
+    --t-active: #0E241A;     /* подсветка активной строки        */
+    --t-acc: #33FF88;        /* основной акцент и текст          */
+    --t-acc-dim: #2C8F5A;    /* второстепенный текст             */
+    --t-acc-faint: #123A26;  /* РАМКИ, не текст                  */
+    --t-muted: #708373;      /* приглушённый текст (подписи)     */
+    --t-text: #D3E0D6;       /* обычный текст задачи             */
+    --t-warn: #D29922;
+    --t-danger: #F85149;
+    --t-ok: #33FF88;
+    /* Затемнение под модальными окнами и подсветка колонки-приёмника при
+       перетаскивании. Токенами, а не литералами: на светлой теме чёрный
+       скрим 0.62 гасит страницу до неузнаваемости, а зелёная плёнка 0.04
+       на белом не видна вовсе. */
+    --t-scrim: rgba(0, 0, 0, 0.62);
+    --t-drop: rgba(51, 255, 136, 0.06);
+}
+
+/* Светлая палитра панели: переопределяет ВСЕ токены целиком.
+ *
+ * ЗЕЛЁНЫЙ ФОСФОР НА СВЕТЛОМ НЕЧИТАЕМ. Акцент тёмной темы `#33FF88` даёт на
+ * фоне `#EDF2EC` 1.30:1 — это не «бледновато», это невидимо. Поэтому на
+ * светлой берётся тот же тон, уведённый в глубокую зелень: `#0B6B39` —
+ * 5.83:1 к --t-bg. Панель остаётся зелёной (идентичность не теряется), но
+ * текстом, а не свечением.
+ *
+ * Контрасты ниже посчитаны по WCAG 2.x против ЧЕТЫРЁХ фонов панели: --t-bg,
+ * --t-panel, --t-bar и --t-active (подсветка активной строки — самый тёмный
+ * из светлых фонов, и именно он режет пороги). В комментариях — худшее из
+ * четырёх чисел; при 12px целимся в >= 4.5:1 для всего, что ТЕКСТ.
+ *
+ * РОЛИ «РАМКА» И «ПРИГЛУШЁННЫЙ ТЕКСТ» РАЗВЕДЕНЫ, как в css/vk.css: рамке
+ * нужен цвет НИЖЕ текстового порога (иначе сетка кричит громче содержимого),
+ * подписи — выше. Слить их в один токен означает выбрать, что сломать:
+ * подписи станут невидимы (это уже случалось в vk.css и telegram.css) либо
+ * рамки перекричат текст. --t-acc-faint здесь 1.22:1 — только рамки,
+ * --t-muted 4.60:1 — только текст.
+ *
+ * ПОЧЕМУ --t-muted И --t-acc-dim ПОЧТИ РАВНЫ ПО КОНТРАСТУ (4.60 против
+ * 4.79). Ровно как в тёмной палитре (там 4.97 и 4.97): иерархия «акцент
+ * заметнее подписи» держится НАСЫЩЕННОСТЬЮ, а не яркостью. У --t-acc-dim
+ * размах каналов 47 (зелёный), у --t-muted — 17 (серо-зелёный). Уводить
+ * подпись ещё светлее нельзя: порог 4.5 к --t-active упирается ровно сюда. */
+#tracker[data-tracker-theme="light"] {
+    color-scheme: light;
+    --t-bg: #EDF2EC;
+    --t-panel: #FFFFFF;
+    --t-bar: #E3EBE2;
+    --t-active: #D3E8DA;     /* подсветка активной строки        */
+    --t-acc: #0B6B39;        /* 5.14:1 — основной акцент и текст */
+    --t-acc-dim: #3C6B50;    /* 4.79:1 — второстепенный текст    */
+    --t-acc-faint: #BFD3C4;  /* 1.22:1 — РАМКИ, не текст         */
+    --t-muted: #57685F;      /* 4.60:1 — приглушённый ТЕКСТ      */
+    --t-text: #14251A;       /* 12.47:1 — обычный текст задачи   */
+    --t-warn: #8A5A06;       /* 4.60:1 */
+    --t-danger: #B32217;     /* 5.17:1 */
+    --t-ok: #0B6B39;         /* 5.14:1 */
+    /* Скрим светлее и мягче: на светлой странице чёрная плёнка 0.62 читается
+       как погасший экран, а не как «диалог поверх». Подсветка приёмника,
+       наоборот, плотнее — на белом плёнка 0.06 неразличима. */
+    --t-scrim: rgba(20, 37, 26, 0.34);
+    --t-drop: rgba(11, 107, 57, 0.10);
+}
+
+/* Единственный !important в файле: панель обязана исчезать при переключении
+   вкладок, побеждая `display: flex` из #tracker выше. Без этого правила
+   атрибут `hidden` бессилен — селектор по id сильнее пользовательского
+   агента, и панель висела бы под терминалом на всех вкладках сразу
+   (ровно так это и выглядело до фикса). Копия правил #vk[hidden]/#telegram[hidden]. */
+#tracker[hidden] {
+    display: none !important;
+}
+
+/* ==== Титлбар =========================================================== */
+
+#trk-titlebar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 34px;
+    padding: 0 12px;
+    background: var(--t-bar);
+    border-bottom: 1px solid var(--t-acc-faint);
+    user-select: none;
+}
+
+.trk-dots {
+    display: inline-flex;
+    gap: 8px;
+    flex: 0 0 auto;
+}
+.trk-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+}
+.trk-dot-red { background: #FF5F57; }
+.trk-dot-amber { background: #FEBC2E; }
+.trk-dot-green { background: #28C840; }
+
+.trk-title {
+    color: var(--t-acc);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    flex: 0 0 auto;
+}
+
+/* «● N TIMERS · GLOBAL STORE» — не декоративная надпись: задачи трекера
+   глобальные для всего FORGE, стор один (~/.config/forge/tracker.json). */
+.trk-store {
+    color: var(--t-acc-dim);
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.trk-today {
+    color: var(--t-acc);
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.trk-icon-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--t-acc-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1;
+    padding: 4px 7px;
+    flex: 0 0 auto;
+}
+.trk-icon-btn:hover {
+    background: var(--t-active);
+    border-color: var(--t-acc-faint);
+    color: var(--t-acc);
+}
+
+/* Тумблер ◐ (js/tracker/theme.js). Режим 'auto' — состояние по умолчанию и
+   выглядит как обычная кнопка; явно зафиксированная тема подсвечена, чтобы
+   пользователь видел, что панель больше не следует за темой devforge.
+   Полная подпись режима живёт в `title`. Копия правила #vk-theme-toggle:
+   свести их в общий селектор нельзя — css/vk.css не редактируется, а этот
+   файл не имеет права упоминать `#vk`. */
+#trk-theme-toggle[data-tracker-theme-mode="dark"],
+#trk-theme-toggle[data-tracker-theme-mode="light"] {
+    color: var(--t-acc);
+    border-color: var(--t-acc-dim);
+}
+
+/* ==== Тело: колонка + основная область ================================== */
+
+#trk-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    align-items: stretch;
+}
+
+#trk-sidebar {
+    flex: 0 0 236px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    background: var(--t-panel);
+    border-right: 1px solid var(--t-acc-faint);
+}
+
+.trk-section-title {
+    color: var(--t-muted);
+    font-size: 11px;
+    padding: 8px 12px 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.trk-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+/* Строка колонки — общая форма для ~/dirs, списков и ссылки ~/report. */
+.trk-nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    cursor: pointer;
+    color: var(--t-acc-dim);
+    border-left: 2px solid transparent;
+    white-space: nowrap;
+}
+.trk-nav:hover {
+    background: var(--t-active);
+    color: var(--t-acc);
+}
+.trk-nav.active {
+    background: var(--t-active);
+    border-left-color: var(--t-acc);
+    color: var(--t-acc);
+}
+.trk-nav-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.trk-nav-count {
+    flex: 0 0 auto;
+    color: var(--t-muted);
+}
+.trk-nav.active .trk-nav-count { color: var(--t-acc); }
+
+/* Маркер списка ▪ красится цветом списка (TaskList.color) через inline style;
+   без цвета остаётся приглушённым. */
+.trk-list-mark {
+    flex: 0 0 auto;
+    color: var(--t-acc-dim);
+}
+
+/* Кнопка «+ список» в шапке // LISTS. */
+.trk-section-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px 4px;
+}
+.trk-section-head .trk-section-title {
+    flex: 1 1 auto;
+    padding: 0;
+}
+.trk-mini-btn {
+    background: transparent;
+    border: 1px solid var(--t-acc-faint);
+    color: var(--t-acc-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 1;
+    padding: 3px 6px;
+    flex: 0 0 auto;
+}
+.trk-mini-btn:hover {
+    background: var(--t-active);
+    color: var(--t-acc);
+}
+
+#trk-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 2px 12px 8px;
+}
+.trk-tag {
+    color: var(--t-muted);
+    cursor: pointer;
+    background: transparent;
+    border: none;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 0;
+}
+.trk-tag:hover { color: var(--t-acc); }
+.trk-tag.active { color: var(--t-acc); }
+
+/* Распорка, прижимающая ~/report к низу колонки. */
+#trk-sidebar-grow { flex: 1 1 auto; min-height: 8px; }
+
+#trk-main {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ==== Session header: путь и переключатель режимов ====================== */
+
+#trk-session-header {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--t-acc-faint);
+    color: var(--t-acc-dim);
+}
+#trk-session-line {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#trk-modes {
+    flex: 0 0 auto;
+    display: flex;
+    border: 1px solid var(--t-acc-faint);
+}
+.trk-mode {
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--t-acc-faint);
+    color: var(--t-muted);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1;
+    padding: 5px 11px;
+}
+.trk-mode:last-child { border-right: none; }
+.trk-mode:hover:not(:disabled) { color: var(--t-acc); }
+.trk-mode.active {
+    background: var(--t-active);
+    color: var(--t-acc);
+}
+.trk-mode:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+/* ==== Блок // RUNNING ===================================================
+   Идущих отрезков может быть несколько (параллельные таймеры по разным
+   задачам — штатный сценарий), поэтому блок вертикальный, а не одна строка. */
+
+#trk-running {
+    flex: 0 0 auto;
+    background: var(--t-panel);
+    border-bottom: 1px solid var(--t-acc-faint);
+    padding: 6px 12px 8px;
+}
+#trk-running .trk-section-title { padding: 0 0 4px; }
+
+.trk-run {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 2px 4px;
+    white-space: nowrap;
+}
+.trk-run:hover { background: var(--t-active); }
+.trk-run-dot { flex: 0 0 auto; color: var(--t-acc); }
+.trk-run-task {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--t-text);
+}
+.trk-run-task.clickable { cursor: pointer; }
+.trk-run-task.clickable:hover { color: var(--t-acc); text-decoration: underline; }
+.trk-run-item {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--t-acc-dim);
+}
+.trk-run-started {
+    flex: 1 1 auto;
+    text-align: right;
+    color: var(--t-muted);
+}
+.trk-run-value {
+    flex: 0 0 72px;
+    text-align: right;
+    color: var(--t-acc);
+}
+.trk-run-stop {
+    flex: 0 0 auto;
+    background: transparent;
+    border: none;
+    color: var(--t-acc-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1;
+    padding: 2px 4px;
+}
+.trk-run-stop:hover { color: var(--t-danger); }
+
+/* ==== Лента задач ======================================================= */
+
+#trk-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 6px 12px 10px;
+}
+
+.trk-divider {
+    color: var(--t-muted);
+    font-size: 11px;
+    padding: 10px 0 6px;
+    text-align: center;
+}
+.trk-divider.trk-divider-left { text-align: left; }
+
+/* Строка задачи. Колонки жёстко выровнены по макету: чекбокс, приоритет,
+   заголовок (растягивается), список, теги, оценка, время, таймер, перенос. */
+.trk-task {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 8px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.trk-task:hover {
+    background: var(--t-active);
+    border-color: var(--t-acc-faint);
+}
+.trk-task.running {
+    background: var(--t-active);
+}
+.trk-task.done .trk-task-title { color: var(--t-muted); text-decoration: none; }
+.trk-task.done .trk-task-time { color: var(--t-muted); }
+
+.trk-task-box {
+    flex: 0 0 auto;
+    color: var(--t-acc-dim);
+    background: transparent;
+    border: none;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 0;
+    cursor: pointer;
+}
+.trk-task.done .trk-task-box { color: var(--t-ok); }
+
+.trk-task-prio {
+    flex: 0 0 22px;
+    color: var(--t-acc-dim);
+}
+.trk-prio-0 { color: var(--t-danger); }
+.trk-prio-1 { color: var(--t-warn); }
+.trk-prio-2 { color: var(--t-acc-dim); }
+.trk-prio-3, .trk-prio-4 { color: var(--t-muted); }
+
+.trk-task-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--t-text);
+}
+.trk-task.running .trk-task-title { color: var(--t-acc); }
+
+.trk-task-list {
+    flex: 0 0 96px;
+    color: var(--t-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.trk-task-tags {
+    flex: 0 0 96px;
+    color: var(--t-acc-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.trk-task-est {
+    flex: 0 0 52px;
+    color: var(--t-muted);
+}
+.trk-task-due {
+    flex: 0 0 74px;
+    color: var(--t-muted);
+}
+.trk-task-due.overdue { color: var(--t-danger); }
+.trk-task-progress {
+    flex: 0 0 54px;
+    color: var(--t-muted);
+}
+.trk-task-time {
+    flex: 0 0 62px;
+    color: var(--t-acc-dim);
+    text-align: right;
+}
+.trk-task.running .trk-task-time { color: var(--t-acc); }
+
+.trk-task-toggle,
+.trk-task-push,
+.trk-task-rm {
+    flex: 0 0 auto;
+    background: transparent;
+    border: none;
+    color: var(--t-acc-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 0 2px;
+}
+.trk-task-toggle:hover,
+.trk-task-push:hover { color: var(--t-acc); }
+.trk-task-rm { color: var(--t-muted); }
+.trk-task-rm:hover { color: var(--t-danger); }
+.trk-task.running .trk-task-toggle { color: var(--t-acc); }
+
+/* ==== Пустые состояния ================================================== */
+
+#trk-empty {
+    padding: 14px 4px;
+}
+.trk-empty-cap {
+    color: var(--t-muted);
+    font-size: 11px;
+    padding-bottom: 8px;
+}
+.trk-empty-line {
+    color: var(--t-text);
+    padding-bottom: 8px;
+}
+.trk-empty-ex {
+    color: var(--t-acc-dim);
+    white-space: pre-wrap;
+}
+.trk-empty-hint {
+    color: var(--t-muted);
+    padding-top: 10px;
+    white-space: pre-wrap;
+}
+
+/* ==== Нижний prompt tracker:~$ ========================================== */
+
+#trk-prompt {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--t-bar);
+    border-top: 1px solid var(--t-acc-faint);
+}
+.trk-prompt-sign {
+    flex: 0 0 auto;
+    color: var(--t-acc);
+    font-weight: 700;
+}
+#trk-prompt-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--t-text);
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.55;
+    padding: 2px 0;
+}
+#trk-prompt-input::placeholder { color: var(--t-muted); }
+
+#trk-create {
+    flex: 0 0 auto;
+    background: var(--t-active);
+    border: 1px solid var(--t-acc-faint);
+    color: var(--t-acc);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1;
+    padding: 7px 11px;
+}
+#trk-create:hover { border-color: var(--t-acc); }
+
+/* Превью разбора строки: показывает, во что превратится ввод ДО нажатия
+   CREATE. Живёт над строкой, потому что растёт вверх и не двигает поле. */
+#trk-prompt-preview {
+    flex: 0 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 4px 12px;
+    background: var(--t-bar);
+    border-top: 1px solid var(--t-acc-faint);
+    color: var(--t-muted);
+    font-size: 11px;
+}
+.trk-pv {
+    color: var(--t-acc-dim);
+}
+.trk-pv-title { color: var(--t-text); }
+
+/* ==== Статус-бар ======================================================== */
+
+#trk-statusbar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 12px;
+    background: var(--t-bg);
+    border-top: 1px solid var(--t-acc-faint);
+    font-size: 11px;
+    color: var(--t-muted);
+}
+#trk-conn {
+    flex: 0 0 auto;
+    border: 1px solid var(--t-acc-faint);
+    color: var(--t-muted);
+    padding: 1px 7px;
+}
+#trk-conn.tracking {
+    color: var(--t-ok);
+    border-color: var(--t-ok);
+}
+#trk-conn.offline {
+    color: var(--t-danger);
+    border-color: var(--t-danger);
+}
+#trk-status-info {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
+}
+
+/* ==== Карточка задачи (модалка) ======================================== */
+
+#trk-modal {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--t-scrim);
+    padding: 24px;
+}
+#trk-modal[hidden] { display: none; }
+
+#trk-modal-card {
+    display: flex;
+    flex-direction: column;
+    width: min(900px, 100%);
+    max-height: 100%;
+    background: var(--t-bg);
+    border: 1px solid var(--t-acc-faint);
+}
+.trk-modal-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 12px;
+    background: var(--t-bar);
+    border-bottom: 1px solid var(--t-acc-faint);
+}
+.trk-modal-bar .trk-title { flex: 0 0 auto; }
+#trk-modal-node {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--t-acc-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+#trk-modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px;
+}
+.trk-field {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 3px 0;
+}
+.trk-field-key {
+    flex: 0 0 92px;
+    color: var(--t-muted);
+    padding-top: 4px;
+}
+.trk-field-val {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.trk-field-extra {
+    flex: 0 0 auto;
+    color: var(--t-muted);
+    padding-top: 4px;
+}
+
+#trk-modal input[type="text"],
+#trk-modal input[type="number"],
+#trk-modal input[type="date"],
+#trk-modal input[type="datetime-local"],
+#trk-modal select,
+#trk-modal textarea {
+    width: 100%;
+    background: var(--t-panel);
+    border: 1px solid var(--t-acc-faint);
+    color: var(--t-text);
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1.55;
+    padding: 3px 6px;
+    outline: none;
+}
+#trk-modal input:focus,
+#trk-modal select:focus,
+#trk-modal textarea:focus { border-color: var(--t-acc-dim); }
+#trk-modal textarea { resize: vertical; min-height: 62px; }
+
+/* ---- Поле `tags` карточки: чипы + ввод с подсказками ----
+ *
+ * ТЕРМИНАЛЬНЫЙ ЧИП, А НЕ MATERIAL-ПИЛЮЛЯ: прямоугольная рамка в один пиксель,
+ * решётка перед именем и `×` вместо иконки. Скругления и заливки здесь были
+ * бы чужим языком — вся панель нарисована рамками и моноширинным текстом.
+ *
+ * Поле ввода живёт В ОДНОМ ПОТОКЕ с чипами (общий flex-wrap), поэтому у него
+ * снят общий для карточки `width: 100%` — иначе оно занимало бы всю строку и
+ * всегда съезжало под чипы. */
+.trk-tags-edit {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    min-height: 24px;
+    padding: 2px 4px;
+    background: var(--t-panel);
+    border: 1px solid var(--t-acc-faint);
+    cursor: text;
+}
+.trk-tags-edit:focus-within { border-color: var(--t-acc-dim); }
+.trk-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+    padding: 0 4px;
+    border: 1px solid var(--t-acc-faint);
+    color: var(--t-acc-dim);
+    line-height: 1.5;
+}
+.trk-chip-name { white-space: nowrap; }
+.trk-chip-x {
+    background: transparent;
+    border: none;
+    color: var(--t-muted);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1;
+    padding: 0;
+}
+.trk-chip-x:hover { color: var(--t-danger); }
+
+/* Обёртка нужна как система координат для выпадающего списка: он висит
+   ПОД полем, а не растягивает строку полей. */
+.trk-tags-input-wrap {
+    position: relative;
+    flex: 1 1 90px;
+    min-width: 90px;
+}
+#trk-modal .trk-tags-input {
+    width: 100%;
+    background: transparent;
+    border: none;
+    padding: 1px 2px;
+}
+#trk-modal .trk-tags-input:focus { border: none; }
+
+.trk-tags-suggest {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    min-width: 180px;
+    max-width: 320px;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    background: var(--t-bar);
+    border: 1px solid var(--t-acc-faint);
+    max-height: 180px;
+    overflow-y: auto;
+}
+.trk-tags-suggest[hidden] { display: none; }
+.trk-suggest {
+    background: transparent;
+    border: none;
+    color: var(--t-text);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1.6;
+    padding: 2px 8px;
+    text-align: left;
+    white-space: nowrap;
+}
+.trk-suggest:hover,
+.trk-suggest.active {
+    background: var(--t-active);
+    color: var(--t-acc);
+}
+/* «Создать новый» отделён чертой: это не выбор из существующего, а заведение
+   ещё одной строки в task.tags (отдельной сущности «тег» в модели нет). */
+.trk-suggest-new {
+    border-top: 1px solid var(--t-acc-faint);
+    color: var(--t-acc-dim);
+}
+.trk-tags-suggest .trk-suggest-new:first-child { border-top: none; }
+
+.trk-modal-section {
+    padding-top: 14px;
+}
+.trk-modal-section .trk-section-title { padding: 0 0 6px; }
+
+/* Шапка живого блока: заголовок, полоса прогресса и кнопка справа. */
+.trk-check-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding-bottom: 4px;
+}
+.trk-check-head .trk-section-title { padding: 0; flex: 0 0 auto; }
+.trk-check-head .trk-grow { flex: 1 1 auto; }
+.trk-check-bar {
+    flex: 0 0 auto;
+    color: var(--t-acc);
+    letter-spacing: -1px;
+}
+.trk-mini-link {
+    flex: 0 0 auto;
+    background: transparent;
+    border: none;
+    color: var(--t-acc-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1;
+    padding: 2px 4px;
+}
+.trk-mini-link:hover { color: var(--t-acc); }
+.trk-check-note {
+    color: var(--t-muted);
+    font-size: 11px;
+    padding: 6px 4px 0;
+}
+
+/* Пункт чек-листа. Колонки те же, что в строке задачи, — панель обязана
+   читаться одинаково в ленте и в карточке. */
+.trk-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 2px 4px;
+    white-space: nowrap;
+}
+.trk-item:hover { background: var(--t-active); }
+.trk-item.running { background: var(--t-active); }
+.trk-item-box {
+    flex: 0 0 auto;
+    background: transparent;
+    border: none;
+    color: var(--t-acc-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1;
+    padding: 2px 0;
+}
+.trk-item.done .trk-item-box { color: var(--t-ok); }
+.trk-item-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--t-text);
+    cursor: text;
+}
+.trk-item.done .trk-item-title {
+    color: var(--t-muted);
+    text-decoration: line-through;
+}
+#trk-modal .trk-item-edit { flex: 1 1 auto; min-width: 0; }
+.trk-item-when { flex: 0 0 110px; color: var(--t-muted); }
+.trk-item-time { flex: 0 0 62px; text-align: right; color: var(--t-text); }
+.trk-item.running .trk-item-time { color: var(--t-acc); }
+.trk-item-play,
+.trk-item-rm {
+    flex: 0 0 auto;
+    background: transparent;
+    border: none;
+    color: var(--t-acc-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1;
+    padding: 2px 4px;
+}
+.trk-item-play:hover { color: var(--t-acc); }
+.trk-item.running .trk-item-play { color: var(--t-acc); }
+.trk-item-rm:hover { color: var(--t-danger); }
+.trk-item-add .trk-item-box { color: var(--t-muted); cursor: default; }
+#trk-modal .trk-item-add input { flex: 1 1 auto; min-width: 0; }
+
+/* Таймер задачи в шапке карточки. */
+.trk-node-timer {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.trk-node-play {
+    background: transparent;
+    border: 1px solid var(--t-acc-faint);
+    color: var(--t-acc-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1;
+    padding: 4px 8px;
+}
+.trk-node-play:hover { border-color: var(--t-acc); color: var(--t-acc); }
+.trk-node-time { color: var(--t-acc); }
+.trk-node-hint { color: var(--t-muted); }
+
+/* Список отрезков времени в карточке. */
+.trk-entry {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 2px 4px;
+    white-space: nowrap;
+}
+.trk-entry:hover { background: var(--t-active); }
+.trk-entry.running { background: var(--t-active); }
+.trk-entry-mark { flex: 0 0 auto; color: var(--t-muted); }
+.trk-entry.running .trk-entry-mark { color: var(--t-acc); }
+.trk-entry-day { flex: 0 0 46px; color: var(--t-muted); }
+.trk-entry-range { flex: 0 0 140px; color: var(--t-text); }
+.trk-entry.running .trk-entry-range { color: var(--t-acc); }
+.trk-entry-note {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--t-acc-dim);
+}
+.trk-entry-manual { flex: 0 0 auto; color: var(--t-muted); font-size: 11px; }
+.trk-entry-value { flex: 0 0 62px; text-align: right; color: var(--t-text); }
+.trk-entry.running .trk-entry-value { color: var(--t-acc); }
+.trk-entry-edit,
+.trk-entry-rm {
+    flex: 0 0 auto;
+    background: transparent;
+    border: none;
+    color: var(--t-acc-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1;
+    padding: 2px 4px;
+}
+.trk-entry-edit:hover { color: var(--t-acc); }
+.trk-entry-rm:hover { color: var(--t-danger); }
+
+/* Форма отрезка: правка существующего и добавление вручную. */
+.trk-entry-form {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px 4px;
+    background: var(--t-panel);
+    border: 1px solid var(--t-acc-faint);
+}
+.trk-entry-form-key { color: var(--t-muted); }
+#trk-modal .trk-entry-form input[type="datetime-local"] { width: auto; flex: 0 0 auto; }
+#trk-modal .trk-entry-form select { width: auto; flex: 0 0 auto; }
+#trk-modal .trk-entry-form input[type="text"] { flex: 1 1 140px; min-width: 0; width: auto; }
+.trk-entry-form .trk-btn { padding: 4px 8px; }
+
+#trk-modal-error {
+    color: var(--t-danger);
+    padding: 6px 12px 0;
+    white-space: pre-wrap;
+}
+
+.trk-modal-footer {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--t-bar);
+    border-top: 1px solid var(--t-acc-faint);
+}
+.trk-modal-footer .trk-grow { flex: 1 1 auto; }
+.trk-btn {
+    background: transparent;
+    border: 1px solid var(--t-acc-faint);
+    color: var(--t-acc-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1;
+    padding: 7px 11px;
+}
+.trk-btn:hover { border-color: var(--t-acc-dim); color: var(--t-acc); }
+.trk-btn-danger { color: var(--t-danger); }
+.trk-btn-danger:hover { border-color: var(--t-danger); color: var(--t-danger); }
+.trk-btn-ok { color: var(--t-ok); }
+.trk-btn-primary {
+    background: var(--t-active);
+    color: var(--t-acc);
+}
+.trk-btn-primary:hover { border-color: var(--t-acc); }
+
+/* ==== Диалог переноса в tasks/todo =====================================
+   Панель «PUSH ▸ tasks/todo» из макета (экран «Состояния и перенос»).
+   Стоит ПОВЕРХ карточки задачи (z-index 40 против 30): перенос вызывается и
+   из открытой карточки, и закрывать её ради диалога нельзя. */
+
+#trk-push {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--t-scrim);
+    padding: 24px;
+}
+#trk-push[hidden] { display: none; }
+
+#trk-push-card {
+    display: flex;
+    flex-direction: column;
+    width: min(460px, 100%);
+    max-height: 100%;
+    background: var(--t-panel);
+    border: 1px solid var(--t-acc-faint);
+}
+#trk-push-hint {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--t-muted);
+    font-size: 11px;
+    text-align: right;
+}
+#trk-push-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px 16px;
+}
+.trk-push-cap {
+    color: var(--t-muted);
+    font-size: 11px;
+}
+#trk-push-node {
+    color: var(--t-text);
+    overflow-wrap: anywhere;
+}
+.trk-push-why {
+    color: var(--t-muted);
+    font-size: 11px;
+    white-space: pre-line;
+}
+#trk-push-roots {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.trk-push-root {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 6px 10px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    min-width: 0;
+}
+.trk-push-root:hover { border-color: var(--t-acc-faint); }
+.trk-push-root.active {
+    background: var(--t-active);
+    border-color: var(--t-acc-dim);
+}
+.trk-push-root.disabled { cursor: default; opacity: 0.55; }
+.trk-push-root.disabled:hover { border-color: transparent; }
+.trk-push-mark { flex: 0 0 auto; color: var(--t-muted); }
+.trk-push-root.active .trk-push-mark { color: var(--t-acc); }
+.trk-push-path {
+    flex: 0 1 auto;
+    min-width: 0;
+    color: var(--t-acc-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.trk-push-root.active .trk-push-path { color: var(--t-acc); }
+.trk-push-hint-path {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--t-muted);
+    font-size: 11px;
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.trk-push-empty {
+    color: var(--t-muted);
+    font-size: 11px;
+    padding: 6px 10px;
+    border: 1px dashed var(--t-acc-faint);
+}
+.trk-push-note {
+    color: var(--t-muted);
+    font-size: 11px;
+}
+#trk-push-error {
+    color: var(--t-danger);
+    padding: 6px 16px 0;
+    white-space: pre-wrap;
+}
+#trk-push-ok[disabled] {
+    opacity: 0.5;
+    cursor: default;
+}
+
+/* Оценка: селектор длительности и поле «своё».
+   Числовое поле показывается только в режиме «своё» (атрибут hidden), но
+   существует всегда — значение не из списка (`~90м` из prompt-строки)
+   обязано открыться как есть, а не подмениться ближайшим часом. */
+.trk-est {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+#trk-modal .trk-est select { flex: 0 0 auto; width: auto; }
+#trk-modal .trk-est input[type="number"] { flex: 0 1 110px; width: auto; }
+
+/* ==== Диалог вехи ======================================================
+   `MILESTONE ▸ gantt` (js/tracker/milestone.js). Форма и слой те же, что у
+   диалога переноса: панель терминальная, и второго языка диалогов в ней
+   быть не должно. */
+
+#trk-ms {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--t-scrim);
+    padding: 24px;
+}
+#trk-ms[hidden] { display: none; }
+
+#trk-ms-card {
+    display: flex;
+    flex-direction: column;
+    width: min(420px, 100%);
+    max-height: 100%;
+    background: var(--t-panel);
+    border: 1px solid var(--t-acc-faint);
+}
+#trk-ms-hint {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--t-muted);
+    font-size: 11px;
+    text-align: right;
+}
+#trk-ms-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px 16px;
+}
+.trk-ms-cap {
+    color: var(--t-muted);
+    font-size: 11px;
+}
+.trk-ms-field {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+.trk-ms-key {
+    flex: 0 0 64px;
+    color: var(--t-muted);
+}
+#trk-ms input[type="text"],
+#trk-ms input[type="date"] {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: var(--t-bg);
+    border: 1px solid var(--t-acc-faint);
+    color: var(--t-text);
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1.55;
+    padding: 3px 6px;
+    outline: none;
+}
+#trk-ms input:focus { border-color: var(--t-acc-dim); }
+#trk-ms-error {
+    color: var(--t-danger);
+    padding: 6px 16px 0;
+    white-space: pre-wrap;
+}
+#trk-ms-ok[disabled] {
+    opacity: 0.5;
+    cursor: default;
+}
+#trk-ms-delete[hidden] { display: none; }
+
+/* Действие в строке статуса: «тост» панели умеет уводить на вкладку Tasks. */
+.trk-note-link {
+    background: transparent;
+    border: none;
+    color: var(--t-acc);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: inherit;
+    padding: 0;
+    text-decoration: underline;
+}
+
+/* ==== Режим kanban ======================================================
+   Доска по макету «Экран — KANBAN»: пять колонок в ряд, в каждой карточки в
+   терминальной рамке. Все размеры и цвета взяты из ~/Documents/ForgeTracker.pen
+   (padding 14/16 у доски, 9/10 у карточки, gap 12 между колонками и 8 внутри),
+   а не подобраны на глаз.
+
+   ПРОКРУЧИВАЕТСЯ КОЛОНКА, А НЕ СТРАНИЦА. У ленты прокрутка живёт на
+   #trk-content; доске это не годится — длинная колонка `inbox` уводила бы
+   короткую `done` за нижний край, и перетащить карточку между ними стало бы
+   нельзя. Поэтому в режиме доски у контейнера прокрутка снимается и переносится
+   внутрь каждой колонки. */
+
+#trk-content.trk-kanban {
+    overflow: hidden;
+    padding: 0;
+    display: flex;
+}
+
+.trk-kb-board {
+    flex: 1 1 auto;
+    display: flex;
+    gap: 12px;
+    min-width: 0;
+    min-height: 0;
+    padding: 14px 16px;
+}
+
+.trk-kb-col {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    min-height: 0;
+    border: 1px solid transparent;
+}
+/* Колонка под курсором во время переноса: подсветка обязана быть у КОЛОНКИ,
+   а не у карточки — отпустить можно и в пустоту под карточками. */
+.trk-kb-col.drop {
+    border-color: var(--t-acc-dim);
+    background: var(--t-drop);
+}
+
+.trk-kb-head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--t-acc-faint);
+}
+.trk-kb-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--t-acc-dim);
+    font-weight: 700;
+}
+.trk-kb-count { flex: 0 0 auto; color: var(--t-muted); }
+.trk-kb-add {
+    flex: 0 0 auto;
+    background: transparent;
+    border: none;
+    color: var(--t-muted);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1;
+    padding: 0 2px;
+}
+.trk-kb-add:hover { color: var(--t-acc); }
+
+.trk-kb-cards {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 1px;
+}
+
+.trk-kb-empty {
+    color: var(--t-muted);
+    font-size: 11px;
+    padding: 8px 4px;
+    text-align: center;
+}
+
+.trk-kb-card {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 9px 10px;
+    background: var(--t-panel);
+    border: 1px solid var(--t-acc-faint);
+    cursor: pointer;
+}
+.trk-kb-card:hover { border-color: var(--t-acc-dim); }
+/* Идущая задача: акцентная рамка и подсветка — так же, как строка `.running`
+   в ленте, чтобы один и тот же признак читался одинаково в обоих режимах. */
+.trk-kb-card.running {
+    background: var(--t-active);
+    border-color: var(--t-acc);
+}
+.trk-kb-card.done { opacity: 0.6; }
+.trk-kb-card.done .trk-kb-title { color: var(--t-muted); }
+.trk-kb-card.dragging { opacity: 0.4; }
+
+.trk-kb-top,
+.trk-kb-bottom {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+.trk-kb-prio { flex: 0 0 auto; font-size: 11px; font-weight: 700; }
+.trk-kb-list {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--t-muted);
+    font-size: 11px;
+}
+.trk-kb-progress { flex: 0 0 auto; color: var(--t-muted); font-size: 11px; }
+.trk-kb-tags {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--t-acc-dim);
+    font-size: 11px;
+}
+
+/* Единственное место доски, где текст переносится: заголовок задачи. */
+.trk-kb-title {
+    color: var(--t-text);
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+
+.trk-kb-est { flex: 0 0 auto; color: var(--t-muted); font-size: 11px; }
+.trk-kb-due { flex: 0 0 auto; color: var(--t-muted); font-size: 11px; }
+.trk-kb-due.overdue { color: var(--t-danger); }
+.trk-kb-time {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-align: right;
+    color: var(--t-acc-dim);
+}
+.trk-kb-card.running .trk-kb-time { color: var(--t-acc); }
+
+.trk-kb-toggle,
+.trk-kb-push {
+    flex: 0 0 auto;
+    background: transparent;
+    border: none;
+    color: var(--t-muted);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 1;
+    padding: 0 2px;
+}
+.trk-kb-toggle:hover,
+.trk-kb-push:hover { color: var(--t-acc); }
+.trk-kb-card.running .trk-kb-toggle { color: var(--t-acc); }
+
+/* ==== Режим gantt =======================================================
+   Диаграмма по макету «Экран — GANTT»: колонка имени, символьная сетка дней,
+   колонки `est` и `факт`.
+
+   СЕТКА ДЕРЖИТСЯ НА ОДНОМ CSS-GRID, А НЕ НА ШИРИНАХ КАЖДОЙ СТРОКИ. Все строки
+   (шапка дней, дорожка вех, полосы задач) объявлены `display: contents` и
+   становятся ячейками ОДНОЙ сетки `.trk-g-grid`. Иначе колонки `est` и `факт`
+   разъезжались бы от строки к строке — их ширина зависит от содержимого.
+
+   ВНУТРИ ДОРОЖКИ ВЫРАВНИВАЕТ ШРИФТ, А НЕ CSS. День — четыре знака
+   моноширинного шрифта (CELL в js/tracker/render-gantt.js), поэтому у ячеек
+   дорожки `white-space: pre`: пробелы в строке полосы значащие, и схлопывание
+   их браузером сдвинуло бы ромб срока с его дня. */
+
+#trk-content.trk-gantt {
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Горизонтальная прокрутка живёт ЗДЕСЬ, а не на #trk-content: легенда внизу
+   обязана оставаться на месте, когда длинное окно уезжает вправо. */
+.trk-g-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 8px 12px 4px;
+}
+
+.trk-g-grid {
+    display: grid;
+    grid-template-columns: minmax(180px, 300px) max-content 7ch 8ch;
+    align-items: center;
+    column-gap: 12px;
+    row-gap: 1px;
+    width: max-content;
+    min-width: 100%;
+}
+
+.trk-g-row { display: contents; }
+
+.trk-g-name {
+    display: flex;
+    gap: 6px;
+    align-items: baseline;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    color: var(--t-text);
+    cursor: pointer;
+    padding: 1px 0;
+}
+.trk-g-name:hover .trk-g-title { color: var(--t-acc); }
+.trk-g-prio { flex: 0 0 auto; color: var(--t-muted); font-size: 11px; font-weight: 700; }
+.trk-g-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.trk-g-track {
+    white-space: pre;
+    letter-spacing: 0;
+    color: var(--t-acc-dim);
+}
+.trk-g-est { color: var(--t-muted); font-size: 11px; text-align: right; }
+/* Колонка «факт» и знак `█` внутри дорожки — РАЗНЫЕ классы (`trk-g-factcol`
+   против `trk-g-fact`) намеренно: имя класса знака собирается из имени роли
+   (`trk-g-${cls}`), и совпадение с классом колонки покрасило бы колонку
+   цветом заливки. */
+.trk-g-factcol { color: var(--t-acc-dim); text-align: right; }
+
+/* Цвета знаков дорожки — ровно палитра макета: факт `acc`, план `acc-dim`,
+   превышение `danger`, метки `acc`. */
+.trk-g-fact { color: var(--t-acc); }
+.trk-g-plan { color: var(--t-acc-dim); }
+.trk-g-over { color: var(--t-danger); }
+.trk-g-due { color: var(--t-acc); }
+.trk-g-ms { color: var(--t-acc); }
+.trk-g-today { color: var(--t-acc); font-weight: 700; }
+.trk-g-run { color: var(--t-acc); }
+
+.trk-g-noplan { color: var(--t-muted); font-style: italic; }
+
+/* Шапка дней. Выходной приглушён, сегодняшний день подсвечен — так столбец
+   `▼` читается даже когда дорожка вех прокручена за край. */
+.trk-g-head .trk-g-name,
+.trk-g-head .trk-g-est,
+.trk-g-head .trk-g-factcol {
+    color: var(--t-muted);
+    font-size: 11px;
+    cursor: default;
+}
+.trk-g-day { color: var(--t-muted); }
+/* Выходной приглушён прозрачностью, а не токеном `acc-faint`: тот задуман
+   как цвет РАМКИ и на тексте нечитаем. */
+.trk-g-day.weekend { opacity: 0.45; }
+.trk-g-day.today { color: var(--t-acc); font-weight: 700; }
+
+/* Дорожка вех. */
+.trk-g-ms-row .trk-g-name { color: var(--t-muted); font-size: 11px; cursor: default; }
+.trk-g-chips {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 2px 0 8px;
+    border-bottom: 1px solid var(--t-acc-faint);
+    margin-bottom: 4px;
+}
+.trk-g-chip-today { color: var(--t-muted); font-size: 11px; }
+.trk-g-chip {
+    background: transparent;
+    border: 1px solid var(--t-acc-faint);
+    color: var(--t-acc-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 1;
+    padding: 3px 7px;
+}
+.trk-g-chip:hover { color: var(--t-acc); border-color: var(--t-acc-dim); }
+.trk-g-chip-add { color: var(--t-muted); }
+
+/* Заголовок группы-списка: он же кнопка сворачивания. */
+.trk-g-group { grid-column: 1 / -1; padding: 8px 0 2px; }
+.trk-g-group-btn {
+    background: transparent;
+    border: none;
+    color: var(--t-muted);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    padding: 0;
+}
+.trk-g-group-btn:hover { color: var(--t-acc); }
+
+/* Идущая задача: акцентная полоса слева и зелёное время — то же правило, что
+   у строки ленты и карточки доски. Полоса рисуется на колонке имени, потому
+   что строка сама по себе ячейкой не является (display: contents). */
+.trk-g-task.running .trk-g-name {
+    border-left: 2px solid var(--t-acc);
+    padding-left: 6px;
+    margin-left: -8px;
+    background: var(--t-active);
+}
+.trk-g-task.running .trk-g-factcol { color: var(--t-acc); }
+.trk-g-task.over .trk-g-est { color: var(--t-danger); }
+
+.trk-g-empty { grid-column: 1 / -1; color: var(--t-muted); padding: 14px 0; }
+
+/* Легенда внизу — по макету, вне области прокрутки. */
+.trk-g-legend {
+    flex: 0 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    padding: 6px 12px 8px;
+    border-top: 1px solid var(--t-acc-faint);
+    color: var(--t-muted);
+    font-size: 11px;
+}
+/* Пробел перед подписью браузер схлопывает — зазор задаётся gap'ом. */
+.trk-g-leg { display: inline-flex; align-items: baseline; gap: 5px; }
+
+/* Управление окном в шапке: [◀] [today] [▶] и шкала.
+
+   `display: flex` СИЛЬНЕЕ атрибута `hidden` (у него всего лишь
+   `display: none` из user-agent-таблицы), поэтому обе панели периода —
+   и Гантта, и сводки — обязаны гаситься явным правилом ниже. Без него
+   панель чужого режима остаётся на экране, а `node.hidden === true` при
+   этом честно возвращает true, и проверка «спрятано ли» из скрипта ничего
+   не замечает. */
+#trk-gantt-nav[hidden],
+#trk-report-nav[hidden] { display: none; }
+
+#trk-gantt-nav {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--t-acc-faint);
+}
+.trk-gnav {
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--t-acc-faint);
+    color: var(--t-muted);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1;
+    padding: 5px 9px;
+}
+.trk-gnav:last-child { border-right: none; }
+.trk-gnav:hover { color: var(--t-acc); }
+.trk-gnav.active { background: var(--t-active); color: var(--t-acc); }
+.trk-gnav-sep { width: 1px; align-self: stretch; background: var(--t-acc-faint); }
+
+/* ==== Режим report ======================================================
+   Экран сводки (js/tracker/render-report.js). Раскладка та же, что в макете:
+   ряд из четырёх KPI-рамок, блок `// BY DAY` во всю ширину и две колонки
+   внизу (`// BY LIST` и `// TOP NODES`). Полосы — символьные, поэтому ничего
+   пиксельного тут выравнивать не нужно: за это отвечает моноширинный шрифт
+   панели. */
+
+#trk-content.trk-report { padding: 10px 12px 14px; }
+
+.trk-r-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.trk-r-kpi {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.trk-r-card {
+    flex: 1 1 140px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    border: 1px solid var(--t-acc-faint);
+    padding: 8px 10px 9px;
+}
+.trk-r-card-label { color: var(--t-muted); font-size: 11px; }
+.trk-r-card-value { color: var(--t-acc); font-size: 22px; line-height: 1.1; }
+.trk-r-card-hint { color: var(--t-muted); font-size: 11px; }
+
+.trk-r-block {
+    border: 1px solid var(--t-acc-faint);
+    padding: 8px 10px 10px;
+    min-width: 0;
+}
+.trk-r-block-title { color: var(--t-muted); font-size: 11px; padding-bottom: 6px; }
+
+/* Строка дня: подпись фиксированной ширины, полоса и время. Ширины заданы в
+   `ch`, а не в пикселях, — полосы обязаны стоять ровно друг под другом. */
+.trk-r-day,
+.trk-r-list,
+.trk-r-node {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 2px 0;
+    font-size: 12px;
+}
+.trk-r-day-label { flex: 0 0 9ch; color: var(--t-muted); }
+.trk-r-day-time { flex: 0 0 6ch; color: var(--t-text); text-align: right; }
+.trk-r-bar { color: var(--t-acc-dim); white-space: pre; }
+.trk-r-bar.over { color: var(--t-acc); }
+
+/* Сегодняшний день — акцентом целиком, как в макете. */
+.trk-r-day.today .trk-r-day-label,
+.trk-r-day.today .trk-r-day-time,
+.trk-r-day.today .trk-r-bar { color: var(--t-acc); font-weight: 700; }
+
+.trk-r-split {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+}
+.trk-r-split > .trk-r-block { flex: 1 1 0; }
+
+.trk-r-list-name { flex: 0 0 12ch; color: var(--t-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trk-r-list-time { flex: 0 0 6ch; color: var(--t-text); text-align: right; }
+.trk-r-list-pct { flex: 0 0 5ch; color: var(--t-muted); text-align: right; }
+
+.trk-r-node-title {
+    flex: 1 1 auto;
+    color: var(--t-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.trk-r-node-list { flex: 0 0 auto; color: var(--t-muted); }
+.trk-r-node-time { flex: 0 0 6ch; color: var(--t-acc-dim); text-align: right; }
+.trk-r-node.clickable { cursor: pointer; }
+.trk-r-node.clickable:hover .trk-r-node-title { color: var(--t-acc); }
+
+.trk-r-empty { color: var(--t-muted); font-size: 11px; padding: 6px 0; }
+
+/* Пустой период — отдельное состояние, а не четыре нуля. */
+.trk-r-none {
+    border: 1px dashed var(--t-acc-faint);
+    padding: 18px 14px;
+    text-align: center;
+}
+.trk-r-none-title { color: var(--t-muted); font-size: 12px; padding-bottom: 6px; }
+.trk-r-none-hint { color: var(--t-muted); font-size: 11px; }
+
+/* Управление периодом сводки: те же кнопки, что у Гантта (.trk-gnav). */
+#trk-report-nav {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--t-acc-faint);
+}
+#trk-report-csv { color: var(--t-acc); }
+
+/* ==== Узкий экран ======================================================= */
+
+@media (max-width: 900px) {
+    #trk-sidebar { flex-basis: 168px; }
+    .trk-task-list,
+    .trk-task-tags,
+    .trk-task-est,
+    .trk-task-due,
+    .trk-task-progress { display: none; }
+
+    /* На узком экране пять равных колонок вырождаются в нечитаемые полоски,
+       поэтому доска получает фиксированную ширину колонки и горизонтальную
+       прокрутку — это единственное место панели, где она допустима. */
+    .trk-kb-board { overflow-x: auto; }
+    .trk-kb-col { flex: 0 0 200px; }
+
+    /* Гантт на узком экране: колонка имени ужимается, сетка дней уезжает в
+       свою горизонтальную прокрутку — сжимать саму сетку нельзя, символьное
+       выравнивание держится на ширине знака. */
+    .trk-g-grid { grid-template-columns: minmax(120px, 180px) max-content 6ch 7ch; }
+
+    /* Сводка на узком экране: две нижние колонки встают друг под друга —
+       полоса `▓` и проценты в 300 пикселях нечитаемы бок о бок. */
+    .trk-r-split { flex-direction: column; }
+    .trk-r-split > .trk-r-block { width: 100%; }
+}

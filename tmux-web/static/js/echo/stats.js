@@ -35,10 +35,10 @@ export function stopStats() {
 
 async function pollOnce() {
     try {
-        const data = await getStats('minute');
-        if (data && Array.isArray(data.items)) {
+        const data = await getStats('hour');
+        if (data && Array.isArray(data.buckets)) {
             // Перезаполняем buckets по последним N точкам.
-            const last = data.items.slice(-MAX_BUCKETS);
+            const last = data.buckets.slice(-MAX_BUCKETS);
             const inN = last.map((p) => p.tokens_in || 0);
             const outN = last.map((p) => p.tokens_out || 0);
             // Pad до MAX_BUCKETS слева нулями

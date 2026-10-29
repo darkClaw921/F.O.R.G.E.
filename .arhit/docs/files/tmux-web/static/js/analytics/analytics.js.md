@@ -30,3 +30,5 @@
 - Плитки: `ackShare` (hero), `ttr`, `repeatShare`, `slashShare`, `nightShare`, `toolEntropyBits`. Поле `note` плитки теперь может быть функцией от KPI.
 - Геометрия горизонтальных полос вынесена в `ROW_H = 26` (высота строки) и `GLOBALS_TOP = 10`: на живой приёмке 20 строк в фиксированной высоте налезали подписями на полосы.
 
+
+Текущий контейнер поддерживает два режима: showAnalytics(range?,mode?) по умолчанию открывает «Агенты», запоминая mode отдельно в forge.analytics.mode; setAnalyticsMode переключает panel/ARIA и останавливает прежние запросы/таймеры. Новый createAgentView использует /api/agents/* и собственный storage forge.agents.filters. «Работа с Claude» сохраняет прежний /api/analytics API, метрики и ключи range/project, legacy load/status имеют mode+sequence guards. hideAnalytics останавливает обе ветви. Deep link /?view=analytics открывает agents; analyticsMode=claude явно выбирает старый экран.

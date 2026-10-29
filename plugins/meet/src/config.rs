@@ -593,6 +593,11 @@ pub fn default_claude_cli_path() -> PathBuf {
     }
 }
 
+/// Дефолтный путь Kimi CLI — зеркало [`forge_claude_runner::CliKind::Kimi`].
+pub fn default_kimi_cli_path() -> PathBuf {
+    forge_claude_runner::CliKind::Kimi.default_path()
+}
+
 // --- Сам конфиг --------------------------------------------------------------
 
 /// Конфигурация плагина встреч.
@@ -696,6 +701,21 @@ pub struct MeetConfig {
     // --- саммари ---
     pub summary_enabled: bool,
     pub claude_cli_path: PathBuf,
+    /// Разрешать ли ЛОКАЛЬНЫЕ запуски `claude -p` для саммари. Default `false`:
+    /// запуски дорогие и по умолчанию выключены глобально (см. шапку
+    /// `forge_claude_runner`). Включается здесь, либо для ВСЕХ плагинов разом
+    /// через `FORGE_CLAUDE_RUNNER_ENABLED=1` (приоритет). Выключенный флаг
+    /// блокирует локальный маршрут саммари так же, как отсутствие CLI —
+    /// `plan_summary` уйдёт в облако или вернёт `claude_runs_disabled`.
+    pub claude_enabled: bool,
+    /// Какой ЛОКАЛЬНЫЙ CLI исполняет саммари: `claude` (дефолт) или `kimi`.
+    /// Облачный путь — это [`MeetConfig::summary_backend`] = `cloud`, этот
+    /// выбор его не трогает.
+    pub llm_backend: forge_claude_runner::LlmBackend,
+    /// Путь к Kimi CLI — используется когда `llm_backend = "kimi"`.
+    /// Значение по умолчанию — [`default_kimi_cli_path`]; задаётся в
+    /// `Default for MeetConfig` (это runtime-структура без serde-derive).
+    pub kimi_cli_path: PathBuf,
     pub summary_timeout_secs: u64,
     pub summary_max_chars: usize,
     /// Где считать саммари. **По умолчанию облако.** Переключатель НЕЗАВИСИМ
@@ -805,6 +825,9 @@ impl Default for MeetConfig {
 
             summary_enabled: true,
             claude_cli_path: default_claude_cli_path(),
+            claude_enabled: false,
+            llm_backend: forge_claude_runner::LlmBackend::default(),
+            kimi_cli_path: default_kimi_cli_path(),
             summary_timeout_secs: DEFAULT_SUMMARY_TIMEOUT_SECS,
             summary_max_chars: DEFAULT_SUMMARY_MAX_CHARS,
             summary_backend: SummaryBackend::default(),
@@ -880,6 +903,9 @@ pub const KNOWN_KEYS: &[&str] = &[
     "stt_backend",
     "summary_enabled",
     "claude_cli_path",
+    "claude_enabled",
+    "llm_backend",
+    "kimi_cli_path",
     "summary_timeout_secs",
     "summary_max_chars",
     "summary_backend",
@@ -954,6 +980,9 @@ struct FileConfig {
 
     summary_enabled: Option<bool>,
     claude_cli_path: Option<PathBuf>,
+    claude_enabled: Option<bool>,
+    llm_backend: Option<String>,
+    kimi_cli_path: Option<PathBuf>,
     summary_timeout_secs: Option<u64>,
     summary_max_chars: Option<usize>,
     summary_backend: Option<String>,
@@ -1295,6 +1324,18 @@ impl MeetConfig {
         if let Some(v) = f.claude_cli_path {
             self.claude_cli_path = v;
         }
+        if let Some(v) = f.claude_enabled {
+            self.claude_enabled = v;
+        }
+        if let Some(v) = f.llm_backend {
+            match forge_claude_runner::LlmBackend::parse(&v) {
+                Some(b) => self.llm_backend = b,
+                None => tracing::warn!(value = %v, "llm_backend: expected claude|kimi, keeping {}", self.llm_backend.as_str()),
+            }
+        }
+        if let Some(v) = f.kimi_cli_path {
+            self.kimi_cli_path = v;
+        }
         if let Some(v) = f.summary_timeout_secs {
             self.summary_timeout_secs = v;
         }
@@ -1532,6 +1573,18 @@ impl MeetConfig {
         }
         if let Some(v) = env_str("FORGE_MEET_CLAUDE_CLI_PATH") {
             self.claude_cli_path = PathBuf::from(v);
+        }
+        if let Some(v) = env_bool("FORGE_MEET_CLAUDE_ENABLED") {
+            self.claude_enabled = v;
+        }
+        if let Some(v) = env_str("FORGE_MEET_LLM_BACKEND") {
+            match forge_claude_runner::LlmBackend::parse(&v) {
+                Some(b) => self.llm_backend = b,
+                None => tracing::warn!(value = %v, "FORGE_MEET_LLM_BACKEND: expected claude|kimi, keeping {}", self.llm_backend.as_str()),
+            }
+        }
+        if let Some(v) = env_str("FORGE_MEET_KIMI_CLI_PATH") {
+            self.kimi_cli_path = PathBuf::from(v);
         }
         if let Some(v) = env_parse("FORGE_MEET_SUMMARY_TIMEOUT_SECS") {
             self.summary_timeout_secs = v;
@@ -1868,6 +1921,8 @@ pub const EDITABLE: &[EditableField] = &[
     EditableField { key: "cloud_stt_window_secs", kind: FieldKind::Int, env: "FORGE_MEET_CLOUD_STT_WINDOW_SECS", group: "transcribe", choices: &[], min: Some(10.0), max: Some(crate::cloud::MAX_STT_WINDOW_SECS as f64) },
 
     EditableField { key: "summary_enabled", kind: FieldKind::Bool, env: "FORGE_MEET_SUMMARY_ENABLED", group: "summary", choices: &[], min: None, max: None },
+    EditableField { key: "claude_enabled", kind: FieldKind::Bool, env: "FORGE_MEET_CLAUDE_ENABLED", group: "summary", choices: &[], min: None, max: None },
+    EditableField { key: "llm_backend", kind: FieldKind::Choice, env: "FORGE_MEET_LLM_BACKEND", group: "summary", choices: &["claude", "kimi"], min: None, max: None },
     EditableField { key: "summary_backend", kind: FieldKind::Choice, env: "FORGE_MEET_SUMMARY_BACKEND", group: "summary", choices: SummaryBackend::ALL, min: None, max: None },
     EditableField { key: "cloud_summary_model", kind: FieldKind::Text, env: "FORGE_MEET_CLOUD_SUMMARY_MODEL", group: "summary", choices: &[], min: None, max: None },
     EditableField { key: "summary_timeout_secs", kind: FieldKind::Int, env: "FORGE_MEET_SUMMARY_TIMEOUT_SECS", group: "summary", choices: &[], min: Some(10.0), max: Some(3600.0) },
@@ -1906,6 +1961,7 @@ pub const NEVER_EDITABLE: &[&str] = &[
     "ffmpeg_path",
     "ffprobe_path",
     "claude_cli_path",
+    "kimi_cli_path",
     "cache_dir",
     "db_path",
     "models_dir",
@@ -1956,6 +2012,8 @@ pub fn editable_value(cfg: &MeetConfig, key: &str) -> Option<serde_json::Value> 
         // роута намеренно не равно значению поля в конфиге.
         "polza_api_key" => json!(cfg.polza_api_key.mask()),
         "summary_enabled" => json!(cfg.summary_enabled),
+        "claude_enabled" => json!(cfg.claude_enabled),
+        "llm_backend" => json!(cfg.llm_backend.as_str()),
         "summary_timeout_secs" => json!(cfg.summary_timeout_secs),
         "summary_max_chars" => json!(cfg.summary_max_chars),
         "alone_timeout_secs" => json!(cfg.alone_timeout_secs),
@@ -2043,6 +2101,13 @@ impl MeetConfig {
                 self.polza_api_key = crate::cloud::SecretKey::new(raw);
             }
             "summary_enabled" => self.summary_enabled = as_bool()?,
+            "claude_enabled" => self.claude_enabled = as_bool()?,
+            "llm_backend" => {
+                let raw = as_str()?;
+                self.llm_backend = forge_claude_runner::LlmBackend::parse(&raw)
+                    .filter(|b| b.is_local())
+                    .ok_or_else(|| format!("llm_backend: неизвестное значение {raw:?} (claude|kimi)"))?;
+            }
             "summary_timeout_secs" => self.summary_timeout_secs = as_u64()?,
             "summary_max_chars" => self.summary_max_chars = as_u64()? as usize,
             "alone_timeout_secs" => self.alone_timeout_secs = as_u64()?,

@@ -1,0 +1,3 @@
+# portal_filter
+
+routes::tasks::portal_filter(preset, self_id, responsible, group, now) (plugins/bitrix/src/routes/tasks.rs) — фильтр tasks.task.list по пресету. КАЖДЫЙ пресет ограничен MEMBER=self_id (tasks::FILTER_MEMBER_KEY; любая роль — постановщик, ответственный, соисполнитель, наблюдатель), если self_id>0: вебхук обычно выпущен от администратора, и без фильтра портал отдаёт задачи всей компании (живьём 76 840 против 28). Пресеты: all «все мои» — только MEMBER; mine «я ответственный» — + RESPONSIBLE_ID=self; active — + <REAL_STATUS 5; expired — + <REAL_STATUS 5 и <DEADLINE now; closed — + REAL_STATUS 5. Уточнения responsible/group ложатся поверх. Ключ STATUS запрещён (ловушка 3).

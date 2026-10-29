@@ -214,7 +214,7 @@
 devforge --telegram          # вкладка ✈  Telegram (личный аккаунт, MTProto)
 devforge --vk                # вкладка Ⓥ  VK (личный аккаунт, VK API 5.199)
 devforge --bitrix            # вкладка Ⓑ  Битрикс24 (портал, входящий вебхук)
-devforge --telegram --vk --bitrix   # все три сразу
+devforge --telegram --vk --bitrix --meet --tracker  # все сразу
 ```
 
 ### Что общего у всех трёх

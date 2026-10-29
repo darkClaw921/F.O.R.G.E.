@@ -68,6 +68,8 @@ export const MEET_LABELS = {
     whisper_timeout_secs: 'Таймаут расшифровки, с',
     pertrack_transcription: 'Расшифровывать дорожки по отдельности, где дорожка = человек',
     summary_enabled: 'Считать саммари после расшифровки',
+    claude_enabled: 'Разрешать локальные LLM-запуски (claude -p / kimi -p)',
+    llm_backend: 'Локальный движок саммари (облако — отдельным переключателем)',
     summary_timeout_secs: 'Таймаут саммари, с',
     summary_max_chars: 'Потолок длины транскрипта для саммари, символов',
     alone_timeout_secs: 'Бот остался один, с',

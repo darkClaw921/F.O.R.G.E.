@@ -192,7 +192,7 @@ async function handleLaunchParams() {
         if (isShare) {
             await routeShareTarget(params);
         } else if (view) {
-            await routeView(view);
+            await routeView(view, params.get('analyticsMode'));
         } else if (tab) {
             await routeTab(tab);
         }
@@ -218,7 +218,7 @@ async function routeTab(name) {
  * Белый список, а не «любое имя модуля»: значение приходит из адресной строки,
  * и динамический импорт по нему был бы дырой в статике.
  */
-async function routeView(view) {
+async function routeView(view, analyticsMode) {
     if (view === 'daily-summary') {
         const mod = await import('../daily-summary/daily-summary.js');
         if (mod && typeof mod.showDailySummary === 'function') mod.showDailySummary();
@@ -226,7 +226,7 @@ async function routeView(view) {
     }
     if (view === 'analytics') {
         const mod = await import('../analytics/analytics.js');
-        if (mod && typeof mod.showAnalytics === 'function') mod.showAnalytics();
+        if (mod && typeof mod.showAnalytics === 'function') mod.showAnalytics(undefined, analyticsMode === 'claude' ? 'claude' : 'agents');
     }
 }
 

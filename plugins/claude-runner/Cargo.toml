@@ -24,6 +24,13 @@ tracing = { workspace = true }
 # объявленной в plugins/echo/Cargo.toml, поэтому узел в дереве один.
 uuid = { version = "1.23", features = ["v4"] }
 
+# Облачный LLM-транспорт (LlmBackend::Cloud) переиспользует OpenAI-совместимый
+# клиент polza.ai из forge-voice вместо собственного HTTP-слоя. Зависимость
+# односторонняя: forge-voice — листовое ядро и НИКОГДА не должно зависеть от
+# forge-claude-runner (правило зафиксировано и в его Cargo.toml-гейте), так что
+# цикл по построению невозможен.
+forge-voice = { path = "../voice" }
+
 [dev-dependencies]
 # Временные каталоги для mock-CLI (shell-скрипт с NDJSON) в тестах раннера.
 tempfile = "3"

@@ -283,7 +283,7 @@ function tileText(tile, cls) {
     refs.openBtn.click();
     // Без `noopener`: с ним window.open ВСЕГДА возвращает null, и успешное
     // открытие неотличимо от заблокированного — фолбэк подменял бы текущий экран.
-    eq(opened, [['/?view=analytics', '_blank']], 'дашборд открыт новой вкладкой');
+    eq(opened, [['/?view=analytics&analyticsMode=claude', '_blank']], 'режим работы с Claude явно открыт новой вкладкой');
     eq(TAB.ANALYTICS_URL, '/?view=analytics', 'адрес дашборда — диплинк ?view=analytics');
     eq(order, [], 'текущая страница не тронута: ни закрытия модалки, ни подмены экрана');
 

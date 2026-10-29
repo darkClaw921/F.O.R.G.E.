@@ -275,11 +275,11 @@
     flex: 1 1 auto;
 }
 
-/* ===== Claude memory modal ===== */
+/* ===== Claude / Codex memory modal ===== */
 
 .modal-card.claude-memory-modal {
-    min-width: 480px;
-    max-width: 800px;
+    min-width: min(480px, calc(100vw - 32px));
+    max-width: min(800px, calc(100vw - 32px));
     width: 60vw;
 }
 
@@ -293,6 +293,47 @@
 
 .claude-memory-header h2 {
     margin: 0;
+}
+
+.claude-memory-provider-tabs {
+    display: flex;
+    gap: 6px;
+}
+
+.claude-memory-provider-tabs button {
+    background: var(--bg-input);
+    color: var(--fg);
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
+    padding: 5px 14px;
+    font: inherit;
+    cursor: pointer;
+}
+
+.claude-memory-provider-tabs button[aria-pressed="true"] {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--fg-on-accent);
+}
+
+.claude-memory-scope,
+.claude-memory-location {
+    color: var(--fg-dim);
+    font-size: 0.8rem;
+    overflow-wrap: anywhere;
+}
+
+.claude-memory-section-title {
+    overflow-wrap: anywhere;
+    min-width: 0;
+}
+
+@media (max-width: 768px) {
+    .modal-card.claude-memory-modal {
+        width: 100dvw;
+        max-width: 100dvw;
+        min-width: 0;
+    }
 }
 
 .claude-memory-back-btn {

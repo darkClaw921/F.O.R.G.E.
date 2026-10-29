@@ -1,3 +1,5 @@
 # tmux-web/static/style.css
 
 ТОНКИЙ @import-АГРЕГАТОР (Phase 2 рефакторинг). Был монолитом 3419 строк / 83KB, стал 67 строк / 2.7KB. Содержит только серию @import url('./css/<feature>.css') в порядке, соответствующем оригинальному каскаду style.css. Порядок импорта: base → layout → window-bar → project-bar → sidebar → origin-tabs → tab-bar → tasks → modals → notifications → settings-modal → theme-editor → git-tab → tui-tab → tui-channels → quick-cmd → mobile (последним!). index.html по-прежнему ссылается на /style.css через <link rel=stylesheet>, браузер сам тянет остальные css/*.css через @import. Все 17 файлов в tmux-web/static/css/ запакованы в бинарь через rust-embed (см. static_embed.rs).
+
+Дополнительно после analytics.css импортирует agents.css, agents-history.css и agents-settings.css. Эти файлы используют существующие theme tokens и font; изменения локализованы новыми классами и не меняют unrelated dashboard rules.

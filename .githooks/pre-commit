@@ -49,7 +49,16 @@ if [ -n "$STAGED_RUST" ]; then
     # тестов плагина писалась «в стол». У forge-vk таких тестов больше, чем
     # smoke, поэтому правка сделана до начала его разработки.
     echo "[pre-commit] running 'cargo test --workspace' (staged Rust changes)..." >&2
-    if ! ( cd "$REPO_ROOT" && cargo test --quiet --workspace --color=always ) >&2; then
+    if ! (
+        cd "$REPO_ROOT"
+        # Git exports repository-local variables to hooks. Fixture tests open
+        # independent repositories, so keep those variables out of their
+        # subprocesses without changing this hook's own repository/index.
+        while IFS= read -r git_local_name; do
+            unset "$git_local_name"
+        done < <(git rev-parse --local-env-vars)
+        cargo test --quiet --workspace --color=always
+    ) >&2; then
         echo "" >&2
         echo "[pre-commit] ❌  cargo test FAILED — commit aborted." >&2
         echo "[pre-commit] Fix the failing tests and try again." >&2

@@ -678,6 +678,7 @@ fn summary_blocker(state: &Arc<MeetState>) -> Option<&'static str> {
         state.config.summary_enabled,
         state.config.cloud_configured(),
         &state.config.claude_cli_path,
+        state.config.claude_enabled || forge_claude_runner::env_runs_enabled(),
     )
     .err()
 }

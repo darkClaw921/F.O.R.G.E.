@@ -88,12 +88,21 @@ pub const TRUNCATION_NOTE: &str =
 /// Параметры прогона саммари.
 #[derive(Debug, Clone)]
 pub struct RunOptions {
-    /// Путь к Claude CLI.
+    /// Путь к ЛОКАЛЬНОМУ CLI (Claude или Kimi — см. [`Self::cli_kind`]).
     pub cli_path: PathBuf,
+    /// Какой именно локальный CLI исполняет прогон.
+    pub cli_kind: forge_claude_runner::CliKind,
     /// Потолок одного прогона. По истечении процесс УБИВАЕТСЯ.
     pub timeout: Duration,
     /// Отмена встречи гасит и саммари.
     pub cancel: CancellationToken,
+    /// Разрешены ли запуски `claude -p`. **Дефолт в продакшене — `false`**
+    /// (глобальный выключатель, см. `forge_claude_runner`): caller
+    /// прокидывает сюда `claude_enabled`-флаг конфига ИЛИ
+    /// `forge_claude_runner::env_runs_enabled()`. Выключенный флаг даёт
+    /// отказ ДО спавна — с кодом `summary_failed`, в теле которого инструкция
+    /// «как включить».
+    pub claude_enabled: bool,
 }
 
 /// Итог саммаризации одной встречи.
@@ -200,8 +209,15 @@ pub async fn generate(
     opts: &RunOptions,
     on_delta: Option<&(dyn Fn(usize) + Send + Sync)>,
 ) -> Result<String, ProcError> {
-    let runner = ClaudeRunner::new(opts.cli_path.clone(), 1)
-        .with_run_timeout(opts.timeout.as_secs().max(1));
+    let runner = ClaudeRunner::from_transport(
+        forge_claude_runner::Transport::Cli {
+            kind: opts.cli_kind,
+            path: opts.cli_path.clone(),
+        },
+        1,
+    )
+    .with_run_timeout(opts.timeout.as_secs().max(1))
+    .with_enabled(opts.claude_enabled);
 
     // ЛИТЕРАЛ ЦЕЛИКОМ, без `..Default::default()`: см. шапку модуля.
     let req = RunRequest {
@@ -402,11 +418,25 @@ pub async fn summarize(
     // напрямую: заказанная сторона может быть нерабочей (нет ключа облака либо
     // нет Claude CLI), и тогда берётся вторая. Отказ остаётся только на
     // случай, когда не работает ни одна.
+    // Локальный CLI выбирается конфигом `llm_backend`: claude (дефолт) или
+    // kimi. Гейт и прогон смотрят на ОДИН И ТОТ ЖЕ путь — иначе план сказал
+    // бы «всё в порядке», а прогон ушёл в другой бинарь.
+    let (cli_kind, cli_path) = match state.config.llm_backend {
+        forge_claude_runner::LlmBackend::Kimi => (
+            forge_claude_runner::CliKind::Kimi,
+            state.config.kimi_cli_path.clone(),
+        ),
+        _ => (
+            forge_claude_runner::CliKind::Claude,
+            state.config.claude_cli_path.clone(),
+        ),
+    };
     let plan = crate::deps::plan_summary(
         state.config.summary_backend,
         state.config.summary_enabled,
         state.config.cloud_configured(),
-        &state.config.claude_cli_path,
+        &cli_path,
+        state.config.claude_enabled || forge_claude_runner::env_runs_enabled(),
     );
     // ОТКАТ ВИДЕН: событие журнала пишется ДО прогона, чтобы человек увидел
     // подмену стороны даже если сам прогон потом провалится.
@@ -455,9 +485,12 @@ pub async fn summarize(
         },
         Ok(_) => {
             let opts = RunOptions {
-                cli_path: state.config.claude_cli_path.clone(),
+                cli_path,
+                cli_kind,
                 timeout: Duration::from_secs(state.config.summary_timeout_secs),
                 cancel: cancel.clone(),
+                claude_enabled: state.config.claude_enabled
+                    || forge_claude_runner::env_runs_enabled(),
             };
             generate(&built, &opts, Some(&on_delta)).await
         }
@@ -727,8 +760,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let opts = RunOptions {
             cli_path: dir.path().join("no-such-claude"),
+            cli_kind: forge_claude_runner::CliKind::Claude,
             timeout: Duration::from_secs(5),
             cancel: CancellationToken::new(),
+            // Иначе отказ случится на глобальном выключателе раньше спавна,
+            // и тест проверит не тот путь.
+            claude_enabled: true,
         };
         let err = generate(&built("<task>x</task>"), &opts, None)
             .await

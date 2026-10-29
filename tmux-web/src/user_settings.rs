@@ -768,6 +768,26 @@ pub struct UserSettings {
     /// встроенный список `auto_approve::DEFAULT_DANGEROUS`, а не заменяет его.
     #[serde(default)]
     pub auto_approve_blocklist: Vec<String>,
+    /// Разрешать ли LLM-эскалации блоклиста — вызовы `claude -p` за вердиктом
+    /// «можно ли подтвердить опасную команду» (см. [`crate::auto_approve`]).
+    /// Default `false`: запуски `claude -p` в проекте по умолчанию выключены
+    /// глобально. Включается здесь, либо для ВСЕХ запусков разом через
+    /// `FORGE_CLAUDE_RUNNER_ENABLED=1` (приоритет). Выключенный флаг оставляет
+    /// блоклист-совпадения человеку — авто-апрув продолжает работать по
+    /// остальным правилам.
+    #[serde(default)]
+    pub claude_llm_enabled: bool,
+    /// Каким движком спрашивать вердикт LLM-эскалации блоклиста: `claude`
+    /// (локальный Claude CLI, дефолт) или `kimi` (локальный Kimi CLI).
+    /// Облачный OpenAI-совместимый провайдер выбирается не здесь, а env-трио
+    /// `FORGE_LLM_CLOUD_BASE_URL` / `FORGE_LLM_CLOUD_API_KEY` /
+    /// `FORGE_LLM_CLOUD_MODEL`: заданный ключ облака побеждает эту настройку.
+    #[serde(default = "default_claude_llm_backend")]
+    pub claude_llm_backend: String,
+}
+
+fn default_claude_llm_backend() -> String {
+    "claude".to_string()
 }
 
 impl Default for UserSettings {
@@ -812,6 +832,8 @@ impl Default for UserSettings {
             auto_approve_broad: false,
             auto_approve_questions: default_auto_approve_questions(),
             auto_approve_blocklist: Vec::new(),
+            claude_llm_enabled: false,
+            claude_llm_backend: default_claude_llm_backend(),
         }
     }
 }
@@ -1011,6 +1033,12 @@ pub struct PatchUserSettingsReq {
     /// было бы нечем. Пустой список = только встроенный блоклист.
     #[serde(default)]
     pub auto_approve_blocklist: Option<Vec<String>>,
+    /// Включить/выключить LLM-эскалации блоклиста (вызовы `claude -p`).
+    #[serde(default)]
+    pub claude_llm_enabled: Option<bool>,
+    /// Движок вердикта LLM-эскалации: `claude` (дефолт) или `kimi`.
+    #[serde(default)]
+    pub claude_llm_backend: Option<String>,
 }
 
 #[derive(Debug)]
@@ -1247,6 +1275,15 @@ impl UserSettingsStore {
             // PatchUserSettingsReq. Пустой список законен: это «только
             // встроенный блоклист».
             inner.settings.auto_approve_blocklist = sanitize_blocklist(v);
+        }
+        if let Some(v) = payload.claude_llm_enabled {
+            inner.settings.claude_llm_enabled = v;
+        }
+        if let Some(v) = payload.claude_llm_backend {
+            // Нераспознанное значение не пишем: движок резолвится в claude.
+            if matches!(v.trim().to_lowercase().as_str(), "claude" | "kimi") {
+                inner.settings.claude_llm_backend = v.trim().to_lowercase();
+            }
         }
 
         save_locked(&inner)?;

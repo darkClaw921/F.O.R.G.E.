@@ -2099,6 +2099,75 @@ async fn the_dialog_list_costs_one_request_and_splits_into_directories() {
     }
 }
 
+/// Список собирается из ВСЕХ источников, даже когда `im.recent.get` короткий:
+/// хвост `im.recent.list` и чаты задач с участием, в которых давно тихо.
+///
+/// Живьём `im.recent.get` отдавал 16 строк при 81 диалоге, а дозагрузка
+/// включалась только на 200+ — большая часть чатов и задач молча пропадала.
+#[tokio::test]
+async fn the_list_merges_the_recent_tail_and_member_task_chats() {
+    let stub = start_stub().await;
+    script_cold_start(&stub);
+    // Хвост: одна строка уже есть в `im.recent.get` (chat3), одна новая (23).
+    let mut tail: Value = recent_get_result()[2].clone(); // chat3
+    let mut fresh: Value = recent_get_result()[1].clone(); // 19 → 23
+    fresh["id"] = json!(23);
+    fresh["user"]["id"] = json!(23);
+    tail = json!({"items": [tail, fresh], "hasMore": false, "hasMorePages": false});
+    stub.state.batch_result("im.recent.list", tail);
+    // Задачи с участием: чат 7 уже есть в `im.recent.get`, чат 42 — нет,
+    // у задачи 6 чата нет вовсе.
+    stub.state.batch_result(
+        "tasks.task.list",
+        json!({"tasks": [
+            {"id": "1", "title": "Живая задача", "status": "3", "chatId": 7,
+             "activityDate": "2026-08-05T20:00:00+03:00"},
+            {"id": "5", "title": "Тихая задача", "status": "2", "chatId": 42,
+             "activityDate": "2026-01-01T10:00:00+03:00"},
+            {"id": "6", "title": "Без чата", "status": "2", "chatId": null},
+        ]}),
+    );
+    let h = data_harness(&stub).await;
+
+    let (status, body) = get_json(&h.app, "/api/bitrix/dialogs?limit=50").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let ids: Vec<&str> = body["dialogs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["id"].as_str().unwrap())
+        .collect();
+    assert!(ids.contains(&"23"), "строка хвоста потерялась: {ids:?}");
+    assert!(ids.contains(&"chat42"), "чат тихой задачи потерялся: {ids:?}");
+    assert_eq!(ids.iter().filter(|i| **i == "chat7").count(), 1, "дубль: {ids:?}");
+    assert_eq!(ids.iter().filter(|i| **i == "chat3").count(), 1, "дубль: {ids:?}");
+    assert_eq!(ids.len(), 8, "{ids:?}");
+
+    let quiet = body["dialogs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["id"] == "chat42")
+        .unwrap();
+    assert_eq!(quiet["kind"], "task");
+    assert_eq!(quiet["task_id"], "5");
+    assert_eq!(quiet["title"], "Тихая задача");
+
+    // Всё это — по-прежнему ОДИН запрос к порталу.
+    assert_eq!(stub.state.count_of("batch"), 1, "{:?}", stub.state.calls());
+    assert_eq!(stub.state.calls().len(), 1, "{:?}", stub.state.calls());
+
+    // Директория «задачи» видит и тихую задачу.
+    let (_, tasks) = get_json(&h.app, "/api/bitrix/dialogs?limit=50&filter=tasks").await;
+    let ids: Vec<&str> = tasks["dialogs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, vec!["chat7", "chat9", "chat42"]);
+}
+
 /// `has_more` честен на границе страницы, и пагинация не теряет строк.
 #[tokio::test]
 async fn has_more_is_exact_at_the_page_boundary() {

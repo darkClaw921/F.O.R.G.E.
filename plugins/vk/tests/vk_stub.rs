@@ -4633,6 +4633,12 @@ async fn a_refresh_feeds_the_model_only_the_new_messages_and_replaces_the_analys
             config_path: dir.path().join("vk.toml"),
             prompts_path: dir.path().join("prompts.json"),
             claude_cli_path: cli,
+            // Запуски `claude -p` по умолчанию выключены глобально (см.
+            // forge_claude_runner): стенд с мок-CLI включает их явно.
+            claude_enabled: true,
+            // Дефолт конфига — облако polza.ai; стенд гоняет мок-CLI, поэтому
+            // бэкенд фиксируем на claude явно.
+            llm_backend: forge_claude_runner::LlmBackend::Claude,
             ..VkConfig::default()
         });
         state

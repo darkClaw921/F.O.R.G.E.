@@ -1,3 +1,4 @@
+import { agentsApi } from '../agents/api.js';
 // tmux-web — Settings modal.
 //
 // Диспетчер табов: Notifications (global notifier-config), Themes,
@@ -238,11 +239,16 @@ export function openSettingsModal(initialTab) {
     };
     const analyticsTabState = {
         loaded: false,
+        view: null,
     };
 
     // Закрытие модалки — определено заранее, т.к. вкладка «Сводка дня»
     // передаёт его как onClose в кнопку «Открыть страницу».
-    const close = () => overlay.remove();
+    const close = () => {
+        analyticsTabState.view?.dispose();
+        analyticsTabState.view = null;
+        overlay.remove();
+    };
 
     // «Сводка дня» tab: рендерим один раз при первом показе. Вкладка не хранит
     // пользовательских настроек — только действия (генерация / открытие страницы),
@@ -463,8 +469,9 @@ export function openSettingsModal(initialTab) {
     const renderAnalyticsPanel = () => {
         if (analyticsTabState.loaded || !$analyticsContent) return;
         analyticsTabState.loaded = true;
-        renderAnalyticsTab($analyticsContent, {
+        analyticsTabState.view = renderAnalyticsTab($analyticsContent, {
             getAnalyticsSummary, getAnalyticsStatus, rescanAnalytics,
+            getAgentLive: agentsApi.live,
             onClose: close,
         });
     };
@@ -511,6 +518,11 @@ export function openSettingsModal(initialTab) {
     renderNotifierPanel();
 
     const showTab = (name) => {
+        if (name !== 'analytics' && analyticsTabState.view) {
+            analyticsTabState.view.dispose();
+            analyticsTabState.view = null;
+            analyticsTabState.loaded = false;
+        }
         $tabBtns.forEach((btn) => {
             const isActive = btn.dataset.tab === name;
             btn.classList.toggle('active', isActive);

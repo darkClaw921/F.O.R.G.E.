@@ -376,11 +376,26 @@ impl VkState {
         // run'а идёт под тем же `Mutex`, что и правка заметки из хендлера.
         // Ядро анализа общее на три мессенджера, поэтому конфиг ему передаётся
         // полями, а не типом: `VkConfig` крейту не виден по построению.
-        let analysis = crate::analysis::AnalysisHub::new(
+        let (llm_backend, llm_transport, active_cli) = crate::analysis::resolve_transport(
+            config.llm_backend,
             config.claude_cli_path.clone(),
+            config.kimi_cli_path.clone(),
+            forge_claude_runner::CloudTransportCfg {
+                base_url: config.llm_cloud_base_url.clone(),
+                api_key: config.llm_cloud_api_key.clone(),
+                model: config.llm_cloud_model.clone(),
+            },
+        );
+        let analysis = crate::analysis::AnalysisHub::new(
+            active_cli,
             config.analysis_model.clone(),
             config.analysis_timeout_secs,
         )
+        .with_transport(llm_backend, llm_transport, config.claude_cli_path.clone())
+        // Запуски LLM-запросов по умолчанию выключены глобально (см.
+        // forge_claude_runner): либо явный флаг конфига, либо
+        // FORGE_CLAUDE_RUNNER_ENABLED=1 для всех плагинов разом.
+        .with_claude_enabled(config.claude_enabled || forge_claude_runner::env_runs_enabled())
         .with_store(prompts.clone(), config.prompts_path.clone());
         // Потолки расшифровки — из `voice.toml`. Битый файл не имеет права
         // мешать плагину подняться: берём встроенные умолчания, а внятный

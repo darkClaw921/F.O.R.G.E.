@@ -78,6 +78,11 @@ pub struct ServerConfig {
     /// default). `None`/`Some(false)` ⇒ файл не настаивает.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub meet: Option<bool>,
+    /// Opt-in плагин личного трекера из файла. `Some(true)` ⇒ включает плагин
+    /// даже без CLI-флага `--tracker` (file-источник в цепочке CLI > file >
+    /// env > default). `None`/`Some(false)` ⇒ файл не настаивает.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tracker: Option<bool>,
 }
 
 
@@ -126,6 +131,13 @@ pub struct EffectiveConfig {
     /// не регистрируются, а `GET /api/meet/status` отдаёт 404 — это и есть
     /// контракт фронтового гейта: кнопка встречи в лентах не рисуется вовсе.
     pub meet_enabled: bool,
+    /// Opt-in плагин личного таск/тайм-трекера (см. [`resolve`]). True ⇒
+    /// активирован через `--tracker` / `server_config.json` / env
+    /// `DEVFORGE_TRACKER`. False (default) ⇒ поведение байт-в-байт как раньше:
+    /// роуты `/api/tracker/*` и `/ws/tracker` не регистрируются, а
+    /// `GET /api/tracker/status` отдаёт 404 — это и есть контракт фронтового
+    /// гейта: кнопка вкладки «Мои задачи» не рисуется вовсе.
+    pub tracker_enabled: bool,
 }
 
 /// Имя env-переменной, включающей PWA-режим (низший приоритет после CLI и
@@ -147,6 +159,10 @@ pub const ENV_BITRIX: &str = "DEVFORGE_BITRIX";
 /// Имя env-переменной, включающей плагин встреч (низший приоритет после CLI
 /// и файла). Принимает те же truthy-значения, что и [`ENV_PWA`].
 pub const ENV_MEET: &str = "DEVFORGE_MEET";
+
+/// Имя env-переменной, включающей плагин личного трекера (низший приоритет
+/// после CLI и файла). Принимает те же truthy-значения, что и [`ENV_PWA`].
+pub const ENV_TRACKER: &str = "DEVFORGE_TRACKER";
 
 /// Парсинг truthy-значения env-флага: `1`/`true`/`yes`/`on` (любой регистр)
 /// ⇒ `true`; всё остальное ⇒ `false`.
@@ -357,6 +373,15 @@ pub fn resolve_with_env(
             .map(|v| env_flag_is_truthy(&v))
             .unwrap_or(false);
 
+    // Личный трекер opt-in: та же механика —
+    // CLI (--tracker) > file (tracker: true) > env (DEVFORGE_TRACKER) >
+    // default(false).
+    let tracker_enabled = cli_opts.tracker
+        || file_cfg.and_then(|f| f.tracker).unwrap_or(false)
+        || lookup(ENV_TRACKER)
+            .map(|v| env_flag_is_truthy(&v))
+            .unwrap_or(false);
+
     EffectiveConfig {
         bind,
         port,
@@ -367,6 +392,7 @@ pub fn resolve_with_env(
         vk_enabled,
         bitrix_enabled,
         meet_enabled,
+        tracker_enabled,
     }
 }
 
@@ -1223,6 +1249,124 @@ mod tests {
         assert!(!resolve_with_env(&RunOptions::default(), None, &junk).meet_enabled);
     }
 
+    /// Приоритет источников у трекера обязан совпадать с остальными
+    /// плагинами: CLI (--tracker) > file (tracker: true) > env
+    /// (DEVFORGE_TRACKER) > default(false).
+    #[test]
+    fn tracker_priority_matches_the_other_plugins() {
+        let no_env = |_: &str| None;
+        let env_tracker = |key: &str| (key == ENV_TRACKER).then(|| "1".to_string());
+
+        // Умолчание — выключено.
+        assert!(!resolve_with_env(&RunOptions::default(), None, &no_env).tracker_enabled);
+
+        // file включает без CLI.
+        let file_true = ServerConfig {
+            tracker: Some(true),
+            ..ServerConfig::default()
+        };
+        assert!(
+            resolve_with_env(&RunOptions::default(), Some(&file_true), &no_env).tracker_enabled
+        );
+
+        // file: false не гасит CLI.
+        let file_false = ServerConfig {
+            tracker: Some(false),
+            ..ServerConfig::default()
+        };
+        let cli = RunOptions {
+            tracker: true,
+            ..RunOptions::default()
+        };
+        assert!(resolve_with_env(&cli, Some(&file_false), &no_env).tracker_enabled);
+
+        // file: false без CLI и без env — выключено.
+        assert!(
+            !resolve_with_env(&RunOptions::default(), Some(&file_false), &no_env).tracker_enabled
+        );
+
+        // env включает при пустых CLI и файле.
+        assert!(resolve_with_env(&RunOptions::default(), None, &env_tracker).tracker_enabled);
+
+        // Мусор в переменной не включает.
+        let junk = |key: &str| (key == ENV_TRACKER).then(|| "maybe".to_string());
+        assert!(!resolve_with_env(&RunOptions::default(), None, &junk).tracker_enabled);
+    }
+
+    /// `--tracker` и `DEVFORGE_TRACKER` обязаны давать ОДИН И ТОТ ЖЕ
+    /// результат: иначе запуск через окружение вёл бы себя иначе, чем через
+    /// флаг, а причина расхождения нигде бы не проявилась.
+    #[test]
+    fn tracker_cli_and_env_agree() {
+        let no_env = |_: &str| None;
+        let via_cli = resolve_with_env(
+            &RunOptions {
+                tracker: true,
+                ..RunOptions::default()
+            },
+            None,
+            &no_env,
+        );
+        let env_tracker = |key: &str| (key == ENV_TRACKER).then(|| "1".to_string());
+        let via_env = resolve_with_env(&RunOptions::default(), None, &env_tracker);
+        assert!(via_cli.tracker_enabled);
+        assert!(via_env.tracker_enabled);
+    }
+
+    /// Ловит копипасту вида `tracker_enabled = cli_opts.meet`.
+    #[test]
+    fn resolve_tracker_is_independent_of_the_other_plugins() {
+        let no_env = |_: &str| None;
+        let only_tracker = resolve_with_env(
+            &RunOptions {
+                tracker: true,
+                ..RunOptions::default()
+            },
+            None,
+            &no_env,
+        );
+        assert!(only_tracker.tracker_enabled);
+        assert!(!only_tracker.meet_enabled, "--tracker не включает встречи");
+        assert!(!only_tracker.bitrix_enabled, "--tracker не включает Bitrix24");
+        assert!(!only_tracker.vk_enabled, "--tracker не включает VK");
+        assert!(
+            !only_tracker.telegram_enabled,
+            "--tracker не включает Telegram"
+        );
+        assert!(!only_tracker.pwa_enabled, "--tracker не включает PWA");
+
+        let only_meet = resolve_with_env(
+            &RunOptions {
+                meet: true,
+                ..RunOptions::default()
+            },
+            None,
+            &no_env,
+        );
+        assert!(!only_meet.tracker_enabled, "--meet не включает трекер");
+    }
+
+    /// Единственный тест, трогающий `DEVFORGE_TRACKER` глобально: без него
+    /// [`resolve_with_env`] проверял бы сам себя, а настоящее чтение
+    /// окружения в [`resolve`] осталось бы непокрытым. Окружение
+    /// восстанавливается.
+    #[test]
+    #[ignore = "мутирует глобальное окружение; запускать отдельно"]
+    fn resolve_reads_the_tracker_variable_from_the_process_environment() {
+        let saved = std::env::var(ENV_TRACKER).ok();
+        std::env::set_var(ENV_TRACKER, "1");
+        assert!(
+            resolve(&RunOptions::default(), None).tracker_enabled,
+            "resolve обязан читать DEVFORGE_TRACKER"
+        );
+        std::env::remove_var(ENV_TRACKER);
+        assert!(!resolve(&RunOptions::default(), None).tracker_enabled);
+        match saved {
+            Some(v) => std::env::set_var(ENV_TRACKER, v),
+            None => std::env::remove_var(ENV_TRACKER),
+        }
+    }
+
     /// Ловит копипасту вида `meet_enabled = cli_opts.bitrix`.
     #[test]
     fn resolve_meet_is_independent_of_the_other_plugins() {
@@ -1460,6 +1604,7 @@ mod tests {
             vk_enabled: false,
             bitrix_enabled: false,
             meet_enabled: false,
+            tracker_enabled: false,
         };
         let got = finalize_token_at(&eff, &path);
         assert!(got.is_none(), "non-remote → no token");
@@ -1480,6 +1625,7 @@ mod tests {
             vk_enabled: false,
             bitrix_enabled: false,
             meet_enabled: false,
+            tracker_enabled: false,
         };
         let got = finalize_token_at(&eff, &path).expect("token preserved");
         assert_eq!(got, "existing-token");
@@ -1501,6 +1647,7 @@ mod tests {
             vk_enabled: false,
             bitrix_enabled: false,
             meet_enabled: false,
+            tracker_enabled: false,
         };
         let token = finalize_token_at(&eff, &path).expect("token generated");
         assert_eq!(token.len(), 64);
@@ -1536,6 +1683,7 @@ mod tests {
             vk_enabled: false,
             bitrix_enabled: false,
             meet_enabled: false,
+            tracker_enabled: false,
         };
         let token = finalize_token_at(&eff, &path).expect("token generated");
 

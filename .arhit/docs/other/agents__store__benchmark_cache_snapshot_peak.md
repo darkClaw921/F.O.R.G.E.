@@ -1,0 +1,3 @@
+# agents::store::benchmark_cache_snapshot_peak
+
+Ignored manual cache-save memory comparison, enabled explicitly with FORGE_AGENT_PERF_CACHE pointing to a private metadata-only cache copy. FORGE_AGENT_PERF_SAVE_BASELINE=1 selects the former deep-clone snapshot representation; otherwise it exercises borrowed cache::save. Both run the same cache load and serialize/write the same v3 bytes into a new temporary directory. Run each in a fresh process under macOS /usr/bin/time -l to compare maximum resident set size; this is peak RSS, not physical footprint or whole-app live memory. Original journals, cache and user configuration are never modified, and only aggregate bytes/time are printed.

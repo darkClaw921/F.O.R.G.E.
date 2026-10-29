@@ -545,3 +545,82 @@ export const $b24LightboxPrev = document.getElementById('b24-lightbox-prev');
 export const $b24LightboxNext = document.getElementById('b24-lightbox-next');
 export const $b24LightboxClose = document.getElementById('b24-lightbox-close');
 export const $b24LightboxCaption = document.getElementById('b24-lightbox-caption');
+
+// ----------------------------------------------------------------------------
+// Ref'ы вкладки «Мои задачи» (плагин forge-tracker, opt-in `--tracker`).
+//
+// Разметка #tracker присутствует в index.html ВСЕГДА, поэтому ref'ы резолвятся
+// один раз при импорте этого модуля — так же, как у Telegram, VK и Битрикса.
+// Каждый ref обязан проверяться на null у места использования: index.html
+// может приехать из старого кэша PWA, где секции #tracker ещё нет.
+//
+// Имена: id кнопки — `tracker-toggle` (по имени плагина), всё внутри панели —
+// с префиксом `trk-`. Разнесение имени модуля и DOM-префикса не новое: у
+// Битрикса `bitrix-toggle` + `b24-*`.
+export const $trackerToggle = document.getElementById('tracker-toggle');
+export const $trkRunningBadge = document.getElementById('trk-running-badge');
+export const $tracker = document.getElementById('tracker');
+export const $trkTitlebar = document.getElementById('trk-titlebar');
+// «● N TIMERS · GLOBAL STORE» — состояние стора в титлбаре. GLOBAL не
+// украшение: задачи трекера не привязаны к корню проекта, файл один
+// (~/.config/forge/tracker.json).
+export const $trkStore = document.getElementById('trk-store');
+export const $trkToday = document.getElementById('trk-today');
+export const $trkThemeToggle = document.getElementById('trk-theme-toggle');
+export const $trkReload = document.getElementById('trk-reload');
+// Левая колонка: четыре виртуальные директории (фильтры выборки, НЕ каталоги
+// на диске и не серверные запросы), списки пользователя и облако тегов.
+export const $trkDirs = document.getElementById('trk-dirs');
+export const $trkListsTitle = document.getElementById('trk-lists-title');
+export const $trkLists = document.getElementById('trk-lists');
+export const $trkListAdd = document.getElementById('trk-list-add');
+export const $trkTags = document.getElementById('trk-tags');
+// Основная область: строка режимов, блок идущих таймеров (фаза 5) и лента.
+export const $trkSessionLine = document.getElementById('trk-session-line');
+export const $trkModes = document.getElementById('trk-modes');
+export const $trkGanttNav = document.getElementById('trk-gantt-nav');
+// Управление периодом сводки: [◀] [today] [▶], day/week/month и выгрузка CSV.
+// Видно только в режиме report — как и #trk-gantt-nav в режиме gantt.
+export const $trkReportNav = document.getElementById('trk-report-nav');
+export const $trkRunning = document.getElementById('trk-running');
+export const $trkContent = document.getElementById('trk-content');
+// Нижняя строка ввода и превью разбора.
+export const $trkPrompt = document.getElementById('trk-prompt');
+export const $trkPromptInput = document.getElementById('trk-prompt-input');
+export const $trkPromptPreview = document.getElementById('trk-prompt-preview');
+export const $trkCreate = document.getElementById('trk-create');
+// Статус-бар: индикатор TRACKING и строка сумм за день и неделю.
+export const $trkConn = document.getElementById('trk-conn');
+export const $trkStatusInfo = document.getElementById('trk-status-info');
+// Карточка задачи (js/tracker/modals.js).
+export const $trkModal = document.getElementById('trk-modal');
+export const $trkModalNode = document.getElementById('trk-modal-node');
+export const $trkModalBody = document.getElementById('trk-modal-body');
+export const $trkModalError = document.getElementById('trk-modal-error');
+export const $trkModalClose = document.getElementById('trk-modal-close');
+export const $trkModalDelete = document.getElementById('trk-modal-delete');
+export const $trkModalDone = document.getElementById('trk-modal-done');
+export const $trkModalSave = document.getElementById('trk-modal-save');
+export const $trkModalPush = document.getElementById('trk-modal-push');
+// Диалог переноса задачи в TODO вкладки Tasks (js/tracker/to-todo.js).
+// Отдельный слой ПОВЕРХ карточки: перенос вызывается и из ленты, и из доски, и
+// из открытой карточки, а карточку при этом закрывать нельзя — человек может
+// отменить перенос и вернуться к недописанной правке.
+export const $trkPush = document.getElementById('trk-push');
+export const $trkPushNode = document.getElementById('trk-push-node');
+export const $trkPushRoots = document.getElementById('trk-push-roots');
+export const $trkPushError = document.getElementById('trk-push-error');
+export const $trkPushClose = document.getElementById('trk-push-close');
+export const $trkPushCancel = document.getElementById('trk-push-cancel');
+export const $trkPushOk = document.getElementById('trk-push-ok');
+// Диалог вехи Гантта (js/tracker/milestone.js) — заменил два window.prompt:
+// подпись, дата пикером и явная кнопка удаления.
+export const $trkMs = document.getElementById('trk-ms');
+export const $trkMsTitle = document.getElementById('trk-ms-title');
+export const $trkMsDate = document.getElementById('trk-ms-date');
+export const $trkMsHint = document.getElementById('trk-ms-hint');
+export const $trkMsError = document.getElementById('trk-ms-error');
+export const $trkMsClose = document.getElementById('trk-ms-close');
+export const $trkMsCancel = document.getElementById('trk-ms-cancel');
+export const $trkMsDelete = document.getElementById('trk-ms-delete');
+export const $trkMsOk = document.getElementById('trk-ms-ok');

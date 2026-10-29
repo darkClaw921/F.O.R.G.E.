@@ -1,0 +1,3 @@
+# tmux-web/src/daemon.rs
+
+Запуск/остановка фонового демона devforge и pid-файл. build_daemon_args(port, opts) — чистая функция сборки argv дочернего процесса `devforge run ...`: пробрасывает --remote/--bind/--token и ВСЕ флаги opt-in плагинов (--pwa, --telegram, --vk, --bitrix, --meet, --tracker). Пропуск строки для нового флага — самый частый молчаливый дефект: флаг разбирается в cli.rs, доходит до EffectiveConfig, но демон поднимается без плагина, и фронт видит штатный 404, неотличимый от намеренно выключенной фичи. Покрыто тестами daemon_args_carry_* плюс daemon_args_carry_all_flags_together, где поля RunOptions перечислены поимённо, чтобы новый флаг ломал компиляцию теста.

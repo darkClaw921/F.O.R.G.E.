@@ -233,6 +233,10 @@ impl Stand {
             whisper_path: Some(root.join("no-whisper")),
             chrome_path: Some(root.join("no-chrome")),
             claude_cli_path: root.join("no-claude"),
+            // Стенд подменяет CLI моком (`with_claude`) там, где проверяет
+            // локальный путь: запуски `claude -p` по умолчанию выключены
+            // глобально (см. forge_claude_runner), стенд включает их явно.
+            claude_enabled: true,
             stt_backend: stt,
             summary_backend: summary,
             cloud_base_url: cloud.base_url.clone(),

@@ -393,7 +393,12 @@ pub fn blocker_hint(code: &str) -> &'static str {
         "model_unavailable" => "скачайте модель whisper в каталог моделей",
         "metal_unavailable" => "нужен Metal-GPU: локальные модели на CPU не считаются",
         "ffmpeg_unavailable" => "поставьте ffmpeg (brew install ffmpeg)",
-        "claude_cli_unavailable" => "поставьте Claude CLI или укажите claude_cli_path",
+        "claude_cli_unavailable" => {
+            "поставьте Claude CLI или Kimi CLI, либо укажите путь в конфиге плагина"
+        }
+        "claude_runs_disabled" => {
+            "включите LLM-запуски: claude_enabled = true в конфиге плагина или FORGE_CLAUDE_RUNNER_ENABLED=1"
+        }
         "summary_disabled" => "включите саммари в настройках плагина",
         _ => "проверьте состояние внешних компонентов в панели плагина",
     }
@@ -415,7 +420,9 @@ pub fn summary_local_blocker(cli_path: &Path) -> Option<&'static str> {
 
 /// **КАКИМ ПУТЁМ ПОЙДЁТ САММАРИ.** Та же таблица, что и у расшифровки
 /// ([`choose_route`]), только зависимости другие: облаку нужен ключ,
-/// локальному пути — Claude CLI.
+/// локальному пути — Claude CLI плюс явное разрешение запусков
+/// (`claude_enabled` — без него локальный маршрут даёт `claude_runs_disabled`,
+/// чтобы отказ случился до спавна процесса, а не внутри раннера).
 ///
 /// `summary_disabled` стоит ПЕРЕД таблицей: выключенное саммари — это не
 /// нехватка пути, а прямой отказ человека его считать, и подменять его чем бы
@@ -425,6 +432,7 @@ pub fn plan_summary(
     enabled: bool,
     cloud_configured: bool,
     cli_path: &Path,
+    claude_enabled: bool,
 ) -> Result<StagePlan, &'static str> {
     if !enabled {
         return Err("summary_disabled");
@@ -436,7 +444,14 @@ pub fn plan_summary(
             Route::Local
         },
         (!cloud_configured).then_some("cloud_not_configured"),
-        summary_local_blocker(cli_path),
+        // Запуски `claude -p` по умолчанию ВЫКЛЮЧЕНЫ (см. forge_claude_runner):
+        // без явного разрешения локальный маршрут считается отсутствующим —
+        // иначе run умер бы уже внутри раннера с менее внятной диагностикой.
+        if claude_enabled {
+            summary_local_blocker(cli_path)
+        } else {
+            Some("claude_runs_disabled")
+        },
     )
 }
 
@@ -892,7 +907,7 @@ mod tests {
 
         for (backend, key, cli, want) in table {
             let path = if cli { &present } else { &missing };
-            let got = plan_summary(backend, true, key, path);
+            let got = plan_summary(backend, true, key, path, true);
             let label = format!("{}/ключ={key}/cli={cli}", backend.as_str());
             match want {
                 Ok((route, reason)) => {
@@ -908,8 +923,20 @@ mod tests {
         // ВЫКЛЮЧЕННОЕ саммари не подменяется ничем: это отказ человека
         // считать, а не нехватка пути.
         assert_eq!(
-            plan_summary(Cloud, false, true, &present),
+            plan_summary(Cloud, false, true, &present, true),
             Err("summary_disabled")
+        );
+
+        // ВЫКЛЮЧЕННЫЕ запуски claude блокируют ЛОКАЛЬНЫЙ маршрут так же, как
+        // отсутствие CLI: при живом бинаре и облачном ключе план уходит в
+        // облако с пометкой `claude_runs_disabled`, а без ключа — в отказ.
+        let plan = plan_summary(Local, true, true, &present, false)
+            .unwrap_or_else(|e| panic!("неожиданный отказ {e}"));
+        assert_eq!(plan.route, Route::Cloud);
+        assert_eq!(plan.fallback_reason, Some("claude_runs_disabled"));
+        assert_eq!(
+            plan_summary(Local, true, false, &present, false),
+            Err("claude_runs_disabled")
         );
     }
 

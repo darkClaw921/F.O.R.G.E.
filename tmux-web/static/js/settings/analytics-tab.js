@@ -199,8 +199,21 @@ export function renderAnalyticsTab(host, deps = {}) {
 
     clearNode(host);
 
+    const agents = el(doc, 'fieldset', 'notify-fieldset analytics-agents-showcase');
+    agents.appendChild(el(doc, 'legend', null, 'Агенты'));
+    const agentCount = el(doc, 'div', 'notify-hint', 'Текущая работа агентов ещё не загружена.');
+    const agentMeta = el(doc, 'div', 'notify-hint', 'Codex, Claude, OpenCode и GitHub Copilot.');
+    agents.appendChild(agentCount);
+    agents.appendChild(agentMeta);
+    const agentActions = el(doc, 'div', 'notify-actions');
+    const agentsOpenBtn = el(doc, 'button', 'primary', 'Открыть статистику агентов');
+    agentsOpenBtn.type = 'button';
+    agentActions.appendChild(agentsOpenBtn);
+    agents.appendChild(agentActions);
+    host.appendChild(agents);
+
     const fs = el(doc, 'fieldset', 'notify-fieldset');
-    fs.appendChild(el(doc, 'legend', null, 'Аналитика Claude Code'));
+    fs.appendChild(el(doc, 'legend', null, 'Работа с Claude'));
     fs.appendChild(el(
         doc,
         'div',
@@ -255,6 +268,8 @@ export function renderAnalyticsTab(host, deps = {}) {
     // -----------------------------------------------------------------------
 
     let pollId = null;
+    let agentPollId = null;
+    let agentLoading = false;
     let disposed = false;
     let lastSummary = null;
 
@@ -439,6 +454,43 @@ export function renderAnalyticsTab(host, deps = {}) {
         }
     }
 
+    async function loadAgents() {
+        if (disposed || doc.hidden || agentLoading || host.isConnected === false || typeof deps.getAgentLive !== 'function') return;
+        agentLoading = true;
+        try {
+            const live = await deps.getAgentLive();
+            if (disposed || doc.hidden) return;
+            const n = live && live.workingCount;
+            agentCount.textContent = typeof n === 'number' && Number.isFinite(n)
+                ? `Сейчас работают: ${formatCount(n)}`
+                : 'Нет данных о текущей работе агентов.';
+            agentMeta.textContent = 'В полном режиме доступны время задач, история, токены, модели и проекты.';
+        } catch (_) {
+            if (!disposed && !doc.hidden) agentMeta.textContent = 'Не удалось обновить текущую работу. Можно открыть полную статистику.';
+        } finally {
+            agentLoading = false;
+            if (!disposed && !doc.hidden) agentPollId = setT(() => { agentPollId = null; loadAgents(); }, 2000);
+        }
+    }
+
+    function agentsVisibilityChanged() {
+        if (doc.hidden) {
+            if (agentPollId !== null) clearT(agentPollId);
+            agentPollId = null;
+        } else if (!disposed && agentPollId === null) {
+            loadAgents();
+        }
+    }
+    doc.addEventListener?.('visibilitychange', agentsVisibilityChanged);
+
+    agentsOpenBtn.addEventListener('click', () => {
+        if (typeof deps.onClose === 'function') deps.onClose();
+        const show = typeof deps.showAnalytics === 'function'
+            ? deps.showAnalytics
+            : typeof window !== 'undefined' && window.ForgeApp && window.ForgeApp.showAnalytics;
+        if (typeof show === 'function') show(undefined, 'agents');
+    });
+
     // -----------------------------------------------------------------------
     // Кнопки
     // -----------------------------------------------------------------------
@@ -467,7 +519,7 @@ export function renderAnalyticsTab(host, deps = {}) {
         if (open) {
             let win = null;
             try {
-                win = open(ANALYTICS_URL, '_blank');
+                win = open(`${ANALYTICS_URL}&analyticsMode=claude`, '_blank');
             } catch (e) {
                 win = null;
             }
@@ -475,11 +527,11 @@ export function renderAnalyticsTab(host, deps = {}) {
         }
         if (typeof deps.onClose === 'function') deps.onClose();
         if (typeof deps.showAnalytics === 'function') {
-            deps.showAnalytics();
+            deps.showAnalytics(undefined, 'claude');
             return;
         }
         const app = typeof window !== 'undefined' ? window.ForgeApp : null;
-        if (app && typeof app.showAnalytics === 'function') app.showAnalytics();
+        if (app && typeof app.showAnalytics === 'function') app.showAnalytics(undefined, 'claude');
     });
 
     // «Пересобрать индекс»: сервер отвечает СРАЗУ статусом `scanning`, сам
@@ -513,16 +565,23 @@ export function renderAnalyticsTab(host, deps = {}) {
         openBtn,
         rescanBtn,
         status,
+        agentCount,
+        agentMeta,
+        agentsOpenBtn,
         reload: load,
         /** Снять таймеры — модалка закрылась. */
         dispose() {
             disposed = true;
             stopPolling();
+            if (agentPollId !== null) clearT(agentPollId);
+            agentPollId = null;
+            doc.removeEventListener?.('visibilitychange', agentsVisibilityChanged);
         },
     };
 
     // Первый запрос уходит сразу, но узлы уже на экране: вкладка не должна
     // ждать сети, чтобы показать кнопки.
     refs.ready = load();
+    refs.agentsReady = loadAgents();
     return refs;
 }

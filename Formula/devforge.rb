@@ -12,10 +12,13 @@
 #
 # Локальная проверка без публикации:
 #   brew install --build-from-source --HEAD ./Formula/devforge.rb
+# Этот файл — шаблон: SHA256 подставляется в homebrew-tap после создания
+# тега. Архив тега включает этот файл, поэтому собственный SHA256 здесь
+# зафиксировать нельзя; опубликованная формула всегда содержит реальный хеш.
 class Devforge < Formula
   desc "Tmux + kanban + git web cockpit (F.O.R.G.E.)"
   homepage "https://github.com/darkClaw921/F.O.R.G.E."
-  url "https://github.com/darkClaw921/F.O.R.G.E./archive/refs/tags/v0.1.69.tar.gz"
+  url "https://github.com/darkClaw921/F.O.R.G.E./archive/refs/tags/v0.1.75.tar.gz"
   sha256 "REPLACE_WITH_SHA256"
   license "MIT"
   head "https://github.com/darkClaw921/F.O.R.G.E..git", branch: "master"

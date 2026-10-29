@@ -25,7 +25,7 @@ use crate::cli;
 /// удаляется и старт продолжается (нормальный recovery после краша).
 ///
 /// Все опции (`--port`, `--remote`, `--bind`, `--token`, `--pwa`,
-/// `--telegram`, `--vk`, `--bitrix`, `--meet`) прокидываются в child-процесс
+/// `--telegram`, `--vk`, `--bitrix`, `--meet`, `--tracker`) прокидываются в child-процесс
 /// `devforge run …`, чтобы он
 /// точно унаследовал режим, выбранный пользователем (сборка аргументов —
 /// [`build_daemon_args`]). Без этого `devforge start --remote` молча
@@ -72,6 +72,12 @@ pub fn build_daemon_args(port: u16, opts: &cli::RunOptions) -> Vec<String> {
     // поднимает сервер БЕЗ плагина, без единого сообщения о причине.
     if opts.meet {
         args.push("--meet".to_string());
+    }
+    // Тот же класс ошибки для личного трекера: `devforge start --tracker` без
+    // этой строки поднял бы демон без роутов `/api/tracker/*`, и вкладка «Мои
+    // задачи» просто не появилась бы — без единого объяснения в логе.
+    if opts.tracker {
+        args.push("--tracker".to_string());
     }
     args
 }
@@ -514,6 +520,26 @@ mod tests {
         );
     }
 
+    /// Тот же регресс-класс для `--tracker`: без проброса
+    /// `devforge start --tracker` демон поднялся бы без роутов
+    /// `/api/tracker/*`, а фронт получил бы 404 на `GET /api/tracker/status` —
+    /// ШТАТНЫЙ признак «плагин выключен», неотличимый от намеренного отказа.
+    #[test]
+    fn daemon_args_carry_tracker() {
+        let opts = cli::RunOptions {
+            tracker: true,
+            ..cli::RunOptions::default()
+        };
+        let args = build_daemon_args(7331, &opts);
+        assert!(args.iter().any(|a| a == "--tracker"), "{args:?}");
+        assert!(
+            !args
+                .iter()
+                .any(|a| a == "--meet" || a == "--bitrix" || a == "--vk" || a == "--telegram"),
+            "лишних флагов быть не должно: {args:?}"
+        );
+    }
+
     #[test]
     fn daemon_args_carry_all_flags_together() {
         // Поля перечислены ПОИМЁННО, без `..Default::default()`: новый флаг
@@ -528,6 +554,7 @@ mod tests {
             vk: true,
             bitrix: true,
             meet: true,
+            tracker: true,
             port: 9000,
         };
         let args = build_daemon_args(opts.port, &opts);
@@ -540,6 +567,7 @@ mod tests {
             "--vk",
             "--bitrix",
             "--meet",
+            "--tracker",
         ] {
             assert!(args.iter().any(|a| a == expected), "{expected} потерян: {args:?}");
         }

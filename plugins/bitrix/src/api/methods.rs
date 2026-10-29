@@ -350,6 +350,25 @@ pub const COLD_START_RECENT_KEY: &str = "recent";
 /// Ключ команды `im.counters.get` в пакете холодного старта.
 pub const COLD_START_COUNTERS_KEY: &str = "counters";
 
+/// Ключ первой страницы `im.recent.list` в пакете списка диалогов.
+pub const DIALOGS_LIST_KEY: &str = "list";
+
+/// Ключ задач с участием владельца вебхука в пакете списка диалогов.
+pub const DIALOGS_TASKS_KEY: &str = "tasks";
+
+/// Результат [`B24Client::dialogs_bundle`].
+#[derive(Debug, Default)]
+pub struct DialogsBundle {
+    /// Строки `im.recent.get` — верхушка списка, включая чаты задач.
+    pub recent: Vec<RecentItemRaw>,
+    /// Счётчики непрочитанного.
+    pub counters: CountersRaw,
+    /// Первая страница `im.recent.list`; `None` — команда отказала.
+    pub list: Option<RecentListRaw>,
+    /// Первая страница задач с участием (`MEMBER`), свежие по активности.
+    pub tasks: Vec<super::schema::TaskRaw>,
+}
+
 /// Право на мессенджер: чаты, сообщения, счётчики, поток событий.
 ///
 /// Без него плагин бесполезен целиком.
@@ -621,6 +640,63 @@ impl B24Client {
     /// ошибкой НЕ являются — они приводят к пустому значению своей половины.
     pub async fn cold_start(&self) -> Result<(Vec<RecentItemRaw>, CountersRaw), B24Error> {
         self.recent_and_counters(None).await
+    }
+
+    /// Пакет страницы списка диалогов: `im.recent.get` + ПЕРВАЯ страница
+    /// `im.recent.list` + `im.counters.get` + задачи с участием владельца
+    /// вебхука — всё ещё ОДИН хит лимита.
+    ///
+    /// # Почему нужны оба источника диалогов ВСЕГДА
+    ///
+    /// Живьём `im.recent.get` отдаёт не весь список, а только верхушку: 16
+    /// строк при 81 диалоге на одном портале и 33 при 213 на другом. Раньше
+    /// `im.recent.list` звался, только если `im.recent.get` вернул 200+ строк,
+    /// — этого не происходило никогда, и большая часть чатов молча пропадала.
+    /// Чаты задач при этом есть только в `im.recent.get`, поэтому один
+    /// `im.recent.list` тоже не годится.
+    ///
+    /// # Зачем здесь задачи
+    ///
+    /// Чат задачи попадает в `im.recent.get`, только пока в нём недавно
+    /// писали: живьём 6 чатов задач при 28 задачах с участием. Поэтому
+    /// директория «задачи» добирается из `tasks.task.list{MEMBER}` — фильтр
+    /// портала, покрывающий ВСЕ роли: постановщик, ответственный,
+    /// соисполнитель, наблюдатель. `member_id = None` ⇒ без этой команды.
+    ///
+    /// Отказ отдельной команды (`halt: 0`) даёт пустую/`None` часть, а не
+    /// ошибку: список без хвоста лучше пустой панели.
+    ///
+    /// # Errors
+    ///
+    /// Всё, чем может ответить [`B24Client::batch`].
+    pub async fn dialogs_bundle(&self, member_id: Option<i64>) -> Result<DialogsBundle, B24Error> {
+        let mut calls = vec![
+            BatchCall::new(COLD_START_RECENT_KEY, M_RECENT_GET, recent_get_params(None)),
+            BatchCall::new(
+                DIALOGS_LIST_KEY,
+                M_RECENT_LIST,
+                recent_list_params(RECENT_LIST_MAX_LIMIT, 0),
+            ),
+            BatchCall::new(COLD_START_COUNTERS_KEY, M_COUNTERS, json!({})),
+        ];
+        if let Some(uid) = member_id.filter(|v| *v > 0) {
+            calls.push(BatchCall::new(
+                DIALOGS_TASKS_KEY,
+                M_TASK_LIST,
+                member_tasks_params(uid),
+            ));
+        }
+        let outcome = self.batch(calls).await?;
+        Ok(DialogsBundle {
+            recent: decode_part::<Vec<RecentItemRaw>>(&outcome, COLD_START_RECENT_KEY)
+                .unwrap_or_default(),
+            counters: decode_part::<CountersRaw>(&outcome, COLD_START_COUNTERS_KEY)
+                .unwrap_or_default(),
+            list: decode_part::<RecentListRaw>(&outcome, DIALOGS_LIST_KEY),
+            tasks: decode_part::<super::schema::TaskListRaw>(&outcome, DIALOGS_TASKS_KEY)
+                .map(|t| t.tasks)
+                .unwrap_or_default(),
+        })
     }
 
     /// Список диалогов и счётчики ОДНИМ пакетом, с необязательной инкрементой.
@@ -1444,6 +1520,22 @@ pub fn task_list_params(
         params["filter"] = filter.clone();
     }
     Ok(params)
+}
+
+/// Параметры `tasks.task.list` для задач, где пользователь фигурирует в
+/// ЛЮБОЙ роли.
+///
+/// `MEMBER` — фильтр портала по участию: постановщик, ответственный,
+/// соисполнитель, наблюдатель. `RESPONSIBLE_ID` покрывал бы одну роль из
+/// четырёх. Порядок — по последней активности: первая страница (50 записей)
+/// тогда содержит самые живые задачи.
+pub fn member_tasks_params(user_id: i64) -> serde_json::Value {
+    json!({
+        "select": crate::tasks::LIST_SELECT,
+        "order": {"ACTIVITY_DATE": "desc"},
+        "filter": {crate::tasks::FILTER_MEMBER_KEY: user_id.max(0)},
+        "start": 0,
+    })
 }
 
 /// Параметры `im.user.list.get`: `ID[0]=…&ID[1]=…`.

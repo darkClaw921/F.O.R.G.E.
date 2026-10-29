@@ -1,0 +1,3 @@
+# attention_prompt::opencode_prompt
+
+Recognizes source-verified OpenCode native SplitBorder dialogs. Released v1.19.5 permission headings/actions and final select/confirm footer include initial permission, Always allow confirmation and Reject permission reason entry; development Always allow action wording is accepted. Question choices, multi-select, custom-answer editing and final Review require native left border and final selection/submission/dismissal hints. Source-rendered custom editing retains numbered choices; an isolated Type your own answer string is insufficient. No unsupported Copilot-specific footer is invented.

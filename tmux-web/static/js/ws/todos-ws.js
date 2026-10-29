@@ -27,8 +27,11 @@ let _fetchTodosEpoch = 0;
 export async function fetchTodos(path) {
     const epoch = ++_fetchTodosEpoch;
     const p = path || currentTodosPath();
+    // API требует path; bootstrap может выполниться до выбора сессии.
+    // Epoch всё равно увеличен, чтобы устаревший ответ не восстановил её todos.
+    if (!p) return;
     try {
-        const url = p ? '/api/todos?path=' + encodeURIComponent(p) : '/api/todos';
+        const url = '/api/todos?path=' + encodeURIComponent(p);
         const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
         // Ответ устарел (ушёл более свежий fetch или сменился path) — игнор.
         if (epoch !== _fetchTodosEpoch || p !== (path || currentTodosPath())) return;

@@ -296,6 +296,7 @@ async fn status(State(state): State<Arc<MeetState>>) -> Json<StatusDto> {
         state.config.summary_enabled,
         state.config.cloud_configured(),
         &state.config.claude_cli_path,
+        state.config.claude_enabled || forge_claude_runner::env_runs_enabled(),
     );
 
     Json(StatusDto {

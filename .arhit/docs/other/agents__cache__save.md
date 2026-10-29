@@ -1,0 +1,3 @@
+# agents::cache::save
+
+Atomically writes the version3 metadata snapshot using a Serialize-only SnapshotRef with borrowed references to source map and runtime interruption slice. The caller holds the serialized ingestion state stable for the duration. Field order, version, JSON representation, regular cursor payload and barriers match the previous owned CacheSnapshot byte-for-byte; transient availability caches are skipped. This removes the prior deep cloning of every source event before JSON encoding and lowers save peak allocation. JSON encoding and I/O still process the full retained snapshot; no save-speed claim is implied.

@@ -808,6 +808,9 @@ mod tests {
             config_path: dir.path().join("bitrix.toml"),
             prompts_path: dir.path().join("prompts.json"),
             claude_cli_path: dir.path().join("no-such-claude"),
+            // Дефолт конфига — облако polza.ai; этот стенд про CLI-пути и
+            // 409 claude_unavailable, поэтому бэкенд фиксируем на claude.
+            llm_backend: forge_claude_runner::LlmBackend::Claude,
             ..BitrixConfig::default()
         };
         (dir, B24State::new(cfg))

@@ -1,0 +1,3 @@
+# tmux-web/src/agents/runtime.rs
+
+OS inventory and exact task-process-pane lifecycle. ps pid/ppid/tty/comm inventories ancestry and controlling TTY, native argv/profile variables and bounded FD/Claude registries provide IDs, PID plus process start protects reuse. Shared Codex app-server processes are excluded as pane owners; current TUI title can map a unique threads.name/cwd/profile to one native process on the same TTY. Titles and argv/env remain transient and absent from public inventory/cache. Existing exact/manual links survive unknown probes, while confirmed exit/reuse invalidates bindings. Poll2s, argv cache10s, FD cache30s, bounded4 parallel FD probes. All normalized journal lifecycle, network barriers and Echo completion semantics remain source-driven.

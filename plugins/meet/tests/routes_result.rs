@@ -78,6 +78,9 @@ impl Stand {
             // Файла по этому пути по умолчанию нет: тест, которому нужен
             // саммаризатор, кладёт туда мок сам.
             claude_cli_path: bin.join("claude"),
+            // Запуски `claude -p` по умолчанию выключены глобально
+            // (см. forge_claude_runner): стенд с мок-CLI включает их явно.
+            claude_enabled: true,
             summary_timeout_secs: 10,
             whisper_gate_poll_ms: 20,
             // ЯВНО ЛОКАЛЬНЫЙ ПУТЬ: лестница проверок здесь про whisper,

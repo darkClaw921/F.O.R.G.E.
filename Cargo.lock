@@ -612,7 +612,7 @@ dependencies = [
 
 [[package]]
 name = "devforge"
-version = "0.1.74"
+version = "0.1.75"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -624,9 +624,11 @@ dependencies = [
  "echo-host-api",
  "forge-atomic",
  "forge-bitrix",
+ "forge-claude-runner",
  "forge-echo",
  "forge-meet",
  "forge-telegram",
+ "forge-tracker",
  "forge-vk",
  "futures-util",
  "hkdf",
@@ -639,6 +641,7 @@ dependencies = [
  "qrcode",
  "rand_core 0.6.4",
  "reqwest",
+ "rusqlite",
  "rust-embed",
  "serde",
  "serde_json",
@@ -646,6 +649,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-tungstenite",
+ "toml",
  "tower",
  "tower-http",
  "tracing",
@@ -944,6 +948,7 @@ name = "forge-claude-runner"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "forge-voice",
  "serde",
  "serde_json",
  "tempfile",
@@ -1033,6 +1038,26 @@ dependencies = [
  "tokio",
  "tokio-util",
  "toml",
+ "tower",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "forge-tracker"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "forge-atomic",
+ "futures-util",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
  "tower",
  "tracing",
  "uuid",

@@ -92,8 +92,8 @@ use crate::ws::protocol::B24ServerMsg;
 /// `<REAL_STATUS: 5` (проверено живьём: вернула обе открытые задачи), а
 /// закрытость — прямым `REAL_STATUS: 5`.
 pub const FILTERS: [(&str, &str); 5] = [
-    ("all", "все"),
-    ("mine", "мои"),
+    ("all", "все мои"),
+    ("mine", "я ответственный"),
     ("active", "в работе"),
     ("expired", "просрочены"),
     ("closed", "завершены"),
@@ -225,8 +225,16 @@ pub fn normalize_filter(raw: Option<&str>) -> &'static str {
 ///
 /// `now` передаётся аргументом, а не берётся из часов: граница просрочки —
 /// ровно то, что обязано быть детерминированным в тесте.
+///
+/// **Каждый пресет ограничен участием владельца вебхука** (`MEMBER`: любая
+/// роль — постановщик, ответственный, соисполнитель, наблюдатель). Без этого
+/// администратор портала видел бы в «все» задачи всей компании, а в «мои» —
+/// только те, где он ответственный.
 pub fn portal_filter(preset: &str, self_id: i64, responsible: Option<i64>, group: Option<i64>, now: i64) -> serde_json::Value {
     let mut filter = serde_json::Map::new();
+    if self_id > 0 {
+        filter.insert(tasks::FILTER_MEMBER_KEY.into(), json!(self_id));
+    }
     match preset {
         "mine" => {
             filter.insert("RESPONSIBLE_ID".into(), json!(self_id.max(0)));
@@ -606,10 +614,15 @@ mod tests {
     #[test]
     fn the_presets_use_real_status_only() {
         let all = portal_filter("all", 1, None, None, 0);
-        assert!(all.as_object().unwrap().is_empty(), "«все» — без фильтра");
+        assert_eq!(
+            all,
+            json!({"MEMBER": 1}),
+            "«все» — это все задачи С УЧАСТИЕМ, а не весь портал"
+        );
 
         let mine = portal_filter("mine", 7, None, None, 0);
         assert_eq!(mine["RESPONSIBLE_ID"], 7);
+        assert_eq!(mine["MEMBER"], 7);
 
         let active = portal_filter("active", 1, None, None, 0);
         assert_eq!(active["<REAL_STATUS"], 5);
@@ -635,7 +648,23 @@ mod tests {
 
         // Мусорные значения не попадают в фильтр вовсе.
         let f = portal_filter("all", 1, Some(-3), Some(-1), 0);
-        assert!(f.as_object().unwrap().is_empty());
+        assert_eq!(f, json!({"MEMBER": 1}));
+    }
+
+    /// Каждый пресет ограничен участием владельца вебхука в ЛЮБОЙ роли; без
+    /// известного владельца ограничение не ставится (ноль дал бы пустой
+    /// список).
+    #[test]
+    fn every_preset_is_scoped_to_membership() {
+        for (preset, _) in FILTERS {
+            let f = portal_filter(preset, 2816, None, None, 1_785_993_630);
+            assert_eq!(f[tasks::FILTER_MEMBER_KEY], 2816, "пресет '{preset}': {f}");
+            let f = portal_filter(preset, 0, None, None, 1_785_993_630);
+            assert!(
+                f.get(tasks::FILTER_MEMBER_KEY).is_none(),
+                "пресет '{preset}' без владельца: {f}"
+            );
+        }
     }
 
     /// Ступень 3: `:id` — это чужой ввод, и «не разбирается» = «нет такой

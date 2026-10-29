@@ -1,0 +1,3 @@
+# capacity_recovery::RetryState
+
+Per-process/pane occurrence state: last stable Failure plus first seen monotonic milliseconds, independent last dimensions, last consumed hash/time and retry attempt count. No prompt text is retained. observe requires stable unchanged evidence and initial15second grace, prevents repeats of an unchanged consumed error and applies capped exponential delay to changed genuine contexts. Dimensions survive draft/copy gaps; resize can update the consumed fingerprint but never authorizes another send. attempted is called before mutation, including uncertain transport failures.

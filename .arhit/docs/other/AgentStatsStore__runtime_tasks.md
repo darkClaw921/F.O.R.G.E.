@@ -1,0 +1,3 @@
+# AgentStatsStore::runtime_tasks
+
+Cheap journal metadata view for process/native-session matching and binding retention, separate from the Echo-facing recent_tasks view. Returns unfinished tasks including synthetic Interrupted epochs even when their last activity is older than since_ms, plus recently active completed journal tasks. This preserves the native session/profile/process association after an offline cut while its process is still alive; an interruption is not process exit. Runtime should use this helper for BindingBook reconciliation, while Echo uses recent_tasks, which excludes synthetic ended incomplete epochs. The method reads only the published task index and never clones usage history or performs filesystem IO.

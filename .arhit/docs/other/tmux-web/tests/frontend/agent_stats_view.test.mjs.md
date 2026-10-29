@@ -1,0 +1,3 @@
+# tmux-web/tests/frontend/agent_stats_view.test.mjs
+
+Node behavior tests actual createAgentView с injectable renderer factories/API/document. Проверяют отдельные provider/profile/project/period фильтры и полный status.profiles, query/pagination, сохранение выбора, polling только видимого экрана, teardown и stale guard. Регрессия cache: постоянный updatedAtMs при переходе working -> unknown/waiting всё равно перезапрашивает summary/sessions через runtime signature. Скрытие между первой и второй стадией fetch не выдаёт новых history запросов. Проверки не требуют пользовательского daemon или LLM.

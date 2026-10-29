@@ -1,0 +1,3 @@
+# AgentStatsStore::status
+
+Return the last coherent ingestion status, overlaying scanning=true while a coalesced HTTP rescan is pending. Status includes profiles, a sorted unique list of canonical indexed source profile identities, so the frontend profile filter can discover historical standard accounts even when configuration contains only extra roots and the live list contains another account. The array is built during the ingestion pass from source descriptors, not derived from recent/live task filtering or request-time I/O. Existing status fields and unrelated analytics contracts remain unchanged.

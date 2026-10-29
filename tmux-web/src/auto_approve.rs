@@ -84,6 +84,12 @@
 //! модели (или ответ по мусорному тексту) иначе хоронил висящий prompt до
 //! рестарта, и никакая смена обстоятельств уже не помогала.
 //!
+//! Вызовы `claude -p` — **opt-in и по умолчанию выключены**: без настройки
+//! `UserSettings::claude_llm_enabled` (или глобальной
+//! `FORGE_CLAUDE_RUNNER_ENABLED=1`, включающей запуски во всех компонентах
+//! F.O.R.G.E.) эскалация не запускается вообще и блоклист-совпадения остаются
+//! человеку. Это единственное место tmux-web, спавнящее Claude CLI.
+//!
 //! # Защита от ложных и повторных нажатий
 //!
 //! - **Стабильность.** Нажатие происходит только если один и тот же хэш
@@ -530,6 +536,40 @@ fn is_edit_request(cleaned: &str) -> bool {
     FORMS.iter().any(|f| lower.starts_with(f))
 }
 
+/// Подстроки, по которым строка опознаётся как ПОДСКАЗКА САМОГО CLI, а не
+/// часть команды.
+///
+/// Всё в нижнем регистре; сравнение регистронезависимое.
+const CLI_NOTICE_MARKERS: &[&str] = &[
+    "tip:",
+    "auto mode handles these prompts",
+    "cannot be auto-allowed",
+    "approve only if you trust",
+    "can pick up untrusted hooks",
+    "manual approval required",
+];
+
+/// Убирает из текста запроса подсказки и предупреждения самого Claude Code.
+///
+/// Нужно ТОЛЬКО для LLM-эскалации блоклиста. Эти строки не являются командой,
+/// зато читаются моделью как довод против: живьём («Approve only if you trust
+/// it», «find with '-exec' … cannot be auto-allowed») они склоняли Sonnet к
+/// `approve=false` на безобидной сборке релиза — при этом ответ был
+/// НЕСТАБИЛЬНЫМ, и один и тот же экран то проходил, то нет.
+///
+/// Блоклист по-прежнему смотрит на текст ЦЕЛИКОМ ([`danger_scope`]): его
+/// задача — не пропустить опасную подстроку, и сужать ему область незачем.
+fn strip_cli_notices(region: &str) -> String {
+    region
+        .lines()
+        .filter(|line| {
+            let lower = line.to_lowercase();
+            !CLI_NOTICE_MARKERS.iter().any(|m| lower.contains(m))
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// Максимальная длина `subject` в записи истории (в символах).
 const SUBJECT_MAX_CHARS: usize = 200;
 
@@ -652,28 +692,124 @@ const VERDICT_CACHE_CAP: usize = 512;
 /// CLI в 5 минут на панель, а не на каждый тик.
 const NEGATIVE_VERDICT_TTL: Duration = Duration::from_secs(300);
 
-/// Исход обращения к `claude -p` — см. [`llm_blocklist_verdict`].
+/// Исход обращения к LLM — см. [`llm_blocklist_verdict`].
 enum LlmOutcome {
     /// Модель ответила: `true` — апрувить, `false` — оставить человеку.
     Verdict(bool),
-    /// Бинарник `claude` не найден в PATH — эскалацию можно выключать до
-    /// конца работы процесса, повторные попытки бессмысленны.
+    /// Бинарник CLI не найден в PATH (или облако не настроено) — эскалацию
+    /// можно выключать до конца работы процесса, повторные попытки бессмысленны.
     Unavailable,
     /// Разовый сбой (таймаут, не-нулевой exit, кривой вывод) — не кэшировать,
     /// на следующем тике попробуем ещё раз.
     Failed,
 }
 
-/// Спрашивает у Sonnet через локальный `claude -p`, безопасно ли подтвердить
-/// команду из блоклиста.
+/// Каким движком спрашивается вердикт LLM-эскалации.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VerdictBackend {
+    /// Локальный `claude -p` (как исторически).
+    Claude,
+    /// Локальный `kimi --print -p` (Kimi CLI).
+    Kimi,
+    /// Облачный OpenAI-совместимый провайдер — env-трио
+    /// `FORGE_LLM_CLOUD_BASE_URL` / `FORGE_LLM_CLOUD_API_KEY` /
+    /// `FORGE_LLM_CLOUD_MODEL`. Настраивается ТОЛЬКО через env: в UI секреты
+    /// не вводятся, а без ключа облако бессмысленно.
+    Cloud,
+}
+
+impl VerdictBackend {
+    /// Резолв: облако побеждает, когда задан его ключ; иначе — выбор из
+    /// настройки (`claude` по умолчанию, `kimi` — явно).
+    fn resolve(settings: &UserSettings) -> Self {
+        if std::env::var("FORGE_LLM_CLOUD_API_KEY")
+            .map(|v| !v.trim().is_empty())
+            .unwrap_or(false)
+        {
+            return Self::Cloud;
+        }
+        match settings.claude_llm_backend.trim().to_lowercase().as_str() {
+            "kimi" => Self::Kimi,
+            _ => Self::Claude,
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Claude => "claude",
+            Self::Kimi => "kimi",
+            Self::Cloud => "cloud",
+        }
+    }
+}
+
+/// Облачный провайдер вердикта: адрес, ключ и модель из env-трио.
+struct CloudVerdictCfg {
+    base_url: String,
+    api_key: String,
+    model: String,
+}
+
+fn cloud_verdict_cfg() -> Option<CloudVerdictCfg> {
+    let api_key = std::env::var("FORGE_LLM_CLOUD_API_KEY").ok()?;
+    if api_key.trim().is_empty() {
+        return None;
+    }
+    Some(CloudVerdictCfg {
+        base_url: std::env::var("FORGE_LLM_CLOUD_BASE_URL")
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| "https://api.polza.ai/api/v1".to_string()),
+        api_key,
+        model: std::env::var("FORGE_LLM_CLOUD_MODEL")
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| "google/gemini-3.5-flash".to_string()),
+    })
+}
+
+/// Разрешены ли вызовы `claude -p` для LLM-эскалации блоклиста.
 ///
-/// CLI использует авторизацию Claude Code на машине, поэтому API-ключ не
-/// нужен. Рабочая директория — временная папка: `claude -p` в корне проекта
-/// потянул бы CLAUDE.md и память проекта, что тут не нужно и замедляет ответ.
+/// Настройка `UserSettings::claude_llm_enabled` (default `false`) ИЛИ
+/// глобальная `FORGE_CLAUDE_RUNNER_ENABLED=1` — та же переменная, что
+/// включает запуски `claude -p` во всех плагинах F.O.R.G.E. (Echo, Meet,
+/// Bitrix24/VK/Telegram). Без явного разрешения блоклист-совпадение остаётся
+/// человеку — ни одного процесса `claude` не спавнится.
+fn claude_llm_allowed(settings: &UserSettings) -> bool {
+    settings.claude_llm_enabled
+        || std::env::var("FORGE_CLAUDE_RUNNER_ENABLED")
+            .map(|v| matches!(v.trim().to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+            .unwrap_or(false)
+}
+
+/// Спрашивает у LLM через выбранный движок, безопасно ли подтвердить команду
+/// из блоклиста.
+///
+/// Вызывается только когда [`claude_llm_allowed`] разрешил запуски: без
+/// разрешения процесс не спавнится и запрос не уходит вообще.
+///
+/// Локальные CLI используют авторизацию самого CLI на машине, поэтому
+/// API-ключ не нужен. Рабочая директория — временная папка: CLI в корне
+/// проекта потянул бы его память и конфиги, что тут не нужно и замедляет
+/// ответ. Облако — OpenAI-совместимый POST, настраивается env-трио
+/// `FORGE_LLM_CLOUD_*` (см. [`VerdictBackend::Cloud`]).
+///
 /// Модель просят ответить строго одним JSON-объектом; из вывода на всякий
 /// случай вырезается диапазон от первой `{` до последней `}` (модель может
 /// обернуть ответ в markdown-фенс).
-async fn llm_blocklist_verdict(command: &str) -> LlmOutcome {
+async fn llm_blocklist_verdict(
+    command: &str,
+    cwd: Option<&str>,
+    backend: VerdictBackend,
+) -> LlmOutcome {
+    let where_am_i = match cwd {
+        Some(path) if !path.trim().is_empty() => format!(
+            "Сессия, из которой пришёл запрос, работает в каталоге: {path}\n\
+             Пути внутри него — файлы ЭТОГО проекта, а не чужого; временные рабочие копии\n\
+             (`.forge-worktrees/…`, `/private/tmp/claude-501/…`, `/tmp/…`) относятся к нему же.\n\n"
+        ),
+        _ => String::new(),
+    };
     let prompt = format!(
         "Ты — фильтр безопасности авто-подтверждения команд в среде разработчика.\n\
          Команда попала в блоклист авто-апрува по опасной подстроке (rm -rf, git reset --hard, drop table и т.п.).\n\
@@ -687,19 +823,39 @@ async fn llm_blocklist_verdict(command: &str) -> LlmOutcome {
          системные пути, чужие проекты), сам .git или git-историю (rm -rf .git, git push --force, \
          git reset --hard с потерей чужих коммитов), боевые базы данных (drop/truncate/delete), \
          пользовательские данные или систему — и во всех сомнительных случаях.\n\n\
+         Штатные операции разработки сами по себе НЕ повод отказать: смена ветки, \
+         `git pull --ff-only`, коммит, публикация тега, мерж своего PR, сборка и деплой \
+         релиза, удаление и пересборка каталога артефактов.\n\n\
+         {where_am_i}\
          Не используй инструменты. Ответь СРАЗУ и ТОЛЬКО одним JSON-объектом вида \
          {{\"approve\": true|false, \"reason\": \"коротко почему\"}} — без markdown и пояснений.\n\n\
          Запрос на подтверждение:\n{command}"
     );
 
+    // Облако: один нестриминговый POST; вердикт — из choices[0].message.content.
+    if backend == VerdictBackend::Cloud {
+        return match cloud_blocklist_verdict(&prompt).await {
+            Ok(stdout) => parse_verdict_json(&stdout),
+            Err(outcome) => outcome,
+        };
+    }
+
+    // Локальные CLI. Claude: `claude -p --model sonnet <prompt>`; Kimi:
+    // `kimi --print -p <prompt>` — LLM_MODEL это модель claude, у kimi своя
+    // модель по умолчанию, флаг `-m` здесь не передаётся.
+    let mut cli = tokio::process::Command::new(backend.as_str());
+    match backend {
+        VerdictBackend::Claude => {
+            cli.arg("-p").arg("--model").arg(LLM_MODEL).arg(&prompt);
+        }
+        VerdictBackend::Kimi => {
+            cli.arg("--print").arg("-p").arg(&prompt);
+        }
+        VerdictBackend::Cloud => unreachable!("облако обработано выше"),
+    }
     let result = tokio::time::timeout(
         LLM_TIMEOUT,
-        tokio::process::Command::new("claude")
-            .arg("-p")
-            .arg("--model")
-            .arg(LLM_MODEL)
-            .arg(prompt)
-            .current_dir(std::env::temp_dir())
+        cli.current_dir(std::env::temp_dir())
             .stdin(std::process::Stdio::null())
             .kill_on_drop(true)
             .output(),
@@ -708,15 +864,18 @@ async fn llm_blocklist_verdict(command: &str) -> LlmOutcome {
 
     let out = match result {
         Err(_) => {
-            tracing::warn!("auto-approve LLM: claude -p timed out");
+            tracing::warn!(backend = backend.as_str(), "auto-approve LLM: CLI timed out");
             return LlmOutcome::Failed;
         }
         Ok(Err(e)) if e.kind() == std::io::ErrorKind::NotFound => {
-            tracing::warn!("auto-approve LLM: `claude` not found in PATH, escalation disabled");
+            tracing::warn!(
+                backend = backend.as_str(),
+                "auto-approve LLM: CLI not found in PATH, escalation disabled"
+            );
             return LlmOutcome::Unavailable;
         }
         Ok(Err(e)) => {
-            tracing::warn!(error = %e, "auto-approve LLM: claude -p spawn failed");
+            tracing::warn!(backend = backend.as_str(), error = %e, "auto-approve LLM: CLI spawn failed");
             return LlmOutcome::Failed;
         }
         Ok(Ok(out)) => out,
@@ -724,23 +883,91 @@ async fn llm_blocklist_verdict(command: &str) -> LlmOutcome {
 
     if !out.status.success() {
         tracing::warn!(
+            backend = backend.as_str(),
             status = %out.status,
             stderr = %String::from_utf8_lossy(&out.stderr),
-            "auto-approve LLM: claude -p non-zero exit"
+            "auto-approve LLM: CLI non-zero exit"
         );
         return LlmOutcome::Failed;
     }
 
-    let stdout = String::from_utf8_lossy(&out.stdout);
+    parse_verdict_json(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// Облачный вызов вердикта: POST `{base}/chat/completions` без стрима,
+/// ответ — `choices[0].message.content`.
+async fn cloud_blocklist_verdict(prompt: &str) -> Result<String, LlmOutcome> {
+    let cfg = match cloud_verdict_cfg() {
+        Some(c) => c,
+        None => {
+            tracing::warn!("auto-approve LLM: облако не настроено (FORGE_LLM_CLOUD_API_KEY пуст)");
+            return Err(LlmOutcome::Unavailable);
+        }
+    };
+    let body = serde_json::json!({
+        "model": cfg.model,
+        "messages": [{"role": "user", "content": prompt}],
+    });
+    let result = tokio::time::timeout(
+        LLM_TIMEOUT,
+        reqwest::Client::new()
+            .post(format!(
+                "{}/chat/completions",
+                cfg.base_url.trim_end_matches('/')
+            ))
+            .bearer_auth(&cfg.api_key)
+            .json(&body)
+            .send(),
+    )
+    .await;
+    let resp = match result {
+        Err(_) => {
+            tracing::warn!("auto-approve LLM: облачный запрос timed out");
+            return Err(LlmOutcome::Failed);
+        }
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "auto-approve LLM: облачный запрос не ушёл");
+            return Err(LlmOutcome::Failed);
+        }
+        Ok(Ok(r)) => r,
+    };
+    if !resp.status().is_success() {
+        tracing::warn!(status = %resp.status(), "auto-approve LLM: облако ответило отказом");
+        return Err(LlmOutcome::Failed);
+    }
+    let v: serde_json::Value = match resp.json().await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(error = %e, "auto-approve LLM: ответ облака не разбирается");
+            return Err(LlmOutcome::Failed);
+        }
+    };
+    match v
+        .get("choices")
+        .and_then(|c| c.get(0))
+        .and_then(|c| c.get("message"))
+        .and_then(|m| m.get("content"))
+        .and_then(|c| c.as_str())
+    {
+        Some(text) => Ok(text.to_string()),
+        None => {
+            tracing::warn!("auto-approve LLM: в ответе облака нет choices[0].message.content");
+            Err(LlmOutcome::Failed)
+        }
+    }
+}
+
+/// Вытаскивает `{"approve": bool}` из произвольного текстового ответа модели.
+fn parse_verdict_json(stdout: &str) -> LlmOutcome {
     let json_slice = match (stdout.find('{'), stdout.rfind('}')) {
         (Some(a), Some(b)) if a < b => &stdout[a..=b],
         _ => {
-            tracing::warn!(output = %stdout, "auto-approve LLM: no JSON in claude output");
+            tracing::warn!(output = %stdout, "auto-approve LLM: no JSON in LLM output");
             return LlmOutcome::Failed;
         }
     };
     let Ok(parsed) = serde_json::from_str::<serde_json::Value>(json_slice) else {
-        tracing::warn!(output = %stdout, "auto-approve LLM: bad JSON in claude output");
+        tracing::warn!(output = %stdout, "auto-approve LLM: bad JSON in LLM output");
         return LlmOutcome::Failed;
     };
     let Some(approve) = parsed["approve"].as_bool() else {
@@ -879,9 +1106,17 @@ pub async fn run(state: AppState) {
                     Decision::Blocked(c) => {
                         // Блоклист. Пробуем LLM-эскалацию: вердикт из кэша
                         // или один вызов `claude -p`.
-                        let region = extract_command_region(&pane)
-                            .unwrap_or_else(|| extract_subject(&pane));
-                        let allow = if !llm_available || region.is_empty() {
+                        // Модели уходит текст БЕЗ подсказок самого CLI: они не часть
+                        // команды, зато читаются как довод против (см.
+                        // `strip_cli_notices`).
+                        let region = strip_cli_notices(
+                            &extract_command_region(&pane)
+                                .unwrap_or_else(|| extract_subject(&pane)),
+                        );
+                        let allow = if !llm_available
+                            || region.is_empty()
+                            || !claude_llm_allowed(&settings)
+                        {
                             false
                         } else {
                             let vkey = hash_pane(&region);
@@ -893,22 +1128,32 @@ pub async fn run(state: AppState) {
                             });
                             match cached {
                                 Some((v, _)) => v,
-                                None => match llm_blocklist_verdict(&region).await {
-                                    LlmOutcome::Verdict(v) => {
-                                        if verdicts.len() >= VERDICT_CACHE_CAP {
-                                            verdicts.clear();
+                                None => {
+                                    // Рабочая директория панели: без неё любой
+                                    // абсолютный путь выглядит для модели чужим
+                                    // проектом, и она отказывает.
+                                    let cwd =
+                                        crate::tmux::pane_cwd(&s.name, pane_target).await.ok();
+                                    let backend = VerdictBackend::resolve(&settings);
+                                    match llm_blocklist_verdict(&region, cwd.as_deref(), backend)
+                                        .await
+                                    {
+                                        LlmOutcome::Verdict(v) => {
+                                            if verdicts.len() >= VERDICT_CACHE_CAP {
+                                                verdicts.clear();
+                                            }
+                                            verdicts.insert(vkey, (v, now_secs()));
+                                            v
                                         }
-                                        verdicts.insert(vkey, (v, now_secs()));
-                                        v
+                                        LlmOutcome::Unavailable => {
+                                            llm_available = false;
+                                            false
+                                        }
+                                        // Разовый сбой не кэшируем: на следующем
+                                        // тике попробуем ещё раз.
+                                        LlmOutcome::Failed => false,
                                     }
-                                    LlmOutcome::Unavailable => {
-                                        llm_available = false;
-                                        false
-                                    }
-                                    // Разовый сбой не кэшируем: на следующем
-                                    // тике попробуем ещё раз.
-                                    LlmOutcome::Failed => false,
-                                },
+                                }
                             }
                         };
                         if !allow {
@@ -1117,6 +1362,78 @@ drwxr-xr-x  5 user staff 160 Jan  1 00:00 .
   3. No
  Esc to cancel · Tab to amend · ctrl+e to explain
 ";
+
+    /// Живой экран 23.09.2026: релизная команда с `rm -rf release` под
+    /// подсказкой auto mode; пункт 2 — переключение режима, отказ на третьем.
+    const RELEASE_PROMPT: &str = "\
+⏺ Создать PR, смержить и собрать релиз
+  ⎿  $ d=/private/tmp/claude-501/scratchpad
+     n=$(curl -s -m 60 -H @\"$d/gitea.hdr\" -X POST http://192.168.11.192:3001/api/v1/repos/…
+────────────────────────────────────────────────
+ Bash command
+ Tip: auto mode handles these prompts for you — choose \"switch to auto mode\" below
+
+   │ d=/private/tmp/claude-501/scratchpad
+   │ code=$(curl -s -m 60 -o /dev/null -w '%{http_code}' -X POST \"http://192.168.11.192:3001/api/v1/repos/profi48/svod-plugin-support/pulls/$n/merge\" -d @\"$d/merge4.json\")
+   │ cd /Users/igorgerasimov/claudeWorkspace/svod-plugin-support && git checkout -q main && GIT_TERMINAL_PROMPT=0 git pull -q --ff-only && rm -rf release && docker compose --profile release run --rm -T release 2>&1 | tail -3
+   Создать PR, смержить и собрать релиз
+
+ │ This command changes directory before running a version-control command, which can pick up untrusted hooks or repository configuration from the target directory. Approve only if you trust it.
+
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and switch to auto mode · auto mode handles these prompts for you
+   3. No
+";
+
+    /// Подсказки и предупреждения CLI не уезжают в LLM-эскалацию, а команда —
+    /// уезжает целиком.
+    #[test]
+    fn cli_notices_are_stripped_before_the_llm_sees_the_command() {
+        let region = extract_command_region(RELEASE_PROMPT).expect("блок запроса есть");
+        assert!(
+            region.contains("Approve only if you trust it."),
+            "предупреждение обязано быть в блоке для блоклиста: {region}"
+        );
+
+        let clean = strip_cli_notices(&region);
+        for notice in [
+            "Tip: auto mode handles",
+            "Approve only if you trust it.",
+            "can pick up untrusted hooks",
+        ] {
+            assert!(!clean.contains(notice), "{notice} осталось в тексте: {clean}");
+        }
+        assert!(clean.contains("rm -rf release"), "команда потерялась: {clean}");
+        assert!(clean.contains("Bash command"), "заголовок потерялся: {clean}");
+
+        // Блоклист смотрит на текст ЦЕЛИКОМ и продолжает срабатывать.
+        assert!(is_dangerous(RELEASE_PROMPT, &[]));
+    }
+
+    /// Разбор живого релизного экрана 23.09.2026: подсказка auto mode и
+    /// предупреждение CLI про `cd` форму не ломают, пункт `ModeSwitch` не
+    /// выбирается, а решение — блокировка блоклистом (`rm -rf`), после которой
+    /// слово за LLM-эскалацией.
+    #[test]
+    fn live_release_prompt_is_blocked_by_the_blocklist_not_misparsed() {
+        assert_eq!(
+            classify_prompt(RELEASE_PROMPT),
+            Some(PromptKind::Permission2),
+            "пункт переключения режима не является согласием, форма двухопционная"
+        );
+        for broad in [false, true] {
+            assert_eq!(
+                decide(
+                    PromptKind::Permission2,
+                    RELEASE_PROMPT,
+                    &settings(broad, true, &[])
+                ),
+                Decision::Blocked("1"),
+                "broad={broad}: нажать можно было бы только разовое «Yes»"
+            );
+        }
+    }
 
     fn settings(broad: bool, questions: bool, blocklist: &[&str]) -> UserSettings {
         UserSettings {

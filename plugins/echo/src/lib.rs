@@ -80,8 +80,22 @@ pub async fn init_with_config(cfg: EchoConfig) -> anyhow::Result<Arc<EchoState>>
     tracing::info!(target: "forge_echo", path = %cfg.db_path.display(), "forge-echo: DB initialized");
 
     let runner = Arc::new(
-        claude::ClaudeRunner::new(cfg.cli_path.clone(), cfg.max_parallel_runs)
-            .with_run_timeout(cfg.run_timeout_secs),
+        forge_claude_runner::runner_for(
+            cfg.llm_backend,
+            cfg.cli_path.clone(),
+            cfg.kimi_cli_path.clone(),
+            forge_claude_runner::CloudTransportCfg {
+                base_url: cfg.llm_cloud_base_url.clone(),
+                api_key: cfg.llm_cloud_api_key.clone(),
+                model: cfg.llm_cloud_model.clone(),
+            },
+            cfg.max_parallel_runs,
+        )
+            .with_run_timeout(cfg.run_timeout_secs)
+            // Запуски LLM-run'ов по умолчанию ВЫКЛЮЧЕНЫ (см. forge_claude_runner):
+            // либо явный флаг конфига, либо глобальная переменная
+            // FORGE_CLAUDE_RUNNER_ENABLED=1, включающая все плагины разом.
+            .with_enabled(cfg.claude_enabled || forge_claude_runner::env_runs_enabled()),
     );
     tracing::info!(
         target: "forge_echo",
@@ -90,6 +104,8 @@ pub async fn init_with_config(cfg: EchoConfig) -> anyhow::Result<Arc<EchoState>>
         capture_lines = cfg.capture_lines,
         autonomous_max_tokens_per_day = cfg.autonomous_max_tokens_per_day,
         run_timeout_secs = cfg.run_timeout_secs,
+        claude_enabled = runner.enabled(),
+        llm_backend = cfg.llm_backend.as_str(),
         "forge-echo: ClaudeRunner ready"
     );
 

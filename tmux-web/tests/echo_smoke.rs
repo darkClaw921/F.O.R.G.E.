@@ -112,6 +112,12 @@ async fn start_harness(rate_limit: u32) -> Harness {
         user_message_rate_limit_per_min: rate_limit,
         // Disable autonomous cap so chat-стримы свободно расходуют токены.
         autonomous_max_tokens_per_day: 0,
+        // Запуски `claude -p` по умолчанию выключены глобально (см.
+        // forge_claude_runner): стенд с мок-CLI включает их явно.
+        claude_enabled: true,
+        // Дефолт конфига — облако polza.ai; стенд гоняет мок-CLI, поэтому
+        // бэкенд фиксируем на claude явно.
+        llm_backend: forge_claude_runner::LlmBackend::Claude,
         ..Default::default()
     };
 

@@ -733,6 +733,36 @@ pub fn merge_dialogs(primary: Vec<DialogDto>, extra: Vec<DialogDto>) -> Vec<Dial
     out
 }
 
+/// Строка списка для чата задачи, которого нет в `im.recent.*`.
+///
+/// Чат задачи попадает в `im.recent.get`, только пока в нём недавно писали,
+/// а `im.recent.list` чатов задач не отдаёт вовсе. Задача, где пользователь
+/// фигурирует (постановщик, ответственный, соисполнитель, наблюдатель), но в
+/// чате которой давно тихо, иначе не появлялась бы в директории «задачи»
+/// никогда. Строка собирается из карточки `tasks.task.list{MEMBER}`.
+///
+/// `None` — у задачи ещё нет чата (Р20): открывать в колонке нечего.
+/// Непрочитанное — ноль: будь в чате непрочитанное, он был бы в
+/// `im.recent.get`, и эта строка проиграла бы ему склейку.
+pub fn dialog_from_task(task: &crate::tasks::TaskDto) -> Option<DialogDto> {
+    let chat_id = task.chat_id.filter(|v| *v > 0)?;
+    Some(DialogDto {
+        id: format!("chat{chat_id}"),
+        chat_id: Some(chat_id),
+        kind: kind::TASK.to_string(),
+        title: task.title.clone(),
+        date_update: task
+            .activity_date
+            .clone()
+            .or_else(|| task.created_date.clone()),
+        can_write: true,
+        entity_type: Some(ENTITY_TASK.to_string()),
+        entity_id: Some(task.id.clone()),
+        task_id: Some(task.id.clone()),
+        ..DialogDto::default()
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -12,7 +12,7 @@
 #      chown -R b /pkg && sudo -u b makepkg -s --noconfirm"
 
 pkgname=devforge
-pkgver=0.1.21
+pkgver=0.1.75
 pkgrel=1
 pkgdesc="Tmux + kanban + git web cockpit (F.O.R.G.E.) — single-binary devforge"
 arch=('x86_64' 'aarch64')
@@ -29,7 +29,10 @@ optdepends=(
   'ripgrep: helper для television (channel content)'
 )
 source=("$pkgname-$pkgver.tar.gz::https://github.com/darkClaw921/F.O.R.G.E./archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('c27ea08cb946d08d90a497e05308b4e64ad20b0b137fb06a7029e994f80a66cf')
+# Шаблон исходного репозитория: после создания тега публикация в AUR
+# подставляет SHA256 его архива и генерирует .SRCINFO. Не использовать SKIP.
+# Собственный checksum архива нельзя включить в этот же архив тега.
+sha256sums=('REPLACE_WITH_SHA256')
 options=('!lto')
 
 _srcdir="F.O.R.G.E.-$pkgver"

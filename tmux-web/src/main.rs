@@ -7,8 +7,10 @@
 //! привязаны к корню (`paths::resolve_root` от cwd сессии). Группировка
 //! сессий — только folder-headers (`SessionDto.folder_id/folder_label`).
 
+pub mod agents;
 mod analytics;
 mod attention;
+mod capacity_recovery;
 mod auth;
 // Авто-апрув интерактивных prompt'ов Claude Code в tmux-сессиях (opt-in,
 // тумблер `UserSettings::auto_approve_enabled`).
@@ -18,6 +20,7 @@ mod auto_approve;
 // (Фаза 3); фоновый воркер `run` добавит Фаза 4b.
 mod auto_promote;
 mod claude_memory;
+mod codex_memory;
 mod cli;
 mod daemon;
 // Phase 1 Echo plugin — адаптер AppState → echo_host_api::HostApi.
@@ -205,6 +208,10 @@ struct AppState {
     /// (2.7 ГБ) на старте НЕ читается: первый скан запускает первый же
     /// запрос к любому роуту аналитики через `ensure_scan()`.
     analytics: analytics::AnalyticsStore,
+    /// Shared local-agent journal index, live tasks and historical statistics.
+    agents: agents::AgentStatsStore,
+    /// Exact process/pane bindings; unavailable probes never guess by cwd.
+    agent_runtime: agents::runtime::AgentRuntime,
     /// Phase 3 — глобальный конфиг notifier'а
     /// (`~/.config/forge/notifier.json`). Cheap-clonable (Arc<RwLock> внутри).
     /// Используется `promote_todo` (template/delay/wait_previous/session) и
@@ -328,6 +335,10 @@ async fn main() -> anyhow::Result<()> {
     // отдаёт 404, и фронт по этому 404 не рисует кнопку встречи ни в одной из
     // трёх лент.
     let meet_enabled = effective.meet_enabled;
+    // Opt-in плагин личного трекера — та же схема: без флага
+    // `GET /api/tracker/status` отдаёт 404, и фронт по этому 404 держит кнопку
+    // вкладки «Мои задачи» скрытой.
+    let tracker_enabled = effective.tracker_enabled;
 
     // Инициализация логирования. По умолчанию пишутся ТОЛЬКО ошибки.
     //
@@ -498,6 +509,8 @@ async fn main() -> anyhow::Result<()> {
     // 2.7 ГБ транскриптов за вкладку, которую могут не открыть.
     let analytics_store = analytics::AnalyticsStore::with_default_paths();
     analytics_store.init_lazy().await;
+    let agent_stats_store = agents::AgentStatsStore::with_default_paths();
+    let agent_runtime = agents::runtime::AgentRuntime::new();
 
     // PWA-контекст (opt-in, флаг `--pwa`). ЖЁСТКИЙ ИНВАРИАНТ: всё внутри
     // блока гейтится под `pwa_enabled` — без флага create_dir_all /
@@ -631,6 +644,8 @@ async fn main() -> anyhow::Result<()> {
         http: http_client,
         user_settings: user_settings_store,
         analytics: analytics_store,
+        agents: agent_stats_store,
+        agent_runtime,
         notifier_config: notifier_config_store,
         history: history_store,
         // In-memory; persist намеренно не делаем (MVP). `std::sync::RwLock`
@@ -711,14 +726,21 @@ async fn main() -> anyhow::Result<()> {
     tokio::spawn(auto_promote::run(app_state.clone(), auto_promote_rx));
     tracing::info!("auto_promote watcher started");
 
+    // Journal history is ingested in bounded background batches; HTTP and
+    // terminal startup never wait for the transcript archive to be parsed.
+    let agent_ingestion_worker = app_state.agents.spawn_worker();
+    let agent_runtime_worker = app_state.agent_runtime.spawn_worker(app_state.agents.clone());
+    // Resume native Codex capacity failures independently of permission approval.
+    tokio::spawn(capacity_recovery::run(app_state.agent_runtime.clone()));
+
     // Spawn attention-watcher: каждые 1.5с обходит ВСЕ tmux-сессии,
     // дёргает `tmux capture-pane` и обновляет `app_state.attention` флагом
     // «Claude prompt открыт». Живёт всю жизнь процесса (внутренний loop без
-    // условий выхода). Передаём только `attention` (а не AppState целиком),
-    // чтобы избежать циклических импортов между main.rs и attention.rs.
+    // условий выхода). Передаём attention и journal store без AppState:
+    // orange prompt capture и точная активность задач независимы.
     // Фильтрация по проекту не нужна: фронтенду требуются флаги для всех
     // сессий (cross-project visibility).
-    tokio::spawn(attention::watcher_loop(app_state.attention.clone()));
+    tokio::spawn(attention::watcher_loop(app_state.attention.clone(),app_state.agents.clone()));
 
     // Воркер авто-апрува: раз в 2с обходит сессии и подтверждает
     // permission-prompt'ы Claude Code. В отличие от attention-watcher'а
@@ -832,6 +854,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/git/commit", get(get_git_commit))
         // Память Claude Code для проекта активной tmux-сессии (кнопка 🧠).
         .route("/api/claude-memory", get(get_claude_memory).put(put_claude_memory))
+        .route("/api/codex-memory", get(codex_memory::get_memory).put(codex_memory::put_memory))
         // Todos API (Phase 3).
         .route("/api/todos", get(get_todos).post(create_todo))
         .route("/api/todos/:id", patch(patch_todo).delete(delete_todo))
@@ -885,6 +908,8 @@ async fn main() -> anyhow::Result<()> {
         // Phase 3 — WS-стрим TODO-карточек.
         .route("/ws/todos", get(ws_todos::todos_ws))
         .with_state(app_state.clone());
+
+    app = app.merge(agents::routes::register_routes(Router::new()).with_state(app_state.clone()));
 
     // Phase 2 — REST-эндпоинты реестра remote-серверов. Регистрируются ТОЛЬКО
     // в remote-mode. В обычном (localhost) режиме обращение к
@@ -1081,6 +1106,40 @@ async fn main() -> anyhow::Result<()> {
         app
     };
 
+    // Плагин forge-tracker — opt-in, флаг `--tracker` / `DEVFORGE_TRACKER` /
+    // `server_config.json`. Стоит СРАЗУ ПОСЛЕ блока встреч и всё ещё ДО
+    // `.fallback(static_embed::serve_static)` и ДО `.layer(...)`. Порядок —
+    // инвариант, а не стиль: регистрация после `.fallback` дала бы 404 на
+    // роуты плагина, после `.layer` — ДЫРУ В АВТОРИЗАЦИИ, потому что
+    // bearer_auth и csrf_guard покрывают только зарегистрированное под ними.
+    //
+    // 404 на `/api/tracker/*` без флага обеспечивается именно ОТСУТСТВИЕМ
+    // роутов, а не проверкой флага внутри плагина: сам крейт про opt-in не
+    // знает и не должен знать.
+    //
+    // Ошибка init НЕ роняет сервер (как у всех соседних плагинов): трекер —
+    // побочная вкладка, и недоступный `~/.config/forge/tracker.json` не должен
+    // мешать работать с терминалом. Логируем warn и стартуем без плагина.
+    // Использовать здесь `?` ЗАПРЕЩЕНО.
+    let mut tracker_state: Option<std::sync::Arc<forge_tracker::TrackerState>> = None;
+    let app = if tracker_enabled {
+        match forge_tracker::TrackerConfig::from_home().and_then(forge_tracker::init) {
+            Ok(state) => {
+                let app = forge_tracker::register_routes(app, state.clone());
+                forge_tracker::spawn_workers(&state).await;
+                tracing::info!("forge-tracker: plugin registered");
+                tracker_state = Some(state);
+                app
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "forge-tracker: init failed, starting without plugin");
+                app
+            }
+        }
+    } else {
+        app
+    };
+
     let mut app = app
         // Embedded static fallback: serve_static резолвит "/" → index.html и
         // отдаёт остальные ассеты с правильным Content-Type из bytes-секции
@@ -1160,9 +1219,16 @@ async fn main() -> anyhow::Result<()> {
     let vk_for_shutdown = vk_state.clone();
     let bitrix_for_shutdown = bitrix_state.clone();
     let meet_for_shutdown = meet_state.clone();
+    let tracker_for_shutdown = tracker_state.clone();
     let history_for_shutdown = app_state.history.clone();
+    let agents_for_shutdown = app_state.agents.clone();
     let shutdown_signal = async move {
         wait_for_shutdown_signal().await;
+        agent_ingestion_worker.abort();
+        agent_runtime_worker.abort();
+        if let Err(error) = agents_for_shutdown.flush().await {
+            tracing::warn!(%error, "agent metadata cache could not be saved on shutdown");
+        }
         tracing::info!("shutdown signal received; running Echo graceful shutdown");
         forge_echo::shutdown(&echo_for_shutdown).await;
         // Telegram-плагин мог не запускаться (нет флага или init упал).
@@ -1184,6 +1250,12 @@ async fn main() -> anyhow::Result<()> {
         // середине файла, — денутся.
         if let Some(meet) = meet_for_shutdown {
             forge_meet::shutdown(&meet).await;
+        }
+        // Личный трекер: гасит сторожа забытых таймеров и WS-циклы. Стор
+        // сохранять не нужно — каждая мутация уже записана атомарно к моменту
+        // ответа роута.
+        if let Some(tracker) = tracker_for_shutdown {
+            forge_tracker::shutdown(&tracker).await;
         }
         // Финальный снимок истории сессий перед выходом — чтобы последнее
         // состояние активных сессий/окон попало в журнал, даже если до
@@ -1522,28 +1594,15 @@ struct SessionDto {
     #[serde(flatten)]
     info: SessionInfo,
     needs_attention: bool,
-    /// `true` если за прошедший тик watcher'а (1.5с) содержимое последних
-    /// 50 строк pane изменилось (prev≠current по `gen_hash50`) — индикатор
-    /// активной генерации Claude или любого другого процесса, рисующего в pane.
-    ///
-    /// Дополнительно применяется per-tick дедупликация
-    /// ([`attention::deduplicate_generating`]): среди сессий с одинаковым
-    /// `session_group`+`gen_hash50` `true` остаётся только у одной primary
-    /// (правило выбора зеркалит [`attention::pick_primary`] для
-    /// `needs_attention`). Это устраняет ложные подсветки на «зрителях»
-    /// `attach`нутого pane (например, при `switch-client` / `resize`).
-    ///
-    /// Сигнал независим от `needs_attention`: оба флага могут гореть
-    /// одновременно. См. [`attention::AttentionState::update_generation`] и
-    /// [`attention::AttentionState::set_generating`].
+    /// A working journal task is exactly bound to a pane in this session.
+    /// Linked sessions select one primary tab; terminal output is irrelevant.
+    /// Independent of the orange `needs_attention` prompt signal.
     is_generating: bool,
-    /// Сколько секунд длится ТЕКУЩАЯ непрерывная серия генерации (та, что
-    /// сейчас зажигает `is_generating`). `None` когда сессия не генерирует.
-    ///
-    /// Источник — [`attention::AttentionState::generating_age_snapshot`]:
-    /// отсчёт ведётся от фронта `false→true` финального флага. Поле чисто
-    /// информационное — фронтенд использует его в tooltip синего индикатора
-    /// работы («терминал обновляется уже N с»), на дедуп/детект не влияет.
+    /// Number of working root tasks on the primary tab of a linked group.
+    working_agent_count:usize,
+    agent_providers:Vec<agents::AgentProvider>,
+    /// Age of the earliest working task from its original journal start.
+    /// Quiet/resume and switching the primary linked tab preserve that start.
     #[serde(skip_serializing_if = "Option::is_none")]
     generating_since_secs: Option<u64>,
     /// Идентификатор папочно-ориентированной группы для sidebar-группировки.
@@ -1597,22 +1656,21 @@ async fn get_sessions(
     match tmux::list_sessions().await {
         Ok(list) => {
             let attention = state.attention.snapshot().await;
-            let generating = state.attention.generating_snapshot().await;
-            let gen_ages = state.attention.generating_age_snapshot().await;
+            let activity = state.attention.agent_activity_snapshot().await;
+            let now_ms=agents::store::now_ms();
             let dtos: Vec<SessionDto> = list
                 .into_iter()
                 .map(|s| {
                     let needs_attention = attention.get(&s.name).copied().unwrap_or(false);
-                    let is_generating = generating.get(&s.name).copied().unwrap_or(false);
-                    let generating_since_secs = if is_generating {
-                        gen_ages.get(&s.name).copied()
-                    } else {
-                        None
-                    };
+                    let agent_activity=activity.get(&s.name).cloned().unwrap_or_default();
+                    let is_generating=agent_activity.is_generating;
+                    let generating_since_secs=agent_activity.age_secs(now_ms);
                     let (folder_id, folder_label) = resolve_folder(&s);
                     SessionDto {
                         needs_attention,
                         is_generating,
+                        working_agent_count:agent_activity.working_agent_count,
+                        agent_providers:agent_activity.providers,
                         generating_since_secs,
                         folder_id,
                         folder_label,
@@ -4579,7 +4637,7 @@ async fn delete_session_history(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// Phase 1 — контракт ответа `GET /healthz`.
@@ -4830,7 +4888,7 @@ mod tests {
 
     /// Минимальный AppState для handler-тестов. Все поля — дешёвые заглушки
     /// (каналы, пустые сторы на tmp-путях). `pwa` управляется аргументом.
-    fn test_app_state(pwa: Option<PwaCtx>) -> AppState {
+    pub(crate) fn test_app_state(pwa: Option<PwaCtx>) -> AppState {
         let (tasks_tx, _) = broadcast::channel::<TaskEvent>(8);
         let initial = std::env::temp_dir();
         let (active_path_tx, _rx) = watch::channel(initial.clone());
@@ -4870,6 +4928,11 @@ mod tests {
             // Пустой store БЕЗ путей: юнит-тесты не должны ни читать
             // `~/.claude/projects`, ни писать снимок в `~/.forge`.
             analytics: analytics::AnalyticsStore::new(None, None, None),
+            agents: agents::AgentStatsStore::new(agents::AgentConfig {
+                discover_defaults: false,
+                ..Default::default()
+            }),
+            agent_runtime: agents::runtime::AgentRuntime::new(),
             notifier_config,
             history,
             auto_chain: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),

@@ -1,3 +1,4 @@
+import { createAgentView } from '../agents/view.js';
 // tmux-web — полноэкранный дашборд «Аналитика Claude Code» (Фаза 5).
 //
 // Отдельная вью #analytics в #main — сосед #daily-summary. Показывает, КАК
@@ -59,6 +60,9 @@ import {
 /** Ключи localStorage: выбор фильтров переживает закрытие вью и перезагрузку. */
 const LS_RANGE = 'forge.analytics.range';
 const LS_PROJECT = 'forge.analytics.project';
+const LS_MODE = 'forge.analytics.mode';
+let _mode = 'agents';
+let _agentView = null;
 
 /** Интервал поллинга статуса индексации (мс). */
 const POLL_MS = 1500;
@@ -868,7 +872,7 @@ function render(summary) {
  * Устаревшие ответы отбрасываются по номеру запроса — см. шапку файла.
  */
 async function load() {
-    if (!_visible) return;
+    if (!_visible || _mode !== 'claude') return;
     const seq = ++_seq;
     const range = currentRange();
     const project = currentProject();
@@ -888,7 +892,7 @@ async function load() {
 
 /** Заполняет селектор проектов; вызывается один раз за показ вью. */
 async function loadProjects() {
-    if (!$analyticsProject || _projectsLoaded) return;
+    if (!$analyticsProject || _projectsLoaded || _mode !== 'claude') return;
     let list = [];
     try {
         list = await getAnalyticsProjects();
@@ -897,7 +901,7 @@ async function loadProjects() {
         // «Все проекты», и дашборд продолжает жить.
         return;
     }
-    if (!Array.isArray(list) || !_visible) return;
+    if (!Array.isArray(list) || !_visible || _mode !== 'claude') return;
     _projectsLoaded = true;
     const saved = lsGet(LS_PROJECT) || '';
     clearNode($analyticsProject);
@@ -930,9 +934,9 @@ async function loadProjects() {
  * после закрытия сетевых запросов не остаётся.
  */
 function startPolling() {
-    if (_pollTimer || !_visible) return;
+    if (_pollTimer || !_visible || _mode !== 'claude') return;
     _pollTimer = setInterval(async () => {
-        if (!_visible) { stopPolling(); return; }
+        if (!_visible || _mode !== 'claude') { stopPolling(); return; }
         let st;
         try {
             st = await getAnalyticsStatus();
@@ -941,7 +945,7 @@ function startPolling() {
             // следующий тик попробует снова.
             return;
         }
-        if (!_visible) { stopPolling(); return; }
+        if (!_visible || _mode !== 'claude') { stopPolling(); return; }
         const running = !!(st && st.state === 'scanning');
         if (running) {
             // Пока данных нет вовсе — двигаем полосу; иначе обновляем пометку.
@@ -1011,6 +1015,8 @@ function bindControls() {
     _bound = true;
 
     if ($analyticsBack) $analyticsBack.addEventListener('click', () => closeAnalytics());
+    document.getElementById('analytics-mode-agents')?.addEventListener('click', () => setAnalyticsMode('agents'));
+    document.getElementById('analytics-mode-claude')?.addEventListener('click', () => setAnalyticsMode('claude'));
 
     if ($analyticsRange) {
         $analyticsRange.value = normalizeRange(lsGet(LS_RANGE));
@@ -1054,7 +1060,7 @@ function bindControls() {
  *
  * @param {'7'|'30'|'90'|'all'} [range] — период; по умолчанию сохранённый
  */
-export function showAnalytics(range) {
+export function showAnalytics(range, mode) {
     if (!$analytics) return;
     bindControls();
     if (range !== undefined && range !== null && $analyticsRange) {
@@ -1077,9 +1083,26 @@ export function showAnalytics(range) {
     window.addEventListener('resize', onResize);
     startThemeWatch();
 
-    hideError();
-    loadProjects();
-    load();
+    setAnalyticsMode(mode || lsGet(LS_MODE) || 'agents');
+}
+
+/** Switches data/lifecycle while retaining each mode's independent filters. */
+export function setAnalyticsMode(mode) {
+    _mode = mode === 'claude' ? 'claude' : 'agents';
+    lsSet(LS_MODE, _mode);
+    _seq += 1; stopPolling();
+    _agentView?.hide();
+    if ($analytics) $analytics.dataset.mode = _mode;
+    const agentHost = document.getElementById('analytics-agents');
+    const claudeHost = document.getElementById('analytics-claude');
+    if (agentHost) agentHost.hidden = _mode !== 'agents';
+    if (claudeHost) claudeHost.hidden = _mode !== 'claude';
+    for (const name of ['agents', 'claude']) document.getElementById(`analytics-mode-${name}`)?.setAttribute('aria-selected', String(name === _mode));
+    if (!_visible) return;
+    if (_mode === 'agents' && agentHost) {
+        if (!_agentView) _agentView = createAgentView(agentHost, {onBindingsChanged: fetchSessions});
+        _agentView.show();
+    } else if (_mode === 'claude') { hideError(); loadProjects(); load(); }
 }
 
 /** Скрывает дашборд: гасит таймеры, наблюдателей и обработчики. */
@@ -1087,6 +1110,7 @@ export function hideAnalytics() {
     if (!$analytics) return;
     $analytics.style.display = 'none';
     _visible = false;
+    _agentView?.hide();
     // Сдвиг счётчика — ответ уже отправленного запроса не дорисуется.
     _seq += 1;
     stopPolling();

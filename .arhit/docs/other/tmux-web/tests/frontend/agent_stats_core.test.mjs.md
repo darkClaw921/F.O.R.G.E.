@@ -1,0 +1,3 @@
+# tmux-web/tests/frontend/agent_stats_core.test.mjs
+
+Node behavior tests чистых formatter/range/elapsed/poller и реального API клиента. Проверяют недоступные и отрицательные числовые значения, отличия null от нуля, tiny positive cost, отсутствие двойного счёта reasoning, server elapsed с монотонным локальным временем, периоды и custom bounds. Poller тестируется через управляемые таймеры и deferred promises: видимость, запрет overlap, поколения, stale responses и проверка isCurrent. API tests проверяют auth-friendly request injection, query, origin, точный JSONtuple sessionId bind/unbind, DELETE body, 204 и ошибки.

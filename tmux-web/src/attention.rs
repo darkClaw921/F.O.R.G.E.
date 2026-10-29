@@ -1,37 +1,29 @@
-//! Attention-watcher для tmux-сессий: следит за наличием Claude permission
-//! prompt в панелях и поддерживает разделяемое состояние «нужно внимание».
+//! Session attention and task activity are independent projections.
 //!
-//! ### Назначение
+//! Every 1.5 seconds the watcher lists all tmux sessions and physical panes,
+//! captures each physical pane once, and detects pending native permission or
+//! interactive-question overlays. Codex, Claude Code and verified OpenCode
+//! layouts are supported. A normal composer, completed response or a question
+//! mark in assistant prose does not by itself mean that input is required.
 //!
-//! Раз в 1.5 секунды watcher (см. `watcher_loop`) обходит все tmux-сессии
-//! активного проекта, дёргает `tmux::capture_pane` и применяет строгий
-//! паттерн `detect_claude_prompt`. Результат пишется в `AttentionState`,
-//! откуда фронтенд получает флаг для оранжевой подсветки вкладки.
+//! The read-only prompt observer lives in attention_prompt.rs and retains an
+//! uncertain capture only for the previously observed physical pane/process.
+//! Linked aliases share one capture and use the existing primary-session
+//! policy; independent sessions with identical prompt text remain independent.
+//! It never sends keys, approves commands or answers questions. The existing
+//! detect_claude_prompt contract is shared with autoapproval and stays intact.
 //!
-//! ### Контракт детектора
-//!
-//! `detect_claude_prompt` срабатывает на известные формы меню выбора Claude
-//! Code (см. `detect_permission_prompt`): трёхопционный permission
-//! (`❯ 1. Yes` + `2. Yes,` + `3. No`), двухопционный (`❯ 1. Yes` + `2. No`),
-//! Claude in Chrome (`❯ 1. Allow` + `2. Deny`/`2. Allow all`), а также plan и
-//! question по их footer'ам.
-//!
-//! AND-семантика внутри каждой формы выбрана сознательно: каждый маркер по
-//! отдельности может встретиться в обычном выводе (например, в логах), но
-//! сочетание — практически однозначно prompt. Маркеры намеренно «короткие»,
-//! чтобы покрыть разные варианты Claude UI (file create, edit, bash и т.п.).
-//!
-//! ### Состояние
-//!
-//! `AttentionState` хранит `HashMap<session_name, bool>` под `tokio::RwLock`.
-//! Async-замок обязателен: и watcher_loop, и axum-хендлеры (Phase 3) дёргают
-//! `snapshot`/`set` из tokio runtime.
+//! Working stars come from AgentStatsStore task metadata and exact bindings,
+//! not terminal hashes. Echo idle is derived only from observed journal ends.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
 
 use tokio::sync::RwLock;
+
+#[path = "attention_prompt.rs"]
+mod prompts;
 
 /// Сколько секунд непрерывного просмотра сессии (attached>0) достаточно, чтобы
 /// считать её «просмотренной» и завершить idle-эпизод «следующего шага»:
@@ -43,8 +35,30 @@ use tokio::sync::RwLock;
 /// здесь это «сколько пользователь смотрел сессию», там — «сколько она молчала».
 const VIEW_DISMISS_SECS: u64 = 10;
 
-/// Разделяемое состояние «у каких сессий сейчас открыт Claude permission
-/// prompt».
+#[cfg(test)]
+#[path = "attention_activity_tests.rs"]
+mod agent_activity_tests;
+
+/// One coherent journal-derived projection for the session tab DTO.
+#[derive(Debug, Clone, Default)]
+pub struct SessionAgentActivity {
+    pub is_generating: bool,
+    pub started_at_ms: Option<i64>,
+    pub working_agent_count: usize,
+    pub providers: Vec<crate::agents::AgentProvider>,
+}
+impl SessionAgentActivity {
+    pub fn age_secs(&self, now_ms: i64) -> Option<u64> {
+        self.is_generating.then(|| {
+            now_ms
+                .saturating_sub(self.started_at_ms.unwrap_or(now_ms))
+                .max(0) as u64
+                / 1000
+        })
+    }
+}
+
+/// Разделяемое состояние сессий, в которых агент ждёт разрешения или ответа.
 ///
 /// Ключ — имя tmux-сессии (то же, что `tmux::SessionInfo::name`). Значение
 /// `true` означает «нужно подсветить вкладку оранжевым».
@@ -56,7 +70,9 @@ const VIEW_DISMISS_SECS: u64 = 10;
 pub struct AttentionState {
     map: Arc<RwLock<HashMap<String, bool>>>,
     generating: Arc<RwLock<HashMap<String, bool>>>,
-    /// Последний наблюдённый хэш pane на сессию.
+    agent_activity: Arc<RwLock<HashMap<String, SessionAgentActivity>>>,
+    agent_busy: Arc<RwLock<HashSet<String>>>,
+    /// Legacy test-only hash state; production does not infer work from pixels.
     ///
     /// Используется в `update_generation` для получения «сырого» сигнала
     /// `changed = prev != current`. Само поле НЕ хранит финальный флаг
@@ -66,8 +82,9 @@ pub struct AttentionState {
     /// При первом наблюдении сессии (нет prev) `changed` всегда `false`:
     /// нет точки сравнения. Это сознательное решение, чтобы избежать ложного
     /// срабатывания на самой первой итерации watcher'а.
+    #[cfg(test)]
     last_gen_hash: Arc<RwLock<HashMap<String, u64>>>,
-    /// Момент начала текущей непрерывной серии генерации на сессию.
+    /// Original journal task start projected onto a monotonic clock.
     ///
     /// Ставится при переходе финального флага `is_generating` `false→true`
     /// (см. `set_generating`) и удаляется когда флаг гаснет. Используется
@@ -107,6 +124,9 @@ impl AttentionState {
         Self {
             map: Arc::new(RwLock::new(HashMap::new())),
             generating: Arc::new(RwLock::new(HashMap::new())),
+            agent_activity: Arc::new(RwLock::new(HashMap::new())),
+            agent_busy: Arc::new(RwLock::new(HashSet::new())),
+            #[cfg(test)]
             last_gen_hash: Arc::new(RwLock::new(HashMap::new())),
             gen_started_at: Arc::new(RwLock::new(HashMap::new())),
             idle_started_at: Arc::new(RwLock::new(HashMap::new())),
@@ -151,33 +171,69 @@ impl AttentionState {
 
     /// Возвращает копию состояния «генерирует / работает» по всем сессиям.
     ///
-    /// Семантика `is_generating`: за прошедший тик watcher'а (1.5с) содержимое
-    /// последних 50 строк pane изменилось, и этот сырой сигнал прошёл через
-    /// дедупликацию `deduplicate_generating` (group by `session_group`).
-    /// Только primary linked-сессии получает `true`, остальные — `false`,
-    /// чтобы индикатор не дублировался во всех вкладках одной группы.
-    /// Независимые сессии (`session_group=None`) не группируются и светятся
-    /// каждая сама. На практике это означает, что что-то рисуется на экране
-    /// — Claude печатает, выводится stream tool output, идёт `tail -f`, и т.п.
-    /// Frontend подсвечивает такие сессии пульсирующим значком.
+    /// Значение поступает из журнала работающей задачи и точной привязки
+    /// native session ID к панели. Только primary linked-сессии получает
+    /// true; потоки build/tail и перерисовки терминала на сигнал не влияют.
+    /// Для согласованного чтения возраста и счётчика используйте
+    /// [`Self::agent_activity_snapshot`].
     pub async fn generating_snapshot(&self) -> HashMap<String, bool> {
         self.generating.read().await.clone()
+    }
+    pub async fn agent_activity_snapshot(&self) -> HashMap<String, SessionAgentActivity> {
+        self.agent_activity.read().await.clone()
+    }
+    /// Silence, unknown probes and detach are visual changes, not task ends.
+    async fn apply_agent_activity(
+        &self,
+        activity: HashMap<String, SessionAgentActivity>,
+        busy: HashSet<String>,
+        finished: HashSet<String>,
+    ) {
+        *self.agent_busy.write().await = busy.clone();
+        let now_ms = crate::agents::store::now_ms();
+        let now = Instant::now();
+        *self.generating.write().await = activity
+            .iter()
+            .map(|(name, a)| (name.clone(), a.is_generating))
+            .collect();
+        *self.gen_started_at.write().await = activity
+            .iter()
+            .filter_map(|(name, a)| {
+                a.age_secs(now_ms).map(|age| {
+                    (
+                        name.clone(),
+                        now.checked_sub(std::time::Duration::from_secs(age))
+                            .unwrap_or(now),
+                    )
+                })
+            })
+            .collect();
+        *self.agent_activity.write().await = activity;
+        let attached = self.attached_since.read().await;
+        let mut idle = self.idle_started_at.write().await;
+        for name in &busy {
+            idle.remove(name);
+        }
+        for name in finished {
+            if !busy.contains(&name) && !attached.contains_key(&name) {
+                idle.insert(name, now);
+            } else {
+                idle.remove(&name);
+            }
+        }
     }
 
     /// Устанавливает финальный флаг `is_generating` для одной сессии.
     ///
-    /// Это «писатель» карты `generating` — единственное место, через которое
-    /// финальное значение попадает в наблюдаемое состояние (что видят
-    /// `generating_snapshot` и `/api/sessions`). Сюда пишет дедуп-фаза
-    /// `watcher_loop` уже после того, как сырые `changed`-сигналы от
-    /// `update_generation` свёрнуты с учётом `session_group`
-    /// (linked-сессии меняются одновременно и должны давать общий флаг,
-    /// иначе индикатор горит во всех вкладках одной группы).
+    /// Legacy helper retained only for tests of the old boolean-front contract.
+    /// Production writes coherent journal activity through apply_agent_activity
+    /// and never derives Echo idle from a disappearing visual flag.
     ///
     /// Семантика записи аналогична [`AttentionState::set`]: ключ не удаляется
     /// при `false` (всегда `insert`), что позволяет фронтенду надёжно
     /// различать «никогда не видели сессию» (нет ключа) и «видели, флаг
     /// потушен» (есть ключ со значением `false`).
+    #[cfg(test)]
     pub async fn set_generating(&self, name: &str, flag: bool) {
         let prev = {
             let mut map = self.generating.write().await;
@@ -266,10 +322,11 @@ impl AttentionState {
 
         let idle = self.idle_started_at.read().await;
         let needs_attention = self.map.read().await;
+        let busy = self.agent_busy.read().await;
         idle.iter()
             .filter(|(name, _)| {
                 // Исключаем сессии с активным prompt'ом (needs_attention=true).
-                !needs_attention.get(*name).copied().unwrap_or(false)
+                !needs_attention.get(*name).copied().unwrap_or(false) && !busy.contains(*name)
             })
             .map(|(name, t)| (name.clone(), t.elapsed().as_secs()))
             .collect()
@@ -283,6 +340,7 @@ impl AttentionState {
     /// карту не попадают. Используется хендлером `/api/sessions` для поля
     /// `SessionDto::generating_since_secs`, на основе которого фронтенд строит
     /// tooltip синего индикатора работы.
+    #[cfg(test)]
     pub async fn generating_age_snapshot(&self) -> HashMap<String, u64> {
         let started = self.gen_started_at.read().await;
         started
@@ -307,6 +365,7 @@ impl AttentionState {
     ///
     /// Эта развязка позволяет дедуп-фазе видеть «сырой» сигнал без побочного
     /// влияния на финальное состояние.
+    #[cfg(test)]
     pub async fn update_generation(&self, name: &str, current_hash: u64) -> bool {
         let mut map = self.last_gen_hash.write().await;
         let prev = map.insert(name.to_string(), current_hash);
@@ -444,8 +503,7 @@ pub(crate) fn prompt_at_bottom(pane: &str) -> bool {
 ///
 /// Chrome-форма (панель заканчивается самим меню) footer'а не имеет вовсе и
 /// разбирается отдельной веткой [`prompt_at_bottom`].
-const BOTTOM_FOOTER_MARKERS: &[&str] =
-    &["Esc to cancel", "to edit in Vim", "shift+tab to approve"];
+const BOTTOM_FOOTER_MARKERS: &[&str] = &["Esc to cancel", "to edit in Vim", "shift+tab to approve"];
 
 /// Граница «настоящего низа панели» для [`prompt_at_bottom`]: индекс первой
 /// строки хвостовых виджетов в списке непустых строк, либо `lines.len()`,
@@ -622,10 +680,7 @@ fn todo_widget_start(lines: &[&str]) -> Option<usize> {
 /// Заголовок TODO-виджета — строка, начинающаяся с числа и слова `task`
 /// (`5 tasks (0 done, 1 in progress, 4 open)`, `1 task (…)`).
 fn is_todo_header(trimmed: &str) -> bool {
-    let digits = trimmed
-        .chars()
-        .take_while(char::is_ascii_digit)
-        .count();
+    let digits = trimmed.chars().take_while(char::is_ascii_digit).count();
     digits > 0 && trimmed[digits..].trim_start().starts_with("task")
 }
 
@@ -1177,7 +1232,9 @@ Do you want to proceed?
     /// и свечение не загоралось. Срезается [`agents_widget_start`].
     #[test]
     fn bottom_gate_ignores_agents_widget_below_prompt() {
-        let pane = format!("{PROMPT_FIXTURE}⏺ main\n◯ run-phase Фаза 1\n◯ e2e-writer тесты\n◯ security-audit\n");
+        let pane = format!(
+            "{PROMPT_FIXTURE}⏺ main\n◯ run-phase Фаза 1\n◯ e2e-writer тесты\n◯ security-audit\n"
+        );
         assert!(prompt_at_bottom(&pane));
         assert!(detect_claude_prompt(&pane));
     }
@@ -1225,7 +1282,9 @@ Do you want to proceed?
     /// ОТВЕЧЕННЫЙ prompt, и срез принял бы его за активный.
     #[test]
     fn agents_widget_needs_rows_under_head() {
-        let pane = format!("{PROMPT_FIXTURE}\n\n⏺ Готово, тесты зелёные\n⏺ Ещё сообщение\n⏺ И ещё\n⏺ И ещё одно\n");
+        let pane = format!(
+            "{PROMPT_FIXTURE}\n\n⏺ Готово, тесты зелёные\n⏺ Ещё сообщение\n⏺ И ещё\n⏺ И ещё одно\n"
+        );
         assert!(!prompt_at_bottom(&pane));
     }
 
@@ -1479,7 +1538,9 @@ Claude in Chrome wants to navigate
         // Только первый маркер — false.
         assert!(!detect_claude_prompt("❯ 1. Yes\nsome other text"));
         // Первый + второй, без третьего — false.
-        assert!(!detect_claude_prompt("❯ 1. Yes\n2. Yes, and don't ask again"));
+        assert!(!detect_claude_prompt(
+            "❯ 1. Yes\n2. Yes, and don't ask again"
+        ));
         // Второй + третий, без первого — false.
         assert!(!detect_claude_prompt("2. Yes, and don't ask\n3. No"));
         // Первый + третий, без второго — false.
@@ -1921,7 +1982,11 @@ Claude in Chrome wants to navigate
                 "session {name}: detected=false везде → флаг должен быть false (got true)"
             );
         }
-        assert_eq!(out.len(), 3, "все сессии должны присутствовать в результате");
+        assert_eq!(
+            out.len(),
+            3,
+            "все сессии должны присутствовать в результате"
+        );
     }
 
     /// Дополнительный кейс: 3 detached-сессии в одной группе, все detected
@@ -1969,7 +2034,10 @@ Claude in Chrome wants to navigate
         let h2 = hash_pane("hello world");
         let h3 = hash_pane("hello world!");
         assert_eq!(h1, h2, "одинаковый ввод → одинаковый hash");
-        assert_ne!(h1, h3, "разный ввод → разный hash (DefaultHasher достаточен)");
+        assert_ne!(
+            h1, h3,
+            "разный ввод → разный hash (DefaultHasher достаточен)"
+        );
     }
 
     // ===========================================================================
@@ -1985,12 +2053,7 @@ Claude in Chrome wants to navigate
     /// уникальным и воспроизводимым (нужно для tie-break по id в
     /// `pick_primary_gen`). `changed` — сырой сигнал от `update_generation`
     /// (prev != current).
-    fn mk_gen(
-        name: &str,
-        attached: u32,
-        group: Option<&str>,
-        changed: bool,
-    ) -> GenSnapshot {
+    fn mk_gen(name: &str, attached: u32, group: Option<&str>, changed: bool) -> GenSnapshot {
         GenSnapshot {
             name: name.to_string(),
             id: format!("${}", name),
@@ -2128,117 +2191,42 @@ Claude in Chrome wants to navigate
     }
 }
 
-/// Фоновый watcher-loop: каждые 1500мс обходит ВСЕ tmux-сессии,
-/// захватывает их панели через [`crate::tmux::capture_pane`] и обновляет
-/// `attention` соответствующим флагом.
-///
-/// ### Параметры
-///
-/// Принимает только `attention` — состояние, в которое пишутся флаги. Раньше
-/// watcher фильтровал сессии по `tmux_prefix` активного проекта, но в рамках
-/// фичи cross-project sessions visibility этот фильтр снят: фронтенду нужны
-/// флаги для всех сессий, чтобы корректно подсвечивать вкладки в любом
-/// проекте (а также orphan-сессии без проекта).
-///
-/// ### Устойчивость
-///
-/// - Сбой `tmux::list_sessions` или `tmux::capture_pane` не валит loop:
-///   используется `unwrap_or_default`. Это правильное поведение, т.к. tmux-
-///   сервер может отсутствовать (нет сессий — пустой вектор) и сессия может
-///   исчезнуть между `list` и `capture` (`capture_pane` сама вернёт
-///   `Ok(String::new())`).
-/// - Loop никогда не завершается штатно — он жив до завершения процесса.
-///
-/// ### Запуск
-///
-/// Стартуется через `tokio::spawn(watcher_loop(attention))` из `main.rs`.
-pub async fn watcher_loop(attention: Arc<AttentionState>) {
+/// Refresh all-session attention and journal-derived activity every 1500ms.
+/// The prompt observer inventories all windows/panes once, deduplicates shared
+/// physical pane captures, and aggregates waiting permissions/questions. A
+/// failed read preserves only that pane's known signal; normal answered output
+/// clears it. Copy mode is unknown and cannot create attention from history.
+/// This pass is independent of the autoapproval toggle and statistics config.
+/// Existing linked-primary selection and explicit-only Echo idle are retained.
+/// Session-inventory failure preserves the previous coherent state until the
+/// next successful tick; deleted sessions are pruned after successful listing.
+pub async fn watcher_loop(attention: Arc<AttentionState>, agents: crate::agents::AgentStatsStore) {
     use std::time::Duration;
+    let mut observer = AgentActivityObserver::new(crate::agents::store::now_ms());
+    let mut prompt_observer = prompts::Observer::default();
 
     loop {
         tokio::time::sleep(Duration::from_millis(1500)).await;
 
-        let sessions = crate::tmux::list_sessions().await.unwrap_or_default();
+        let sessions = match crate::tmux::list_sessions().await {
+            Ok(sessions) => sessions,
+            Err(error) => {
+                tracing::debug!(%error,"attention session inventory unavailable");
+                continue;
+            }
+        };
 
-        // Шаг 1: собрать состояние всех сессий (имя, attached, id, hash, detected).
-        // Параллельно собираем `gens` — снапшоты сырого сигнала `is_generating`,
-        // которые после цикла пройдут через `deduplicate_generating` (linked-
-        // сессии и одинаковый pane должны давать общий флаг).
-        let mut collected: Vec<SessionAttention> = Vec::with_capacity(sessions.len());
+        // Terminal capture is used only by the existing orange prompt detector.
+        // Journal activity is projected after the independent prompt pass.
+        let collected = prompt_observer.collect(&sessions, &attention.snapshot().await).await;
         let mut gens: Vec<GenSnapshot> = Vec::with_capacity(sessions.len());
         for s in sessions.iter() {
-            // Prompt может висеть в ФОНОВОМ окне сессии (пользователь смотрит
-            // соседнее), поэтому обходим все Claude-панели, как auto_approve.
-            // `capture_pane` остаётся fallback'ом, когда Claude-панели не
-            // опознаны по имени процесса.
-            let claude_panes = crate::tmux::list_claude_pane_targets(&s.name)
-                .await
-                .unwrap_or_default();
-            let mut detected = false;
-            let mut pane = String::new();
-            if claude_panes.is_empty() {
-                pane = crate::tmux::capture_pane(&s.name).await.unwrap_or_default();
-                detected = detect_claude_prompt(&pane);
-            } else {
-                for pt in claude_panes.iter() {
-                    let p = crate::tmux::capture_pane_target(&s.name, &pt.target)
-                        .await
-                        .unwrap_or_default();
-                    if detect_claude_prompt(&p) {
-                        detected = true;
-                        pane = p;
-                        break;
-                    }
-                    if pane.is_empty() {
-                        pane = p;
-                    }
-                }
-            }
-            let pane_hash = hash_pane(&pane);
-
-            // Generation-detector: захват последних 50 строк pane (включая
-            // scrollback) и сравнение хэша с предыдущим тиком. Если
-            // содержимое менялось — Claude/процесс что-то рисует.
-            //
-            // Отдельный capture с lines=50 (а не переиспользование `pane`)
-            // выбран сознательно: `capture_pane` хэширует **видимую**
-            // часть (без scrollback) ради дедупа prompt-детектора, а здесь
-            // нужны именно последние 50 строк истории — иначе быстрый
-            // ввод/вывод, выходящий за пределы экрана, мог бы пропуститься.
-            //
-            // `update_generation` возвращает «сырой» сигнал `changed = prev !=
-            // current` и НЕ пишет финальный флаг — финал решается в дедуп-фазе
-            // ниже через `deduplicate_generating` + `set_generating`.
-            let pane50 = crate::tmux::capture_pane_full(&s.name, 50)
-                .await
-                .unwrap_or_default();
-            let gen_hash = hash_pane(&pane50);
-            let changed = attention.update_generation(&s.name, gen_hash).await;
-
-            tracing::debug!(
-                session = %s.name,
-                group = ?s.session_group,
-                pane_hash,
-                detected,
-                pane_len = pane.len(),
-                gen_hash,
-                changed,
-                "attention check"
-            );
-
-            collected.push(SessionAttention {
-                name: s.name.clone(),
-                id: s.id.clone(),
-                attached: s.attached,
-                session_group: s.session_group.clone(),
-                detected,
-            });
             gens.push(GenSnapshot {
                 name: s.name.clone(),
                 id: s.id.clone(),
                 attached: s.attached,
                 session_group: s.session_group.clone(),
-                changed,
+                changed: false,
             });
         }
 
@@ -2248,10 +2236,7 @@ pub async fn watcher_loop(attention: Arc<AttentionState>) {
             attention.set(&name, flag).await;
         }
 
-        // Обновляем множество просматриваемых (attached>0) сессий ДО записи
-        // is_generating: set_generating подавляет постановку idle-метки для
-        // attached-сессий (см. его docstring) — чтобы переключение/просмотр
-        // сессий не зажигали голубое свечение «следующего шага».
+        // Viewing a session suppresses Echo idle even after a real task end.
         {
             use std::collections::HashSet;
             let attached_names: HashSet<String> = sessions
@@ -2262,14 +2247,14 @@ pub async fn watcher_loop(attention: Arc<AttentionState>) {
             attention.update_attached(&attached_names).await;
         }
 
-        // Шаг 2b: дедупликация is_generating. Свёртка сырых `changed`-сигналов
-        // по двум осям группировки (gen_hash + session_group), затем запись
-        // финального флага во всех сессиях — в т.ч. явный `false` для тех,
-        // кто не получил primary (сбрасывает индикатор при стабилизации).
-        let final_gens = deduplicate_generating(&gens);
-        for (name, flag) in final_gens {
-            attention.set_generating(&name, flag).await;
-        }
+        let live = agents.snapshot().await;
+        let recent = agents
+            .recent_tasks(crate::agents::store::now_ms() - 24 * 3_600_000)
+            .await;
+        let (activity, busy, finished) = observer.update(&gens, &live, &recent);
+        attention
+            .apply_agent_activity(activity, busy, finished)
+            .await;
 
         // Шаг 3: cleanup карт для исчезнувших сессий. tmux может убить сессию
         // между тиками — без prune карты `last_gen_hash` и `generating` будут
@@ -2285,6 +2270,7 @@ pub async fn watcher_loop(attention: Arc<AttentionState>) {
                 .write()
                 .await
                 .retain(|k, _| live.contains(k.as_str()));
+            #[cfg(test)]
             attention
                 .last_gen_hash
                 .write()
@@ -2338,7 +2324,7 @@ pub async fn watcher_loop(attention: Arc<AttentionState>) {
 /// флага), tmux id (`$0`), attached (число прикреплённых клиентов),
 /// `session_group` (имя tmux session-group — единственная ось группировки
 /// после удаления `pane_hash`) и `detected` (исходный результат
-/// `detect_claude_prompt`).
+/// native interactive prompt detection).
 #[derive(Debug, Clone)]
 struct SessionAttention {
     name: String,
@@ -2352,7 +2338,7 @@ struct SessionAttention {
 /// в одной итерации `watcher_loop`.
 ///
 /// Структурно-парный к `SessionAttention`, но описывает другой сигнал:
-/// «pane менялся за последний тик». Содержит всё, что нужно для выбора
+/// «на панели работает задача агента». Содержит всё для выбора
 /// primary в группе:
 /// - `name` — ключ итогового флага в `AttentionState::generating`;
 /// - `id` — tmux id вида `$0` (используется для tie-break — наибольший id
@@ -2361,8 +2347,7 @@ struct SessionAttention {
 /// - `session_group` — имя tmux session-group (`Some(_)` означает linked-
 ///   сессии, которые меняются одновременно и должны давать общий флаг) —
 ///   единственная ось группировки после удаления `gen_hash`;
-/// - `changed` — «сырой» сигнал от `AttentionState::update_generation`:
-///   `prev != current` хэш pane. Это исходное состояние ДО дедупа, которое
+/// - `changed` — исходное наличие работающей задачи ДО дедупа, которое
 ///   `deduplicate_generating` свернёт по группам (linked-сессии должны
 ///   подсветиться только в primary, иначе индикатор горит во всех вкладках
 ///   одной группы).
@@ -2375,11 +2360,152 @@ struct GenSnapshot {
     changed: bool,
 }
 
+/// A completion is news only after this observer actually saw that task work.
+/// Historical replay, quiet waiting and unavailable sources never create idle.
+struct AgentActivityObserver {
+    started_at_ms: i64,
+    seen: HashMap<String, (i64, HashSet<String>)>,
+    finished: HashSet<String>,
+}
+impl AgentActivityObserver {
+    fn new(started_at_ms: i64) -> Self {
+        Self {
+            started_at_ms,
+            seen: HashMap::new(),
+            finished: HashSet::new(),
+        }
+    }
+    fn update(
+        &mut self,
+        sessions: &[GenSnapshot],
+        snapshot: &crate::agents::AgentSnapshot,
+        recent: &[crate::agents::AgentTask],
+    ) -> (
+        HashMap<String, SessionAgentActivity>,
+        HashSet<String>,
+        HashSet<String>,
+    ) {
+        let live_names: HashSet<_> = sessions.iter().map(|s| s.name.clone()).collect();
+        let mut activity: HashMap<String, SessionAgentActivity> = sessions
+            .iter()
+            .map(|s| (s.name.clone(), SessionAgentActivity::default()))
+            .collect();
+        let mut busy = HashSet::new();
+        let mut observed = HashSet::new();
+        let mut per_session: HashMap<
+            String,
+            (HashSet<String>, BTreeSet<crate::agents::AgentProvider>),
+        > = HashMap::new();
+        for task in snapshot
+            .live
+            .iter()
+            .chain(&snapshot.waiting)
+            .chain(&snapshot.unknown)
+        {
+            observed.insert(task.session_id.clone());
+            let names: HashSet<String> = task
+                .bindings
+                .iter()
+                .map(|b| b.tmux_session.clone())
+                .filter(|name| live_names.contains(name))
+                .collect();
+            busy.extend(names.iter().cloned());
+            self.seen
+                .insert(task.session_id.clone(), (task.started_at_ms, names.clone()));
+            if task.state != crate::agents::AgentTaskState::Working {
+                continue;
+            }
+            for name in names {
+                let a = activity.get_mut(&name).expect("known session");
+                a.started_at_ms = Some(
+                    a.started_at_ms
+                        .map_or(task.started_at_ms, |at| at.min(task.started_at_ms)),
+                );
+                let (ids, providers) = per_session.entry(name).or_default();
+                ids.insert(task.id.clone());
+                providers.insert(task.provider);
+            }
+        }
+        for (name, (ids, providers)) in per_session {
+            let a = activity.get_mut(&name).expect("known session");
+            a.working_agent_count = ids.len();
+            a.providers = providers.into_iter().collect();
+            a.is_generating = !ids.is_empty();
+        }
+        let flags: HashMap<_, _> = deduplicate_generating(
+            &sessions
+                .iter()
+                .cloned()
+                .map(|mut s| {
+                    s.changed = activity[&s.name].is_generating;
+                    s
+                })
+                .collect::<Vec<_>>(),
+        )
+        .into_iter()
+        .collect();
+        for (name, a) in &mut activity {
+            if !flags.get(name).copied().unwrap_or(false) {
+                *a = SessionAgentActivity::default();
+            }
+        }
+        // A disappeared unended task was forgotten/expired/offline, not done.
+        let open_sources: HashSet<_> = recent
+            .iter()
+            .filter(|t| t.ended_at_ms.is_none())
+            .map(|t| t.session_id.clone())
+            .collect();
+        let known_sources: HashSet<_> = recent.iter().map(|t| t.session_id.clone()).collect();
+        self.seen.retain(|id, _| {
+            observed.contains(id) || known_sources.contains(id) && !open_sources.contains(id)
+        });
+        let mut ended_names = HashSet::new();
+        for task in recent {
+            let Some(end) = task.ended_at_ms else {
+                continue;
+            };
+            if task.completed.is_none()
+                || end < self.started_at_ms
+                || !self.finished.insert(task.id.clone())
+            {
+                continue;
+            }
+            if let Some((started, names)) = self.seen.get(&task.session_id) {
+                if end >= *started {
+                    ended_names.extend(
+                        names
+                            .iter()
+                            .filter(|name| live_names.contains(*name) && !busy.contains(*name))
+                            .cloned(),
+                    );
+                }
+            }
+        }
+        let finished = deduplicate_generating(
+            &sessions
+                .iter()
+                .cloned()
+                .map(|mut s| {
+                    s.changed = ended_names.contains(&s.name);
+                    s
+                })
+                .collect::<Vec<_>>(),
+        )
+        .into_iter()
+        .filter_map(|(name, flag)| flag.then_some(name))
+        .collect();
+        let recent_ids: HashSet<_> = recent.iter().map(|t| t.id.as_str()).collect();
+        self.finished.retain(|id| recent_ids.contains(id.as_str()));
+        (activity, busy, finished)
+    }
+}
+
 /// Хэширует содержимое панели в стабильный `u64`.
 ///
 /// Использует `std::collections::hash_map::DefaultHasher`: достаточно для
 /// эквивалентности «один и тот же текст → один хэш» в рамках одного процесса.
 /// Криптостойкость не требуется.
+#[cfg(test)]
 fn hash_pane(pane: &str) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
@@ -2459,8 +2585,7 @@ fn deduplicate_attention(items: &[SessionAttention]) -> Vec<(String, bool)> {
     // двух НЕЗАВИСИМЫХ сессий — гасить у одной из них реальный prompt
     // неверно. См. deduplicate_attention doc-комментарий.
     {
-        let mut by_group: std::collections::HashMap<&str, usize> =
-            std::collections::HashMap::new();
+        let mut by_group: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
         for (i, it) in items.iter().enumerate() {
             if let Some(g) = &it.session_group {
                 match by_group.get(g.as_str()) {
@@ -2474,8 +2599,7 @@ fn deduplicate_attention(items: &[SessionAttention]) -> Vec<(String, bool)> {
     }
 
     // Группируем индексы по корню.
-    let mut groups: std::collections::HashMap<usize, Vec<usize>> =
-        std::collections::HashMap::new();
+    let mut groups: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
     for i in 0..n {
         let r = find(&mut parent, i);
         groups.entry(r).or_default().push(i);
@@ -2518,8 +2642,11 @@ fn deduplicate_attention(items: &[SessionAttention]) -> Vec<(String, bool)> {
 /// 3. fallback: лексикографически наибольшее имя среди `detected=true`.
 fn pick_primary(items: &[SessionAttention], members: &[usize]) -> Option<usize> {
     // Кандидаты — только те, у кого detected=true.
-    let mut detected_idx: Vec<usize> =
-        members.iter().copied().filter(|&i| items[i].detected).collect();
+    let mut detected_idx: Vec<usize> = members
+        .iter()
+        .copied()
+        .filter(|&i| items[i].detected)
+        .collect();
     if detected_idx.is_empty() {
         return None;
     }
@@ -2575,8 +2702,11 @@ fn pick_primary(items: &[SessionAttention], members: &[usize]) -> Option<usize> 
 /// дедупликация не должна зажигать индикатор «из ничего».
 fn pick_primary_gen(items: &[GenSnapshot], members: &[usize]) -> Option<usize> {
     // Кандидаты — только те, у кого changed=true.
-    let mut changed_idx: Vec<usize> =
-        members.iter().copied().filter(|&i| items[i].changed).collect();
+    let mut changed_idx: Vec<usize> = members
+        .iter()
+        .copied()
+        .filter(|&i| items[i].changed)
+        .collect();
     if changed_idx.is_empty() {
         return None;
     }
@@ -2673,8 +2803,7 @@ fn deduplicate_generating(items: &[GenSnapshot]) -> Vec<(String, bool)> {
     // — лишь случайное совпадение последних 50 строк двух НЕЗАВИСИМЫХ сессий,
     // и гасить индикатор «генерации» у одной из них неверно.
     {
-        let mut by_group: std::collections::HashMap<&str, usize> =
-            std::collections::HashMap::new();
+        let mut by_group: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
         for (i, it) in items.iter().enumerate() {
             if let Some(g) = &it.session_group {
                 match by_group.get(g.as_str()) {
@@ -2688,8 +2817,7 @@ fn deduplicate_generating(items: &[GenSnapshot]) -> Vec<(String, bool)> {
     }
 
     // Группируем индексы по корню.
-    let mut groups: std::collections::HashMap<usize, Vec<usize>> =
-        std::collections::HashMap::new();
+    let mut groups: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
     for i in 0..n {
         let r = find(&mut parent, i);
         groups.entry(r).or_default().push(i);

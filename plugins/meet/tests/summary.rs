@@ -64,6 +64,10 @@ impl Stand {
             models_dir: root.join("models"),
             // Путь к CLI каждый тест ставит сам; по умолчанию — заведомо пустой.
             claude_cli_path: root.join("no-claude"),
+            // Запуски `claude -p` по умолчанию выключены глобально
+            // (см. forge_claude_runner): файл целиком про запуск Claude CLI,
+            // стенд включает его явно.
+            claude_enabled: true,
             // Секунды здесь никому не нужны: моки отвечают мгновенно, а тест
             // зависания не должен стоить десяти минут на каждом прогоне.
             summary_timeout_secs: 10,

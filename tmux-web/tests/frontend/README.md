@@ -37,6 +37,14 @@ node tmux-web/tests/frontend/telegram_visibility.test.mjs      # чистая л
 node tmux-web/tests/frontend/telegram_dialogs_filter.test.mjs  # белый список в колонке чатов
 node tmux-web/tests/frontend/telegram_dialog_name.test.mjs     # имя + приглушённый @ник в строке и шапке
 node tmux-web/tests/frontend/messenger_waveform_core.test.mjs # общая звуковая дорожка голосовых + карточка Bitrix
+node tmux-web/tests/frontend/tracker_parse.test.mjs      # разбор строки tracker:~$ и выборка режима list
+node tmux-web/tests/frontend/tracker_kanban.test.mjs     # колонки доски и пересборка глобального порядка
+node tmux-web/tests/frontend/tracker_timer.test.mjs      # живые часы: опора времени, параллельные таймеры, время пункта
+node tmux-web/tests/frontend/tracker_gantt.test.mjs      # диаграмма Гантта: ось дней, полосы плана и факта, дорожка вех
+node tmux-web/tests/frontend/tracker_push.test.mjs       # перенос задачи в tasks/todo: корни, умолчание, текст описания
+node tmux-web/tests/frontend/tracker_report.test.mjs     # сводка: окно периода, полосы, KPI из ответа сервера, CSV
+node tmux-web/tests/frontend/tracker_fields.test.mjs     # поля карточки: круговой прогон дат в пикерах, сброс, оценка, патч вехи
+node tmux-web/tests/frontend/tracker_tags.test.mjs       # теги карточки: нормализация решётки, дедуп без учёта регистра, подсказки из снимка, ветка «создать новый»
 node tmux-web/tests/frontend/telegram_voice_wave.test.mjs     # волна голосового в карточке Telegram
 node tmux-web/tests/frontend/messenger_voice_transcript_core.test.mjs # ⚠ СТРАЖ КАРТОЧКИ РАСШИФРОВКИ: четыре состояния, сворачивание, потолок запросов, отсутствие путей и ключей в причинах отказа, единственность ветки
 node tmux-web/tests/frontend/voice_transcript_panels.test.mjs        # блок расшифровки в ТРЁХ лентах (три процесса): координаты вложения, кадр по пути панели, не-звук блока не получает
